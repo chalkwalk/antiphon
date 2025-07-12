@@ -67,3 +67,9 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Editor and Python detritus
+*~
+.vimsupport/
+__pycache__/
+*.pyc
