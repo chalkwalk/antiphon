@@ -56,8 +56,43 @@ The UI will be designed for clarity and functionality within a DAW environment.
 - **Metronome**:
   - Metronome volume/mute switch. It should click strictly according to the incoming server BPI over the local interval phase.
 
-## 4. Open Questions / Clarifications
-Before proceeding to implementation, please clarify the following points:
-1. **Ninjam Core Codebase**: Do we want to write the Ninjam network/protocol logic entirely from scratch in C++ using pure JUCE sockets, or should we port/wrap the Cockos `NJClient` C++ code directly (similar to how `ninjam-next-plugin` does)? Writing it from scratch is cleaner and more modern, but wrapping `NJClient` saves a massive amount of protocol reverse-engineering.
-2. **Audio Bus dynamic behavior**: JUCE handles dynamic I/O bus configurations via `isBusesLayoutSupported()`. Should we expose all 8 buses to the DAW from the start and let the user attach sidechains, or do you prefer the plugin requests new buses from the host dynamically as local channels are added?
-3. **Third-Party Libraries**: Are we happy to use CMake or a package manager (like CPM/vcpkg) for `libvorbis` and `libogg`, or do we want to include them directly in the source tree?
+## 4. Design Decisions
+1. **Ninjam Core Codebase**: We will write our own clean/modern protocol code in C++ using JUCE, rather than wrapping the old Cockos `NJClient`. The original clients will serve as a protocol reference.
+2. **Audio Bus dynamic behavior**: The plugin will have a fixed bus count (e.g., 1 main stereo input bus and 1 main stereo output bus) but will dynamically change the number of channels within those buses as needed, which is better supported by DAWs than dynamically adding buses.
+3. **Third-Party Libraries**: `libvorbis` and `libogg` will be included as submodules in the repository so the codebase is standalone and does not rely on system package managers.
+
+## 5. Implementation Phases
+### Phase 1: Project Skeleton & Build System
+- [ ] 1. **Initialize Git and Submodules**: Create repo structure. Add `libogg` and `libvorbis` as git submodules.
+- [ ] 2. **Setup CMake**: Create `CMakeLists.txt` using `juce_add_plugin` for VST3 and CLAP formats. Link JUCE modules and the Ogg/Vorbis static libraries.
+- [ ] 3. **Basic JUCE Plugin Skeleton**: Implement `PluginProcessor` (with 8in/8out dynamic channel support) and a blank `PluginEditor`. Verify build and plugin loads in a DAW.
+
+### Phase 2: Audio Framework Foundation
+- [ ] 4. **Implement I/O Bus Routing**: Configure JUCE to declare 1 main stereo input bus and 1 main stereo output bus by default, but allow up to 8 channels. Implement a basic audio pass-through in `processBlock`.
+- [ ] 5. **Add Host Sync API**: Use `AudioPlayHead` to read DAW BPM and PPQ (transport position). Display this information simply on the plugin UI.
+- [ ] 6. **Implement Internal Metronome**: Create an internal interval timer based on a hardcoded BPI and BPM. Synthesize a basic metronome click on the interval beats and mix it into the output buffer.
+- [ ] 7. **Phase Alignment Logic**: Calculate the offset between the DAW's "1" (from PPQ) and the internal Metronome's "1". Add a warning to the UI if the DAW BPM does not match the internal BPM.
+
+### Phase 3: Networking & Protocol Skeleton
+- [ ] 8. **Basic TCP Socket Connection**: Use JUCE's `StreamingSocket` (or ASIO/native if necessary) to manage a connection to a generic server on port 2049. Add simple Connect/Disconnect buttons and status text to the UI.
+- [ ] 9. **Ninjam Handshake (Client -> Server)**: Implement the initial protocol handshake (Client Auth -> Challenge -> Sha1 Hash -> Auth Reply). Send hardcoded anonymous credentials for testing.
+- [ ] 10. **Handle Server Config Messages**: Receive and parse Server License, BPM, and BPI messages. Update the internal metronome and UI with the received BPM/BPI.
+- [ ] 11. **Keep-Alive & User Management**: Implement keep-alive pings. Parse incoming user connection/disconnection messages and populate a basic list of Remote Users in the UI.
+
+### Phase 4: Audio Encoding & Decoding
+- [ ] 12. **Ogg/Vorbis Encoder Wrapper**: Create a C++ wrapper class around `libvorbisenc` to take blocks of floats and compress them into Ogg pages.
+- [ ] 13. **Local Audio Capture & Interval Buffering**: Buffer the incoming audio from the DAW during the duration of one interval. As the interval finishes, pass the buffer to the Encoder wrapper.
+- [ ] 14. **Transmit Audio to Server**: Prepend the Ninjam Ogg interval header to the encoded Ogg pages. Transmit the payload over the network socket to the server.
+- [ ] 15. **Ogg/Vorbis Decoder Wrapper**: Create a C++ wrapper class around `libvorbisfile` or raw vorbis APIs to decode incoming Ogg pages back into float audio.
+- [ ] 16. **Receive Audio from Server**: Parse incoming audio streams (matched by User ID and Channel Index). Route the payload into the respective user's Decoder wrapper.
+
+### Phase 5: Playback & Mixing
+- [ ] 17. **Delayed Playback Engine**: Buffer the decoded remote streams. Trigger playback of the buffered streams exactly one interval *after* they were generated by the remote user, synced to the local metronome's "1".
+- [ ] 18. **Local Mixer UI**: Build UI controls (Volume, Pan, Mute, Solo) for the local transmit channels. Apply these DSP gains to the audio *before* encoding.
+- [ ] 19. **Remote Mixer UI & DSP**: Build dynamic UI sub-mixers for each remote user that joins. Apply Volume, Pan, Mute, and Solo to the decoded streams in the `processBlock` before mixing them into the master output.
+
+### Phase 6: Polish and Chat
+- [ ] 20. **Text Chat Implementation**: Parse incoming chat messages from the server and display them in a scrolling UI text box. Add a text input field to send chat messages to the server.
+- [ ] 21. **Voting Commands**: Add support for `/bpi`, `/bpm`, and `/kick` commands in the chat box, sending the appropriate protocol messages.
+- [ ] 22. **OSC Sync (Optional/Stretch Goal)**: Implement a UDP OSC sender to transmit `/tempo/raw {bpm}` to `localhost` when the server BPM changes.
+- [ ] 23. **Final UI Styling**: Apply custom LookAndFeel classes. Ensure dynamic resizing of the mixer panels as users join/leave.
