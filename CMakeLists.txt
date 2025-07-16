@@ -10,5 +10,9 @@ add_subdirectory(JUCE)
 # Configure CLAP JUCE extension
 add_subdirectory(modules/clap-juce-extensions EXCLUDE_FROM_ALL)
 
+# Add Ogg and Vorbis
+add_subdirectory(modules/ogg EXCLUDE_FROM_ALL)
+add_subdirectory(modules/vorbis EXCLUDE_FROM_ALL)
+
 # Add the sources subdirectory
 add_subdirectory(src)

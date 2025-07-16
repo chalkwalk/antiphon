@@ -63,9 +63,9 @@ The UI will be designed for clarity and functionality within a DAW environment.
 
 ## 5. Implementation Phases
 ### Phase 1: Project Skeleton & Build System
-- [ ] 1. **Initialize Git and Submodules**: Create repo structure. Add `libogg` and `libvorbis` as git submodules.
-- [ ] 2. **Setup CMake**: Create `CMakeLists.txt` using `juce_add_plugin` for VST3 and CLAP formats. Link JUCE modules and the Ogg/Vorbis static libraries.
-- [ ] 3. **Basic JUCE Plugin Skeleton**: Implement `PluginProcessor` (with 8in/8out dynamic channel support) and a blank `PluginEditor`. Verify build and plugin loads in a DAW.
+- [x] 1. **Initialize Git and Submodules**: Create repo structure. Add `libogg` and `libvorbis` as git submodules.
+- [x] 2. **Setup CMake**: Create `CMakeLists.txt` using `juce_add_plugin` for VST3 and CLAP formats. Link JUCE modules and the Ogg/Vorbis static libraries.
+- [x] 3. **Basic JUCE Plugin Skeleton**: Implement `PluginProcessor` (with 8in/8out dynamic channel support) and a blank `PluginEditor`. Verify build and plugin loads in a DAW.
 
 ### Phase 2: Audio Framework Foundation
 - [ ] 4. **Implement I/O Bus Routing**: Configure JUCE to declare 1 main stereo input bus and 1 main stereo output bus by default, but allow up to 8 channels. Implement a basic audio pass-through in `processBlock`.
