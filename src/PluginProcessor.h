@@ -34,6 +34,16 @@ public:
   void getStateInformation(juce::MemoryBlock &destData) override;
   void setStateInformation(const void *data, int sizeInBytes) override;
 
+  // Host Sync State
+  double hostBpm = 120.0;
+  double hostPpqPosition = 0.0;
+  bool hostIsPlaying = false;
+
+  // Internal Metronome State
+  double internalBpm = 120.0;
+  int internalBpi = 16;
+  double internalPhaseBeats = 0.0; // Position in the interval (0 to BPI)
+
 private:
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessor)
 };

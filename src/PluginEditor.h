@@ -3,13 +3,15 @@
 #include "PluginProcessor.h"
 #include <JuceHeader.h>
 
-class NinjamAudioProcessorEditor : public juce::AudioProcessorEditor {
+class NinjamAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                   public juce::Timer {
 public:
   NinjamAudioProcessorEditor(NinjamAudioProcessor &);
   ~NinjamAudioProcessorEditor() override;
 
   void paint(juce::Graphics &) override;
   void resized() override;
+  void timerCallback() override;
 
 private:
   NinjamAudioProcessor &audioProcessor;
