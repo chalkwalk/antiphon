@@ -1,8 +1,10 @@
 #pragma once
 
+#include "NinjamClient.h"
 #include <JuceHeader.h>
 
-class NinjamAudioProcessor : public juce::AudioProcessor {
+class NinjamAudioProcessor : public juce::AudioProcessor,
+                             public NinjamClientListener {
 public:
   NinjamAudioProcessor();
   ~NinjamAudioProcessor() override;
@@ -33,6 +35,14 @@ public:
 
   void getStateInformation(juce::MemoryBlock &destData) override;
   void setStateInformation(const void *data, int sizeInBytes) override;
+
+  // NinjamClientListener
+  void onConnected() override;
+  void onDisconnected(const juce::String &error) override;
+  void onServerConfig(int bpm, int bpi) override;
+
+  NinjamClient ninjamClient;
+  juce::String connectionStatus = "Disconnected";
 
   // Host Sync State
   double hostBpm = 120.0;

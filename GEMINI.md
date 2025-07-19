@@ -68,16 +68,16 @@ The UI will be designed for clarity and functionality within a DAW environment.
 - [x] 3. **Basic JUCE Plugin Skeleton**: Implement `PluginProcessor` (with 8in/8out dynamic channel support) and a blank `PluginEditor`. Verify build and plugin loads in a DAW.
 
 ### Phase 2: Audio Framework Foundation
-- [/] 4. **Implement I/O Bus Routing**: Configure JUCE to declare 1 main stereo input bus and 1 main stereo output bus by default, but allow up to 8 channels. Implement a basic audio pass-through in `processBlock`.
-- [/] 5. **Add Host Sync API**: Use `AudioPlayHead` to read DAW BPM and PPQ (transport position). Display this information simply on the plugin UI.
-- [/] 6. **Implement Internal Metronome**: Create an internal interval timer based on a hardcoded BPI and BPM. Synthesize a basic metronome click on the interval beats and mix it into the output buffer.
-- [/] 7. **Phase Alignment Logic**: Calculate the offset between the DAW's "1" (from PPQ) and the internal Metronome's "1". Add a warning to the UI if the DAW BPM does not match the internal BPM.
+- [x] 4. **Implement I/O Bus Routing**: Configure JUCE to declare 1 main stereo input bus and 1 main stereo output bus by default, but allow up to 8 channels. Implement a basic audio pass-through in `processBlock`.
+- [x] 5. **Add Host Sync API**: Use `AudioPlayHead` to read DAW BPM and PPQ (transport position). Display this information simply on the plugin UI.
+- [x] 6. **Implement Internal Metronome**: Create an internal interval timer based on a hardcoded BPI and BPM. Synthesize a basic metronome click on the interval beats and mix it into the output buffer.
+- [x] 7. **Phase Alignment Logic**: Calculate the offset between the DAW's "1" (from PPQ) and the internal Metronome's "1". Add a warning to the UI if the DAW BPM does not match the internal BPM.
 
 ### Phase 3: Networking & Protocol Skeleton
-- [ ] 8. **Basic TCP Socket Connection**: Use JUCE's `StreamingSocket` (or ASIO/native if necessary) to manage a connection to a generic server on port 2049. Add simple Connect/Disconnect buttons and status text to the UI.
-- [ ] 9. **Ninjam Handshake (Client -> Server)**: Implement the initial protocol handshake (Client Auth -> Challenge -> Sha1 Hash -> Auth Reply). Send hardcoded anonymous credentials for testing.
-- [ ] 10. **Handle Server Config Messages**: Receive and parse Server License, BPM, and BPI messages. Update the internal metronome and UI with the received BPM/BPI.
-- [ ] 11. **Keep-Alive & User Management**: Implement keep-alive pings. Parse incoming user connection/disconnection messages and populate a basic list of Remote Users in the UI.
+- [x] 8. **Basic TCP Socket Connection**: Use JUCE's `StreamingSocket` (or ASIO/native if necessary) to manage a connection to a generic server on port 2049. Add simple Connect/Disconnect buttons and status text to the UI.
+- [x] 9. **Ninjam Handshake (Client -> Server)**: Implement the initial protocol handshake (Client Auth -> Challenge -> Sha1 Hash -> Auth Reply). Send hardcoded anonymous credentials for testing.
+- [x] 10. **Handle Server Config Messages**: Receive and parse Server License, BPM, and BPI messages. Update the internal metronome and UI with the received BPM/BPI.
+- [x] 11. **Keep-Alive & User Management**: Implement keep-alive pings. Parse incoming user connection/disconnection messages and populate a basic list of Remote Users in the UI.
 
 ### Phase 4: Audio Encoding & Decoding
 - [ ] 12. **Ogg/Vorbis Encoder Wrapper**: Create a C++ wrapper class around `libvorbisenc` to take blocks of floats and compress them into Ogg pages.

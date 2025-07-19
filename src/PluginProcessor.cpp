@@ -14,9 +14,12 @@ NinjamAudioProcessor::NinjamAudioProcessor()
       )
 #endif
 {
+  ninjamClient.addListener(this);
 }
 
-NinjamAudioProcessor::~NinjamAudioProcessor() {}
+NinjamAudioProcessor::~NinjamAudioProcessor() {
+  ninjamClient.removeListener(this);
+}
 
 const juce::String NinjamAudioProcessor::getName() const {
   return JucePlugin_Name;
@@ -142,6 +145,19 @@ void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {}
 
 void NinjamAudioProcessor::setStateInformation(const void *data,
                                                int sizeInBytes) {}
+
+void NinjamAudioProcessor::onConnected() { connectionStatus = "Connected"; }
+
+void NinjamAudioProcessor::onDisconnected(const juce::String &error) {
+  connectionStatus = "Disconnected: " + error;
+}
+
+void NinjamAudioProcessor::onServerConfig(int bpm, int bpi) {
+  internalBpm = bpm;
+  internalBpi = bpi;
+  // We could potentially reset phase here if it's a hard reset, but usually we
+  // just update
+}
 
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {
   return new NinjamAudioProcessor();

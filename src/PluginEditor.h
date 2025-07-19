@@ -16,5 +16,10 @@ public:
 private:
   NinjamAudioProcessor &audioProcessor;
 
+  juce::TextEditor serverInput;
+  juce::TextEditor usernameInput;
+  juce::TextButton connectButton;
+  juce::TextButton disconnectButton;
+
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessorEditor)
 };
