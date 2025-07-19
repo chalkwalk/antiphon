@@ -73,3 +73,5 @@ Testing/
 .vimsupport/
 __pycache__/
 *.pyc
+.cache*/
+build*/
