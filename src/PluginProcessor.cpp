@@ -47,9 +47,18 @@ void NinjamAudioProcessor::changeProgramName(int index,
                                              const juce::String &newName) {}
 
 void NinjamAudioProcessor::prepareToPlay(double sampleRate,
-                                         int samplesPerBlock) {}
+                                         int samplesPerBlock) {
+  // We need to estimate the max buffer size we might need for one interval.
+  // e.g. at 20 BPM, BPI 64, that's max ~192 seconds of audio.
+  // 192s * 48000hz = ~9,216,000 samples. We'll allocate 10 million to be safe
+  // and handle resizing if needed, but a robust ring-buffer is better.
+  // For now, let's allocate a static heavy buffer to fit long blocks.
+  captureBuffer.setSize(2, 48000 * 60 * 2); // 2 mins max
+  captureWritePosition = 0;
+  ninjamClient.setSampleRate(sampleRate);
+}
 
-void NinjamAudioProcessor::releaseResources() {}
+void NinjamAudioProcessor::releaseResources() { captureBuffer.setSize(0, 0); }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool NinjamAudioProcessor::isBusesLayoutSupported(
@@ -78,9 +87,9 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   auto totalNumOutputChannels = getTotalNumOutputChannels();
 
   // 1. Host Sync
-  if (auto *playHead = getPlayHead()) {
+  if (auto *currentPlayHead = getPlayHead()) {
     juce::Optional<juce::AudioPlayHead::PositionInfo> info =
-        playHead->getPosition();
+        currentPlayHead->getPosition();
     if (info.hasValue()) {
       hostIsPlaying = info->getIsPlaying();
       if (info->getBpm().hasValue())
@@ -115,7 +124,31 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       // Generate click if we just crossed a beat boundary (roughly)
       double fractionalBeat =
           internalPhaseBeats - std::floor(internalPhaseBeats);
-      if (fractionalBeat < 0.05) // First 5% of a beat is a click
+
+      // If we just rolled over the interval
+      if (internalPhaseBeats < beatsPerSample) {
+        // Interval finished! Signal to send the block.
+        // We'll call the `NinjamClient` asynchronously via MessageManager,
+        // (this avoids allocations in processBlock). A more robust way in
+        // production is to use a lock-free juce::AbstractFifo, but `callAsync`
+        // is okay for now.
+        if (ninjamClient.isConnected() && captureWritePosition > 0) {
+          juce::AudioBuffer<float> tempBuf;
+          tempBuf.makeCopyOf(captureBuffer);
+          int length = captureWritePosition;
+
+          juce::MessageManager::callAsync([this, tempBuf, length]() mutable {
+            ninjamClient.processCapturedAudio(tempBuf, length);
+          });
+        }
+        captureWritePosition = 0; // reset local pointer
+
+        // Swap buffers for playback
+        ninjamClient.swapIntervalBuffers();
+      }
+
+      if (fractionalBeat < 0.05 &&
+          metronomeEnabled) // First 5% of a beat is a click
       {
         // Alternate click frequency for downbeat (interval boundary)
         float freq = (std::floor(internalPhaseBeats) == 0.0) ? 880.0f : 440.0f;
@@ -132,6 +165,40 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
           buffer.addSample(channel, sample, clickSample);
       }
     }
+  }
+
+  if (ninjamClient.isConnected()) {
+    ninjamClient.getDecodedAudio(buffer);
+  }
+
+  ninjamClient.setSaveTx(saveTxEnabled);
+  ninjamClient.setSaveRx(saveRxEnabled);
+
+  // 4. Capture audio to buffer
+  int numSamples = buffer.getNumSamples();
+  if (captureWritePosition + numSamples < captureBuffer.getNumSamples()) {
+    float lGain =
+        localTxMute
+            ? 0.0f
+            : localTxVolume * (localTxPan <= 0.0f ? 1.0f : 1.0f - localTxPan);
+    float rGain =
+        localTxMute
+            ? 0.0f
+            : localTxVolume * (localTxPan >= 0.0f ? 1.0f : 1.0f + localTxPan);
+
+    for (int channel = 0; channel < std::min(2, totalNumInputChannels);
+         channel++) {
+      float gain = (channel == 0) ? lGain : rGain;
+      captureBuffer.copyFrom(channel, captureWritePosition, buffer, channel, 0,
+                             numSamples);
+      captureBuffer.applyGain(channel, captureWritePosition, numSamples, gain);
+    }
+    // if mono input, copy to right array as well
+    if (totalNumInputChannels == 1 && captureBuffer.getNumChannels() == 2) {
+      captureBuffer.copyFrom(1, captureWritePosition, buffer, 0, 0, numSamples);
+      captureBuffer.applyGain(1, captureWritePosition, numSamples, rGain);
+    }
+    captureWritePosition += numSamples;
   }
 }
 

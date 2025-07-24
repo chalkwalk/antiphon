@@ -36,13 +36,16 @@ public:
   void getStateInformation(juce::MemoryBlock &destData) override;
   void setStateInformation(const void *data, int sizeInBytes) override;
 
-  // NinjamClientListener
   void onConnected() override;
   void onDisconnected(const juce::String &error) override;
   void onServerConfig(int bpm, int bpi) override;
 
   NinjamClient ninjamClient;
   juce::String connectionStatus = "Disconnected";
+
+  // Capture Buffer
+  juce::AudioBuffer<float> captureBuffer;
+  int captureWritePosition = 0;
 
   // Host Sync State
   double hostBpm = 120.0;
@@ -53,6 +56,15 @@ public:
   double internalBpm = 120.0;
   int internalBpi = 16;
   double internalPhaseBeats = 0.0; // Position in the interval (0 to BPI)
+  // Local Transmit Mixer State
+  std::atomic<float> localTxVolume{1.0f};
+  std::atomic<float> localTxPan{0.0f};
+  std::atomic<bool> localTxMute{false};
+
+  // Debug / Integration Testing Features
+  std::atomic<bool> metronomeEnabled{true};
+  std::atomic<bool> saveTxEnabled{false};
+  std::atomic<bool> saveRxEnabled{false};
 
 private:
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessor)

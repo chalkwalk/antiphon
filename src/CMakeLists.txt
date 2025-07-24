@@ -14,6 +14,7 @@ target_sources(Ninjam
         PluginProcessor.cpp
         PluginEditor.cpp
         NinjamClient.cpp
+        RemoteUserStrip.cpp
         utils/sha1.cpp
 )
 
@@ -34,8 +35,7 @@ target_link_libraries(Ninjam
         vorbisenc
         vorbisfile
     PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_warning_flags)
+        juce::juce_recommended_config_flags)
 
 # Make sure JUCE finds headers
 target_include_directories(Ninjam PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

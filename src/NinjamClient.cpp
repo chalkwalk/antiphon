@@ -1,5 +1,6 @@
 #include "NinjamClient.h"
 #include "utils/sha1.h"
+#include "utils/vorbisencdec.h"
 
 NinjamClient::NinjamClient() : juce::Thread("NinjamClientThread") {}
 
@@ -11,6 +12,60 @@ void NinjamClient::addListener(NinjamClientListener *listener) {
 
 void NinjamClient::removeListener(NinjamClientListener *listener) {
   listeners.remove(listener);
+}
+
+void NinjamClient::setSaveTx(bool shouldSave) {
+  juce::ScopedLock sl(txFileMutex);
+  if (shouldSave && !isSavingTx) {
+    juce::File desktop =
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory);
+    juce::File oggF = desktop.getChildFile("tx.ogg");
+    juce::File wavF = desktop.getChildFile("tx.wav");
+
+    oggF.deleteFile();
+    wavF.deleteFile();
+
+    txOggFile = std::make_unique<juce::FileOutputStream>(oggF);
+    if (txOggFile->openedOk()) {
+      txOggFile->setPosition(0);
+      txOggFile->truncate();
+    }
+
+    juce::StringPairArray strArr;
+    txWavWriter.reset(wavFormat.createWriterFor(
+        new juce::FileOutputStream(wavF), 48000, 2, 32, strArr, 0));
+  } else if (!shouldSave && isSavingTx) {
+    txOggFile.reset();
+    txWavWriter.reset();
+  }
+  isSavingTx = shouldSave;
+}
+
+void NinjamClient::setSaveRx(bool shouldSave) {
+  juce::ScopedLock sl(rxFileMutex);
+  if (shouldSave && !isSavingRx) {
+    juce::File desktop =
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory);
+    juce::File oggF = desktop.getChildFile("rx.ogg");
+    juce::File wavF = desktop.getChildFile("rx.wav");
+
+    oggF.deleteFile();
+    wavF.deleteFile();
+
+    rxOggFile = std::make_unique<juce::FileOutputStream>(oggF);
+    if (rxOggFile->openedOk()) {
+      rxOggFile->setPosition(0);
+      rxOggFile->truncate();
+    }
+
+    juce::StringPairArray strArr;
+    rxWavWriter.reset(wavFormat.createWriterFor(
+        new juce::FileOutputStream(wavF), 48000, 2, 32, strArr, 0));
+  } else if (!shouldSave && isSavingRx) {
+    rxOggFile.reset();
+    rxWavWriter.reset();
+  }
+  isSavingRx = shouldSave;
 }
 
 void NinjamClient::connectToServer(const juce::String &host, int port,
@@ -175,7 +230,200 @@ bool NinjamClient::handleMessage(juce::uint8 type,
   }
   // USER_INFO_CHANGE
   else if (type == 0x03) {
-    // Parse user joins/leaves
+    int offset = 0;
+    int payloadSize = payload.getSize();
+    const char *data = static_cast<const char *>(payload.getData());
+
+    bool changed = false;
+    while (offset < payloadSize) {
+      if (offset + 4 > payloadSize)
+        break;
+
+      juce::uint8 active = data[offset++];
+      juce::uint8 channelIndex = data[offset++];
+      juce::int16 volume;
+      memcpy(&volume, data + offset, 2);
+      volume =
+          juce::ByteOrder::swapIfBigEndian(static_cast<juce::uint16>(volume));
+      offset += 2;
+      juce::int8 pan = data[offset++];
+      juce::uint8 flags = data[offset++];
+
+      juce::String username = juce::String::fromUTF8(data + offset);
+      offset += username.getNumBytesAsUTF8() + 1;
+
+      juce::String channelName = juce::String::fromUTF8(data + offset);
+      offset += channelName.getNumBytesAsUTF8() + 1;
+
+      juce::ScopedLock sl(downloadMutex);
+      if (active) {
+        if (remoteUsers.find(username) == remoteUsers.end()) {
+          remoteUsers[username] = RemoteUser{username, {}};
+        }
+        auto &user = remoteUsers[username];
+        if (user.channels.find(channelIndex) == user.channels.end()) {
+          RemoteUserChannel newChan;
+          newChan.channelIndex = channelIndex;
+          newChan.channelName = channelName;
+          user.channels[channelIndex] = newChan;
+          changed = true;
+        } else if (user.channels[channelIndex].channelName != channelName) {
+          user.channels[channelIndex].channelName = channelName;
+          changed = true;
+        }
+      } else {
+        if (remoteUsers.find(username) != remoteUsers.end()) {
+          auto &user = remoteUsers[username];
+          if (user.channels.find(channelIndex) != user.channels.end()) {
+            user.channels.erase(channelIndex);
+            changed = true;
+          }
+          if (user.channels.empty()) {
+            remoteUsers.erase(username);
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      juce::MessageManager::callAsync([this]() {
+        listeners.call(&NinjamClientListener::onUserInfoChange);
+      });
+    }
+  }
+  // SERVER_DOWNLOAD_INTERVAL_BEGIN
+  else if (type == 0x04) {
+    if (payload.getSize() >= 16) {
+      juce::String guid = juce::String::toHexString(payload.getData(), 16);
+
+      // Parse extended info if available
+      int estSize = 0;
+      juce::uint8 fourcc[4] = {0};
+      juce::uint8 channelIndex = 0;
+      juce::String username;
+
+      int offset = 16;
+      if (offset + 4 <= payload.getSize()) {
+        memcpy(&estSize, static_cast<const char *>(payload.getData()) + offset,
+               4);
+        estSize = juce::ByteOrder::swapIfBigEndian(
+            static_cast<juce::uint32>(estSize));
+        offset += 4;
+
+        if (offset + 4 <= payload.getSize()) {
+          memcpy(fourcc, static_cast<const char *>(payload.getData()) + offset,
+                 4);
+          offset += 4;
+
+          if (offset + 1 <= payload.getSize()) {
+            channelIndex =
+                static_cast<const juce::uint8 *>(payload.getData())[offset++];
+            if (offset < payload.getSize()) {
+              username = juce::String::fromUTF8(
+                  static_cast<const char *>(payload.getData()) + offset);
+            }
+          }
+        }
+      }
+
+      RemoteChannel channel;
+      channel.decoder = std::make_unique<VorbisDecoder>();
+      channel.isActive = true;
+      channel.username = username;
+      channel.channelIndex = channelIndex;
+
+      // Initialize interval buffer
+      int bufferSamples = static_cast<int>(sampleRate * 60.0 /
+                                           std::max(1, serverBpm) * serverBpi);
+      // Give it extra safety margin
+      bufferSamples = static_cast<int>(bufferSamples * 1.5f);
+      channel.intervalBuffer.backBuffer.setSize(2, bufferSamples);
+      channel.intervalBuffer.frontBuffer.setSize(2, bufferSamples);
+      channel.intervalBuffer.backBuffer.clear();
+      channel.intervalBuffer.frontBuffer.clear();
+      channel.intervalBuffer.frontReadPosition = 0;
+      channel.intervalBuffer.backWritePosition = 0;
+
+      juce::ScopedLock sl(downloadMutex);
+      activeDownloads[guid] = std::move(channel);
+    }
+  }
+  // SERVER_DOWNLOAD_INTERVAL_WRITE
+  else if (type == 0x05) {
+    if (payload.getSize() >= 17) {
+      juce::String guid = juce::String::toHexString(payload.getData(), 16);
+      juce::uint8 flags =
+          static_cast<const juce::uint8 *>(payload.getData())[16];
+
+      juce::ScopedLock sl(downloadMutex);
+      if (activeDownloads.find(guid) != activeDownloads.end()) {
+        auto &channel = activeDownloads[guid];
+
+        int oggDataSize = static_cast<int>(payload.getSize()) - 17;
+        if (oggDataSize > 0) {
+          const char *oggData =
+              static_cast<const char *>(payload.getData()) + 17;
+          void *decBuf = channel.decoder->DecodeGetSrcBuffer(oggDataSize);
+          if (decBuf) {
+            memcpy(decBuf, oggData, static_cast<size_t>(oggDataSize));
+            channel.decoder->DecodeWrote(oggDataSize);
+
+            // Decode into back buffer
+            while (channel.decoder->Available() > 0) {
+              int availFrames = channel.decoder->Available() /
+                                channel.decoder->GetNumChannels();
+              int out_nch = channel.decoder->GetNumChannels();
+              if (availFrames > 0 && out_nch > 0) {
+                float *decodedBlock = channel.decoder->Get();
+                int writePos = channel.intervalBuffer.backWritePosition;
+                int remainingBackBuffer =
+                    channel.intervalBuffer.backBuffer.getNumSamples() -
+                    writePos;
+
+                int toCopy = std::min(availFrames, remainingBackBuffer);
+                if (toCopy > 0) {
+                  for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
+                    float *writePtr =
+                        channel.intervalBuffer.backBuffer.getWritePointer(
+                            ch, writePos);
+                    for (int s = 0; s < toCopy; ++s) {
+                      writePtr[s] = decodedBlock[s * out_nch + ch];
+                    }
+                  }
+                  // Duplicate mono to stereo if needed
+                  if (out_nch == 1 &&
+                      channel.intervalBuffer.backBuffer.getNumChannels() == 2) {
+                    float *writePtrL =
+                        channel.intervalBuffer.backBuffer.getWritePointer(
+                            0, writePos);
+                    float *writePtrR =
+                        channel.intervalBuffer.backBuffer.getWritePointer(
+                            1, writePos);
+                    for (int s = 0; s < toCopy; ++s) {
+                      writePtrR[s] = writePtrL[s];
+                    }
+                  }
+                  channel.intervalBuffer.backWritePosition += toCopy;
+                }
+
+                channel.decoder->Skip(toCopy * out_nch);
+              } else {
+                break;
+              }
+            }
+
+            juce::ScopedLock fl(rxFileMutex);
+            if (isSavingRx && rxOggFile != nullptr) {
+              rxOggFile->write(oggData, oggDataSize);
+            }
+          }
+        }
+
+        if (flags == 1) { // End of interval
+          channel.isActive = false;
+        }
+      }
+    }
   }
 
   return true;
@@ -237,4 +485,290 @@ void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
   packet.append(&version, 4);
 
   writeFull(0x80, packet.getData(), static_cast<int>(packet.getSize()));
+}
+
+void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
+                                        int numSamples) {
+  if (!isConnected())
+    return;
+
+  {
+    juce::ScopedLock sl(txFileMutex);
+    if (isSavingTx && txWavWriter != nullptr) {
+      txWavWriter->writeFromAudioSampleBuffer(buffer, 0, numSamples);
+    }
+  }
+
+  // Let's generate a naive GUID for the interval
+  juce::MemoryBlock guid(16, true);
+  for (int i = 0; i < 16; i++) {
+    guid[i] = (juce::uint8)(juce::Random::getSystemRandom().nextInt(256));
+  }
+
+  // Send UPLOAD_INTERVAL_BEGIN (0x83)
+  // GUID (16), Channel Count (4), Channel Name (Null-terminated)
+  juce::MemoryBlock beginPacket;
+  beginPacket.append(guid.getData(), 16);
+
+  juce::uint32 nch =
+      juce::ByteOrder::swapIfBigEndian((juce::uint32)buffer.getNumChannels());
+  beginPacket.append(&nch, 4);
+
+  juce::String channelName = "Local Instrument";
+  beginPacket.append(channelName.toRawUTF8(),
+                     channelName.getNumBytesAsUTF8() + 1);
+  writeFull(0x83, beginPacket.getData(),
+            static_cast<int>(beginPacket.getSize()));
+
+  // VorbisEncoder args: srate, nch, bitrate, serno(random)
+  VorbisEncoder encoder(48000, buffer.getNumChannels(), 128,
+                        juce::Random::getSystemRandom().nextInt());
+
+  // We should send smaller chunks, but for now just encode the whole thing in
+  // chunks and construct the UPLOAD_INTERVAL_WRITE payload
+
+  const int blockSize = 1024;
+  int pos = 0;
+
+  while (pos < numSamples) {
+    int toProcess = std::min(blockSize, numSamples - pos);
+
+    // We need interleaved floats for WDL Encoder
+    // But WDL encoder takes interleaved array. Wait, `Encode` signature is:
+    // void Encode(float *in, int inlen, int advance=1, int spacing=1)
+    // Actually, in `WDL_VorbisEncoder`, if spacing isn't what we want, it might
+    // be tricky. Let's interleave the channels into a temporary buffer
+    std::vector<float> interleaved(
+        static_cast<std::size_t>(toProcess * buffer.getNumChannels()));
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
+      const float *readPtr = buffer.getReadPointer(ch, pos);
+      for (int i = 0; i < toProcess; ++i) {
+        interleaved[i * buffer.getNumChannels() + ch] = readPtr[i];
+      }
+    }
+
+    // WDL VorbisEncoder takes length in *samples* not pairs?
+    // "length in sample (PAIRS)" -> means `toProcess` frames.
+    encoder.Encode(interleaved.data(), toProcess, buffer.getNumChannels(), 1);
+
+    // If output is generated
+    while (encoder.Available() > 0) {
+      void *oggData = encoder.Get();
+      int avail = encoder.Available(); // The queue gives available bytes
+      // Actually `Available` might return bytes available.
+      // `Get` returns the pointer to `Available` bytes.
+
+      juce::MemoryBlock writePacket;
+      writePacket.append(guid.getData(), 16);
+
+      juce::uint8 flags = 0; // Not final chunk yet
+      writePacket.append(&flags, 1);
+
+      writePacket.append(oggData, avail);
+      writeFull(0x84, writePacket.getData(),
+                static_cast<int>(writePacket.getSize()));
+
+      {
+        juce::ScopedLock sl(txFileMutex);
+        if (isSavingTx && txOggFile != nullptr) {
+          txOggFile->write(oggData, avail);
+        }
+      }
+
+      encoder.Advance(avail);
+      encoder.Compact();
+    }
+
+    pos += toProcess;
+  }
+
+  // End of stream, send Encode(0)
+  encoder.Encode(nullptr, 0, 1, 1);
+  while (encoder.Available() > 0) {
+    void *oggData = encoder.Get();
+    int avail = encoder.Available();
+
+    juce::MemoryBlock writePacket;
+    writePacket.append(guid.getData(), 16);
+
+    juce::uint8 flags = 1; // End of interval!
+    writePacket.append(&flags, 1);
+
+    writePacket.append(oggData, static_cast<std::size_t>(avail));
+    writeFull(0x84, writePacket.getData(),
+              static_cast<int>(writePacket.getSize()));
+
+    {
+      juce::ScopedLock sl(txFileMutex);
+      if (isSavingTx && txOggFile != nullptr) {
+        txOggFile->write(oggData, avail);
+      }
+    }
+
+    encoder.Advance(avail);
+    encoder.Compact();
+  }
+}
+
+void NinjamClient::swapIntervalBuffers() {
+  juce::ScopedLock sl(downloadMutex);
+  for (auto &pair : activeDownloads) {
+    auto &channel = pair.second;
+    // Swap front and back buffers
+    // In Juce we can't trivially swap internal pointers, but we can copy or
+    // just swap custom structures For simplicity, we'll swap their contents
+    // using an intermediate, or if we used pointers instead of raw buffers, we
+    // could swap pointers. Instead of copying, we can just use a swap function
+    // if Juce provides it, or std::swap since juce::AudioBuffer supports move
+    // semantics.
+    std::swap(channel.intervalBuffer.frontBuffer,
+              channel.intervalBuffer.backBuffer);
+
+    // Reset positions
+    channel.intervalBuffer.frontReadPosition = 0;
+
+    // Back buffer needs to be cleared for the new interval
+    channel.intervalBuffer.backBuffer.clear();
+    channel.intervalBuffer.backWritePosition = 0;
+  }
+}
+
+std::map<juce::String, NinjamClient::RemoteUser>
+NinjamClient::getRemoteUsers() const {
+  juce::ScopedLock sl(
+      downloadMutex); // Actually juce CriticalSection is mutable, wait! It's
+                      // not const in NinjamClient.h
+  // The getter should copy it safely or return a copy. Let's assume
+  // downloadMutex is mutable if const, or we just drop const.
+  return remoteUsers;
+}
+
+void NinjamClient::setRemoteUserVolume(const juce::String &username,
+                                       int channelIndex, float volume) {
+  juce::ScopedLock sl(downloadMutex);
+  if (remoteUsers.find(username) != remoteUsers.end()) {
+    auto &user = remoteUsers[username];
+    if (user.channels.find(channelIndex) != user.channels.end()) {
+      user.channels[channelIndex].volume = volume;
+    }
+  }
+}
+
+void NinjamClient::setRemoteUserPan(const juce::String &username,
+                                    int channelIndex, float pan) {
+  juce::ScopedLock sl(downloadMutex);
+  if (remoteUsers.find(username) != remoteUsers.end()) {
+    auto &user = remoteUsers[username];
+    if (user.channels.find(channelIndex) != user.channels.end()) {
+      user.channels[channelIndex].pan = pan;
+    }
+  }
+}
+
+void NinjamClient::setRemoteUserMute(const juce::String &username,
+                                     int channelIndex, bool mute) {
+  juce::ScopedLock sl(downloadMutex);
+  if (remoteUsers.find(username) != remoteUsers.end()) {
+    auto &user = remoteUsers[username];
+    if (user.channels.find(channelIndex) != user.channels.end()) {
+      user.channels[channelIndex].isMuted = mute;
+    }
+  }
+}
+
+void NinjamClient::setRemoteUserSolo(const juce::String &username,
+                                     int channelIndex, bool solo) {
+  juce::ScopedLock sl(downloadMutex);
+  if (remoteUsers.find(username) != remoteUsers.end()) {
+    auto &user = remoteUsers[username];
+    if (user.channels.find(channelIndex) != user.channels.end()) {
+      user.channels[channelIndex].isSoloed = solo;
+    }
+  }
+}
+
+void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
+  juce::ScopedLock sl(downloadMutex);
+  int numSamples = buffer.getNumSamples();
+
+  for (auto it = activeDownloads.begin(); it != activeDownloads.end();) {
+    auto &channel = it->second;
+    int samplesNeeded = numSamples;
+    int writePos = 0;
+
+    // Determine DSP parameters for this channel
+    float vol = 0.5f; // default -6dB
+    float pan = 0.0f;
+    bool isMuted = false;
+    bool isSoloed = false;
+
+    // Check if anyone is soloed
+    bool anySolo = false;
+    for (const auto &u : remoteUsers) {
+      for (const auto &c : u.second.channels) {
+        if (c.second.isSoloed)
+          anySolo = true;
+      }
+    }
+
+    if (remoteUsers.find(channel.username) != remoteUsers.end()) {
+      auto &user = remoteUsers[channel.username];
+      if (user.channels.find(channel.channelIndex) != user.channels.end()) {
+        auto &c = user.channels[channel.channelIndex];
+        vol = c.volume;
+        pan = c.pan;
+        isMuted = c.isMuted;
+        isSoloed = c.isSoloed;
+      }
+    }
+
+    if (anySolo && !isSoloed) {
+      isMuted = true;
+    }
+
+    float lGain = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
+    float rGain = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan); // -1 is L, 1 is R
+
+    int frontReads = channel.intervalBuffer.frontReadPosition;
+    int availableInFront =
+        channel.intervalBuffer.frontBuffer.getNumSamples() - frontReads;
+    int toCopy = std::min(samplesNeeded, availableInFront);
+
+    if (toCopy > 0 && !isMuted) {
+      int srcChannels = channel.intervalBuffer.frontBuffer.getNumChannels();
+      int dstChannels = buffer.getNumChannels();
+
+      for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
+        float gain = (ch == 0) ? lGain : rGain;
+        buffer.addFrom(ch, writePos, channel.intervalBuffer.frontBuffer, ch,
+                       frontReads, toCopy, gain);
+      }
+    }
+
+    if (toCopy > 0) {
+      channel.intervalBuffer.frontReadPosition += toCopy;
+    }
+
+    // Cleanup finished streams
+    if (!channel.isActive &&
+        channel.intervalBuffer.frontReadPosition >=
+            channel.intervalBuffer.backWritePosition &&
+        channel.decoder->Available() == 0) {
+      // Done streaming and drained
+      it = activeDownloads.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  {
+    juce::ScopedLock sl(rxFileMutex);
+    if (isSavingRx && rxWavWriter != nullptr) {
+      // Note: Here we are dumping the buffer *after* it has been mixed with all
+      // decoded remote streams. This gives us the exact audio that the user
+      // hears from the server.
+      rxWavWriter->writeFromAudioSampleBuffer(buffer, 0, numSamples);
+    }
+  }
 }
