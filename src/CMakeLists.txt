@@ -15,6 +15,7 @@ target_sources(Ninjam
         PluginEditor.cpp
         NinjamClient.cpp
         RemoteUserStrip.cpp
+        NinjamLookAndFeel.cpp
         utils/sha1.cpp
 )
 

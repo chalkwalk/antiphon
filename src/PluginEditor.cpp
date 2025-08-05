@@ -3,7 +3,11 @@
 
 NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
     : AudioProcessorEditor(&p), audioProcessor(p) {
-  setSize(800, 600);
+  audioProcessor.ninjamClient.addListener(this);
+  setLookAndFeel(&customLookAndFeel);
+  setResizable(true, true);
+  setResizeLimits(900, 600, 2400, 1600);
+  setSize(1000, 700);
 
   serverInput.setText("ninbot.com");
   addAndMakeVisible(serverInput);
@@ -76,72 +80,197 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   };
   addAndMakeVisible(localMuteButton);
 
+  chatDisplay.setMultiLine(true);
+  chatDisplay.setReadOnly(true);
+  chatDisplay.setScrollbarsShown(true);
+  chatDisplay.setCaretVisible(false);
+  chatDisplay.setColour(juce::TextEditor::backgroundColourId,
+                        juce::Colour(0xff121212));
+  addAndMakeVisible(chatDisplay);
+
+  chatInput.setMultiLine(false);
+  chatInput.setReturnKeyStartsNewLine(false);
+  chatInput.setTextToShowWhenEmpty(
+      "Enter message or command (!vote bpm 120, /msg user text, /topic text)",
+      juce::Colours::grey);
+  chatInput.onReturnKey = [this]() {
+    juce::String text = chatInput.getText().trim();
+    if (text.isNotEmpty()) {
+      if (text.startsWithIgnoreCase("!vote bpm ") ||
+          text.startsWithIgnoreCase("!vote bpi ")) {
+        audioProcessor.ninjamClient.sendChatMessage(text);
+      } else if (text.startsWithIgnoreCase("/me ")) {
+        audioProcessor.ninjamClient.sendChatMessage(text);
+      } else if (text.startsWithIgnoreCase("/topic ") ||
+                 text.startsWithIgnoreCase("/kick ")) {
+        audioProcessor.ninjamClient.sendAdminCommand(text.substring(1));
+      } else if (text.startsWithIgnoreCase("/msg ")) {
+        int firstSpace = text.indexOfChar(5, ' ');
+        if (firstSpace > 0) {
+          juce::String user = text.substring(5, firstSpace).trim();
+          juce::String msg = text.substring(firstSpace).trim();
+          audioProcessor.ninjamClient.sendPrivateMessage(user, msg);
+        }
+      } else if (text.startsWithChar('/')) {
+        chatDisplay.insertTextAtCaret("Local: Unknown command.\n");
+      } else {
+        audioProcessor.ninjamClient.sendChatMessage(text);
+      }
+      chatInput.clear();
+    }
+  };
+  addAndMakeVisible(chatInput);
+
   remoteUsersViewport.setViewedComponent(&remoteUsersContainer, false);
   addAndMakeVisible(remoteUsersViewport);
+
+  // Restore existing chat log
+  for (const auto &msg : audioProcessor.ninjamClient.getChatLog()) {
+    onChatMessage(msg.type, msg.username, msg.text);
+  }
 
   startTimerHz(30);
 }
 
-NinjamAudioProcessorEditor::~NinjamAudioProcessorEditor() {}
+NinjamAudioProcessorEditor::~NinjamAudioProcessorEditor() {
+  audioProcessor.ninjamClient.removeListener(this);
+  setLookAndFeel(nullptr);
+}
+
+void NinjamAudioProcessorEditor::onChatMessage(const juce::String &type,
+                                               const juce::String &username,
+                                               const juce::String &text) {
+  juce::String line;
+  if (type == "PRIVMSG") {
+    line = "[PM] <" + username + "> " + text;
+  } else if (type == "MSG") {
+    if (text.startsWithIgnoreCase("/me ")) {
+      line = "* " + username + " " + text.substring(4);
+    } else {
+      line = "<" + username + "> " + text;
+    }
+  } else {
+    // JOIN, PART, TOPIC, etc.
+    line = "*** " + text;
+  }
+
+  chatDisplay.moveCaretToEnd();
+  chatDisplay.insertTextAtCaret(line + "\n");
+}
 
 void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   g.fillAll(
       getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
 
+  auto area = getLocalBounds().reduced(10);
+
+  // Top Header Row
+  auto headerRow = area.removeFromTop(80);
+
   g.setColour(juce::Colours::white);
   g.setFont(24.0f);
-  g.drawFittedText("Ninjam JUCE Plugin", 0, 10, getWidth(), 30,
+  g.drawFittedText("Ninjam JUCE Plugin", headerRow.removeFromTop(30),
                    juce::Justification::centred, 1);
 
   g.setFont(16.0f);
   juce::String connInfo = "Connection: " + audioProcessor.connectionStatus;
-  g.drawFittedText(connInfo, 10, 50, getWidth() - 20, 30,
+  g.drawFittedText(connInfo, headerRow.removeFromTop(20),
                    juce::Justification::left, 1);
 
   juce::String hostInfo = "Host Sync: ";
   hostInfo += audioProcessor.hostIsPlaying ? "Playing" : "Stopped";
   hostInfo += " | BPM: " + juce::String(audioProcessor.hostBpm, 1);
   hostInfo += " | PPQ: " + juce::String(audioProcessor.hostPpqPosition, 2);
-  g.drawFittedText(hostInfo, 10, 80, getWidth() - 20, 30,
+  g.drawFittedText(hostInfo, headerRow.removeFromTop(20),
                    juce::Justification::left, 1);
 
+  area.removeFromTop(10); // spacing
+
+  // Sync Info Row
+  auto syncRow = area.removeFromTop(30);
   juce::String internalInfo = "Metronome: ";
   internalInfo += "BPM: " + juce::String(audioProcessor.internalBpm, 1);
   internalInfo += " | BPI: " + juce::String(audioProcessor.internalBpi);
   internalInfo +=
       " | Phase: " + juce::String(audioProcessor.internalPhaseBeats, 2);
-  g.drawFittedText(internalInfo, 10, 110, getWidth() - 20, 30,
+  g.drawFittedText(internalInfo, syncRow.removeFromLeft(350),
                    juce::Justification::left, 1);
 
   if (std::abs(audioProcessor.hostBpm - audioProcessor.internalBpm) > 0.1) {
     g.setColour(juce::Colours::red);
-    g.drawFittedText("WARNING: Host BPM does not match Server BPM!", 10, 140,
-                     getWidth() - 20, 30, juce::Justification::left, 1);
+    g.drawFittedText("WARNING: Host BPM != Server BPM!",
+                     syncRow.removeFromLeft(300), juce::Justification::left, 1);
   }
 
+  area.removeFromTop(
+      50); // space for the connection inputs and toggles mapped in resized()
+
+  // Main Panels
   g.setColour(juce::Colours::white);
   g.setFont(14.0f);
-  g.drawFittedText("Local Transmit:", 600, 180, 150, 20,
+
+  auto leftPanel = area.removeFromLeft(350);
+  g.drawFittedText("Chat & Commands:", leftPanel.removeFromTop(20),
                    juce::Justification::left, 1);
-  g.drawFittedText("Remote Mixer:", 10, 260, 200, 20, juce::Justification::left,
-                   1);
+
+  area.removeFromLeft(20); // gap
+
+  auto rightPanel = area;
+  g.drawFittedText("Local Transmit:", rightPanel.removeFromTop(20),
+                   juce::Justification::left, 1);
+  rightPanel.removeFromTop(50); // local mixer sliders
+  g.drawFittedText("Remote Users:", rightPanel.removeFromTop(20),
+                   juce::Justification::left, 1);
 }
 
 void NinjamAudioProcessorEditor::resized() {
-  serverInput.setBounds(10, 180, 200, 24);
-  usernameInput.setBounds(220, 180, 150, 24);
-  connectButton.setBounds(380, 180, 100, 24);
-  disconnectButton.setBounds(490, 180, 100, 24);
+  auto area = getLocalBounds().reduced(10);
+  area.removeFromTop(80); // Title and host sync
+  area.removeFromTop(10); // Spacing
 
-  metronomeToggle.setBounds(10, 220, 150, 24);
-  saveTxToggle.setBounds(170, 220, 150, 24);
-  saveRxToggle.setBounds(330, 220, 150, 24);
+  auto syncRow = area.removeFromTop(30);
+  syncRow.removeFromLeft(350); // Metronome text
+  syncRow.removeFromLeft(300); // Warning text
 
-  localVolumeSlider.setBounds(600, 200, 150, 20);
-  localPanSlider.setBounds(600, 220, 150, 20);
-  localMuteButton.setBounds(600, 240, 150, 20);
+  auto controlsRow = area.removeFromTop(40);
+  serverInput.setBounds(controlsRow.removeFromLeft(150).reduced(0, 8));
+  controlsRow.removeFromLeft(10);
+  usernameInput.setBounds(controlsRow.removeFromLeft(120).reduced(0, 8));
+  controlsRow.removeFromLeft(10);
+  connectButton.setBounds(controlsRow.removeFromLeft(100).reduced(0, 8));
+  controlsRow.removeFromLeft(10);
+  disconnectButton.setBounds(controlsRow.removeFromLeft(100).reduced(0, 8));
 
-  remoteUsersViewport.setBounds(10, 280, getWidth() - 20, getHeight() - 290);
+  area.removeFromTop(10); // Spacing
+
+  // Left Panel (Chat)
+  auto leftPanel = area.removeFromLeft(350);
+  leftPanel.removeFromTop(20); // "Chat & Commands" label
+  chatInput.setBounds(leftPanel.removeFromBottom(24));
+  leftPanel.removeFromBottom(10); // gap
+  chatDisplay.setBounds(leftPanel);
+
+  area.removeFromLeft(20); // Center gap
+
+  // Right Panel (Mixer)
+  auto rightPanel = area;
+  rightPanel.removeFromTop(20); // "Local Transmit" label
+
+  auto localMixerRow = rightPanel.removeFromTop(40);
+  localVolumeSlider.setBounds(localMixerRow.removeFromLeft(120).reduced(0, 10));
+  localMixerRow.removeFromLeft(10);
+  localPanSlider.setBounds(localMixerRow.removeFromLeft(100).reduced(0, 10));
+  localMixerRow.removeFromLeft(10);
+  localMuteButton.setBounds(localMixerRow.removeFromLeft(90).reduced(0, 10));
+
+  rightPanel.removeFromTop(30); // "Remote Users" label plus gap
+
+  auto toggleRow = rightPanel.removeFromBottom(40);
+  metronomeToggle.setBounds(toggleRow.removeFromLeft(120).reduced(0, 8));
+  saveTxToggle.setBounds(toggleRow.removeFromLeft(120).reduced(0, 8));
+  saveRxToggle.setBounds(toggleRow.removeFromLeft(120).reduced(0, 8));
+
+  remoteUsersViewport.setBounds(rightPanel);
 }
 
 void NinjamAudioProcessorEditor::timerCallback() {

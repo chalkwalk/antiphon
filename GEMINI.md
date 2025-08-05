@@ -92,7 +92,9 @@ The UI will be designed for clarity and functionality within a DAW environment.
 - [x] 19. **Remote Mixer UI & DSP**: Build dynamic UI sub-mixers for each remote user that joins. Apply Volume, Pan, Mute, and Solo to the decoded streams in the `processBlock` before mixing them into the master output.
 
 ### Phase 6: Polish and Chat
-- [ ] 20. **Text Chat Implementation**: Parse incoming chat messages from the server and display them in a scrolling UI text box. Add a text input field to send chat messages to the server.
-- [ ] 21. **Voting Commands**: Add support for `/bpi`, `/bpm`, and `/kick` commands in the chat box, sending the appropriate protocol messages.
-- [ ] 22. **OSC Sync (Optional/Stretch Goal)**: Implement a UDP OSC sender to transmit `/tempo/raw {bpm}` to `localhost` when the server BPM changes.
-- [ ] 23. **Final UI Styling**: Apply custom LookAndFeel classes. Ensure dynamic resizing of the mixer panels as users join/leave.
+- [x] 20. **Text Chat Implementation**: Parse incoming chat messages from the server and display them in a scrolling UI text box. Add a text input field to send chat messages to the server.
+- [x] 21. **Voting Commands**: Add support for `/bpi`, `/bpm`, and `/kick` commands in the chat box, sending the appropriate protocol messages.
+- [x] 22. **Final UI Styling**: Apply custom LookAndFeel classes. Ensure dynamic resizing of the mixer panels as users join/leave.
+
+### Phase 7: OSC Sync
+- [ ] 23. **OSC Sync**: Implement a UDP OSC sender to transmit `/tempo/raw {bpm}` to `localhost` when the server BPM changes.

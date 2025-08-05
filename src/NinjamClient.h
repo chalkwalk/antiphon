@@ -9,6 +9,9 @@ public:
   virtual void onDisconnected(const juce::String &) {}
   virtual void onServerConfig(int, int) {}
   virtual void onUserInfoChange() {}
+  virtual void onChatMessage(const juce::String &type,
+                             const juce::String &username,
+                             const juce::String &text) {}
 };
 
 class NinjamClient : public juce::Thread {
@@ -48,6 +51,19 @@ public:
                          bool mute);
   void setRemoteUserSolo(const juce::String &username, int channelIndex,
                          bool solo);
+
+  struct ChatMessage {
+    juce::String type;
+    juce::String username;
+    juce::String text;
+  };
+
+  void sendChatMessage(const juce::String &text);
+  void sendAdminCommand(const juce::String &command);
+  void sendPrivateMessage(const juce::String &username,
+                          const juce::String &text);
+
+  juce::Array<ChatMessage> getChatLog() const;
 
   struct RemoteUserChannel {
     int channelIndex = 0;
@@ -90,6 +106,9 @@ private:
   // Key is the 16-byte GUID as a hex string
   std::map<juce::String, RemoteChannel> activeDownloads;
   std::map<juce::String, RemoteUser> remoteUsers;
+
+  juce::CriticalSection chatMutex;
+  juce::Array<ChatMessage> chatLog;
 
   double sampleRate = 48000.0;
   int serverBpm = 120;

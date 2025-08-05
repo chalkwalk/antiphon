@@ -425,7 +425,59 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       }
     }
   }
+  // CHAT_MESSAGE
+  else if (type == 0xC0) {
+    if (payload.getSize() >= 1) {
+      const char *data = static_cast<const char *>(payload.getData());
+      const char *endp = data + payload.getSize();
+      juce::StringArray parms;
 
+      const char *p = data;
+      for (int i = 0; i < 5; ++i) {
+        if (p < endp) {
+          juce::String s = juce::String::fromUTF8(p);
+          parms.add(s);
+          p += s.getNumBytesAsUTF8() + 1;
+        } else {
+          parms.add(juce::String());
+        }
+      }
+
+      if (parms.size() >= 1 && parms[0].isNotEmpty()) {
+        ChatMessage msg;
+        msg.type = parms[0];
+        if (msg.type == "MSG" || msg.type == "PRIVMSG") {
+          msg.username = parms[1];
+          msg.text = parms[2];
+        } else if (msg.type == "TOPIC") {
+          msg.username = "Server";
+          msg.text = "Topic: " + parms[2];
+        } else if (msg.type == "JOIN") {
+          msg.username = "Server";
+          msg.text = parms[1] + " joined";
+        } else if (msg.type == "PART") {
+          msg.username = "Server";
+          msg.text = parms[1] + " left";
+        } else {
+          msg.username = "Server";
+          msg.text = "[" + msg.type + "] " + parms[1] + " " + parms[2];
+        }
+
+        {
+          juce::ScopedLock sl(chatMutex);
+          chatLog.add(msg);
+          if (chatLog.size() > 100)
+            chatLog.remove(0); // keep history bounded
+        }
+
+        juce::MessageManager::callAsync(
+            [this, type = msg.type, user = msg.username, text = msg.text]() {
+              listeners.call(&NinjamClientListener::onChatMessage, type, user,
+                             text);
+            });
+      }
+    }
+  }
   return true;
 }
 
@@ -443,8 +495,8 @@ void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
 
   // According to Ninjam protocol:
   // if password is empty hash is SHA1(challenge) ?
-  // Actually, let's use the password as is for anonymous login since they don't
-  // use it.
+  // Actually, let's use the password as is for anonymous login since they
+  // don't use it.
 
   // Auth packet:
   // 20 bytes: Hash
@@ -536,8 +588,8 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
     // We need interleaved floats for WDL Encoder
     // But WDL encoder takes interleaved array. Wait, `Encode` signature is:
     // void Encode(float *in, int inlen, int advance=1, int spacing=1)
-    // Actually, in `WDL_VorbisEncoder`, if spacing isn't what we want, it might
-    // be tricky. Let's interleave the channels into a temporary buffer
+    // Actually, in `WDL_VorbisEncoder`, if spacing isn't what we want, it
+    // might be tricky. Let's interleave the channels into a temporary buffer
     std::vector<float> interleaved(
         static_cast<std::size_t>(toProcess * buffer.getNumChannels()));
 
@@ -618,10 +670,10 @@ void NinjamClient::swapIntervalBuffers() {
     // Swap front and back buffers
     // In Juce we can't trivially swap internal pointers, but we can copy or
     // just swap custom structures For simplicity, we'll swap their contents
-    // using an intermediate, or if we used pointers instead of raw buffers, we
-    // could swap pointers. Instead of copying, we can just use a swap function
-    // if Juce provides it, or std::swap since juce::AudioBuffer supports move
-    // semantics.
+    // using an intermediate, or if we used pointers instead of raw buffers,
+    // we could swap pointers. Instead of copying, we can just use a swap
+    // function if Juce provides it, or std::swap since juce::AudioBuffer
+    // supports move semantics.
     std::swap(channel.intervalBuffer.frontBuffer,
               channel.intervalBuffer.backBuffer);
 
@@ -765,10 +817,58 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
   {
     juce::ScopedLock sl(rxFileMutex);
     if (isSavingRx && rxWavWriter != nullptr) {
-      // Note: Here we are dumping the buffer *after* it has been mixed with all
-      // decoded remote streams. This gives us the exact audio that the user
-      // hears from the server.
+      // Note: Here we are dumping the buffer *after* it has been mixed with
+      // all decoded remote streams. This gives us the exact audio that the
+      // user hears from the server.
       rxWavWriter->writeFromAudioSampleBuffer(buffer, 0, numSamples);
     }
   }
+}
+
+juce::Array<NinjamClient::ChatMessage> NinjamClient::getChatLog() const {
+  juce::ScopedLock sl(chatMutex);
+  return chatLog;
+}
+
+void NinjamClient::sendChatMessage(const juce::String &text) {
+  if (!isConnected())
+    return;
+  juce::MemoryBlock msgBlock;
+  juce::String type = "MSG";
+  msgBlock.append(type.toUTF8(), type.getNumBytesAsUTF8() + 1);
+  msgBlock.append(text.toUTF8(), text.getNumBytesAsUTF8() + 1);
+  char empty[1] = {0};
+  msgBlock.append(empty, 1);
+  msgBlock.append(empty, 1);
+  msgBlock.append(empty, 1);
+  writeFull(0xC0, msgBlock.getData(), static_cast<int>(msgBlock.getSize()));
+}
+
+void NinjamClient::sendAdminCommand(const juce::String &command) {
+  if (!isConnected())
+    return;
+  juce::MemoryBlock msgBlock;
+  juce::String type = "ADMIN";
+  msgBlock.append(type.toUTF8(), type.getNumBytesAsUTF8() + 1);
+  msgBlock.append(command.toUTF8(), command.getNumBytesAsUTF8() + 1);
+  char empty[1] = {0};
+  msgBlock.append(empty, 1);
+  msgBlock.append(empty, 1);
+  msgBlock.append(empty, 1);
+  writeFull(0xC0, msgBlock.getData(), static_cast<int>(msgBlock.getSize()));
+}
+
+void NinjamClient::sendPrivateMessage(const juce::String &username,
+                                      const juce::String &text) {
+  if (!isConnected())
+    return;
+  juce::MemoryBlock msgBlock;
+  juce::String type = "PRIVMSG";
+  msgBlock.append(type.toUTF8(), type.getNumBytesAsUTF8() + 1);
+  msgBlock.append(username.toUTF8(), username.getNumBytesAsUTF8() + 1);
+  msgBlock.append(text.toUTF8(), text.getNumBytesAsUTF8() + 1);
+  char empty[1] = {0};
+  msgBlock.append(empty, 1);
+  msgBlock.append(empty, 1);
+  writeFull(0xC0, msgBlock.getData(), static_cast<int>(msgBlock.getSize()));
 }

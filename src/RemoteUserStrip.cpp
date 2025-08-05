@@ -49,24 +49,25 @@ RemoteUserStrip::RemoteUserStrip(NinjamAudioProcessor &p, const juce::String &u)
 RemoteUserStrip::~RemoteUserStrip() {}
 
 void RemoteUserStrip::paint(juce::Graphics &g) {
-  g.fillAll(juce::Colour(0xff222222));
-  g.setColour(juce::Colours::grey);
-  g.drawRect(getLocalBounds(), 1);
+  g.setColour(juce::Colour(0xff2a2a3e));
+  g.fillRoundedRectangle(getLocalBounds().toFloat(), 4.0f);
 }
 
 void RemoteUserStrip::resized() {
-  auto area = getLocalBounds().reduced(5);
-  int rowHeight = area.getHeight() / 2;
+  auto area = getLocalBounds().reduced(4);
 
-  auto topRow = area.removeFromTop(rowHeight);
-  usernameLabel.setBounds(topRow.removeFromLeft(120));
-  channelLabel.setBounds(topRow);
+  usernameLabel.setBounds(area.removeFromLeft(120));
+  channelLabel.setBounds(area.removeFromLeft(60));
 
-  auto bottomRow = area;
-  volumeSlider.setBounds(bottomRow.removeFromLeft(100));
-  panSlider.setBounds(bottomRow.removeFromLeft(60));
-  muteButton.setBounds(bottomRow.removeFromLeft(30));
-  soloButton.setBounds(bottomRow.removeFromLeft(30));
+  volumeSlider.setBounds(area.removeFromLeft(120));
+  area.removeFromLeft(8);
+
+  panSlider.setBounds(area.removeFromLeft(80));
+  area.removeFromLeft(8);
+
+  muteButton.setBounds(area.removeFromLeft(40));
+  area.removeFromLeft(4);
+  soloButton.setBounds(area.removeFromLeft(40));
 }
 
 void RemoteUserStrip::updateChannels(

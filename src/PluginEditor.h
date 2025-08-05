@@ -1,11 +1,14 @@
 #pragma once
 
+#include "NinjamClient.h"
+#include "NinjamLookAndFeel.h"
 #include "PluginProcessor.h"
 #include "RemoteUserStrip.h"
 #include <JuceHeader.h>
 
 class NinjamAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                   public juce::Timer {
+                                   public juce::Timer,
+                                   public NinjamClientListener {
 public:
   NinjamAudioProcessorEditor(NinjamAudioProcessor &);
   ~NinjamAudioProcessorEditor() override;
@@ -14,8 +17,13 @@ public:
   void resized() override;
   void timerCallback() override;
 
+  // NinjamClientListener
+  void onChatMessage(const juce::String &type, const juce::String &username,
+                     const juce::String &text) override;
+
 private:
   NinjamAudioProcessor &audioProcessor;
+  NinjamLookAndFeel customLookAndFeel;
 
   juce::TextEditor serverInput;
   juce::TextEditor usernameInput;
@@ -30,6 +38,10 @@ private:
   juce::Slider localVolumeSlider;
   juce::Slider localPanSlider;
   juce::ToggleButton localMuteButton;
+
+  // Chat UI Controls
+  juce::TextEditor chatDisplay;
+  juce::TextEditor chatInput;
 
   // Remote Mixer Controls
   juce::Viewport remoteUsersViewport;
