@@ -285,6 +285,23 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       }
     }
 
+    juce::MemoryBlock maskPayload;
+    {
+      juce::ScopedLock sl(downloadMutex);
+      for (auto &[uname, user] : remoteUsers) {
+        juce::uint32 mask = 0;
+        for (auto &[chIdx, ch] : user.channels)
+          if (chIdx < 32)
+            mask |= (1u << chIdx);
+        maskPayload.append(uname.toRawUTF8(), uname.getNumBytesAsUTF8() + 1);
+        juce::uint32 leM = juce::ByteOrder::swapIfBigEndian(mask);
+        maskPayload.append(&leM, 4);
+      }
+    }
+    if (maskPayload.getSize() > 0)
+      writeFull(0x81, maskPayload.getData(),
+                static_cast<int>(maskPayload.getSize()));
+
     if (changed) {
       juce::MessageManager::callAsync([this]() {
         listeners.call(&NinjamClientListener::onUserInfoChange);
