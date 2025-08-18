@@ -26,7 +26,10 @@ private:
   NinjamLookAndFeel customLookAndFeel;
 
   juce::TextEditor serverInput;
+  juce::TextEditor portInput;
   juce::TextEditor usernameInput;
+  juce::ToggleButton anonymousToggle{"Anonymous"};
+  juce::TextEditor passwordInput;
   juce::TextButton connectButton;
   juce::TextButton disconnectButton;
 

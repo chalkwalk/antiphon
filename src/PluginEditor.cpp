@@ -12,13 +12,42 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   serverInput.setText("ninbot.com");
   addAndMakeVisible(serverInput);
 
-  usernameInput.setText("anonymous");
+  portInput.setText("2049");
+  portInput.setInputRestrictions(5, "0123456789");
+  addAndMakeVisible(portInput);
+
+  usernameInput.setTextToShowWhenEmpty("Nickname", juce::Colours::grey);
   addAndMakeVisible(usernameInput);
+
+  anonymousToggle.setToggleState(true, juce::dontSendNotification);
+  anonymousToggle.onClick = [this]() {
+    passwordInput.setVisible(!anonymousToggle.getToggleState());
+  };
+  addAndMakeVisible(anonymousToggle);
+
+  passwordInput.setPasswordCharacter('*');
+  passwordInput.setTextToShowWhenEmpty("Password", juce::Colours::grey);
+  addChildComponent(passwordInput);
 
   connectButton.setButtonText("Connect");
   connectButton.onClick = [this]() {
-    audioProcessor.ninjamClient.connectToServer(serverInput.getText(), 2049,
-                                                usernameInput.getText(), "");
+    int port = portInput.getText().getIntValue();
+    if (port <= 0) port = 2049;
+    juce::String nick = usernameInput.getText().trim();
+    juce::String user, pass;
+    if (anonymousToggle.getToggleState()) {
+      // Server grants anonymous access to any username starting with "anonymous"
+      if (nick.isEmpty() || nick.startsWithIgnoreCase("anonymous"))
+        user = nick.isEmpty() ? "anonymous" : nick;
+      else
+        user = "anonymous:" + nick;
+      pass = "";
+    } else {
+      user = nick;
+      pass = passwordInput.getText();
+    }
+    audioProcessor.ninjamClient.connectToServer(serverInput.getText(), port,
+                                                user, pass);
   };
   addAndMakeVisible(connectButton);
 
@@ -203,7 +232,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   }
 
   area.removeFromTop(
-      50); // space for the connection inputs and toggles mapped in resized()
+      70); // space for the connection inputs and toggles mapped in resized()
 
   // Main Panels
   g.setColour(juce::Colours::white);
@@ -232,14 +261,22 @@ void NinjamAudioProcessorEditor::resized() {
   syncRow.removeFromLeft(350); // Metronome text
   syncRow.removeFromLeft(300); // Warning text
 
-  auto controlsRow = area.removeFromTop(40);
-  serverInput.setBounds(controlsRow.removeFromLeft(150).reduced(0, 8));
-  controlsRow.removeFromLeft(10);
-  usernameInput.setBounds(controlsRow.removeFromLeft(120).reduced(0, 8));
-  controlsRow.removeFromLeft(10);
-  connectButton.setBounds(controlsRow.removeFromLeft(100).reduced(0, 8));
-  controlsRow.removeFromLeft(10);
-  disconnectButton.setBounds(controlsRow.removeFromLeft(100).reduced(0, 8));
+  auto controlsRow1 = area.removeFromTop(28);
+  serverInput.setBounds(controlsRow1.removeFromLeft(140).reduced(0, 4));
+  controlsRow1.removeFromLeft(4);
+  portInput.setBounds(controlsRow1.removeFromLeft(55).reduced(0, 4));
+  controlsRow1.removeFromLeft(8);
+  usernameInput.setBounds(controlsRow1.removeFromLeft(110).reduced(0, 4));
+  controlsRow1.removeFromLeft(8);
+  connectButton.setBounds(controlsRow1.removeFromLeft(90).reduced(0, 4));
+  controlsRow1.removeFromLeft(4);
+  disconnectButton.setBounds(controlsRow1.removeFromLeft(90).reduced(0, 4));
+
+  area.removeFromTop(4);
+  auto controlsRow2 = area.removeFromTop(28);
+  anonymousToggle.setBounds(controlsRow2.removeFromLeft(100).reduced(0, 4));
+  controlsRow2.removeFromLeft(6);
+  passwordInput.setBounds(controlsRow2.removeFromLeft(150).reduced(0, 4));
 
   area.removeFromTop(10); // Spacing
 
