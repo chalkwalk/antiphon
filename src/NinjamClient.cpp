@@ -224,6 +224,10 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       bpm = juce::ByteOrder::swapIfBigEndian(bpm);
       bpi = juce::ByteOrder::swapIfBigEndian(bpi);
 
+      // Update immediately so buffer sizing in DOWNLOAD_INTERVAL_BEGIN is correct.
+      serverBpm = bpm;
+      serverBpi = bpi;
+
       juce::MessageManager::callAsync([this, bpm, bpi]() {
         listeners.call(&NinjamClientListener::onServerConfig, bpm, bpi);
       });
@@ -423,9 +427,12 @@ bool NinjamClient::handleMessage(juce::uint8 type,
                     }
                   }
                   channel.intervalBuffer.backWritePosition += toCopy;
+                  channel.decoder->Skip(toCopy * out_nch);
+                } else {
+                  // Back buffer full — drain decoder so cleanup can proceed.
+                  channel.decoder->Skip(channel.decoder->Available());
+                  break;
                 }
-
-                channel.decoder->Skip(toCopy * out_nch);
               } else {
                 break;
               }
@@ -700,6 +707,7 @@ void NinjamClient::swapIntervalBuffers() {
     // we could swap pointers. Instead of copying, we can just use a swap
     // function if Juce provides it, or std::swap since juce::AudioBuffer
     // supports move semantics.
+    channel.intervalBuffer.frontWritePosition = channel.intervalBuffer.backWritePosition;
     std::swap(channel.intervalBuffer.frontBuffer,
               channel.intervalBuffer.backBuffer);
 
@@ -810,8 +818,8 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
 
     int frontReads = channel.intervalBuffer.frontReadPosition;
     int availableInFront =
-        channel.intervalBuffer.frontBuffer.getNumSamples() - frontReads;
-    int toCopy = std::min(samplesNeeded, availableInFront);
+        channel.intervalBuffer.frontWritePosition - frontReads;
+    int toCopy = std::min(samplesNeeded, std::max(0, availableInFront));
 
     if (toCopy > 0 && !isMuted) {
       int srcChannels = channel.intervalBuffer.frontBuffer.getNumChannels();
@@ -831,8 +839,8 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     // Cleanup finished streams
     if (!channel.isActive &&
         channel.intervalBuffer.frontReadPosition >=
-            channel.intervalBuffer.backWritePosition &&
-        channel.decoder->Available() == 0) {
+            channel.intervalBuffer.frontWritePosition &&
+        (channel.decoder == nullptr || channel.decoder->Available() == 0)) {
       // Done streaming and drained
       it = activeDownloads.erase(it);
     } else {

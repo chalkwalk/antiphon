@@ -85,6 +85,7 @@ public:
     juce::AudioBuffer<float> frontBuffer;
     juce::AudioBuffer<float> backBuffer;
     int frontReadPosition = 0;
+    int frontWritePosition = 0; // valid samples in frontBuffer after last swap
     int backWritePosition = 0;
   };
 
