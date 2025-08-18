@@ -15,6 +15,9 @@ NinjamAudioProcessor::NinjamAudioProcessor()
 #endif
 {
   ninjamClient.addListener(this);
+#if !JucePlugin_Build_Standalone
+  metronomeEnabled = false;
+#endif
 }
 
 NinjamAudioProcessor::~NinjamAudioProcessor() {
