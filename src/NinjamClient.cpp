@@ -344,7 +344,8 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       }
 
       RemoteChannel channel;
-      channel.decoder = std::make_unique<VorbisDecoder>();
+      if (fourcc[0] == 'O' && fourcc[1] == 'G' && fourcc[2] == 'G' && fourcc[3] == 'v')
+        channel.decoder = std::make_unique<VorbisDecoder>();
       channel.isActive = true;
       channel.username = username;
       channel.channelIndex = channelIndex;
@@ -377,7 +378,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
         auto &channel = activeDownloads[guid];
 
         int oggDataSize = static_cast<int>(payload.getSize()) - 17;
-        if (oggDataSize > 0) {
+        if (oggDataSize > 0 && channel.decoder != nullptr) {
           const char *oggData =
               static_cast<const char *>(payload.getData()) + 17;
           void *decBuf = channel.decoder->DecodeGetSrcBuffer(oggDataSize);
