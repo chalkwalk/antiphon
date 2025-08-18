@@ -121,6 +121,7 @@ private:
 
   bool handleMessage(juce::uint8 type, const juce::MemoryBlock &payload);
   void sendAuthRequest(const juce::MemoryBlock &challenge);
+  void sendChannelInfo();
 
   bool readFull(void *dest, int numBytes);
   bool writeFull(juce::uint8 type, const void *payload, int numBytes);

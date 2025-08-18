@@ -206,6 +206,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       if (flag == 1) // Access Granted
       {
         connectionState = 3;
+        sendChannelInfo();
         juce::MessageManager::callAsync(
             [this]() { listeners.call(&NinjamClientListener::onConnected); });
       } else // Access Denied
@@ -555,6 +556,13 @@ void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
   packet.append(&version, 4);
 
   writeFull(0x80, packet.getData(), static_cast<int>(packet.getSize()));
+}
+
+void NinjamClient::sendChannelInfo() {
+  juce::MemoryBlock payload;
+  juce::String name = "Local Instrument";
+  payload.append(name.toRawUTF8(), name.getNumBytesAsUTF8() + 1);
+  writeFull(0x82, payload.getData(), static_cast<int>(payload.getSize()));
 }
 
 void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
