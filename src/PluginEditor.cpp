@@ -192,51 +192,102 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
       getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
 
   auto area = getLocalBounds().reduced(10);
+  auto header = area.removeFromTop(80);
 
-  // Top Header Row
-  auto headerRow = area.removeFromTop(80);
+  // Status bar background
+  g.setColour(juce::Colour(0xff0d0d1a));
+  g.fillRect(header);
 
-  g.setColour(juce::Colours::white);
-  g.setFont(24.0f);
-  g.drawFittedText("Ninjam JUCE Plugin", headerRow.removeFromTop(30),
-                   juce::Justification::centred, 1);
+  const bool connected = audioProcessor.ninjamClient.isConnected();
+  const juce::Colour teal(0xff00b4d8);
 
-  g.setFont(16.0f);
-  juce::String connInfo = "Connection: " + audioProcessor.connectionStatus;
-  g.drawFittedText(connInfo, headerRow.removeFromTop(20),
-                   juce::Justification::left, 1);
+  // Row 1: title + connection status
+  auto row1 = header.removeFromTop(22);
+  g.setFont(juce::FontOptions{}.withHeight(15.0f).withStyle("Bold"));
+  g.setColour(teal);
+  g.drawFittedText("NINJAM", row1.removeFromLeft(90),
+                   juce::Justification::centredLeft, 1);
+  g.setFont(juce::FontOptions{}.withHeight(13.0f));
+  g.setColour(connected ? teal : juce::Colours::grey);
+  g.drawFittedText(audioProcessor.connectionStatus, row1,
+                   juce::Justification::centredLeft, 1);
 
-  juce::String hostInfo = "Host Sync: ";
-  hostInfo += audioProcessor.hostIsPlaying ? "Playing" : "Stopped";
-  hostInfo += " | BPM: " + juce::String(audioProcessor.hostBpm, 1);
-  hostInfo += " | PPQ: " + juce::String(audioProcessor.hostPpqPosition, 2);
-  g.drawFittedText(hostInfo, headerRow.removeFromTop(20),
-                   juce::Justification::left, 1);
+  header.removeFromTop(2);
 
-  area.removeFromTop(10); // spacing
-
-  // Sync Info Row
-  auto syncRow = area.removeFromTop(30);
-  juce::String internalInfo = "Metronome: ";
-  internalInfo += "BPM: " + juce::String(audioProcessor.internalBpm, 1);
-  internalInfo += " | BPI: " + juce::String(audioProcessor.internalBpi);
-  internalInfo +=
-      " | Phase: " + juce::String(audioProcessor.internalPhaseBeats, 2);
-  g.drawFittedText(internalInfo, syncRow.removeFromLeft(350),
-                   juce::Justification::left, 1);
-
-  if (std::abs(audioProcessor.hostBpm - audioProcessor.internalBpm) > 0.1) {
-    g.setColour(juce::Colours::red);
-    g.drawFittedText("WARNING: Host BPM != Server BPM!",
-                     syncRow.removeFromLeft(300), juce::Justification::left, 1);
+  // Row 2: server BPM / BPI
+  auto row2 = header.removeFromTop(18);
+  g.setFont(juce::FontOptions{}.withHeight(13.0f));
+  if (connected) {
+    g.setColour(juce::Colours::white);
+    g.drawFittedText("Server:  " +
+                         juce::String(audioProcessor.internalBpm, 1) +
+                         " BPM   " +
+                         juce::String(audioProcessor.internalBpi) + " BPI",
+                     row2, juce::Justification::centredLeft, 1);
+  } else {
+    g.setColour(juce::Colours::darkgrey);
+    g.drawFittedText("Not connected", row2, juce::Justification::centredLeft,
+                     1);
   }
 
+  header.removeFromTop(4);
+
+  // Phase progress bar
+  auto phaseBar = header.removeFromTop(8);
+  g.setColour(juce::Colour(0xff1a1a2e));
+  g.fillRect(phaseBar);
+  if (connected && audioProcessor.internalBpi > 0) {
+    float frac = juce::jlimit(
+        0.0f, 1.0f,
+        (float)(audioProcessor.internalPhaseBeats / audioProcessor.internalBpi));
+    g.setColour(teal);
+    g.fillRect(phaseBar.withWidth((int)(phaseBar.getWidth() * frac)));
+  }
+
+  header.removeFromTop(4);
+
+  // Row 3: sync state
+  auto row3 = header.removeFromTop(20);
+  g.setFont(juce::FontOptions{}.withHeight(13.0f));
+#if JucePlugin_Build_Standalone
+  g.setColour(juce::Colours::lightgrey);
+  g.drawFittedText(
+      "Phase: " + juce::String(audioProcessor.internalPhaseBeats, 2) + " / " +
+          juce::String(audioProcessor.internalBpi),
+      row3, juce::Justification::centredLeft, 1);
+#else
+  const bool mismatch =
+      connected &&
+      std::abs(audioProcessor.hostBpm - audioProcessor.internalBpm) > 0.5;
+  const bool pendingTransport =
+      connected && !mismatch && !audioProcessor.hostIsPlaying;
+  if (mismatch) {
+    g.setColour(juce::Colours::orange);
+    g.drawFittedText("BPM mismatch — set DAW to " +
+                         juce::String(audioProcessor.internalBpm, 1) + " BPM",
+                     row3, juce::Justification::centredLeft, 1);
+  } else if (pendingTransport) {
+    g.setColour(juce::Colours::grey);
+    g.drawFittedText("Start transport to begin", row3,
+                     juce::Justification::centredLeft, 1);
+  } else if (connected) {
+    g.setColour(juce::Colours::lightgreen);
+    g.drawFittedText("In sync", row3, juce::Justification::centredLeft, 1);
+  } else {
+    g.setColour(juce::Colours::darkgrey);
+    g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) +
+                         " BPM",
+                     row3, juce::Justification::centredLeft, 1);
+  }
+#endif
+
+  area.removeFromTop(10); // spacing
   area.removeFromTop(
       70); // space for the connection inputs and toggles mapped in resized()
 
   // Main Panels
   g.setColour(juce::Colours::white);
-  g.setFont(14.0f);
+  g.setFont(juce::FontOptions{}.withHeight(14.0f));
 
   auto leftPanel = area.removeFromLeft(350);
   g.drawFittedText("Chat & Commands:", leftPanel.removeFromTop(20),
@@ -254,12 +305,8 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
 
 void NinjamAudioProcessorEditor::resized() {
   auto area = getLocalBounds().reduced(10);
-  area.removeFromTop(80); // Title and host sync
+  area.removeFromTop(80); // Status bar
   area.removeFromTop(10); // Spacing
-
-  auto syncRow = area.removeFromTop(30);
-  syncRow.removeFromLeft(350); // Metronome text
-  syncRow.removeFromLeft(300); // Warning text
 
   auto controlsRow1 = area.removeFromTop(28);
   serverInput.setBounds(controlsRow1.removeFromLeft(140).reduced(0, 4));
