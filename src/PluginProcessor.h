@@ -66,6 +66,12 @@ public:
   std::atomic<bool> saveTxEnabled{false};
   std::atomic<bool> saveRxEnabled{false};
 
+  // Flash state (written audio thread, decayed + read UI thread)
+  std::atomic<float> intervalFlashIntensity{0.0f};
+  std::atomic<float> beatFlashIntensity{0.0f};
+  std::atomic<int> lastBeatCrossedIndex{-1}; // 0 = interval, N%4==0 = bar, else beat
+
 private:
+  int lastTimestampedBeat = -1;
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessor)
 };

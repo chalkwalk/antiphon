@@ -148,24 +148,41 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
         // Swap buffers for playback
         ninjamClient.swapIntervalBuffers();
+
+        // Interval flash fired directly here, independent of beat detection
+        intervalFlashIntensity.store(1.0f);
       }
 
-      if (fractionalBeat < 0.05 &&
-          metronomeEnabled) // First 5% of a beat is a click
+      if (fractionalBeat < 0.05) // First 5% of a beat
       {
-        // Alternate click frequency for downbeat (interval boundary)
-        float freq = (std::floor(internalPhaseBeats) == 0.0) ? 880.0f : 440.0f;
-        float posInBeat =
-            (float)fractionalBeat * 20.0f; // Scale to 0..1 over the 5% window
-        float envelope = 1.0f - posInBeat;
-        float clickSample =
-            std::sin(posInBeat * juce::MathConstants<float>::twoPi * freq /
-                     (float)internalBpm) *
-            envelope * 0.1f;
+        int currentBeat = (int)std::floor(internalPhaseBeats);
+        if (currentBeat != lastTimestampedBeat) {
+          lastTimestampedBeat = currentBeat;
+          lastBeatCrossedIndex.store(currentBeat);
+          if (currentBeat != 0) // beat 0 uses intervalFlashIntensity instead
+            beatFlashIntensity.store(1.0f);
+        }
 
-        for (int channel = 0; channel < std::min(2, totalNumOutputChannels);
-             channel++)
-          buffer.addSample(channel, sample, clickSample);
+        if (metronomeEnabled) {
+          float freq, amp;
+          if (currentBeat == 0) {
+            freq = 880.0f; amp = 0.10f; // interval boundary
+          } else if (currentBeat % 4 == 0) {
+            freq = 660.0f; amp = 0.06f; // bar boundary
+          } else {
+            freq = 440.0f; amp = 0.03f; // regular beat
+          }
+          float posInBeat = (float)fractionalBeat * 20.0f;
+          float envelope = 1.0f - posInBeat;
+          float clickSample =
+              std::sin(posInBeat * juce::MathConstants<float>::twoPi * freq /
+                       (float)internalBpm) *
+              envelope * amp;
+
+          for (int channel = 0; channel < std::min(2, totalNumOutputChannels);
+               channel++)
+            buffer.addSample(channel, sample, clickSample);
+        }
       }
     }
   }

@@ -237,11 +237,43 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   g.setColour(juce::Colour(0xff1a1a2e));
   g.fillRect(phaseBar);
   if (connected && audioProcessor.internalBpi > 0) {
+    int bpi = audioProcessor.internalBpi;
     float frac = juce::jlimit(
         0.0f, 1.0f,
-        (float)(audioProcessor.internalPhaseBeats / audioProcessor.internalBpi));
+        (float)(audioProcessor.internalPhaseBeats / bpi));
+    int barW = phaseBar.getWidth();
+    int barX = phaseBar.getX();
+    int barY = phaseBar.getY();
+    int barH = phaseBar.getHeight();
+
+    // Teal fill
     g.setColour(teal);
-    g.fillRect(phaseBar.withWidth((int)(phaseBar.getWidth() * frac)));
+    g.fillRect(phaseBar.withWidth((int)(barW * frac)));
+
+    // Beat and bar gridlines
+    for (int i = 1; i < bpi; ++i) {
+      int lineX = barX + (int)((float)i / bpi * barW);
+      bool isBarBoundary = (i % 4 == 0);
+      g.setColour(isBarBoundary ? juce::Colours::white.withAlpha(0.55f)
+                                : juce::Colours::white.withAlpha(0.18f));
+      int lineH = isBarBoundary ? barH : barH - 2;
+      int lineY = barY + (barH - lineH) / 2;
+      g.drawVerticalLine(lineX, (float)lineY, (float)(lineY + lineH));
+    }
+
+    // Flash overlays — drawn last so they sit on top of fill and gridlines
+    float iFlash = audioProcessor.intervalFlashIntensity.load();
+    if (iFlash > 0.0f) {
+      g.setColour(juce::Colours::white.withAlpha(iFlash * 0.80f));
+      g.fillRect(phaseBar);
+    }
+    float bFlash = audioProcessor.beatFlashIntensity.load();
+    if (bFlash > 0.0f) {
+      int flashBeat = audioProcessor.lastBeatCrossedIndex.load();
+      float alpha = (flashBeat % 4 == 0) ? 0.50f : 0.25f;
+      g.setColour(juce::Colours::white.withAlpha(bFlash * alpha));
+      g.fillRect(phaseBar);
+    }
   }
 
   header.removeFromTop(4);
@@ -358,6 +390,14 @@ void NinjamAudioProcessorEditor::resized() {
 }
 
 void NinjamAudioProcessorEditor::timerCallback() {
+  // Decay flash intensities (message thread; audio thread only writes 1.0f)
+  auto decay = [](std::atomic<float> &v) {
+    float f = v.load();
+    if (f > 0.0f) v.store(std::max(0.0f, f - (1.0f / 12.0f)));
+  };
+  decay(audioProcessor.intervalFlashIntensity);
+  decay(audioProcessor.beatFlashIntensity);
+
   repaint();
 
   if (audioProcessor.ninjamClient.isConnected()) {
