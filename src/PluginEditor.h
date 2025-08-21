@@ -6,6 +6,8 @@
 #include "RemoteUserStrip.h"
 #include <JuceHeader.h>
 
+class ServerBrowserDialog;
+
 class NinjamAudioProcessorEditor : public juce::AudioProcessorEditor,
                                    public juce::Timer,
                                    public NinjamClientListener {
@@ -25,13 +27,12 @@ private:
   NinjamAudioProcessor &audioProcessor;
   NinjamLookAndFeel customLookAndFeel;
 
-  juce::TextEditor serverInput;
-  juce::TextEditor portInput;
-  juce::TextEditor usernameInput;
-  juce::ToggleButton anonymousToggle{"Anonymous"};
-  juce::TextEditor passwordInput;
-  juce::TextButton connectButton;
+  juce::TextButton browseButton;
   juce::TextButton disconnectButton;
+
+  std::unique_ptr<ServerBrowserDialog> serverBrowser;
+  void openServerBrowser();
+  void closeServerBrowser();
 
   juce::ToggleButton metronomeToggle;
   juce::ToggleButton saveTxToggle;

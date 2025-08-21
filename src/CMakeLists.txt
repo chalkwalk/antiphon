@@ -16,6 +16,7 @@ target_sources(Ninjam
         NinjamClient.cpp
         RemoteUserStrip.cpp
         NinjamLookAndFeel.cpp
+        ServerBrowserDialog.cpp
         utils/sha1.cpp
 )
 

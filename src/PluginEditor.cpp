@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "ServerBrowserDialog.h"
 
 NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
     : AudioProcessorEditor(&p), audioProcessor(p) {
@@ -9,47 +10,9 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   setResizeLimits(900, 600, 2400, 1600);
   setSize(1000, 700);
 
-  serverInput.setText("ninbot.com");
-  addAndMakeVisible(serverInput);
-
-  portInput.setText("2049");
-  portInput.setInputRestrictions(5, "0123456789");
-  addAndMakeVisible(portInput);
-
-  usernameInput.setTextToShowWhenEmpty("Nickname", juce::Colours::grey);
-  addAndMakeVisible(usernameInput);
-
-  anonymousToggle.setToggleState(true, juce::dontSendNotification);
-  anonymousToggle.onClick = [this]() {
-    passwordInput.setVisible(!anonymousToggle.getToggleState());
-  };
-  addAndMakeVisible(anonymousToggle);
-
-  passwordInput.setPasswordCharacter('*');
-  passwordInput.setTextToShowWhenEmpty("Password", juce::Colours::grey);
-  addChildComponent(passwordInput);
-
-  connectButton.setButtonText("Connect");
-  connectButton.onClick = [this]() {
-    int port = portInput.getText().getIntValue();
-    if (port <= 0) port = 2049;
-    juce::String nick = usernameInput.getText().trim();
-    juce::String user, pass;
-    if (anonymousToggle.getToggleState()) {
-      // Server grants anonymous access to any username starting with "anonymous"
-      if (nick.isEmpty() || nick.startsWithIgnoreCase("anonymous"))
-        user = nick.isEmpty() ? "anonymous" : nick;
-      else
-        user = "anonymous:" + nick;
-      pass = "";
-    } else {
-      user = nick;
-      pass = passwordInput.getText();
-    }
-    audioProcessor.ninjamClient.connectToServer(serverInput.getText(), port,
-                                                user, pass);
-  };
-  addAndMakeVisible(connectButton);
+  browseButton.setButtonText("Connect...");
+  browseButton.onClick = [this]() { openServerBrowser(); };
+  addAndMakeVisible(browseButton);
 
   disconnectButton.setButtonText("Disconnect");
   disconnectButton.onClick = [this]() {
@@ -314,8 +277,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
 #endif
 
   area.removeFromTop(10); // spacing
-  area.removeFromTop(
-      70); // space for the connection inputs and toggles mapped in resized()
+  area.removeFromTop(38); // space for connect/disconnect buttons in resized()
 
   // Main Panels
   g.setColour(juce::Colours::white);
@@ -340,22 +302,10 @@ void NinjamAudioProcessorEditor::resized() {
   area.removeFromTop(80); // Status bar
   area.removeFromTop(10); // Spacing
 
-  auto controlsRow1 = area.removeFromTop(28);
-  serverInput.setBounds(controlsRow1.removeFromLeft(140).reduced(0, 4));
-  controlsRow1.removeFromLeft(4);
-  portInput.setBounds(controlsRow1.removeFromLeft(55).reduced(0, 4));
-  controlsRow1.removeFromLeft(8);
-  usernameInput.setBounds(controlsRow1.removeFromLeft(110).reduced(0, 4));
-  controlsRow1.removeFromLeft(8);
-  connectButton.setBounds(controlsRow1.removeFromLeft(90).reduced(0, 4));
-  controlsRow1.removeFromLeft(4);
-  disconnectButton.setBounds(controlsRow1.removeFromLeft(90).reduced(0, 4));
-
-  area.removeFromTop(4);
-  auto controlsRow2 = area.removeFromTop(28);
-  anonymousToggle.setBounds(controlsRow2.removeFromLeft(100).reduced(0, 4));
-  controlsRow2.removeFromLeft(6);
-  passwordInput.setBounds(controlsRow2.removeFromLeft(150).reduced(0, 4));
+  auto controlsRow = area.removeFromTop(28);
+  browseButton.setBounds(controlsRow.removeFromLeft(120).reduced(0, 4));
+  controlsRow.removeFromLeft(8);
+  disconnectButton.setBounds(controlsRow.removeFromLeft(100).reduced(0, 4));
 
   area.removeFromTop(10); // Spacing
 
@@ -387,6 +337,29 @@ void NinjamAudioProcessorEditor::resized() {
   saveRxToggle.setBounds(toggleRow.removeFromLeft(120).reduced(0, 8));
 
   remoteUsersViewport.setBounds(rightPanel);
+}
+
+void NinjamAudioProcessorEditor::openServerBrowser() {
+  if (serverBrowser) return; // already open
+
+  serverBrowser = std::make_unique<ServerBrowserDialog>();
+  serverBrowser->onConnect = [this](const juce::String &host, int port,
+                                    const juce::String &user,
+                                    const juce::String &pass) {
+    audioProcessor.ninjamClient.connectToServer(host, port, user, pass);
+  };
+  serverBrowser->onClose = [this]() { closeServerBrowser(); };
+
+  addAndMakeVisible(*serverBrowser);
+  serverBrowser->setBounds(getLocalBounds().reduced(20));
+  serverBrowser->toFront(false);
+}
+
+void NinjamAudioProcessorEditor::closeServerBrowser() {
+  if (serverBrowser) {
+    removeChildComponent(serverBrowser.get());
+    serverBrowser.reset();
+  }
 }
 
 void NinjamAudioProcessorEditor::timerCallback() {
