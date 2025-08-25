@@ -228,10 +228,70 @@ juce::AudioProcessorEditor *NinjamAudioProcessor::createEditor() {
   return new NinjamAudioProcessorEditor(*this);
 }
 
-void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {}
+// XOR-based obfuscation so passwords aren't plain text in DAW project state.
+// Not cryptographically secure — just opaque on casual inspection.
+static const uint8_t kObfKey[] = {
+    0x4e, 0x6a, 0x6d, 0x50, 0x77, 0x64, 0x21, 0x38,
+    0x2a, 0x5e, 0x71, 0x33, 0x2f, 0x56, 0x9c, 0xb1
+};
+
+static juce::String obfuscate(const juce::String &s) {
+    auto utf8 = s.toRawUTF8();
+    int len = (int)s.getNumBytesAsUTF8();
+    juce::MemoryBlock buf(len);
+    for (int i = 0; i < len; ++i)
+        static_cast<uint8_t *>(buf.getData())[i] =
+            static_cast<uint8_t>(utf8[i]) ^ kObfKey[i % sizeof(kObfKey)];
+    return juce::Base64::toBase64(buf.getData(), buf.getSize());
+}
+
+static juce::String deobfuscate(const juce::String &b64) {
+    juce::MemoryOutputStream out;
+    if (!juce::Base64::convertFromBase64(out, b64))
+        return {};
+    auto *data = static_cast<const uint8_t *>(out.getData());
+    int len = (int)out.getDataSize();
+    juce::HeapBlock<char> buf(len + 1);
+    for (int i = 0; i < len; ++i)
+        buf[i] = static_cast<char>(data[i] ^ kObfKey[i % sizeof(kObfKey)]);
+    buf[len] = 0;
+    return juce::String::fromUTF8(buf, len);
+}
+
+void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
+    juce::XmlElement xml("NinjamState");
+    xml.setAttribute("localVolume",   (double)localTxVolume.load());
+    xml.setAttribute("localPan",      (double)localTxPan.load());
+    xml.setAttribute("localMute",     localTxMute.load());
+    xml.setAttribute("metronome",     metronomeEnabled.load());
+    xml.setAttribute("lastHost",      lastHost);
+    xml.setAttribute("lastPort",      lastPort);
+    xml.setAttribute("lastUsername",  lastUsername);
+    xml.setAttribute("lastPassword",  obfuscate(lastPassword));
+    xml.setAttribute("lastAnonymous", lastAnonymous);
+    copyXmlToBinary(xml, destData);
+}
 
 void NinjamAudioProcessor::setStateInformation(const void *data,
-                                               int sizeInBytes) {}
+                                               int sizeInBytes) {
+    auto xml = getXmlFromBinary(data, sizeInBytes);
+    if (!xml || !xml->hasTagName("NinjamState")) return;
+    localTxVolume.store((float)xml->getDoubleAttribute("localVolume",  1.0));
+    localTxPan.store   ((float)xml->getDoubleAttribute("localPan",     0.0));
+    localTxMute.store  (xml->getBoolAttribute("localMute",    false));
+    metronomeEnabled.store(xml->getBoolAttribute("metronome",
+#if JucePlugin_Build_Standalone
+        true
+#else
+        false
+#endif
+    ));
+    lastHost      = xml->getStringAttribute("lastHost",      "ninbot.com");
+    lastPort      = xml->getIntAttribute   ("lastPort",      2049);
+    lastUsername  = xml->getStringAttribute("lastUsername",  "");
+    lastPassword  = deobfuscate(xml->getStringAttribute("lastPassword", ""));
+    lastAnonymous = xml->getBoolAttribute  ("lastAnonymous", true);
+}
 
 void NinjamAudioProcessor::onConnected() { connectionStatus = "Connected"; }
 

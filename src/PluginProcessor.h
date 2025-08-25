@@ -61,6 +61,13 @@ public:
   std::atomic<float> localTxPan{0.0f};
   std::atomic<bool> localTxMute{false};
 
+  // Last-used connection settings (persisted via getStateInformation)
+  juce::String lastHost{"ninbot.com"};
+  int          lastPort{2049};
+  juce::String lastUsername{""};
+  juce::String lastPassword{""};
+  bool         lastAnonymous{true};
+
   // Debug / Integration Testing Features
   std::atomic<bool> metronomeEnabled{true};
   std::atomic<bool> saveTxEnabled{false};

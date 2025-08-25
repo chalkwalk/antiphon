@@ -31,13 +31,15 @@ public:
   void paintCell(juce::Graphics &, int, int, int, int, bool) override;
   void cellClicked(int, int, const juce::MouseEvent &) override;
 
+  // Public so PluginEditor can pre-populate from saved state
+  juce::TextEditor hostInput, portInput, usernameInput, passwordInput;
+  juce::ToggleButton anonymousToggle{"Anonymous"};
+
 private:
   static constexpr int kTitleBarH = 30;
 
   juce::TextButton closeButton{"X"};
   juce::TableListBox table;
-  juce::TextEditor hostInput, portInput, usernameInput, passwordInput;
-  juce::ToggleButton anonymousToggle{"Anonymous"};
   juce::TextButton connectButton{"Connect"}, cancelButton{"Cancel"};
   juce::Label statusLabel;
 

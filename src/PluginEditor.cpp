@@ -343,9 +343,24 @@ void NinjamAudioProcessorEditor::openServerBrowser() {
   if (serverBrowser) return; // already open
 
   serverBrowser = std::make_unique<ServerBrowserDialog>();
+
+  // Pre-populate from saved state
+  serverBrowser->hostInput.setText(audioProcessor.lastHost, false);
+  serverBrowser->portInput.setText(juce::String(audioProcessor.lastPort), false);
+  serverBrowser->usernameInput.setText(audioProcessor.lastUsername, false);
+  serverBrowser->passwordInput.setText(audioProcessor.lastPassword, false);
+  serverBrowser->anonymousToggle.setToggleState(audioProcessor.lastAnonymous,
+                                                juce::dontSendNotification);
+  serverBrowser->passwordInput.setVisible(!audioProcessor.lastAnonymous);
+
   serverBrowser->onConnect = [this](const juce::String &host, int port,
                                     const juce::String &user,
                                     const juce::String &pass) {
+    audioProcessor.lastHost      = host;
+    audioProcessor.lastPort      = port;
+    audioProcessor.lastUsername  = serverBrowser->usernameInput.getText().trim();
+    audioProcessor.lastPassword  = serverBrowser->passwordInput.getText();
+    audioProcessor.lastAnonymous = serverBrowser->anonymousToggle.getToggleState();
     audioProcessor.ninjamClient.connectToServer(host, port, user, pass);
   };
   serverBrowser->onClose = [this]() { closeServerBrowser(); };
