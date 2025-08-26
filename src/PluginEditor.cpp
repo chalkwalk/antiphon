@@ -224,7 +224,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
       g.drawVerticalLine(lineX, (float)lineY, (float)(lineY + lineH));
     }
 
-    // Flash overlays — drawn last so they sit on top of fill and gridlines
+    // Flash overlays -- drawn last so they sit on top of fill and gridlines
     float iFlash = audioProcessor.intervalFlashIntensity.load();
     if (iFlash > 0.0f) {
       g.setColour(juce::Colours::white.withAlpha(iFlash * 0.80f));
@@ -258,7 +258,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
       connected && !mismatch && !audioProcessor.hostIsPlaying;
   if (mismatch) {
     g.setColour(juce::Colours::orange);
-    g.drawFittedText("BPM mismatch — set DAW to " +
+    g.drawFittedText("BPM mismatch - set DAW to " +
                          juce::String(audioProcessor.internalBpm, 1) + " BPM",
                      row3, juce::Justification::centredLeft, 1);
   } else if (pendingTransport) {

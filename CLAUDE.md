@@ -275,3 +275,4 @@ Built into the project. Do not edit.
 - C++17. `juce::` types preferred over `std::` where both exist (`juce::String`, `juce::AudioBuffer`, `juce::CriticalSection`).
 - 2-space indent, braces on same line, members lowerCamelCase.
 - No comments except for non-obvious invariants or protocol workarounds. No narration.
+- **ASCII only in source files** — no non-ASCII characters anywhere (comments, string literals, or identifiers). Use `--` for em dash, `->` for arrows. In string literals that appear in the UI, use plain ASCII equivalents. Reason: `juce::String(const char*, size_t)` asserts ASCII validity; non-ASCII source bytes also cause compiler warnings on some platforms.

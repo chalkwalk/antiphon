@@ -126,7 +126,7 @@ void ServerBrowserDialog::doFetch() {
         [safe = juce::Component::SafePointer<ServerBrowserDialog>(this)]() {
           if (safe)
             safe->statusLabel.setText(
-                "Could not reach ninbot.com \xe2\x80\x94 showing known servers.",
+                "Could not reach ninbot.com -- showing known servers.",
                 juce::dontSendNotification);
         });
     return;
@@ -151,8 +151,8 @@ void ServerBrowserDialog::doFetch() {
   if (stopFetch.load() || response.getSize() == 0)
     return;
 
-  juce::String text(static_cast<const char *>(response.getData()),
-                    response.getSize());
+  juce::String text = juce::String::fromUTF8(
+      static_cast<const char *>(response.getData()), (int)response.getSize());
   int bodyStart = text.indexOf("\r\n\r\n");
   if (bodyStart < 0)
     return;
@@ -165,7 +165,7 @@ void ServerBrowserDialog::doFetch() {
         if (!safe) return;
         if (entries.isEmpty()) {
           safe->statusLabel.setText(
-              "No live data \xe2\x80\x94 showing known servers.",
+              "No live data -- showing known servers.",
               juce::dontSendNotification);
         } else {
           safe->servers = entries;
@@ -198,7 +198,7 @@ void ServerBrowserDialog::paint(juce::Graphics &g) {
 void ServerBrowserDialog::resized() {
   auto area = getLocalBounds().reduced(1); // inside border
 
-  // Title bar row — closeButton sits in it
+  // Title bar row -- closeButton sits in it
   auto titleBar = area.removeFromTop(kTitleBarH);
   closeButton.setBounds(titleBar.removeFromRight(kTitleBarH).reduced(4));
 

@@ -43,9 +43,9 @@ public:
   NinjamClient ninjamClient;
   juce::String connectionStatus = "Disconnected";
 
-  // Capture Buffer
-  juce::AudioBuffer<float> captureBuffer;
-  int captureWritePosition = 0;
+  // Capture ring buffer (AbstractFifo for lock-free audio->message handoff)
+  juce::AbstractFifo captureFifo{1};          // total size set in prepareToPlay
+  juce::AudioBuffer<float> captureRingBuffer; // backing store, sized in prepareToPlay
 
   // Host Sync State
   double hostBpm = 120.0;

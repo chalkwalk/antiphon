@@ -89,7 +89,7 @@ void NinjamClient::disconnectFromServer() {
 
   connectionState = 0;
   signalThreadShouldExit();
-  stopThread(2000);
+  stopThread(3000);
 }
 
 bool NinjamClient::readFull(void *dest, int numBytes) {
@@ -130,7 +130,7 @@ bool NinjamClient::writeFull(juce::uint8 type, const void *payload,
 void NinjamClient::run() {
   socket = std::make_unique<juce::StreamingSocket>();
 
-  if (!socket->connect(currentHost, currentPort, 5000)) {
+  if (!socket->connect(currentHost, currentPort, 2000)) {
     connectionState = 0;
     juce::MessageManager::callAsync([this]() {
       listeners.call(&NinjamClientListener::onDisconnected,
@@ -429,7 +429,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
                   channel.intervalBuffer.backWritePosition += toCopy;
                   channel.decoder->Skip(toCopy * out_nch);
                 } else {
-                  // Back buffer full — drain decoder so cleanup can proceed.
+                  // Back buffer full -- drain decoder so cleanup can proceed.
                   channel.decoder->Skip(channel.decoder->Available());
                   break;
                 }

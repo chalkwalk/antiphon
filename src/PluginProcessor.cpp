@@ -51,17 +51,17 @@ void NinjamAudioProcessor::changeProgramName(int index,
 
 void NinjamAudioProcessor::prepareToPlay(double sampleRate,
                                          int samplesPerBlock) {
-  // We need to estimate the max buffer size we might need for one interval.
-  // e.g. at 20 BPM, BPI 64, that's max ~192 seconds of audio.
-  // 192s * 48000hz = ~9,216,000 samples. We'll allocate 10 million to be safe
-  // and handle resizing if needed, but a robust ring-buffer is better.
-  // For now, let's allocate a static heavy buffer to fit long blocks.
-  captureBuffer.setSize(2, 48000 * 60 * 2); // 2 mins max
-  captureWritePosition = 0;
+  int ringSize = (int)sampleRate * 30; // 30 s covers any normal BPM/BPI combo
+  captureRingBuffer.setSize(2, ringSize);
+  captureRingBuffer.clear();
+  captureFifo.setTotalSize(ringSize);
   ninjamClient.setSampleRate(sampleRate);
 }
 
-void NinjamAudioProcessor::releaseResources() { captureBuffer.setSize(0, 0); }
+void NinjamAudioProcessor::releaseResources() {
+  captureFifo.reset();
+  captureRingBuffer.setSize(0, 0);
+}
 
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool NinjamAudioProcessor::isBusesLayoutSupported(
@@ -130,21 +130,22 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
       // If we just rolled over the interval
       if (internalPhaseBeats < beatsPerSample) {
-        // Interval finished! Signal to send the block.
-        // We'll call the `NinjamClient` asynchronously via MessageManager,
-        // (this avoids allocations in processBlock). A more robust way in
-        // production is to use a lock-free juce::AbstractFifo, but `callAsync`
-        // is okay for now.
-        if (ninjamClient.isConnected() && captureWritePosition > 0) {
-          juce::AudioBuffer<float> tempBuf;
-          tempBuf.makeCopyOf(captureBuffer);
-          int length = captureWritePosition;
-
-          juce::MessageManager::callAsync([this, tempBuf, length]() mutable {
-            ninjamClient.processCapturedAudio(tempBuf, length);
+        int length = captureFifo.getNumReady();
+        if (ninjamClient.isConnected() && length > 0) {
+          juce::MessageManager::callAsync([this, length]() {
+            juce::AudioBuffer<float> buf(captureRingBuffer.getNumChannels(), length);
+            int s1, n1, s2, n2;
+            captureFifo.prepareToRead(length, s1, n1, s2, n2);
+            for (int ch = 0; ch < buf.getNumChannels(); ++ch) {
+              if (n1 > 0) buf.copyFrom(ch, 0,  captureRingBuffer, ch, s1, n1);
+              if (n2 > 0) buf.copyFrom(ch, n1, captureRingBuffer, ch, s2, n2);
+            }
+            captureFifo.finishedRead(n1 + n2);
+            ninjamClient.processCapturedAudio(buf, length);
           });
+        } else {
+          captureFifo.reset(); // discard if not connected
         }
-        captureWritePosition = 0; // reset local pointer
 
         // Swap buffers for playback
         ninjamClient.swapIntervalBuffers();
@@ -194,9 +195,9 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   ninjamClient.setSaveTx(saveTxEnabled);
   ninjamClient.setSaveRx(saveRxEnabled);
 
-  // 4. Capture audio to buffer
+  // 4. Capture audio into ring buffer
   int numSamples = buffer.getNumSamples();
-  if (captureWritePosition + numSamples < captureBuffer.getNumSamples()) {
+  if (captureFifo.getFreeSpace() >= numSamples) {
     float lGain =
         localTxMute
             ? 0.0f
@@ -206,19 +207,24 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
             ? 0.0f
             : localTxVolume * (localTxPan >= 0.0f ? 1.0f : 1.0f + localTxPan);
 
-    for (int channel = 0; channel < std::min(2, totalNumInputChannels);
-         channel++) {
-      float gain = (channel == 0) ? lGain : rGain;
-      captureBuffer.copyFrom(channel, captureWritePosition, buffer, channel, 0,
-                             numSamples);
-      captureBuffer.applyGain(channel, captureWritePosition, numSamples, gain);
+    int s1, n1, s2, n2;
+    captureFifo.prepareToWrite(numSamples, s1, n1, s2, n2);
+
+    for (int ch = 0; ch < captureRingBuffer.getNumChannels(); ++ch) {
+      float gain = (ch == 0) ? lGain : rGain;
+      int srcCh = (ch == 1 && totalNumInputChannels == 1) ? 0 : ch;
+      if (srcCh < buffer.getNumChannels()) {
+        if (n1 > 0) {
+          captureRingBuffer.copyFrom(ch, s1, buffer, srcCh, 0, n1);
+          captureRingBuffer.applyGain(ch, s1, n1, gain);
+        }
+        if (n2 > 0) {
+          captureRingBuffer.copyFrom(ch, s2, buffer, srcCh, n1, n2);
+          captureRingBuffer.applyGain(ch, s2, n2, gain);
+        }
+      }
     }
-    // if mono input, copy to right array as well
-    if (totalNumInputChannels == 1 && captureBuffer.getNumChannels() == 2) {
-      captureBuffer.copyFrom(1, captureWritePosition, buffer, 0, 0, numSamples);
-      captureBuffer.applyGain(1, captureWritePosition, numSamples, rGain);
-    }
-    captureWritePosition += numSamples;
+    captureFifo.finishedWrite(n1 + n2);
   }
 }
 
@@ -229,7 +235,7 @@ juce::AudioProcessorEditor *NinjamAudioProcessor::createEditor() {
 }
 
 // XOR-based obfuscation so passwords aren't plain text in DAW project state.
-// Not cryptographically secure — just opaque on casual inspection.
+// Not cryptographically secure -- just opaque on casual inspection.
 static const uint8_t kObfKey[] = {
     0x4e, 0x6a, 0x6d, 0x50, 0x77, 0x64, 0x21, 0x38,
     0x2a, 0x5e, 0x71, 0x33, 0x2f, 0x56, 0x9c, 0xb1
