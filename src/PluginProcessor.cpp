@@ -114,15 +114,55 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  // 3. Metronome (simple click)
+  // 3. Server interval sync -- align phase and swap buffers when a
+  //    DOWNLOAD_INTERVAL_BEGIN arrives, so our swap matches the server's
+  //    actual interval boundary rather than our free-running internal phase.
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
-    double beatsPerSample = (internalBpm / 60.0) / sampleRate;
+    if (intervalSyncCooldown > 0)
+      intervalSyncCooldown = std::max(0, intervalSyncCooldown - buffer.getNumSamples());
+
+    bool swappedBySignal = false;
+    if (ninjamClient.isConnected() && intervalSyncCooldown == 0 &&
+        ninjamClient.intervalBeginSignal.exchange(false)) {
+      int length = captureFifo.getNumReady();
+      if (length > 0) {
+        juce::MessageManager::callAsync([this, length]() {
+          juce::AudioBuffer<float> buf(captureRingBuffer.getNumChannels(), length);
+          int s1, n1, s2, n2;
+          captureFifo.prepareToRead(length, s1, n1, s2, n2);
+          for (int ch = 0; ch < buf.getNumChannels(); ++ch) {
+            if (n1 > 0) buf.copyFrom(ch, 0,  captureRingBuffer, ch, s1, n1);
+            if (n2 > 0) buf.copyFrom(ch, n1, captureRingBuffer, ch, s2, n2);
+          }
+          captureFifo.finishedRead(n1 + n2);
+          ninjamClient.processCapturedAudio(buf, length);
+        });
+      } else {
+        captureFifo.reset();
+      }
+      ninjamClient.swapIntervalBuffers();
+      internalPhaseBeats = 0.0;
+      lastTimestampedBeat = -1;
+      intervalFlashIntensity.store(1.0f);
+      // Cooldown: ignore further signals for half an interval to prevent
+      // double-swaps from multiple channels' DOWNLOAD_INTERVAL_BEGIN messages.
+      int bpm = internalBpm.load(), bpi = internalBpi.load();
+      intervalSyncCooldown = (bpm > 0 && bpi > 0)
+          ? (int)(sampleRate * 60.0 / bpm * bpi / 2)
+          : 48000;
+      swappedBySignal = true;
+    }
+
+  // 4. Metronome (simple click) + fallback interval swap
+    int bpm = internalBpm.load();
+    int bpi = internalBpi.load();
+    double beatsPerSample = (bpm / 60.0) / sampleRate;
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
       // Advance phase
       internalPhaseBeats += beatsPerSample;
-      if (internalPhaseBeats >= internalBpi)
-        internalPhaseBeats -= internalBpi;
+      if (internalPhaseBeats >= bpi)
+        internalPhaseBeats -= bpi;
 
       // Generate click if we just crossed a beat boundary (roughly)
       double fractionalBeat =
@@ -130,27 +170,27 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
       // If we just rolled over the interval
       if (internalPhaseBeats < beatsPerSample) {
-        int length = captureFifo.getNumReady();
-        if (ninjamClient.isConnected() && length > 0) {
-          juce::MessageManager::callAsync([this, length]() {
-            juce::AudioBuffer<float> buf(captureRingBuffer.getNumChannels(), length);
-            int s1, n1, s2, n2;
-            captureFifo.prepareToRead(length, s1, n1, s2, n2);
-            for (int ch = 0; ch < buf.getNumChannels(); ++ch) {
-              if (n1 > 0) buf.copyFrom(ch, 0,  captureRingBuffer, ch, s1, n1);
-              if (n2 > 0) buf.copyFrom(ch, n1, captureRingBuffer, ch, s2, n2);
-            }
-            captureFifo.finishedRead(n1 + n2);
-            ninjamClient.processCapturedAudio(buf, length);
-          });
-        } else {
-          captureFifo.reset(); // discard if not connected
+        if (!swappedBySignal) {
+          // Fallback swap: server signal didn't fire this buffer (e.g. disconnected
+          // or signal arrived in the previous buffer). Keep audio moving.
+          int length = captureFifo.getNumReady();
+          if (ninjamClient.isConnected() && length > 0) {
+            juce::MessageManager::callAsync([this, length]() {
+              juce::AudioBuffer<float> buf(captureRingBuffer.getNumChannels(), length);
+              int s1, n1, s2, n2;
+              captureFifo.prepareToRead(length, s1, n1, s2, n2);
+              for (int ch = 0; ch < buf.getNumChannels(); ++ch) {
+                if (n1 > 0) buf.copyFrom(ch, 0,  captureRingBuffer, ch, s1, n1);
+                if (n2 > 0) buf.copyFrom(ch, n1, captureRingBuffer, ch, s2, n2);
+              }
+              captureFifo.finishedRead(n1 + n2);
+              ninjamClient.processCapturedAudio(buf, length);
+            });
+          } else {
+            captureFifo.reset();
+          }
+          ninjamClient.swapIntervalBuffers();
         }
-
-        // Swap buffers for playback
-        ninjamClient.swapIntervalBuffers();
-
-        // Interval flash fired directly here, independent of beat detection
         intervalFlashIntensity.store(1.0f);
       }
 
@@ -177,7 +217,7 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
           float envelope = 1.0f - posInBeat;
           float clickSample =
               std::sin(posInBeat * juce::MathConstants<float>::twoPi * freq /
-                       (float)internalBpm) *
+                       (float)bpm) *
               envelope * amp;
 
           for (int channel = 0; channel < std::min(2, totalNumOutputChannels);
@@ -306,10 +346,8 @@ void NinjamAudioProcessor::onDisconnected(const juce::String &error) {
 }
 
 void NinjamAudioProcessor::onServerConfig(int bpm, int bpi) {
-  internalBpm = bpm;
-  internalBpi = bpi;
-  // We could potentially reset phase here if it's a hard reset, but usually we
-  // just update
+  internalBpm.store(bpm);
+  internalBpi.store(bpi);
 }
 
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {

@@ -183,9 +183,9 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   if (connected) {
     g.setColour(juce::Colours::white);
     g.drawFittedText("Server:  " +
-                         juce::String(audioProcessor.internalBpm, 1) +
+                         juce::String((double)audioProcessor.internalBpm.load(), 1) +
                          " BPM   " +
-                         juce::String(audioProcessor.internalBpi) + " BPI",
+                         juce::String(audioProcessor.internalBpi.load()) + " BPI",
                      row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
@@ -199,8 +199,8 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   auto phaseBar = header.removeFromTop(8);
   g.setColour(juce::Colour(0xff1a1a2e));
   g.fillRect(phaseBar);
-  if (connected && audioProcessor.internalBpi > 0) {
-    int bpi = audioProcessor.internalBpi;
+  if (connected && audioProcessor.internalBpi.load() > 0) {
+    int bpi = audioProcessor.internalBpi.load();
     float frac = juce::jlimit(
         0.0f, 1.0f,
         (float)(audioProcessor.internalPhaseBeats / bpi));
@@ -248,18 +248,18 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   g.setColour(juce::Colours::lightgrey);
   g.drawFittedText(
       "Phase: " + juce::String(audioProcessor.internalPhaseBeats, 2) + " / " +
-          juce::String(audioProcessor.internalBpi),
+          juce::String(audioProcessor.internalBpi.load()),
       row3, juce::Justification::centredLeft, 1);
 #else
   const bool mismatch =
       connected &&
-      std::abs(audioProcessor.hostBpm - audioProcessor.internalBpm) > 0.5;
+      std::abs(audioProcessor.hostBpm - (double)audioProcessor.internalBpm.load()) > 0.5;
   const bool pendingTransport =
       connected && !mismatch && !audioProcessor.hostIsPlaying;
   if (mismatch) {
     g.setColour(juce::Colours::orange);
     g.drawFittedText("BPM mismatch - set DAW to " +
-                         juce::String(audioProcessor.internalBpm, 1) + " BPM",
+                         juce::String((double)audioProcessor.internalBpm.load(), 1) + " BPM",
                      row3, juce::Justification::centredLeft, 1);
   } else if (pendingTransport) {
     g.setColour(juce::Colours::grey);

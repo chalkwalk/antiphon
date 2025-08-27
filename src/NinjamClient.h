@@ -97,7 +97,13 @@ public:
     juce::String username;
     int channelIndex = 0;
     IntervalBuffer intervalBuffer;
+    // Per-channel resamplers used when remote sample rate != local sample rate
+    juce::LagrangeInterpolator resamplerL, resamplerR;
   };
+
+  // Set to true on every DOWNLOAD_INTERVAL_BEGIN; audio thread reads and clears it
+  // to align its swap phase to the server's interval boundary.
+  std::atomic<bool> intervalBeginSignal{false};
 
 private:
   juce::ListenerList<NinjamClientListener> listeners;

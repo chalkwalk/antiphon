@@ -369,6 +369,13 @@ bool NinjamClient::handleMessage(juce::uint8 type,
 
       juce::ScopedLock sl(downloadMutex);
       activeDownloads[guid] = std::move(channel);
+
+      // Signal the audio thread that a new server interval has started.
+      // compare_exchange prevents re-signalling if the audio thread hasn't
+      // processed the previous signal yet (avoids double-swap for multi-channel
+      // sessions where several DOWNLOAD_INTERVAL_BEGIN messages arrive per boundary).
+      bool expected = false;
+      intervalBeginSignal.compare_exchange_strong(expected, true);
     }
   }
   // SERVER_DOWNLOAD_INTERVAL_WRITE
@@ -391,49 +398,69 @@ bool NinjamClient::handleMessage(juce::uint8 type,
             memcpy(decBuf, oggData, static_cast<size_t>(oggDataSize));
             channel.decoder->DecodeWrote(oggDataSize);
 
-            // Decode into back buffer
+            // Decode into back buffer, resampling if the OGG's native sample
+            // rate differs from our local rate (e.g. remote at 44100, local at 48000).
             while (channel.decoder->Available() > 0) {
               int availFrames = channel.decoder->Available() /
                                 channel.decoder->GetNumChannels();
               int out_nch = channel.decoder->GetNumChannels();
-              if (availFrames > 0 && out_nch > 0) {
-                float *decodedBlock = channel.decoder->Get();
-                int writePos = channel.intervalBuffer.backWritePosition;
-                int remainingBackBuffer =
-                    channel.intervalBuffer.backBuffer.getNumSamples() -
-                    writePos;
+              if (availFrames <= 0 || out_nch <= 0)
+                break;
 
-                int toCopy = std::min(availFrames, remainingBackBuffer);
-                if (toCopy > 0) {
+              float *decodedBlock = channel.decoder->Get();
+              int writePos = channel.intervalBuffer.backWritePosition;
+              int remainBack = channel.intervalBuffer.backBuffer.getNumSamples() - writePos;
+
+              int decoderRate = channel.decoder->GetSampleRate();
+              bool needsResample = (decoderRate > 0 && decoderRate != (int)sampleRate);
+              double speedRatio = needsResample ? (double)decoderRate / sampleRate : 1.0;
+
+              // Limit source frames so the resampled output fits in the remaining space.
+              int maxSrc = needsResample ? (int)((double)remainBack * speedRatio) : remainBack;
+              int toCopy = std::min(availFrames, maxSrc);
+
+              if (toCopy > 0) {
+                if (!needsResample) {
+                  // Direct deinterleave + copy
                   for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
                     float *writePtr =
-                        channel.intervalBuffer.backBuffer.getWritePointer(
-                            ch, writePos);
-                    for (int s = 0; s < toCopy; ++s) {
+                        channel.intervalBuffer.backBuffer.getWritePointer(ch, writePos);
+                    for (int s = 0; s < toCopy; ++s)
                       writePtr[s] = decodedBlock[s * out_nch + ch];
-                    }
                   }
-                  // Duplicate mono to stereo if needed
                   if (out_nch == 1 &&
                       channel.intervalBuffer.backBuffer.getNumChannels() == 2) {
-                    float *writePtrL =
-                        channel.intervalBuffer.backBuffer.getWritePointer(
-                            0, writePos);
-                    float *writePtrR =
-                        channel.intervalBuffer.backBuffer.getWritePointer(
-                            1, writePos);
-                    for (int s = 0; s < toCopy; ++s) {
-                      writePtrR[s] = writePtrL[s];
-                    }
+                    memcpy(channel.intervalBuffer.backBuffer.getWritePointer(1, writePos),
+                           channel.intervalBuffer.backBuffer.getReadPointer(0, writePos),
+                           (size_t)toCopy * sizeof(float));
                   }
                   channel.intervalBuffer.backWritePosition += toCopy;
-                  channel.decoder->Skip(toCopy * out_nch);
                 } else {
-                  // Back buffer full -- drain decoder so cleanup can proceed.
-                  channel.decoder->Skip(channel.decoder->Available());
-                  break;
+                  // Resample each channel from decoderRate to sampleRate
+                  int numOut = std::min((int)((double)toCopy / speedRatio), remainBack);
+                  if (numOut > 0) {
+                    juce::HeapBlock<float> srcBuf(toCopy), dstBuf(numOut);
+                    for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
+                      for (int s = 0; s < toCopy; ++s)
+                        srcBuf[s] = decodedBlock[s * out_nch + ch];
+                      auto &interp = (ch == 0) ? channel.resamplerL : channel.resamplerR;
+                      interp.process(speedRatio, srcBuf.getData(), dstBuf.getData(), numOut);
+                      memcpy(channel.intervalBuffer.backBuffer.getWritePointer(ch, writePos),
+                             dstBuf.getData(), (size_t)numOut * sizeof(float));
+                    }
+                    if (out_nch == 1 &&
+                        channel.intervalBuffer.backBuffer.getNumChannels() == 2) {
+                      memcpy(channel.intervalBuffer.backBuffer.getWritePointer(1, writePos),
+                             channel.intervalBuffer.backBuffer.getReadPointer(0, writePos),
+                             (size_t)numOut * sizeof(float));
+                    }
+                    channel.intervalBuffer.backWritePosition += numOut;
+                  }
                 }
+                channel.decoder->Skip(toCopy * out_nch);
               } else {
+                // Back buffer full -- drain decoder so cleanup can proceed.
+                channel.decoder->Skip(channel.decoder->Available());
                 break;
               }
             }

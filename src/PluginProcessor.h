@@ -52,10 +52,10 @@ public:
   double hostPpqPosition = 0.0;
   bool hostIsPlaying = false;
 
-  // Internal Metronome State
-  double internalBpm = 120.0;
-  int internalBpi = 16;
-  double internalPhaseBeats = 0.0; // Position in the interval (0 to BPI)
+  // Internal Metronome State (atomic: written on message thread, read on audio+UI threads)
+  std::atomic<int> internalBpm{120};
+  std::atomic<int> internalBpi{16};
+  double internalPhaseBeats = 0.0; // Position in the interval (0 to BPI) -- audio thread only
   // Local Transmit Mixer State
   std::atomic<float> localTxVolume{1.0f};
   std::atomic<float> localTxPan{0.0f};
@@ -80,5 +80,6 @@ public:
 
 private:
   int lastTimestampedBeat = -1;
+  int intervalSyncCooldown = 0; // samples remaining before next server-signal swap is accepted
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessor)
 };
