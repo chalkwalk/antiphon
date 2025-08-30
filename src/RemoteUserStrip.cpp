@@ -51,10 +51,23 @@ RemoteUserStrip::~RemoteUserStrip() {}
 void RemoteUserStrip::paint(juce::Graphics &g) {
   g.setColour(juce::Colour(0xff2a2a3e));
   g.fillRoundedRectangle(getLocalBounds().toFloat(), 4.0f);
+
+  // VU bar: 8px wide vertical bar on the left
+  auto vu = getLocalBounds().reduced(2, 4).removeFromLeft(8);
+  g.setColour(juce::Colour(0xff111122));
+  g.fillRect(vu);
+  if (decayedPeak > 0.0f) {
+    float frac = juce::jlimit(0.0f, 1.0f, decayedPeak);
+    auto fill = vu.removeFromBottom((int)(vu.getHeight() * frac));
+    g.setColour(frac > 0.7f ? juce::Colour(0xffe08000) : juce::Colour(0xff00c040));
+    g.fillRect(fill);
+  }
 }
 
 void RemoteUserStrip::resized() {
   auto area = getLocalBounds().reduced(4);
+
+  area.removeFromLeft(12); // reserved for VU bar drawn in paint()
 
   usernameLabel.setBounds(area.removeFromLeft(120));
   channelLabel.setBounds(area.removeFromLeft(60));
@@ -74,9 +87,11 @@ void RemoteUserStrip::updateChannels(
     const std::map<int, NinjamClient::RemoteUserChannel> &channels) {
   if (channels.empty()) {
     channelLabel.setText("No channels", juce::dontSendNotification);
+    decayedPeak *= 0.92f;
     return;
   }
   auto &firstChan = channels.begin()->second;
   currentChannelIndex = firstChan.channelIndex;
   channelLabel.setText(firstChan.channelName, juce::dontSendNotification);
+  decayedPeak = std::max(decayedPeak * 0.92f, firstChan.peakLevel);
 }

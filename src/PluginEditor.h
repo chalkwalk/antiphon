@@ -42,6 +42,10 @@ private:
   juce::Slider localVolumeSlider;
   juce::Slider localPanSlider;
   juce::ToggleButton localMuteButton;
+  float localDecayedPeakL = 0.0f;
+  float localDecayedPeakR = 0.0f;
+  juce::Rectangle<int> localVuBoundsL;
+  juce::Rectangle<int> localVuBoundsR;
 
   // Chat UI Controls
   juce::TextEditor chatDisplay;

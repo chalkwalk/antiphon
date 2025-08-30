@@ -24,6 +24,8 @@ private:
   // sub-mixers per channel.
   int currentChannelIndex = 0;
 
+  float decayedPeak = 0.0f;
+
   juce::Label usernameLabel;
   juce::Label channelLabel;
 

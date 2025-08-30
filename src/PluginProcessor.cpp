@@ -114,13 +114,39 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
+  // 2b. Local TX peak (raw input before remote audio or metronome are added)
+  {
+    int ns = buffer.getNumSamples();
+    float pL = 0.0f, pR = 0.0f;
+    if (totalNumInputChannels > 0 && buffer.getNumChannels() > 0) {
+      const float *ch0 = buffer.getReadPointer(0);
+      for (int s = 0; s < ns; ++s) pL = std::max(pL, std::abs(ch0[s]));
+    }
+    if (totalNumInputChannels > 1 && buffer.getNumChannels() > 1) {
+      const float *ch1 = buffer.getReadPointer(1);
+      for (int s = 0; s < ns; ++s) pR = std::max(pR, std::abs(ch1[s]));
+    } else {
+      pR = pL;
+    }
+    float vol = localTxVolume.load();
+    float pan = localTxPan.load();
+    bool muted = localTxMute.load();
+    float lG = muted ? 0.0f : vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
+    float rG = muted ? 0.0f : vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+    localTxPeakL.store(pL * lG);
+    localTxPeakR.store(pR * rG);
+  }
+
   // 3. Server interval sync -- align phase and swap buffers when a
   //    DOWNLOAD_INTERVAL_BEGIN arrives, so our swap matches the server's
   //    actual interval boundary rather than our free-running internal phase.
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
-    if (intervalSyncCooldown > 0)
+    if (intervalSyncCooldown > 0) {
       intervalSyncCooldown = std::max(0, intervalSyncCooldown - buffer.getNumSamples());
+      if (intervalSyncCooldown > 0)
+        ninjamClient.intervalBeginSignal.store(false); // discard stale signals during cooldown
+    }
 
     bool swappedBySignal = false;
     if (ninjamClient.isConnected() && intervalSyncCooldown == 0 &&
@@ -190,6 +216,14 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
             captureFifo.reset();
           }
           ninjamClient.swapIntervalBuffers();
+          // Mirror the signal-triggered path: drain any pending server signal
+          // and set a cooldown so a delayed DOWNLOAD_INTERVAL_BEGIN arriving in
+          // the next block doesn't re-swap and clobber the just-populated front buffer.
+          ninjamClient.intervalBeginSignal.store(false);
+          intervalSyncCooldown = (bpm > 0 && bpi > 0)
+              ? (int)(sampleRate * 60.0 / bpm * bpi / 2)
+              : 48000;
+          swappedBySignal = true;
         }
         intervalFlashIntensity.store(1.0f);
       }

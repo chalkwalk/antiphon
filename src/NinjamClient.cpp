@@ -848,18 +848,32 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
         channel.intervalBuffer.frontWritePosition - frontReads;
     int toCopy = std::min(samplesNeeded, std::max(0, availableInFront));
 
-    if (toCopy > 0 && !isMuted) {
+    if (toCopy > 0) {
       int srcChannels = channel.intervalBuffer.frontBuffer.getNumChannels();
       int dstChannels = buffer.getNumChannels();
 
+      // Compute peak from the front buffer for VU display (always, even if muted)
+      float peak = 0.0f;
       for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
-        float gain = (ch == 0) ? lGain : rGain;
-        buffer.addFrom(ch, writePos, channel.intervalBuffer.frontBuffer, ch,
-                       frontReads, toCopy, gain);
+        float chGain = (ch == 0) ? lGain : rGain;
+        const float *src = channel.intervalBuffer.frontBuffer.getReadPointer(ch, frontReads);
+        for (int s = 0; s < toCopy; ++s)
+          peak = std::max(peak, std::abs(src[s]) * chGain);
       }
-    }
+      if (remoteUsers.count(channel.username) > 0) {
+        auto &u = remoteUsers.at(channel.username);
+        if (u.channels.count(channel.channelIndex) > 0)
+          u.channels.at(channel.channelIndex).peakLevel = peak;
+      }
 
-    if (toCopy > 0) {
+      if (!isMuted) {
+        for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
+          float gain = (ch == 0) ? lGain : rGain;
+          buffer.addFrom(ch, writePos, channel.intervalBuffer.frontBuffer, ch,
+                         frontReads, toCopy, gain);
+        }
+      }
+
       channel.intervalBuffer.frontReadPosition += toCopy;
     }
 

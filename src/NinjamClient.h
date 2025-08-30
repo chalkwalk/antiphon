@@ -72,6 +72,7 @@ public:
     float pan = 0.0f;
     bool isMuted = false;
     bool isSoloed = false;
+    float peakLevel = 0.0f; // written audio thread (downloadMutex), read UI thread
   };
 
   struct RemoteUser {

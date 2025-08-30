@@ -292,7 +292,23 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   auto rightPanel = area;
   g.drawFittedText("Local Transmit:", rightPanel.removeFromTop(20),
                    juce::Justification::left, 1);
-  rightPanel.removeFromTop(50); // local mixer sliders
+  rightPanel.removeFromTop(40); // local mixer sliders
+
+  // Local TX VU bars (L and R)
+  auto drawVuBar = [&](juce::Rectangle<int> bounds, float peak) {
+    g.setColour(juce::Colour(0xff111122));
+    g.fillRect(bounds);
+    float frac = juce::jlimit(0.0f, 1.0f, peak);
+    if (frac > 0.0f) {
+      auto fill = bounds.removeFromBottom((int)(bounds.getHeight() * frac));
+      g.setColour(frac > 0.7f ? juce::Colour(0xffe08000) : juce::Colour(0xff00c040));
+      g.fillRect(fill);
+    }
+  };
+  drawVuBar(localVuBoundsL, localDecayedPeakL);
+  drawVuBar(localVuBoundsR, localDecayedPeakR);
+
+  rightPanel.removeFromTop(10);
   g.drawFittedText("Remote Users:", rightPanel.removeFromTop(20),
                    juce::Justification::left, 1);
 }
@@ -328,6 +344,10 @@ void NinjamAudioProcessorEditor::resized() {
   localPanSlider.setBounds(localMixerRow.removeFromLeft(100).reduced(0, 10));
   localMixerRow.removeFromLeft(10);
   localMuteButton.setBounds(localMixerRow.removeFromLeft(90).reduced(0, 10));
+  localMixerRow.removeFromLeft(8);
+  localVuBoundsL = localMixerRow.removeFromLeft(8).reduced(0, 6);
+  localMixerRow.removeFromLeft(2);
+  localVuBoundsR = localMixerRow.removeFromLeft(8).reduced(0, 6);
 
   rightPanel.removeFromTop(30); // "Remote Users" label plus gap
 
@@ -385,6 +405,10 @@ void NinjamAudioProcessorEditor::timerCallback() {
   };
   decay(audioProcessor.intervalFlashIntensity);
   decay(audioProcessor.beatFlashIntensity);
+
+  // Decay local TX peaks (read atomics, apply decay, store back for paint())
+  localDecayedPeakL = std::max(localDecayedPeakL * 0.92f, audioProcessor.localTxPeakL.load());
+  localDecayedPeakR = std::max(localDecayedPeakR * 0.92f, audioProcessor.localTxPeakR.load());
 
   repaint();
 

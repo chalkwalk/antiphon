@@ -73,6 +73,10 @@ public:
   std::atomic<bool> saveTxEnabled{false};
   std::atomic<bool> saveRxEnabled{false};
 
+  // Local TX peak level (written audio thread, decayed + read UI thread)
+  std::atomic<float> localTxPeakL{0.0f};
+  std::atomic<float> localTxPeakR{0.0f};
+
   // Flash state (written audio thread, decayed + read UI thread)
   std::atomic<float> intervalFlashIntensity{0.0f};
   std::atomic<float> beatFlashIntensity{0.0f};
