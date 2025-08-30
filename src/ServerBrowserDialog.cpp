@@ -96,24 +96,32 @@ juce::Array<ServerBrowserDialog::ServerEntry>
 ServerBrowserDialog::parseServersJSON(const juce::String &json) {
   juce::Array<ServerEntry> result;
   juce::var parsed = juce::JSON::parse(json);
-  if (!parsed.isArray())
+
+  // API returns {"servers": [...]}; all numeric fields are quoted strings.
+  juce::var arr = parsed["servers"];
+  if (!arr.isArray())
     return result;
 
-  for (int i = 0; i < parsed.size(); ++i) {
-    const auto &obj = parsed[i];
+  for (int i = 0; i < arr.size(); ++i) {
+    const auto &obj = arr[i];
     ServerEntry e;
-    e.host = obj["hostname"].toString();
-    e.port = (int)(juce::int64)obj["port"];
-    e.bpm  = (int)(juce::int64)obj["bpm"];
-    e.bpi  = (int)(juce::int64)obj["bpi"];
+    e.host = obj["host"].toString();
+    e.port = obj["port"].toString().getIntValue();
+    e.bpm  = obj["bpm"].toString().getIntValue();
+    e.bpi  = obj["bpi"].toString().getIntValue();
 
     const auto &users = obj["users"];
-    if (users.isArray()) {
+    if (users.isArray() && users.size() > 0) {
       juce::StringArray names;
       for (int j = 0; j < users.size(); ++j)
-        names.add(users[j].toString());
+        names.add(users[j]["name"].toString());
       e.players = names.joinIntoString(", ");
+    } else {
+      int count = obj["user_count"].toString().getIntValue();
+      if (count > 0)
+        e.players = juce::String(count) + (count == 1 ? " player" : " players");
     }
+
     if (e.host.isNotEmpty())
       result.add(e);
   }
