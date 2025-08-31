@@ -15,6 +15,7 @@ NinjamAudioProcessor::NinjamAudioProcessor()
 #endif
 {
   ninjamClient.addListener(this);
+  localChannels.push_back(std::make_shared<LocalChannel>());
 #if !JucePlugin_Build_Standalone
   metronomeEnabled = false;
 #endif
@@ -29,223 +30,209 @@ const juce::String NinjamAudioProcessor::getName() const {
 }
 
 bool NinjamAudioProcessor::acceptsMidi() const { return false; }
-
 bool NinjamAudioProcessor::producesMidi() const { return false; }
-
 bool NinjamAudioProcessor::isMidiEffect() const { return false; }
-
 double NinjamAudioProcessor::getTailLengthSeconds() const { return 0.0; }
-
 int NinjamAudioProcessor::getNumPrograms() { return 1; }
-
 int NinjamAudioProcessor::getCurrentProgram() { return 0; }
+void NinjamAudioProcessor::setCurrentProgram(int) {}
+const juce::String NinjamAudioProcessor::getProgramName(int) { return {}; }
+void NinjamAudioProcessor::changeProgramName(int, const juce::String &) {}
 
-void NinjamAudioProcessor::setCurrentProgram(int index) {}
-
-const juce::String NinjamAudioProcessor::getProgramName(int index) {
-  return {};
+int NinjamAudioProcessor::addLocalChannel() {
+  if (!addBus(true)) return -1;
+  updateHostDisplay();
+  return getBusCount(true) - 1;
 }
 
-void NinjamAudioProcessor::changeProgramName(int index,
-                                             const juce::String &newName) {}
+void NinjamAudioProcessor::removeLastLocalChannel() {
+  if (getBusCount(true) <= 1) return;
+  removeBus(true);
+  updateHostDisplay();
+}
 
-void NinjamAudioProcessor::prepareToPlay(double sampleRate,
-                                         int samplesPerBlock) {
-  int ringSize = (int)sampleRate * 30; // 30 s covers any normal BPM/BPI combo
-  captureRingBuffer.setSize(2, ringSize);
-  captureRingBuffer.clear();
-  captureFifo.setTotalSize(ringSize);
+void NinjamAudioProcessor::prepareToPlay(double sampleRate, int) {
+  int numBuses = getBusCount(true);
+  juce::ScopedLock sl(localChannelMutex);
+  while ((int)localChannels.size() < numBuses)
+    localChannels.push_back(std::make_shared<LocalChannel>());
+  while ((int)localChannels.size() > numBuses) {
+    localChannels.back()->isValid.store(false);
+    localChannels.pop_back();
+  }
+  int ringSize = (int)sampleRate * 30;
+  for (auto &lc : localChannels) {
+    lc->ring.setSize(2, ringSize);
+    lc->ring.clear();
+    lc->fifo.setTotalSize(ringSize);
+  }
   ninjamClient.setSampleRate(sampleRate);
 }
 
 void NinjamAudioProcessor::releaseResources() {
-  captureFifo.reset();
-  captureRingBuffer.setSize(0, 0);
+  juce::ScopedLock sl(localChannelMutex);
+  for (auto &lc : localChannels) {
+    lc->fifo.reset();
+    lc->ring.setSize(0, 0);
+  }
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool NinjamAudioProcessor::isBusesLayoutSupported(
     const BusesLayout &layouts) const {
-  // Support up to 8 channels input / output, dynamic allocation.
-  const int numInputChannels = layouts.getMainInputChannels();
-  const int numOutputChannels = layouts.getMainOutputChannels();
-
-  // We allow mono, stereo, up to 8 surround layouts, basically any layout with
-  // <= 8 channels.
-  if (numInputChannels > 8 || numOutputChannels > 8)
+  if (layouts.outputBuses.isEmpty() ||
+      layouts.outputBuses[0] != juce::AudioChannelSet::stereo())
     return false;
-
-  // For now we just require that if they give us inputs, they give us outputs.
-  if (numInputChannels > 0 && numOutputChannels == 0)
-    return false;
-
+  for (auto &ch : layouts.inputBuses)
+    if (ch != juce::AudioChannelSet::stereo() &&
+        ch != juce::AudioChannelSet::mono())
+      return false;
   return true;
 }
 #endif
 
 void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
-                                        juce::MidiBuffer &midiMessages) {
+                                        juce::MidiBuffer &) {
   juce::ScopedNoDenormals noDenormals;
-  auto totalNumInputChannels = getTotalNumInputChannels();
   auto totalNumOutputChannels = getTotalNumOutputChannels();
 
   // 1. Host Sync
-  if (auto *currentPlayHead = getPlayHead()) {
-    juce::Optional<juce::AudioPlayHead::PositionInfo> info =
-        currentPlayHead->getPosition();
+  if (auto *ph = getPlayHead()) {
+    auto info = ph->getPosition();
     if (info.hasValue()) {
       hostIsPlaying = info->getIsPlaying();
-      if (info->getBpm().hasValue())
-        hostBpm = *info->getBpm();
-      if (info->getPpqPosition().hasValue())
-        hostPpqPosition = *info->getPpqPosition();
+      if (info->getBpm().hasValue()) hostBpm = *info->getBpm();
+      if (info->getPpqPosition().hasValue()) hostPpqPosition = *info->getPpqPosition();
     }
   }
 
-  // 2. Audio Pass-through
-  for (int i = 0; i < totalNumOutputChannels; ++i) {
-    if (i < totalNumInputChannels) {
-      // Only need to copy if the buffers are distinct (which they might be if
-      // we dynamically create output buses without matching inputs) But usually
-      // in JUCE processBlock happens in place if input == output. We'll leave
-      // it in place, but ensure extra outputs are cleared.
-    } else {
-      buffer.clear(i, 0, buffer.getNumSamples());
-    }
-  }
-
-  // 2b. Local TX peak (raw input before remote audio or metronome are added)
+  // 2. Clear any output channels that don't have corresponding input
   {
-    int ns = buffer.getNumSamples();
-    float pL = 0.0f, pR = 0.0f;
-    if (totalNumInputChannels > 0 && buffer.getNumChannels() > 0) {
-      const float *ch0 = buffer.getReadPointer(0);
-      for (int s = 0; s < ns; ++s) pL = std::max(pL, std::abs(ch0[s]));
-    }
-    if (totalNumInputChannels > 1 && buffer.getNumChannels() > 1) {
-      const float *ch1 = buffer.getReadPointer(1);
-      for (int s = 0; s < ns; ++s) pR = std::max(pR, std::abs(ch1[s]));
-    } else {
-      pR = pL;
-    }
-    float vol = localTxVolume.load();
-    float pan = localTxPan.load();
-    bool muted = localTxMute.load();
-    float lG = muted ? 0.0f : vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
-    float rG = muted ? 0.0f : vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
-    localTxPeakL.store(pL * lG);
-    localTxPeakR.store(pR * rG);
+    int totalIn = getTotalNumInputChannels();
+    for (int i = totalIn; i < totalNumOutputChannels; ++i)
+      buffer.clear(i, 0, buffer.getNumSamples());
   }
 
-  // 3. Server interval sync -- align phase and swap buffers when a
-  //    DOWNLOAD_INTERVAL_BEGIN arrives, so our swap matches the server's
-  //    actual interval boundary rather than our free-running internal phase.
+  // 2b. Per-channel peaks (raw input, before remote audio is mixed in)
+  {
+    juce::ScopedLock sl(localChannelMutex);
+    int ns = buffer.getNumSamples();
+    for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
+      auto &lc = *localChannels[ci];
+      auto *bus = getBus(true, ci);
+      if (!bus) continue;
+      int offset = bus->getChannelIndexInProcessBlockBuffer(0);
+      int busCh = bus->getNumberOfChannels();
+
+      float pL = 0.0f, pR = 0.0f;
+      if (offset < buffer.getNumChannels()) {
+        const float *p = buffer.getReadPointer(offset);
+        for (int s = 0; s < ns; ++s) pL = std::max(pL, std::abs(p[s]));
+      }
+      if (offset + 1 < buffer.getNumChannels() && busCh > 1) {
+        const float *p = buffer.getReadPointer(offset + 1);
+        for (int s = 0; s < ns; ++s) pR = std::max(pR, std::abs(p[s]));
+      } else {
+        pR = pL;
+      }
+      float vol = lc.volume.load(), pan = lc.pan.load();
+      bool muted = lc.muted.load();
+      float lG = muted ? 0.0f : vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
+      float rG = muted ? 0.0f : vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+      lc.peakL.store(pL * lG);
+      lc.peakR.store(pR * rG);
+    }
+  }
+
+  // Helper: fire per-channel callAsync at interval boundary
+  auto fireCaptureLambdas = [this]() {
+    juce::ScopedLock sl(localChannelMutex);
+    for (auto &lcPtr : localChannels) {
+      if (!lcPtr->xmitEnabled.load()) { lcPtr->fifo.reset(); continue; }
+      int length = lcPtr->fifo.getNumReady();
+      if (ninjamClient.isConnected() && length > 0) {
+        juce::String name = lcPtr->name;
+        bool mono = lcPtr->isMono.load();
+        auto capturedPtr = lcPtr;
+        juce::MessageManager::callAsync([this, capturedPtr, length, name, mono]() {
+          if (!capturedPtr->isValid.load()) return;
+          juce::AudioBuffer<float> buf(2, length);
+          int s1, n1, s2, n2;
+          capturedPtr->fifo.prepareToRead(length, s1, n1, s2, n2);
+          for (int ch = 0; ch < 2; ++ch) {
+            if (n1 > 0) buf.copyFrom(ch, 0,  capturedPtr->ring, ch, s1, n1);
+            if (n2 > 0) buf.copyFrom(ch, n1, capturedPtr->ring, ch, s2, n2);
+          }
+          capturedPtr->fifo.finishedRead(n1 + n2);
+          ninjamClient.processCapturedAudio(buf, length, name, mono);
+        });
+      } else {
+        lcPtr->fifo.reset();
+      }
+    }
+  };
+
+  // 3. Server interval sync
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
     if (intervalSyncCooldown > 0) {
       intervalSyncCooldown = std::max(0, intervalSyncCooldown - buffer.getNumSamples());
       if (intervalSyncCooldown > 0)
-        ninjamClient.intervalBeginSignal.store(false); // discard stale signals during cooldown
+        ninjamClient.intervalBeginSignal.store(false);
     }
 
     bool swappedBySignal = false;
     if (ninjamClient.isConnected() && intervalSyncCooldown == 0 &&
         ninjamClient.intervalBeginSignal.exchange(false)) {
-      int length = captureFifo.getNumReady();
-      if (length > 0) {
-        juce::MessageManager::callAsync([this, length]() {
-          juce::AudioBuffer<float> buf(captureRingBuffer.getNumChannels(), length);
-          int s1, n1, s2, n2;
-          captureFifo.prepareToRead(length, s1, n1, s2, n2);
-          for (int ch = 0; ch < buf.getNumChannels(); ++ch) {
-            if (n1 > 0) buf.copyFrom(ch, 0,  captureRingBuffer, ch, s1, n1);
-            if (n2 > 0) buf.copyFrom(ch, n1, captureRingBuffer, ch, s2, n2);
-          }
-          captureFifo.finishedRead(n1 + n2);
-          ninjamClient.processCapturedAudio(buf, length);
-        });
-      } else {
-        captureFifo.reset();
-      }
+      fireCaptureLambdas();
       ninjamClient.swapIntervalBuffers();
       internalPhaseBeats = 0.0;
       lastTimestampedBeat = -1;
       intervalFlashIntensity.store(1.0f);
-      // Cooldown: ignore further signals for half an interval to prevent
-      // double-swaps from multiple channels' DOWNLOAD_INTERVAL_BEGIN messages.
       int bpm = internalBpm.load(), bpi = internalBpi.load();
       intervalSyncCooldown = (bpm > 0 && bpi > 0)
-          ? (int)(sampleRate * 60.0 / bpm * bpi / 2)
-          : 48000;
+          ? (int)(sampleRate * 60.0 / bpm * bpi / 2) : 48000;
       swappedBySignal = true;
     }
 
-  // 4. Metronome (simple click) + fallback interval swap
+    // 4. Metronome click + fallback interval boundary detection
     int bpm = internalBpm.load();
     int bpi = internalBpi.load();
     double beatsPerSample = (bpm / 60.0) / sampleRate;
+    bool needsFallbackSwap = false;
+
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
-      // Advance phase
       internalPhaseBeats += beatsPerSample;
       if (internalPhaseBeats >= bpi)
         internalPhaseBeats -= bpi;
 
-      // Generate click if we just crossed a beat boundary (roughly)
-      double fractionalBeat =
-          internalPhaseBeats - std::floor(internalPhaseBeats);
+      double fractionalBeat = internalPhaseBeats - std::floor(internalPhaseBeats);
 
-      // If we just rolled over the interval
       if (internalPhaseBeats < beatsPerSample) {
         if (!swappedBySignal) {
-          // Fallback swap: server signal didn't fire this buffer (e.g. disconnected
-          // or signal arrived in the previous buffer). Keep audio moving.
-          int length = captureFifo.getNumReady();
-          if (ninjamClient.isConnected() && length > 0) {
-            juce::MessageManager::callAsync([this, length]() {
-              juce::AudioBuffer<float> buf(captureRingBuffer.getNumChannels(), length);
-              int s1, n1, s2, n2;
-              captureFifo.prepareToRead(length, s1, n1, s2, n2);
-              for (int ch = 0; ch < buf.getNumChannels(); ++ch) {
-                if (n1 > 0) buf.copyFrom(ch, 0,  captureRingBuffer, ch, s1, n1);
-                if (n2 > 0) buf.copyFrom(ch, n1, captureRingBuffer, ch, s2, n2);
-              }
-              captureFifo.finishedRead(n1 + n2);
-              ninjamClient.processCapturedAudio(buf, length);
-            });
-          } else {
-            captureFifo.reset();
-          }
-          ninjamClient.swapIntervalBuffers();
-          // Mirror the signal-triggered path: drain any pending server signal
-          // and set a cooldown so a delayed DOWNLOAD_INTERVAL_BEGIN arriving in
-          // the next block doesn't re-swap and clobber the just-populated front buffer.
-          ninjamClient.intervalBeginSignal.store(false);
-          intervalSyncCooldown = (bpm > 0 && bpi > 0)
-              ? (int)(sampleRate * 60.0 / bpm * bpi / 2)
-              : 48000;
+          needsFallbackSwap = true;
           swappedBySignal = true;
         }
         intervalFlashIntensity.store(1.0f);
       }
 
-      if (fractionalBeat < 0.05) // First 5% of a beat
-      {
+      if (fractionalBeat < 0.05) {
         int currentBeat = (int)std::floor(internalPhaseBeats);
         if (currentBeat != lastTimestampedBeat) {
           lastTimestampedBeat = currentBeat;
           lastBeatCrossedIndex.store(currentBeat);
-          if (currentBeat != 0) // beat 0 uses intervalFlashIntensity instead
+          if (currentBeat != 0)
             beatFlashIntensity.store(1.0f);
         }
 
         if (metronomeEnabled) {
           float freq, amp;
           if (currentBeat == 0) {
-            freq = 880.0f; amp = 0.10f; // interval boundary
+            freq = 880.0f; amp = 0.10f;
           } else if (currentBeat % 4 == 0) {
-            freq = 660.0f; amp = 0.06f; // bar boundary
+            freq = 660.0f; amp = 0.06f;
           } else {
-            freq = 440.0f; amp = 0.03f; // regular beat
+            freq = 440.0f; amp = 0.03f;
           }
           float posInBeat = (float)fractionalBeat * 20.0f;
           float envelope = 1.0f - posInBeat;
@@ -253,52 +240,66 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
               std::sin(posInBeat * juce::MathConstants<float>::twoPi * freq /
                        (float)bpm) *
               envelope * amp;
-
-          for (int channel = 0; channel < std::min(2, totalNumOutputChannels);
-               channel++)
-            buffer.addSample(channel, sample, clickSample);
+          for (int ch = 0; ch < std::min(2, totalNumOutputChannels); ++ch)
+            buffer.addSample(ch, sample, clickSample);
         }
       }
     }
+
+    // Fallback swap fires after the per-sample loop (never inside it)
+    if (needsFallbackSwap) {
+      fireCaptureLambdas();
+      ninjamClient.swapIntervalBuffers();
+      ninjamClient.intervalBeginSignal.store(false);
+      int bpm2 = internalBpm.load(), bpi2 = internalBpi.load();
+      intervalSyncCooldown = (bpm2 > 0 && bpi2 > 0)
+          ? (int)(sampleRate * 60.0 / bpm2 * bpi2 / 2) : 48000;
+    }
   }
 
-  if (ninjamClient.isConnected()) {
+  if (ninjamClient.isConnected())
     ninjamClient.getDecodedAudio(buffer);
-  }
 
   ninjamClient.setSaveTx(saveTxEnabled);
   ninjamClient.setSaveRx(saveRxEnabled);
 
-  // 4. Capture audio into ring buffer
-  int numSamples = buffer.getNumSamples();
-  if (captureFifo.getFreeSpace() >= numSamples) {
-    float lGain =
-        localTxMute
-            ? 0.0f
-            : localTxVolume * (localTxPan <= 0.0f ? 1.0f : 1.0f - localTxPan);
-    float rGain =
-        localTxMute
-            ? 0.0f
-            : localTxVolume * (localTxPan >= 0.0f ? 1.0f : 1.0f + localTxPan);
+  // 5. Capture raw input into per-channel ring buffers
+  {
+    juce::ScopedLock sl(localChannelMutex);
+    int ns = buffer.getNumSamples();
+    for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
+      auto &lc = *localChannels[ci];
+      auto *bus = getBus(true, ci);
+      if (!bus) continue;
+      int offset = bus->getChannelIndexInProcessBlockBuffer(0);
+      int busCh = bus->getNumberOfChannels();
 
-    int s1, n1, s2, n2;
-    captureFifo.prepareToWrite(numSamples, s1, n1, s2, n2);
+      float vol = lc.volume.load(), pan = lc.pan.load();
+      bool muted = lc.muted.load();
+      float lG = muted ? 0.0f : vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
+      float rG = muted ? 0.0f : vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+      bool mono = lc.isMono.load();
 
-    for (int ch = 0; ch < captureRingBuffer.getNumChannels(); ++ch) {
-      float gain = (ch == 0) ? lGain : rGain;
-      int srcCh = (ch == 1 && totalNumInputChannels == 1) ? 0 : ch;
-      if (srcCh < buffer.getNumChannels()) {
-        if (n1 > 0) {
-          captureRingBuffer.copyFrom(ch, s1, buffer, srcCh, 0, n1);
-          captureRingBuffer.applyGain(ch, s1, n1, gain);
+      if (lc.fifo.getFreeSpace() >= ns) {
+        int s1, n1, s2, n2;
+        lc.fifo.prepareToWrite(ns, s1, n1, s2, n2);
+        for (int ch = 0; ch < 2; ++ch) {
+          float gain = (ch == 0) ? lG : rG;
+          int srcOff = (mono || ch >= busCh) ? offset : offset + ch;
+          if (srcOff < buffer.getNumChannels()) {
+            if (n1 > 0) {
+              lc.ring.copyFrom(ch, s1, buffer, srcOff, 0, n1);
+              lc.ring.applyGain(ch, s1, n1, gain);
+            }
+            if (n2 > 0) {
+              lc.ring.copyFrom(ch, s2, buffer, srcOff, n1, n2);
+              lc.ring.applyGain(ch, s2, n2, gain);
+            }
+          }
         }
-        if (n2 > 0) {
-          captureRingBuffer.copyFrom(ch, s2, buffer, srcCh, n1, n2);
-          captureRingBuffer.applyGain(ch, s2, n2, gain);
-        }
+        lc.fifo.finishedWrite(n1 + n2);
       }
     }
-    captureFifo.finishedWrite(n1 + n2);
   }
 }
 
@@ -309,7 +310,6 @@ juce::AudioProcessorEditor *NinjamAudioProcessor::createEditor() {
 }
 
 // XOR-based obfuscation so passwords aren't plain text in DAW project state.
-// Not cryptographically secure -- just opaque on casual inspection.
 static const uint8_t kObfKey[] = {
     0x4e, 0x6a, 0x6d, 0x50, 0x77, 0x64, 0x21, 0x38,
     0x2a, 0x5e, 0x71, 0x33, 0x2f, 0x56, 0x9c, 0xb1
@@ -340,15 +340,25 @@ static juce::String deobfuscate(const juce::String &b64) {
 
 void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
     juce::XmlElement xml("NinjamState");
-    xml.setAttribute("localVolume",   (double)localTxVolume.load());
-    xml.setAttribute("localPan",      (double)localTxPan.load());
-    xml.setAttribute("localMute",     localTxMute.load());
     xml.setAttribute("metronome",     metronomeEnabled.load());
     xml.setAttribute("lastHost",      lastHost);
     xml.setAttribute("lastPort",      lastPort);
     xml.setAttribute("lastUsername",  lastUsername);
     xml.setAttribute("lastPassword",  obfuscate(lastPassword));
     xml.setAttribute("lastAnonymous", lastAnonymous);
+
+    juce::ScopedLock sl(localChannelMutex);
+    for (int i = 0; i < (int)localChannels.size(); ++i) {
+        auto &lc = *localChannels[i];
+        auto *ch = xml.createNewChildElement("LocalChannel");
+        ch->setAttribute("idx",    i);
+        ch->setAttribute("name",   lc.name);
+        ch->setAttribute("mono",   lc.isMono.load());
+        ch->setAttribute("volume", (double)lc.volume.load());
+        ch->setAttribute("pan",    (double)lc.pan.load());
+        ch->setAttribute("muted",  lc.muted.load());
+        ch->setAttribute("xmit",   lc.xmitEnabled.load());
+    }
     copyXmlToBinary(xml, destData);
 }
 
@@ -356,9 +366,7 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
                                                int sizeInBytes) {
     auto xml = getXmlFromBinary(data, sizeInBytes);
     if (!xml || !xml->hasTagName("NinjamState")) return;
-    localTxVolume.store((float)xml->getDoubleAttribute("localVolume",  1.0));
-    localTxPan.store   ((float)xml->getDoubleAttribute("localPan",     0.0));
-    localTxMute.store  (xml->getBoolAttribute("localMute",    false));
+
     metronomeEnabled.store(xml->getBoolAttribute("metronome",
 #if JucePlugin_Build_Standalone
         true
@@ -371,6 +379,21 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
     lastUsername  = xml->getStringAttribute("lastUsername",  "");
     lastPassword  = deobfuscate(xml->getStringAttribute("lastPassword", ""));
     lastAnonymous = xml->getBoolAttribute  ("lastAnonymous", true);
+
+    // Restore per-channel settings (fall back gracefully if no LocalChannel children)
+    juce::ScopedLock sl(localChannelMutex);
+    for (auto *ch : xml->getChildIterator()) {
+        if (!ch->hasTagName("LocalChannel")) continue;
+        int idx = ch->getIntAttribute("idx", 0);
+        if (idx < 0 || idx >= (int)localChannels.size()) continue;
+        auto &lc = *localChannels[idx];
+        lc.name = ch->getStringAttribute("name", "Local Instrument");
+        lc.isMono.store(ch->getBoolAttribute("mono", false));
+        lc.volume.store((float)ch->getDoubleAttribute("volume", 1.0));
+        lc.pan.store((float)ch->getDoubleAttribute("pan", 0.0));
+        lc.muted.store(ch->getBoolAttribute("muted", false));
+        lc.xmitEnabled.store(ch->getBoolAttribute("xmit", true));
+    }
 }
 
 void NinjamAudioProcessor::onConnected() { connectionStatus = "Connected"; }

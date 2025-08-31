@@ -600,7 +600,9 @@ void NinjamClient::sendChannelInfo() {
 }
 
 void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
-                                        int numSamples) {
+                                        int numSamples,
+                                        const juce::String &channelName,
+                                        bool mono) {
   if (!isConnected())
     return;
 
@@ -618,23 +620,15 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
   }
 
   // Send UPLOAD_INTERVAL_BEGIN (0x83)
-  // GUID (16), Channel Count (4), Channel Name (Null-terminated)
+  int numCh = mono ? 1 : buffer.getNumChannels();
   juce::MemoryBlock beginPacket;
   beginPacket.append(guid.getData(), 16);
-
-  juce::uint32 nch =
-      juce::ByteOrder::swapIfBigEndian((juce::uint32)buffer.getNumChannels());
+  juce::uint32 nch = juce::ByteOrder::swapIfBigEndian((juce::uint32)numCh);
   beginPacket.append(&nch, 4);
+  beginPacket.append(channelName.toRawUTF8(), channelName.getNumBytesAsUTF8() + 1);
+  writeFull(0x83, beginPacket.getData(), static_cast<int>(beginPacket.getSize()));
 
-  juce::String channelName = "Local Instrument";
-  beginPacket.append(channelName.toRawUTF8(),
-                     channelName.getNumBytesAsUTF8() + 1);
-  writeFull(0x83, beginPacket.getData(),
-            static_cast<int>(beginPacket.getSize()));
-
-  // VorbisEncoder args: srate, nch, bitrate, serno(random)
-  VorbisEncoder encoder(48000, buffer.getNumChannels(), 128,
-                        juce::Random::getSystemRandom().nextInt());
+  VorbisEncoder encoder(48000, numCh, 128, juce::Random::getSystemRandom().nextInt());
 
   // We should send smaller chunks, but for now just encode the whole thing in
   // chunks and construct the UPLOAD_INTERVAL_WRITE payload
@@ -650,19 +644,19 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
     // void Encode(float *in, int inlen, int advance=1, int spacing=1)
     // Actually, in `WDL_VorbisEncoder`, if spacing isn't what we want, it
     // might be tricky. Let's interleave the channels into a temporary buffer
-    std::vector<float> interleaved(
-        static_cast<std::size_t>(toProcess * buffer.getNumChannels()));
-
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
-      const float *readPtr = buffer.getReadPointer(ch, pos);
-      for (int i = 0; i < toProcess; ++i) {
-        interleaved[i * buffer.getNumChannels() + ch] = readPtr[i];
+    std::vector<float> interleaved(static_cast<std::size_t>(toProcess * numCh));
+    if (mono) {
+      const float *readPtr = buffer.getReadPointer(0, pos);
+      for (int i = 0; i < toProcess; ++i)
+        interleaved[i] = readPtr[i];
+    } else {
+      for (int ch = 0; ch < numCh; ++ch) {
+        const float *readPtr = buffer.getReadPointer(ch, pos);
+        for (int i = 0; i < toProcess; ++i)
+          interleaved[i * numCh + ch] = readPtr[i];
       }
     }
-
-    // WDL VorbisEncoder takes length in *samples* not pairs?
-    // "length in sample (PAIRS)" -> means `toProcess` frames.
-    encoder.Encode(interleaved.data(), toProcess, buffer.getNumChannels(), 1);
+    encoder.Encode(interleaved.data(), toProcess, numCh, 1);
 
     // If output is generated
     while (encoder.Available() > 0) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LocalChannelStrip.h"
 #include "NinjamClient.h"
 #include "NinjamLookAndFeel.h"
 #include "PluginProcessor.h"
@@ -38,14 +39,11 @@ private:
   juce::ToggleButton saveTxToggle;
   juce::ToggleButton saveRxToggle;
 
-  // Local Mixer Controls
-  juce::Slider localVolumeSlider;
-  juce::Slider localPanSlider;
-  juce::ToggleButton localMuteButton;
-  float localDecayedPeakL = 0.0f;
-  float localDecayedPeakR = 0.0f;
-  juce::Rectangle<int> localVuBoundsL;
-  juce::Rectangle<int> localVuBoundsR;
+  // Local Channel Strips
+  juce::OwnedArray<LocalChannelStrip> localChannelStrips;
+  juce::TextButton addChannelButton;
+  juce::Viewport localChannelsViewport;
+  juce::Component localChannelsContainer;
 
   // Chat UI Controls
   juce::TextEditor chatDisplay;

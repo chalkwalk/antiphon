@@ -8,7 +8,7 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   setLookAndFeel(&customLookAndFeel);
   setResizable(true, true);
   setResizeLimits(900, 600, 2400, 1600);
-  setSize(1000, 700);
+  setSize(1100, 700);
 
   browseButton.setButtonText("Connect...");
   browseButton.onClick = [this]() { openServerBrowser(); };
@@ -44,33 +44,15 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   };
   addAndMakeVisible(saveRxToggle);
 
-  localVolumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-  localVolumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-  localVolumeSlider.setRange(0.0, 2.0, 0.01);
-  localVolumeSlider.setValue(audioProcessor.localTxVolume,
-                             juce::dontSendNotification);
-  localVolumeSlider.onValueChange = [this]() {
-    audioProcessor.localTxVolume = (float)localVolumeSlider.getValue();
+  addChannelButton.setButtonText("+ Channel");
+  addChannelButton.onClick = [this]() {
+    audioProcessor.addLocalChannel();
+    // prepareToPlay will be called by the host; timerCallback will sync strips
   };
-  addAndMakeVisible(localVolumeSlider);
+  addAndMakeVisible(addChannelButton);
 
-  localPanSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-  localPanSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-  localPanSlider.setRange(-1.0, 1.0, 0.01);
-  localPanSlider.setValue(audioProcessor.localTxPan,
-                          juce::dontSendNotification);
-  localPanSlider.onValueChange = [this]() {
-    audioProcessor.localTxPan = (float)localPanSlider.getValue();
-  };
-  addAndMakeVisible(localPanSlider);
-
-  localMuteButton.setButtonText("Local Mute");
-  localMuteButton.setToggleState(audioProcessor.localTxMute,
-                                 juce::dontSendNotification);
-  localMuteButton.onClick = [this]() {
-    audioProcessor.localTxMute = localMuteButton.getToggleState();
-  };
-  addAndMakeVisible(localMuteButton);
+  localChannelsViewport.setViewedComponent(&localChannelsContainer, false);
+  addAndMakeVisible(localChannelsViewport);
 
   chatDisplay.setMultiLine(true);
   chatDisplay.setReadOnly(true);
@@ -116,10 +98,8 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   remoteUsersViewport.setViewedComponent(&remoteUsersContainer, false);
   addAndMakeVisible(remoteUsersViewport);
 
-  // Restore existing chat log
-  for (const auto &msg : audioProcessor.ninjamClient.getChatLog()) {
+  for (const auto &msg : audioProcessor.ninjamClient.getChatLog())
     onChatMessage(msg.type, msg.username, msg.text);
-  }
 
   startTimerHz(30);
 }
@@ -142,10 +122,8 @@ void NinjamAudioProcessorEditor::onChatMessage(const juce::String &type,
       line = "<" + username + "> " + text;
     }
   } else {
-    // JOIN, PART, TOPIC, etc.
     line = "*** " + text;
   }
-
   chatDisplay.moveCaretToEnd();
   chatDisplay.insertTextAtCaret(line + "\n");
 }
@@ -157,14 +135,12 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   auto area = getLocalBounds().reduced(10);
   auto header = area.removeFromTop(80);
 
-  // Status bar background
   g.setColour(juce::Colour(0xff0d0d1a));
   g.fillRect(header);
 
   const bool connected = audioProcessor.ninjamClient.isConnected();
   const juce::Colour teal(0xff00b4d8);
 
-  // Row 1: title + connection status
   auto row1 = header.removeFromTop(22);
   g.setFont(juce::FontOptions{}.withHeight(15.0f).withStyle("Bold"));
   g.setColour(teal);
@@ -177,7 +153,6 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
 
   header.removeFromTop(2);
 
-  // Row 2: server BPM / BPI
   auto row2 = header.removeFromTop(18);
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
   if (connected) {
@@ -189,31 +164,26 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
                      row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
-    g.drawFittedText("Not connected", row2, juce::Justification::centredLeft,
-                     1);
+    g.drawFittedText("Not connected", row2, juce::Justification::centredLeft, 1);
   }
 
   header.removeFromTop(4);
 
-  // Phase progress bar
   auto phaseBar = header.removeFromTop(8);
   g.setColour(juce::Colour(0xff1a1a2e));
   g.fillRect(phaseBar);
   if (connected && audioProcessor.internalBpi.load() > 0) {
     int bpi = audioProcessor.internalBpi.load();
     float frac = juce::jlimit(
-        0.0f, 1.0f,
-        (float)(audioProcessor.internalPhaseBeats / bpi));
+        0.0f, 1.0f, (float)(audioProcessor.internalPhaseBeats / bpi));
     int barW = phaseBar.getWidth();
     int barX = phaseBar.getX();
     int barY = phaseBar.getY();
     int barH = phaseBar.getHeight();
 
-    // Teal fill
     g.setColour(teal);
     g.fillRect(phaseBar.withWidth((int)(barW * frac)));
 
-    // Beat and bar gridlines
     for (int i = 1; i < bpi; ++i) {
       int lineX = barX + (int)((float)i / bpi * barW);
       bool isBarBoundary = (i % 4 == 0);
@@ -224,7 +194,6 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
       g.drawVerticalLine(lineX, (float)lineY, (float)(lineY + lineH));
     }
 
-    // Flash overlays -- drawn last so they sit on top of fill and gridlines
     float iFlash = audioProcessor.intervalFlashIntensity.load();
     if (iFlash > 0.0f) {
       g.setColour(juce::Colours::white.withAlpha(iFlash * 0.80f));
@@ -241,7 +210,6 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
 
   header.removeFromTop(4);
 
-  // Row 3: sync state
   auto row3 = header.removeFromTop(20);
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
 #if JucePlugin_Build_Standalone
@@ -254,8 +222,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   const bool mismatch =
       connected &&
       std::abs(audioProcessor.hostBpm - (double)audioProcessor.internalBpm.load()) > 0.5;
-  const bool pendingTransport =
-      connected && !mismatch && !audioProcessor.hostIsPlaying;
+  const bool pendingTransport = connected && !mismatch && !audioProcessor.hostIsPlaying;
   if (mismatch) {
     g.setColour(juce::Colours::orange);
     g.drawFittedText("BPM mismatch - set DAW to " +
@@ -270,46 +237,31 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
     g.drawFittedText("In sync", row3, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
-    g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) +
-                         " BPM",
+    g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) + " BPM",
                      row3, juce::Justification::centredLeft, 1);
   }
 #endif
 
-  area.removeFromTop(10); // spacing
-  area.removeFromTop(38); // space for connect/disconnect buttons in resized()
-
-  // Main Panels
-  g.setColour(juce::Colours::white);
-  g.setFont(juce::FontOptions{}.withHeight(14.0f));
+  // Section labels
+  area.removeFromTop(10);
+  area.removeFromTop(28); // controls row
+  area.removeFromTop(10);
 
   auto leftPanel = area.removeFromLeft(350);
+  g.setColour(juce::Colours::white);
+  g.setFont(juce::FontOptions{}.withHeight(14.0f));
   g.drawFittedText("Chat & Commands:", leftPanel.removeFromTop(20),
                    juce::Justification::left, 1);
 
-  area.removeFromLeft(20); // gap
+  area.removeFromLeft(10);
 
-  auto rightPanel = area;
-  g.drawFittedText("Local Transmit:", rightPanel.removeFromTop(20),
+  auto midPanel = area.removeFromLeft(430);
+  g.drawFittedText("Local Channels:", midPanel.removeFromTop(20),
                    juce::Justification::left, 1);
-  rightPanel.removeFromTop(40); // local mixer sliders
 
-  // Local TX VU bars (L and R)
-  auto drawVuBar = [&](juce::Rectangle<int> bounds, float peak) {
-    g.setColour(juce::Colour(0xff111122));
-    g.fillRect(bounds);
-    float frac = juce::jlimit(0.0f, 1.0f, peak);
-    if (frac > 0.0f) {
-      auto fill = bounds.removeFromBottom((int)(bounds.getHeight() * frac));
-      g.setColour(frac > 0.7f ? juce::Colour(0xffe08000) : juce::Colour(0xff00c040));
-      g.fillRect(fill);
-    }
-  };
-  drawVuBar(localVuBoundsL, localDecayedPeakL);
-  drawVuBar(localVuBoundsR, localDecayedPeakR);
+  area.removeFromLeft(10);
 
-  rightPanel.removeFromTop(10);
-  g.drawFittedText("Remote Users:", rightPanel.removeFromTop(20),
+  g.drawFittedText("Remote Users:", area.removeFromTop(20),
                    juce::Justification::left, 1);
 }
 
@@ -322,49 +274,43 @@ void NinjamAudioProcessorEditor::resized() {
   browseButton.setBounds(controlsRow.removeFromLeft(120).reduced(0, 4));
   controlsRow.removeFromLeft(8);
   disconnectButton.setBounds(controlsRow.removeFromLeft(100).reduced(0, 4));
+  controlsRow.removeFromLeft(8);
+  addChannelButton.setBounds(controlsRow.removeFromLeft(100).reduced(0, 4));
 
-  area.removeFromTop(10); // Spacing
+  area.removeFromTop(10);
 
-  // Left Panel (Chat)
+  // Left panel: Chat
   auto leftPanel = area.removeFromLeft(350);
-  leftPanel.removeFromTop(20); // "Chat & Commands" label
+  leftPanel.removeFromTop(20); // label
   chatInput.setBounds(leftPanel.removeFromBottom(24));
-  leftPanel.removeFromBottom(10); // gap
+  leftPanel.removeFromBottom(10);
   chatDisplay.setBounds(leftPanel);
 
-  area.removeFromLeft(20); // Center gap
+  area.removeFromLeft(10);
 
-  // Right Panel (Mixer)
-  auto rightPanel = area;
-  rightPanel.removeFromTop(20); // "Local Transmit" label
+  // Middle panel: Local channel strips
+  auto midPanel = area.removeFromLeft(430);
+  midPanel.removeFromTop(20); // label
 
-  auto localMixerRow = rightPanel.removeFromTop(40);
-  localVolumeSlider.setBounds(localMixerRow.removeFromLeft(120).reduced(0, 10));
-  localMixerRow.removeFromLeft(10);
-  localPanSlider.setBounds(localMixerRow.removeFromLeft(100).reduced(0, 10));
-  localMixerRow.removeFromLeft(10);
-  localMuteButton.setBounds(localMixerRow.removeFromLeft(90).reduced(0, 10));
-  localMixerRow.removeFromLeft(8);
-  localVuBoundsL = localMixerRow.removeFromLeft(8).reduced(0, 6);
-  localMixerRow.removeFromLeft(2);
-  localVuBoundsR = localMixerRow.removeFromLeft(8).reduced(0, 6);
+  auto toggleRow = midPanel.removeFromBottom(30);
+  metronomeToggle.setBounds(toggleRow.removeFromLeft(110).reduced(0, 4));
+  saveTxToggle.setBounds(toggleRow.removeFromLeft(110).reduced(0, 4));
+  saveRxToggle.setBounds(toggleRow.removeFromLeft(110).reduced(0, 4));
 
-  rightPanel.removeFromTop(30); // "Remote Users" label plus gap
+  localChannelsViewport.setBounds(midPanel);
 
-  auto toggleRow = rightPanel.removeFromBottom(40);
-  metronomeToggle.setBounds(toggleRow.removeFromLeft(120).reduced(0, 8));
-  saveTxToggle.setBounds(toggleRow.removeFromLeft(120).reduced(0, 8));
-  saveRxToggle.setBounds(toggleRow.removeFromLeft(120).reduced(0, 8));
+  area.removeFromLeft(10);
 
-  remoteUsersViewport.setBounds(rightPanel);
+  // Right panel: Remote users
+  area.removeFromTop(20); // label
+  remoteUsersViewport.setBounds(area);
 }
 
 void NinjamAudioProcessorEditor::openServerBrowser() {
-  if (serverBrowser) return; // already open
+  if (serverBrowser) return;
 
   serverBrowser = std::make_unique<ServerBrowserDialog>();
 
-  // Pre-populate from saved state
   serverBrowser->hostInput.setText(audioProcessor.lastHost, false);
   serverBrowser->portInput.setText(juce::String(audioProcessor.lastPort), false);
   serverBrowser->usernameInput.setText(audioProcessor.lastUsername, false);
@@ -398,7 +344,6 @@ void NinjamAudioProcessorEditor::closeServerBrowser() {
 }
 
 void NinjamAudioProcessorEditor::timerCallback() {
-  // Decay flash intensities (message thread; audio thread only writes 1.0f)
   auto decay = [](std::atomic<float> &v) {
     float f = v.load();
     if (f > 0.0f) v.store(std::max(0.0f, f - (1.0f / 12.0f)));
@@ -406,33 +351,65 @@ void NinjamAudioProcessorEditor::timerCallback() {
   decay(audioProcessor.intervalFlashIntensity);
   decay(audioProcessor.beatFlashIntensity);
 
-  // Decay local TX peaks (read atomics, apply decay, store back for paint())
-  localDecayedPeakL = std::max(localDecayedPeakL * 0.92f, audioProcessor.localTxPeakL.load());
-  localDecayedPeakR = std::max(localDecayedPeakR * 0.92f, audioProcessor.localTxPeakR.load());
-
   repaint();
 
+  // Sync local channel strips to the processor's localChannels vector
+  {
+    juce::ScopedLock sl(audioProcessor.localChannelMutex);
+    int numChannels = (int)audioProcessor.localChannels.size();
+    int numStrips = localChannelStrips.size();
+
+    // Remove extra strips (from the end)
+    while (localChannelStrips.size() > numChannels) {
+      localChannelsContainer.removeChildComponent(
+          localChannelStrips[localChannelStrips.size() - 1]);
+      localChannelStrips.removeLast();
+    }
+
+    // Add missing strips
+    while (localChannelStrips.size() < numChannels) {
+      int idx = localChannelStrips.size();
+      auto *strip = new LocalChannelStrip(audioProcessor,
+                                          audioProcessor.localChannels[idx]);
+      localChannelStrips.add(strip);
+      localChannelsContainer.addAndMakeVisible(strip);
+    }
+
+    // Mark only the last strip as removable (only last bus can be removed)
+    for (int i = 0; i < localChannelStrips.size(); ++i)
+      localChannelStrips[i]->setRemovable(i == localChannelStrips.size() - 1 &&
+                                          localChannelStrips.size() > 1);
+
+    // Update peaks and layout
+    int stripH = 44;
+    int y = 0;
+    for (auto *s : localChannelStrips) {
+      s->updatePeaks();
+      s->setBounds(0, y, localChannelsViewport.getWidth() - 20, stripH);
+      y += stripH + 4;
+    }
+    localChannelsContainer.setSize(
+        localChannelsViewport.getWidth() - 20,
+        std::max(y, localChannelsViewport.getHeight()));
+  }
+
+  // Sync remote user strips
   if (audioProcessor.ninjamClient.isConnected()) {
     auto users = audioProcessor.ninjamClient.getRemoteUsers();
 
-    // Check for removals
     for (int i = remoteUserStrips.size() - 1; i >= 0; --i) {
       if (users.find(remoteUserStrips[i]->getName()) == users.end()) {
         remoteUserStrips.remove(i);
       }
     }
 
-    // Check for additions/updates
     for (const auto &pair : users) {
       const auto &username = pair.first;
       const auto &user = pair.second;
 
       RemoteUserStrip *strip = nullptr;
       for (auto *s : remoteUserStrips) {
-        if (s->getName() == username) {
-          strip = s;
-          break;
-        }
+        if (s->getName() == username) { strip = s; break; }
       }
 
       if (!strip) {
@@ -445,7 +422,6 @@ void NinjamAudioProcessorEditor::timerCallback() {
       strip->updateChannels(user.channels);
     }
 
-    // Layout
     int y = 0;
     int stripHeight = 60;
     for (auto *s : remoteUserStrips) {

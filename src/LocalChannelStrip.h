@@ -1,0 +1,35 @@
+#pragma once
+
+#include "PluginProcessor.h"
+#include <JuceHeader.h>
+#include <memory>
+
+class LocalChannelStrip : public juce::Component {
+public:
+  LocalChannelStrip(NinjamAudioProcessor &processor,
+                    std::shared_ptr<NinjamAudioProcessor::LocalChannel> channel);
+  ~LocalChannelStrip() override;
+
+  void paint(juce::Graphics &) override;
+  void resized() override;
+
+  void updatePeaks();
+  void setRemovable(bool removable);
+
+private:
+  NinjamAudioProcessor &audioProcessor;
+  std::shared_ptr<NinjamAudioProcessor::LocalChannel> channel;
+
+  float decayedPeakL = 0.0f;
+  float decayedPeakR = 0.0f;
+
+  juce::TextEditor nameEditor;
+  juce::ToggleButton monoButton;
+  juce::Slider volumeSlider;
+  juce::Slider panSlider;
+  juce::ToggleButton muteButton;
+  juce::ToggleButton xmitButton;
+  juce::TextButton removeButton;
+
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LocalChannelStrip)
+};

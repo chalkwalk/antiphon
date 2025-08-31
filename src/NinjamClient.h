@@ -34,7 +34,8 @@ public:
 
   bool isConnected() const { return connectionState == 3; }
 
-  void processCapturedAudio(juce::AudioBuffer<float> &buffer, int numSamples);
+  void processCapturedAudio(juce::AudioBuffer<float> &buffer, int numSamples,
+                            const juce::String &channelName, bool mono);
   void getDecodedAudio(juce::AudioBuffer<float> &buffer);
 
   void setSampleRate(double sr) { sampleRate = sr; }
