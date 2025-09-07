@@ -1,6 +1,8 @@
 #pragma once
 #include "utils/vorbisencdec.h"
 #include <JuceHeader.h>
+#include <deque>
+#include <memory>
 
 class NinjamClientListener {
 public:
@@ -69,11 +71,11 @@ public:
   struct RemoteUserChannel {
     int channelIndex = 0;
     juce::String channelName;
-    float volume = 0.5f; // Default -6dB
+    float volume = 0.5f;
     float pan = 0.0f;
     bool isMuted = false;
     bool isSoloed = false;
-    float peakLevel = 0.0f; // written audio thread (downloadMutex), read UI thread
+    float peakLevel = 0.0f;
   };
 
   struct RemoteUser {
@@ -83,27 +85,7 @@ public:
 
   std::map<juce::String, RemoteUser> getRemoteUsers() const;
 
-  struct IntervalBuffer {
-    juce::AudioBuffer<float> frontBuffer;
-    juce::AudioBuffer<float> backBuffer;
-    int frontReadPosition = 0;
-    int frontWritePosition = 0; // valid samples in frontBuffer after last swap
-    int backWritePosition = 0;
-  };
-
-  // Structure to hold an incoming remote stream
-  struct RemoteChannel {
-    std::unique_ptr<VorbisDecoder> decoder;
-    juce::String channelName;
-    bool isActive = false;
-    juce::String username;
-    int channelIndex = 0;
-    IntervalBuffer intervalBuffer;
-    // Per-channel resamplers used when remote sample rate != local sample rate
-    juce::LagrangeInterpolator resamplerL, resamplerR;
-  };
-
-  // Set to true on every DOWNLOAD_INTERVAL_BEGIN; audio thread reads and clears it
+  // Set to true on DOWNLOAD_INTERVAL_BEGIN; audio thread reads and clears it
   // to align its swap phase to the server's interval boundary.
   std::atomic<bool> intervalBeginSignal{false};
 
@@ -111,9 +93,39 @@ private:
   juce::ListenerList<NinjamClientListener> listeners;
   std::unique_ptr<juce::StreamingSocket> socket;
 
+  // One decoded interval of audio from a remote channel.
+  // writePos is atomically incremented by the network thread after each decode
+  // batch; the audio thread reads [0, writePos) without the lock.
+  struct DecodedInterval {
+    juce::String guid;
+    juce::AudioBuffer<float> buffer;
+    std::atomic<int> writePos{0};
+    std::atomic<bool> finalReceived{false};
+  };
+
+  // Per-(user, channel) playback stream.  The audio thread reads from current;
+  // queue holds upcoming intervals in arrival order.
+  struct ChannelStream {
+    juce::String username;
+    int channelIndex = 0;
+    std::deque<std::shared_ptr<DecodedInterval>> queue;
+    std::shared_ptr<DecodedInterval> current;
+    int readPos = 0;
+  };
+
+  // Routes DOWNLOAD_INTERVAL_WRITE chunks to the correct DecodedInterval.
+  // Erased when the final chunk arrives (flags & 1).
+  struct PendingDownload {
+    std::shared_ptr<DecodedInterval> target;
+    std::unique_ptr<VorbisDecoder> decoder;
+    juce::LagrangeInterpolator resamplerL, resamplerR;
+    juce::String username;
+    int channelIndex = 0;
+  };
+
   juce::CriticalSection downloadMutex;
-  // Key is the 16-byte GUID as a hex string
-  std::map<juce::String, RemoteChannel> activeDownloads;
+  std::map<juce::String, PendingDownload> guidToInterval;
+  std::map<std::pair<juce::String, int>, ChannelStream> channelStreams;
   std::map<juce::String, RemoteUser> remoteUsers;
 
   juce::CriticalSection chatMutex;

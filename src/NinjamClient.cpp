@@ -318,7 +318,6 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     if (payload.getSize() >= 16) {
       juce::String guid = juce::String::toHexString(payload.getData(), 16);
 
-      // Parse extended info if available
       int estSize = 0;
       juce::uint8 fourcc[4] = {0};
       juce::uint8 channelIndex = 0;
@@ -348,27 +347,29 @@ bool NinjamClient::handleMessage(juce::uint8 type,
         }
       }
 
-      RemoteChannel channel;
-      if (fourcc[0] == 'O' && fourcc[1] == 'G' && fourcc[2] == 'G' && fourcc[3] == 'v')
-        channel.decoder = std::make_unique<VorbisDecoder>();
-      channel.isActive = true;
-      channel.username = username;
-      channel.channelIndex = channelIndex;
+      auto interval = std::make_shared<DecodedInterval>();
+      interval->guid = guid;
+      int bufferSamples = static_cast<int>(
+          sampleRate * 60.0 / std::max(1, serverBpm) * serverBpi * 1.5f);
+      interval->buffer.setSize(2, bufferSamples);
+      interval->buffer.clear();
 
-      // Initialize interval buffer
-      int bufferSamples = static_cast<int>(sampleRate * 60.0 /
-                                           std::max(1, serverBpm) * serverBpi);
-      // Give it extra safety margin
-      bufferSamples = static_cast<int>(bufferSamples * 1.5f);
-      channel.intervalBuffer.backBuffer.setSize(2, bufferSamples);
-      channel.intervalBuffer.frontBuffer.setSize(2, bufferSamples);
-      channel.intervalBuffer.backBuffer.clear();
-      channel.intervalBuffer.frontBuffer.clear();
-      channel.intervalBuffer.frontReadPosition = 0;
-      channel.intervalBuffer.backWritePosition = 0;
+      PendingDownload pd;
+      pd.target = interval;
+      pd.username = username;
+      pd.channelIndex = channelIndex;
+      if (fourcc[0] == 'O' && fourcc[1] == 'G' && fourcc[2] == 'G' &&
+          fourcc[3] == 'v')
+        pd.decoder = std::make_unique<VorbisDecoder>();
 
       juce::ScopedLock sl(downloadMutex);
-      activeDownloads[guid] = std::move(channel);
+      guidToInterval[guid] = std::move(pd);
+
+      auto key = std::make_pair(username, (int)channelIndex);
+      auto &stream = channelStreams[key];
+      stream.username = username;
+      stream.channelIndex = channelIndex;
+      stream.queue.push_back(interval);
 
       // Signal the audio thread that a new server interval has started.
       // compare_exchange prevents re-signalling if the audio thread hasn't
@@ -386,94 +387,97 @@ bool NinjamClient::handleMessage(juce::uint8 type,
           static_cast<const juce::uint8 *>(payload.getData())[16];
 
       juce::ScopedLock sl(downloadMutex);
-      if (activeDownloads.find(guid) != activeDownloads.end()) {
-        auto &channel = activeDownloads[guid];
+      auto it = guidToInterval.find(guid);
+      if (it != guidToInterval.end()) {
+        auto &pd = it->second;
+        auto &interval = *pd.target;
 
         int oggDataSize = static_cast<int>(payload.getSize()) - 17;
-        if (oggDataSize > 0 && channel.decoder != nullptr) {
+        if (oggDataSize > 0 && pd.decoder != nullptr) {
           const char *oggData =
               static_cast<const char *>(payload.getData()) + 17;
-          void *decBuf = channel.decoder->DecodeGetSrcBuffer(oggDataSize);
+          void *decBuf = pd.decoder->DecodeGetSrcBuffer(oggDataSize);
           if (decBuf) {
             memcpy(decBuf, oggData, static_cast<size_t>(oggDataSize));
-            channel.decoder->DecodeWrote(oggDataSize);
+            pd.decoder->DecodeWrote(oggDataSize);
 
-            // Decode into back buffer, resampling if the OGG's native sample
-            // rate differs from our local rate (e.g. remote at 44100, local at 48000).
-            while (channel.decoder->Available() > 0) {
-              int availFrames = channel.decoder->Available() /
-                                channel.decoder->GetNumChannels();
-              int out_nch = channel.decoder->GetNumChannels();
+            // Decode into the interval buffer, resampling if the OGG's native
+            // sample rate differs from our local rate.
+            while (pd.decoder->Available() > 0) {
+              int availFrames =
+                  pd.decoder->Available() / pd.decoder->GetNumChannels();
+              int out_nch = pd.decoder->GetNumChannels();
               if (availFrames <= 0 || out_nch <= 0)
                 break;
 
-              float *decodedBlock = channel.decoder->Get();
-              int writePos = channel.intervalBuffer.backWritePosition;
-              int remainBack = channel.intervalBuffer.backBuffer.getNumSamples() - writePos;
+              float *decodedBlock = pd.decoder->Get();
+              int writePos = interval.writePos.load();
+              int remain = interval.buffer.getNumSamples() - writePos;
 
-              int decoderRate = channel.decoder->GetSampleRate();
-              bool needsResample = (decoderRate > 0 && decoderRate != (int)sampleRate);
-              double speedRatio = needsResample ? (double)decoderRate / sampleRate : 1.0;
+              int decoderRate = pd.decoder->GetSampleRate();
+              bool needsResample =
+                  (decoderRate > 0 && decoderRate != (int)sampleRate);
+              double speedRatio =
+                  needsResample ? (double)decoderRate / sampleRate : 1.0;
 
-              // Limit source frames so the resampled output fits in the remaining space.
-              int maxSrc = needsResample ? (int)((double)remainBack * speedRatio) : remainBack;
+              int maxSrc =
+                  needsResample ? (int)((double)remain * speedRatio) : remain;
               int toCopy = std::min(availFrames, maxSrc);
 
               if (toCopy > 0) {
                 if (!needsResample) {
-                  // Direct deinterleave + copy
                   for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
                     float *writePtr =
-                        channel.intervalBuffer.backBuffer.getWritePointer(ch, writePos);
+                        interval.buffer.getWritePointer(ch, writePos);
                     for (int s = 0; s < toCopy; ++s)
                       writePtr[s] = decodedBlock[s * out_nch + ch];
                   }
-                  if (out_nch == 1 &&
-                      channel.intervalBuffer.backBuffer.getNumChannels() == 2) {
-                    memcpy(channel.intervalBuffer.backBuffer.getWritePointer(1, writePos),
-                           channel.intervalBuffer.backBuffer.getReadPointer(0, writePos),
+                  if (out_nch == 1 && interval.buffer.getNumChannels() == 2) {
+                    memcpy(interval.buffer.getWritePointer(1, writePos),
+                           interval.buffer.getReadPointer(0, writePos),
                            (size_t)toCopy * sizeof(float));
                   }
-                  channel.intervalBuffer.backWritePosition += toCopy;
+                  interval.writePos.fetch_add(toCopy);
                 } else {
-                  // Resample each channel from decoderRate to sampleRate
-                  int numOut = std::min((int)((double)toCopy / speedRatio), remainBack);
+                  int numOut =
+                      std::min((int)((double)toCopy / speedRatio), remain);
                   if (numOut > 0) {
                     juce::HeapBlock<float> srcBuf(toCopy), dstBuf(numOut);
                     for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
                       for (int s = 0; s < toCopy; ++s)
                         srcBuf[s] = decodedBlock[s * out_nch + ch];
-                      auto &interp = (ch == 0) ? channel.resamplerL : channel.resamplerR;
-                      interp.process(speedRatio, srcBuf.getData(), dstBuf.getData(), numOut);
-                      memcpy(channel.intervalBuffer.backBuffer.getWritePointer(ch, writePos),
+                      auto &interp =
+                          (ch == 0) ? pd.resamplerL : pd.resamplerR;
+                      interp.process(speedRatio, srcBuf.getData(),
+                                     dstBuf.getData(), numOut);
+                      memcpy(interval.buffer.getWritePointer(ch, writePos),
                              dstBuf.getData(), (size_t)numOut * sizeof(float));
                     }
-                    if (out_nch == 1 &&
-                        channel.intervalBuffer.backBuffer.getNumChannels() == 2) {
-                      memcpy(channel.intervalBuffer.backBuffer.getWritePointer(1, writePos),
-                             channel.intervalBuffer.backBuffer.getReadPointer(0, writePos),
+                    if (out_nch == 1 && interval.buffer.getNumChannels() == 2) {
+                      memcpy(interval.buffer.getWritePointer(1, writePos),
+                             interval.buffer.getReadPointer(0, writePos),
                              (size_t)numOut * sizeof(float));
                     }
-                    channel.intervalBuffer.backWritePosition += numOut;
+                    interval.writePos.fetch_add(numOut);
                   }
                 }
-                channel.decoder->Skip(toCopy * out_nch);
+                pd.decoder->Skip(toCopy * out_nch);
               } else {
-                // Back buffer full -- drain decoder so cleanup can proceed.
-                channel.decoder->Skip(channel.decoder->Available());
+                // Buffer full -- drain decoder.
+                pd.decoder->Skip(pd.decoder->Available());
                 break;
               }
             }
 
             juce::ScopedLock fl(rxFileMutex);
-            if (isSavingRx && rxOggFile != nullptr) {
+            if (isSavingRx && rxOggFile != nullptr)
               rxOggFile->write(oggData, oggDataSize);
-            }
           }
         }
 
-        if (flags == 1) { // End of interval
-          channel.isActive = false;
+        if (flags & 1) {
+          interval.finalReceived.store(true);
+          guidToInterval.erase(it);
         }
       }
     }
@@ -719,25 +723,14 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
 
 void NinjamClient::swapIntervalBuffers() {
   juce::ScopedLock sl(downloadMutex);
-  for (auto &pair : activeDownloads) {
-    auto &channel = pair.second;
-    // Swap front and back buffers
-    // In Juce we can't trivially swap internal pointers, but we can copy or
-    // just swap custom structures For simplicity, we'll swap their contents
-    // using an intermediate, or if we used pointers instead of raw buffers,
-    // we could swap pointers. Instead of copying, we can just use a swap
-    // function if Juce provides it, or std::swap since juce::AudioBuffer
-    // supports move semantics.
-    channel.intervalBuffer.frontWritePosition = channel.intervalBuffer.backWritePosition;
-    std::swap(channel.intervalBuffer.frontBuffer,
-              channel.intervalBuffer.backBuffer);
-
-    // Reset positions
-    channel.intervalBuffer.frontReadPosition = 0;
-
-    // Back buffer needs to be cleared for the new interval
-    channel.intervalBuffer.backBuffer.clear();
-    channel.intervalBuffer.backWritePosition = 0;
+  for (auto &[key, stream] : channelStreams) {
+    if (!stream.queue.empty()) {
+      stream.current = stream.queue.front();
+      stream.queue.pop_front();
+      stream.readPos = 0;
+    } else {
+      stream.current = nullptr;
+    }
   }
 }
 
@@ -798,99 +791,91 @@ void NinjamClient::setRemoteUserSolo(const juce::String &username,
 void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
   juce::ScopedLock sl(downloadMutex);
   int numSamples = buffer.getNumSamples();
+  int dstChannels = buffer.getNumChannels();
 
-  for (auto it = activeDownloads.begin(); it != activeDownloads.end();) {
-    auto &channel = it->second;
-    int samplesNeeded = numSamples;
-    int writePos = 0;
+  bool anySolo = false;
+  for (const auto &u : remoteUsers)
+    for (const auto &c : u.second.channels)
+      if (c.second.isSoloed)
+        anySolo = true;
 
-    // Determine DSP parameters for this channel
-    float vol = 0.5f; // default -6dB
+  for (auto &[key, stream] : channelStreams) {
+    if (!stream.current)
+      continue;
+
+    float vol = 0.5f;
     float pan = 0.0f;
     bool isMuted = false;
     bool isSoloed = false;
 
-    // Check if anyone is soloed
-    bool anySolo = false;
-    for (const auto &u : remoteUsers) {
-      for (const auto &c : u.second.channels) {
-        if (c.second.isSoloed)
-          anySolo = true;
+    auto uit = remoteUsers.find(stream.username);
+    if (uit != remoteUsers.end()) {
+      auto cit = uit->second.channels.find(stream.channelIndex);
+      if (cit != uit->second.channels.end()) {
+        vol = cit->second.volume;
+        pan = cit->second.pan;
+        isMuted = cit->second.isMuted;
+        isSoloed = cit->second.isSoloed;
       }
     }
 
-    if (remoteUsers.find(channel.username) != remoteUsers.end()) {
-      auto &user = remoteUsers[channel.username];
-      if (user.channels.find(channel.channelIndex) != user.channels.end()) {
-        auto &c = user.channels[channel.channelIndex];
-        vol = c.volume;
-        pan = c.pan;
-        isMuted = c.isMuted;
-        isSoloed = c.isSoloed;
-      }
-    }
-
-    if (anySolo && !isSoloed) {
+    if (anySolo && !isSoloed)
       isMuted = true;
-    }
 
     float lGain = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
-    float rGain = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan); // -1 is L, 1 is R
+    float rGain = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
 
-    int frontReads = channel.intervalBuffer.frontReadPosition;
-    int availableInFront =
-        channel.intervalBuffer.frontWritePosition - frontReads;
-    int toCopy = std::min(samplesNeeded, std::max(0, availableInFront));
+    auto &iv = *stream.current;
+    int avail = iv.writePos.load() - stream.readPos;
 
-    if (toCopy > 0) {
-      int srcChannels = channel.intervalBuffer.frontBuffer.getNumChannels();
-      int dstChannels = buffer.getNumChannels();
+    if (avail <= 0) {
+      // Early advance: if this interval is finalised and the next has data,
+      // seamlessly switch to avoid silence at the boundary.
+      if (iv.finalReceived.load() && !stream.queue.empty() &&
+          stream.queue.front()->writePos.load() > 0) {
+        stream.current = stream.queue.front();
+        stream.queue.pop_front();
+        stream.readPos = 0;
+        avail = stream.current->writePos.load();
+        if (avail <= 0)
+          continue;
+      } else {
+        continue;
+      }
+    }
 
-      // Compute peak from the front buffer for VU display (always, even if muted)
-      float peak = 0.0f;
+    int toCopy = std::min(numSamples, avail);
+    int srcChannels = stream.current->buffer.getNumChannels();
+
+    float peak = 0.0f;
+    for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
+      float chGain = (ch == 0) ? lGain : rGain;
+      const float *src =
+          stream.current->buffer.getReadPointer(ch, stream.readPos);
+      for (int s = 0; s < toCopy; ++s)
+        peak = std::max(peak, std::abs(src[s]) * chGain);
+    }
+    if (uit != remoteUsers.end()) {
+      auto cit = uit->second.channels.find(stream.channelIndex);
+      if (cit != uit->second.channels.end())
+        cit->second.peakLevel = peak;
+    }
+
+    if (!isMuted) {
       for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
-        float chGain = (ch == 0) ? lGain : rGain;
-        const float *src = channel.intervalBuffer.frontBuffer.getReadPointer(ch, frontReads);
-        for (int s = 0; s < toCopy; ++s)
-          peak = std::max(peak, std::abs(src[s]) * chGain);
+        float gain = (ch == 0) ? lGain : rGain;
+        buffer.addFrom(ch, 0, stream.current->buffer, ch, stream.readPos,
+                       toCopy, gain);
       }
-      if (remoteUsers.count(channel.username) > 0) {
-        auto &u = remoteUsers.at(channel.username);
-        if (u.channels.count(channel.channelIndex) > 0)
-          u.channels.at(channel.channelIndex).peakLevel = peak;
-      }
-
-      if (!isMuted) {
-        for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
-          float gain = (ch == 0) ? lGain : rGain;
-          buffer.addFrom(ch, writePos, channel.intervalBuffer.frontBuffer, ch,
-                         frontReads, toCopy, gain);
-        }
-      }
-
-      channel.intervalBuffer.frontReadPosition += toCopy;
     }
 
-    // Cleanup finished streams
-    if (!channel.isActive &&
-        channel.intervalBuffer.frontReadPosition >=
-            channel.intervalBuffer.frontWritePosition &&
-        (channel.decoder == nullptr || channel.decoder->Available() == 0)) {
-      // Done streaming and drained
-      it = activeDownloads.erase(it);
-    } else {
-      ++it;
-    }
+    stream.readPos += toCopy;
   }
 
   {
-    juce::ScopedLock sl(rxFileMutex);
-    if (isSavingRx && rxWavWriter != nullptr) {
-      // Note: Here we are dumping the buffer *after* it has been mixed with
-      // all decoded remote streams. This gives us the exact audio that the
-      // user hears from the server.
+    juce::ScopedLock fl(rxFileMutex);
+    if (isSavingRx && rxWavWriter != nullptr)
       rxWavWriter->writeFromAudioSampleBuffer(buffer, 0, numSamples);
-    }
   }
 }
 
