@@ -177,8 +177,9 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   if (sampleRate > 0.0) {
     if (intervalSyncCooldown > 0) {
       intervalSyncCooldown = std::max(0, intervalSyncCooldown - buffer.getNumSamples());
-      if (intervalSyncCooldown > 0)
-        ninjamClient.intervalBeginSignal.store(false);
+      // Always clear in this block: BEGINs that arrived during cooldown (or in
+      // the same block that crosses to 0) must not trigger a mid-interval swap.
+      ninjamClient.intervalBeginSignal.store(false);
     }
 
     bool swappedBySignal = false;

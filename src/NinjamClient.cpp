@@ -827,22 +827,8 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
 
     auto &iv = *stream.current;
     int avail = iv.writePos.load() - stream.readPos;
-
-    if (avail <= 0) {
-      // Early advance: if this interval is finalised and the next has data,
-      // seamlessly switch to avoid silence at the boundary.
-      if (iv.finalReceived.load() && !stream.queue.empty() &&
-          stream.queue.front()->writePos.load() > 0) {
-        stream.current = stream.queue.front();
-        stream.queue.pop_front();
-        stream.readPos = 0;
-        avail = stream.current->writePos.load();
-        if (avail <= 0)
-          continue;
-      } else {
-        continue;
-      }
-    }
+    if (avail <= 0)
+      continue;
 
     int toCopy = std::min(numSamples, avail);
     int srcChannels = stream.current->buffer.getNumChannels();
