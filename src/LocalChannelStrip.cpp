@@ -11,6 +11,7 @@ LocalChannelStrip::LocalChannelStrip(
   nameEditor.setReturnKeyStartsNewLine(false);
   nameEditor.onTextChange = [this]() {
     channel->name = nameEditor.getText();
+    audioProcessor.sendChannelInfoToServer();
   };
   addAndMakeVisible(nameEditor);
 

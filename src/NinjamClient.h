@@ -46,6 +46,10 @@ public:
 
   void swapIntervalBuffers();
 
+  // Update the local channel names sent to the server via CLIENT_SET_CHANNEL_INFO (0x82).
+  // Safe to call from any thread. Sends immediately if connected.
+  void updateChannelInfo(const juce::StringArray &names);
+
   void setRemoteUserVolume(const juce::String &username, int channelIndex,
                            float volume);
   void setRemoteUserPan(const juce::String &username, int channelIndex,
@@ -162,4 +166,6 @@ private:
 
   juce::CriticalSection txFileMutex;
   juce::CriticalSection rxFileMutex;
+  juce::CriticalSection channelInfoMutex;
+  juce::StringArray storedChannelNames{"Local Instrument"};
 };

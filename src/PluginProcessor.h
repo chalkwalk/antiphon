@@ -63,6 +63,7 @@ public:
 
   int addLocalChannel();
   void removeLastLocalChannel();
+  void sendChannelInfoToServer();
 
   NinjamClient ninjamClient;
   juce::String connectionStatus = "Disconnected";

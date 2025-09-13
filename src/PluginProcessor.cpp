@@ -397,7 +397,20 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
     }
 }
 
-void NinjamAudioProcessor::onConnected() { connectionStatus = "Connected"; }
+void NinjamAudioProcessor::sendChannelInfoToServer() {
+  juce::StringArray names;
+  {
+    juce::ScopedLock sl(localChannelMutex);
+    for (const auto &ch : localChannels)
+      names.add(ch->name);
+  }
+  ninjamClient.updateChannelInfo(names);
+}
+
+void NinjamAudioProcessor::onConnected() {
+  connectionStatus = "Connected";
+  sendChannelInfoToServer();
+}
 
 void NinjamAudioProcessor::onDisconnected(const juce::String &error) {
   connectionStatus = "Disconnected: " + error;

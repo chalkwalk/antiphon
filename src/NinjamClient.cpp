@@ -597,10 +597,24 @@ void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
 }
 
 void NinjamClient::sendChannelInfo() {
+  juce::StringArray names;
+  {
+    juce::ScopedLock sl(channelInfoMutex);
+    names = storedChannelNames;
+  }
   juce::MemoryBlock payload;
-  juce::String name = "Local Instrument";
-  payload.append(name.toRawUTF8(), name.getNumBytesAsUTF8() + 1);
+  for (const auto &name : names)
+    payload.append(name.toRawUTF8(), name.getNumBytesAsUTF8() + 1);
   writeFull(0x82, payload.getData(), static_cast<int>(payload.getSize()));
+}
+
+void NinjamClient::updateChannelInfo(const juce::StringArray &names) {
+  {
+    juce::ScopedLock sl(channelInfoMutex);
+    storedChannelNames = names.isEmpty() ? juce::StringArray{"Local Instrument"} : names;
+  }
+  if (isConnected())
+    sendChannelInfo();
 }
 
 void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
