@@ -423,8 +423,8 @@ void NinjamAudioProcessorEditor::timerCallback() {
     }
 
     int y = 0;
-    int stripHeight = 60;
     for (auto *s : remoteUserStrips) {
+      int stripHeight = s->getPreferredHeight();
       s->setBounds(0, y, remoteUsersViewport.getWidth() - 20, stripHeight);
       y += stripHeight + 5;
     }
