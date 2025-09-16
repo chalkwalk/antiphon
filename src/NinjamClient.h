@@ -58,6 +58,8 @@ public:
                          bool mute);
   void setRemoteUserSolo(const juce::String &username, int channelIndex,
                          bool solo);
+  void setRemoteUserRecv(const juce::String &username, int channelIndex,
+                         bool recv);
 
   struct ChatMessage {
     juce::String type;
@@ -79,6 +81,7 @@ public:
     float pan = 0.0f;
     bool isMuted = false;
     bool isSoloed = false;
+    bool recvEnabled = true;
     float peakLevel = 0.0f;
   };
 
@@ -147,6 +150,7 @@ private:
   bool handleMessage(juce::uint8 type, const juce::MemoryBlock &payload);
   void sendAuthRequest(const juce::MemoryBlock &challenge);
   void sendChannelInfo();
+  void sendUserMask();
 
   bool readFull(void *dest, int numBytes);
   bool writeFull(juce::uint8 type, const void *payload, int numBytes);

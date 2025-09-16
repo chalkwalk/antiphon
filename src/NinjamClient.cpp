@@ -290,22 +290,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       }
     }
 
-    juce::MemoryBlock maskPayload;
-    {
-      juce::ScopedLock sl(downloadMutex);
-      for (auto &[uname, user] : remoteUsers) {
-        juce::uint32 mask = 0;
-        for (auto &[chIdx, ch] : user.channels)
-          if (chIdx < 32)
-            mask |= (1u << chIdx);
-        maskPayload.append(uname.toRawUTF8(), uname.getNumBytesAsUTF8() + 1);
-        juce::uint32 leM = juce::ByteOrder::swapIfBigEndian(mask);
-        maskPayload.append(&leM, 4);
-      }
-    }
-    if (maskPayload.getSize() > 0)
-      writeFull(0x81, maskPayload.getData(),
-                static_cast<int>(maskPayload.getSize()));
+    sendUserMask();
 
     if (changed) {
       juce::MessageManager::callAsync([this]() {
@@ -800,6 +785,38 @@ void NinjamClient::setRemoteUserSolo(const juce::String &username,
       user.channels[channelIndex].isSoloed = solo;
     }
   }
+}
+
+void NinjamClient::setRemoteUserRecv(const juce::String &username,
+                                     int channelIndex, bool recv) {
+  {
+    juce::ScopedLock sl(downloadMutex);
+    if (remoteUsers.find(username) != remoteUsers.end()) {
+      auto &user = remoteUsers[username];
+      if (user.channels.find(channelIndex) != user.channels.end()) {
+        user.channels[channelIndex].recvEnabled = recv;
+      }
+    }
+  }
+  sendUserMask();
+}
+
+void NinjamClient::sendUserMask() {
+  juce::MemoryBlock payload;
+  {
+    juce::ScopedLock sl(downloadMutex);
+    for (auto &[uname, user] : remoteUsers) {
+      juce::uint32 mask = 0;
+      for (auto &[chIdx, ch] : user.channels)
+        if (chIdx < 32 && ch.recvEnabled)
+          mask |= (1u << chIdx);
+      payload.append(uname.toRawUTF8(), uname.getNumBytesAsUTF8() + 1);
+      juce::uint32 leM = juce::ByteOrder::swapIfBigEndian(mask);
+      payload.append(&leM, 4);
+    }
+  }
+  if (payload.getSize() > 0)
+    writeFull(0x81, payload.getData(), (int)payload.getSize());
 }
 
 void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
