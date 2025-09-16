@@ -95,6 +95,7 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                                         juce::MidiBuffer &) {
   juce::ScopedNoDenormals noDenormals;
   auto totalNumOutputChannels = getTotalNumOutputChannels();
+  int ns = buffer.getNumSamples();
 
   // 1. Host Sync
   if (auto *ph = getPlayHead()) {
@@ -106,17 +107,32 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  // 2. Clear any output channels that don't have corresponding input
+  // 2. Snapshot bus 0 input -- output channels 0/1 alias bus 0 in JUCE, so we
+  //    must capture it before clearing/overwriting the output.
+  juce::AudioBuffer<float> bus0Snapshot;
   {
-    int totalIn = getTotalNumInputChannels();
-    for (int i = totalIn; i < totalNumOutputChannels; ++i)
-      buffer.clear(i, 0, buffer.getNumSamples());
+    auto *bus0 = getBus(true, 0);
+    if (bus0) {
+      int off = bus0->getChannelIndexInProcessBlockBuffer(0);
+      int nch = bus0->getNumberOfChannels();
+      bus0Snapshot.setSize(nch, ns, false, false, true);
+      for (int ch = 0; ch < nch; ++ch)
+        bus0Snapshot.copyFrom(ch, 0, buffer, off + ch, 0, ns);
+    }
   }
 
-  // 2b. Per-channel peaks (raw input, before remote audio is mixed in)
+  // 3. Clear output channels 0/1 (and any trailing unused outputs).
+  for (int i = 0; i < totalNumOutputChannels; ++i)
+    buffer.clear(i, 0, ns);
+
+  // 4. Monitor mix pass -- mix all local input buses into output 0/1.
   {
     juce::ScopedLock sl(localChannelMutex);
-    int ns = buffer.getNumSamples();
+
+    bool anyMonitorSolo = false;
+    for (auto &lcPtr : localChannels)
+      if (lcPtr->monitorSolo.load()) { anyMonitorSolo = true; break; }
+
     for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
       auto &lc = *localChannels[ci];
       auto *bus = getBus(true, ci);
@@ -124,23 +140,47 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       int offset = bus->getChannelIndexInProcessBlockBuffer(0);
       int busCh = bus->getNumberOfChannels();
 
-      float pL = 0.0f, pR = 0.0f;
-      if (offset < buffer.getNumChannels()) {
-        const float *p = buffer.getReadPointer(offset);
-        for (int s = 0; s < ns; ++s) pL = std::max(pL, std::abs(p[s]));
-      }
-      if (offset + 1 < buffer.getNumChannels() && busCh > 1) {
-        const float *p = buffer.getReadPointer(offset + 1);
-        for (int s = 0; s < ns; ++s) pR = std::max(pR, std::abs(p[s]));
-      } else {
-        pR = pL;
-      }
       float vol = lc.volume.load(), pan = lc.pan.load();
       bool muted = lc.muted.load();
-      float lG = muted ? 0.0f : vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
-      float rG = muted ? 0.0f : vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
-      lc.peakL.store(pL * lG);
-      lc.peakR.store(pR * rG);
+      bool solo  = lc.monitorSolo.load();
+      float monitorFactor = (muted ? 0.0f : 1.0f) *
+                            (anyMonitorSolo && !solo ? 0.0f : 1.0f);
+      float lG = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan) * monitorFactor;
+      float rG = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan) * monitorFactor;
+      bool mono = lc.isMono.load();
+
+      // Compute peaks on raw input (reflects what you're sending), display
+      // scaled by monitor gain so the VU shows what you hear.
+      {
+        const float *rawL = (ci == 0 && bus0Snapshot.getNumChannels() > 0)
+            ? bus0Snapshot.getReadPointer(0)
+            : (offset     < buffer.getNumChannels() ? buffer.getReadPointer(offset)     : nullptr);
+        const float *rawR = (ci == 0 && bus0Snapshot.getNumChannels() > 1)
+            ? bus0Snapshot.getReadPointer(1)
+            : (offset + 1 < buffer.getNumChannels() && busCh > 1 ? buffer.getReadPointer(offset + 1) : rawL);
+        float pL = 0.0f, pR = 0.0f;
+        if (rawL) for (int s = 0; s < ns; ++s) pL = std::max(pL, std::abs(rawL[s]));
+        if (rawR) for (int s = 0; s < ns; ++s) pR = std::max(pR, std::abs(rawR[s]));
+        lc.peakL.store(pL * lG);
+        lc.peakR.store(pR * rG);
+      }
+
+      if (totalNumOutputChannels < 2) continue;
+
+      // Source: bus 0 from snapshot, buses 1+ from live buffer (not aliased).
+      const juce::AudioBuffer<float> &src = (ci == 0) ? bus0Snapshot : buffer;
+      int srcOff0 = (ci == 0) ? 0 : offset;
+      int srcOff1 = (ci == 0) ? (bus0Snapshot.getNumChannels() > 1 ? 1 : 0)
+                               : (busCh > 1 ? offset + 1 : offset);
+
+      // mono flag: both output channels read from the first source channel only.
+      // This matches the transmit capture behavior.
+      int readL = srcOff0;
+      int readR = (mono || busCh == 1) ? srcOff0 : srcOff1;
+      if (readL < src.getNumChannels())
+        buffer.addFrom(0, 0, src, readL, 0, ns, lG);
+      if (readR < src.getNumChannels())
+        buffer.addFrom(1, 0, src, readR, 0, ns, rG);
     }
   }
 
@@ -172,11 +212,11 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   };
 
-  // 3. Server interval sync
+  // 5. Server interval sync
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
     if (intervalSyncCooldown > 0) {
-      intervalSyncCooldown = std::max(0, intervalSyncCooldown - buffer.getNumSamples());
+      intervalSyncCooldown = std::max(0, intervalSyncCooldown - ns);
       // Always clear in this block: BEGINs that arrived during cooldown (or in
       // the same block that crosses to 0) must not trigger a mid-interval swap.
       ninjamClient.intervalBeginSignal.store(false);
@@ -196,13 +236,13 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       swappedBySignal = true;
     }
 
-    // 4. Metronome click + fallback interval boundary detection
+    // 6. Metronome click + fallback interval boundary detection
     int bpm = internalBpm.load();
     int bpi = internalBpi.load();
     double beatsPerSample = (bpm / 60.0) / sampleRate;
     bool needsFallbackSwap = false;
 
-    for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
+    for (int sample = 0; sample < ns; ++sample) {
       internalPhaseBeats += beatsPerSample;
       if (internalPhaseBeats >= bpi)
         internalPhaseBeats -= bpi;
@@ -258,16 +298,18 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
+  // 7. Remote audio mix
   if (ninjamClient.isConnected())
     ninjamClient.getDecodedAudio(buffer);
 
   ninjamClient.setSaveTx(saveTxEnabled);
   ninjamClient.setSaveRx(saveRxEnabled);
 
-  // 5. Capture raw input into per-channel ring buffers
+  // 8. Capture raw input into per-channel ring buffers.
+  //    Gain is vol*pan only (no mute factor -- mute is monitor-only).
+  //    Bus 0 is read from bus0Snapshot because output 0/1 was overwritten above.
   {
     juce::ScopedLock sl(localChannelMutex);
-    int ns = buffer.getNumSamples();
     for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
       auto &lc = *localChannels[ci];
       auto *bus = getBus(true, ci);
@@ -276,24 +318,27 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       int busCh = bus->getNumberOfChannels();
 
       float vol = lc.volume.load(), pan = lc.pan.load();
-      bool muted = lc.muted.load();
-      float lG = muted ? 0.0f : vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
-      float rG = muted ? 0.0f : vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+      float lG = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
+      float rG = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
       bool mono = lc.isMono.load();
+
+      const juce::AudioBuffer<float> &src = (ci == 0) ? bus0Snapshot : buffer;
+      int srcBase = (ci == 0) ? 0 : offset;
+      int srcCh   = (ci == 0) ? bus0Snapshot.getNumChannels() : busCh;
 
       if (lc.fifo.getFreeSpace() >= ns) {
         int s1, n1, s2, n2;
         lc.fifo.prepareToWrite(ns, s1, n1, s2, n2);
         for (int ch = 0; ch < 2; ++ch) {
           float gain = (ch == 0) ? lG : rG;
-          int srcOff = (mono || ch >= busCh) ? offset : offset + ch;
-          if (srcOff < buffer.getNumChannels()) {
+          int srcOff = (mono || ch >= srcCh) ? srcBase : srcBase + ch;
+          if (srcOff < src.getNumChannels()) {
             if (n1 > 0) {
-              lc.ring.copyFrom(ch, s1, buffer, srcOff, 0, n1);
+              lc.ring.copyFrom(ch, s1, src, srcOff, 0, n1);
               lc.ring.applyGain(ch, s1, n1, gain);
             }
             if (n2 > 0) {
-              lc.ring.copyFrom(ch, s2, buffer, srcOff, n1, n2);
+              lc.ring.copyFrom(ch, s2, src, srcOff, n1, n2);
               lc.ring.applyGain(ch, s2, n2, gain);
             }
           }
@@ -358,6 +403,7 @@ void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
         ch->setAttribute("volume", (double)lc.volume.load());
         ch->setAttribute("pan",    (double)lc.pan.load());
         ch->setAttribute("muted",  lc.muted.load());
+        ch->setAttribute("solo",   lc.monitorSolo.load());
         ch->setAttribute("xmit",   lc.xmitEnabled.load());
     }
     copyXmlToBinary(xml, destData);
@@ -393,6 +439,7 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
         lc.volume.store((float)ch->getDoubleAttribute("volume", 1.0));
         lc.pan.store((float)ch->getDoubleAttribute("pan", 0.0));
         lc.muted.store(ch->getBoolAttribute("muted", false));
+        lc.monitorSolo.store(ch->getBoolAttribute("solo", false));
         lc.xmitEnabled.store(ch->getBoolAttribute("xmit", true));
     }
 }

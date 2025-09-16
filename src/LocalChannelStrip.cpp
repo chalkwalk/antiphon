@@ -15,7 +15,8 @@ LocalChannelStrip::LocalChannelStrip(
   };
   addAndMakeVisible(nameEditor);
 
-  monoButton.setButtonText("M/S");
+  monoButton.setButtonText("Mono");
+  monoButton.setTooltip("Sum stereo input to mono before encoding and monitoring");
   monoButton.setToggleState(channel->isMono.load(), juce::dontSendNotification);
   monoButton.onClick = [this]() {
     channel->isMono.store(monoButton.getToggleState());
@@ -41,13 +42,23 @@ LocalChannelStrip::LocalChannelStrip(
   addAndMakeVisible(panSlider);
 
   muteButton.setButtonText("M");
+  muteButton.setTooltip("Mute: silence this channel in your monitor mix (others still hear you)");
   muteButton.setToggleState(channel->muted.load(), juce::dontSendNotification);
   muteButton.onClick = [this]() {
     channel->muted.store(muteButton.getToggleState());
   };
   addAndMakeVisible(muteButton);
 
+  soloButton.setButtonText("S");
+  soloButton.setTooltip("Solo: hear only soloed channels in your monitor mix");
+  soloButton.setToggleState(channel->monitorSolo.load(), juce::dontSendNotification);
+  soloButton.onClick = [this]() {
+    channel->monitorSolo.store(soloButton.getToggleState());
+  };
+  addAndMakeVisible(soloButton);
+
   xmitButton.setButtonText("TX");
+  xmitButton.setTooltip("Transmit: send this channel's audio to the server");
   xmitButton.setToggleState(channel->xmitEnabled.load(), juce::dontSendNotification);
   xmitButton.onClick = [this]() {
     channel->xmitEnabled.store(xmitButton.getToggleState());
@@ -111,6 +122,8 @@ void LocalChannelStrip::resized() {
   panSlider.setBounds(area.removeFromLeft(70));
   area.removeFromLeft(4);
   muteButton.setBounds(area.removeFromLeft(28));
+  area.removeFromLeft(4);
+  soloButton.setBounds(area.removeFromLeft(22));
   area.removeFromLeft(4);
   xmitButton.setBounds(area.removeFromLeft(28));
   area.removeFromLeft(4);

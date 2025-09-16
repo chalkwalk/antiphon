@@ -13,7 +13,8 @@ public:
     std::atomic<bool> isMono{false};
     std::atomic<float> volume{1.0f};
     std::atomic<float> pan{0.0f};
-    std::atomic<bool> muted{false};
+    std::atomic<bool> muted{false};       // monitor mute only
+    std::atomic<bool> monitorSolo{false}; // monitor solo only
     std::atomic<bool> xmitEnabled{true};
     std::atomic<float> peakL{0.0f};
     std::atomic<float> peakR{0.0f};

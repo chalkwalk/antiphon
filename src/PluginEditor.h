@@ -27,6 +27,7 @@ public:
 private:
   NinjamAudioProcessor &audioProcessor;
   NinjamLookAndFeel customLookAndFeel;
+  juce::TooltipWindow tooltipWindow{this, 700};
 
   juce::TextButton browseButton;
   juce::TextButton disconnectButton;

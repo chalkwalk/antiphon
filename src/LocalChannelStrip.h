@@ -28,6 +28,7 @@ private:
   juce::Slider volumeSlider;
   juce::Slider panSlider;
   juce::ToggleButton muteButton;
+  juce::ToggleButton soloButton;
   juce::ToggleButton xmitButton;
   juce::TextButton removeButton;
 
