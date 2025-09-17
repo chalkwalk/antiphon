@@ -27,6 +27,7 @@ LocalChannelStrip::LocalChannelStrip(
   volumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   volumeSlider.setRange(0.0, 2.0, 0.01);
   volumeSlider.setValue((double)channel->volume.load(), juce::dontSendNotification);
+  volumeSlider.setTooltip("Volume: 0 = silent, 1.0 = unity (centre), 2.0 = double");
   volumeSlider.onValueChange = [this]() {
     channel->volume.store((float)volumeSlider.getValue());
   };
@@ -36,6 +37,7 @@ LocalChannelStrip::LocalChannelStrip(
   panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   panSlider.setRange(-1.0, 1.0, 0.01);
   panSlider.setValue((double)channel->pan.load(), juce::dontSendNotification);
+  panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
     channel->pan.store((float)panSlider.getValue());
   };
@@ -59,6 +61,10 @@ LocalChannelStrip::LocalChannelStrip(
 
   xmitButton.setButtonText("TX");
   xmitButton.setTooltip("Transmit: send this channel's audio to the server");
+  xmitButton.setColour(juce::TextButton::buttonOnColourId,  juce::Colour(0xff0d5c2a)); // green = live
+  xmitButton.setColour(juce::TextButton::buttonColourId,    juce::Colour(0xff5a1515)); // red = silent
+  xmitButton.setColour(juce::TextButton::textColourOnId,    juce::Colours::white);
+  xmitButton.setColour(juce::TextButton::textColourOffId,   juce::Colour(0xffcc6666));
   xmitButton.setToggleState(channel->xmitEnabled.load(), juce::dontSendNotification);
   xmitButton.onClick = [this]() {
     channel->xmitEnabled.store(xmitButton.getToggleState());
@@ -113,19 +119,25 @@ void LocalChannelStrip::resized() {
   auto area = getLocalBounds().reduced(4);
   area.removeFromLeft(18); // VU bars
 
-  nameEditor.setBounds(area.removeFromLeft(100));
+  // Fixed left elements
+  nameEditor.setBounds(area.removeFromLeft(80));
   area.removeFromLeft(4);
   monoButton.setBounds(area.removeFromLeft(36));
   area.removeFromLeft(4);
-  volumeSlider.setBounds(area.removeFromLeft(100));
-  area.removeFromLeft(4);
-  panSlider.setBounds(area.removeFromLeft(70));
-  area.removeFromLeft(4);
-  muteButton.setBounds(area.removeFromLeft(28));
-  area.removeFromLeft(4);
-  soloButton.setBounds(area.removeFromLeft(22));
-  area.removeFromLeft(4);
-  xmitButton.setBounds(area.removeFromLeft(28));
-  area.removeFromLeft(4);
-  removeButton.setBounds(area.removeFromLeft(22));
+
+  // Fixed right elements -- allocated from the right so they are never clipped
+  removeButton.setBounds(area.removeFromRight(22));
+  area.removeFromRight(4);
+  xmitButton.setBounds(area.removeFromRight(28));
+  area.removeFromRight(4);
+  soloButton.setBounds(area.removeFromRight(22));
+  area.removeFromRight(4);
+  muteButton.setBounds(area.removeFromRight(28));
+  area.removeFromRight(4);
+
+  // Sliders share remaining space; pan gets ~1/3, volume gets the rest
+  int panW = juce::jmax(40, area.getWidth() / 3);
+  panSlider.setBounds(area.removeFromRight(panW));
+  area.removeFromRight(4);
+  volumeSlider.setBounds(area);
 }

@@ -9,7 +9,7 @@ class NinjamAudioProcessor : public juce::AudioProcessor,
                              public NinjamClientListener {
 public:
   struct LocalChannel {
-    juce::String name{"Local Instrument"};
+    juce::String name{"Instrument"};
     std::atomic<bool> isMono{false};
     std::atomic<float> volume{1.0f};
     std::atomic<float> pan{0.0f};

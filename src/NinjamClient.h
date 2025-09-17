@@ -171,5 +171,5 @@ private:
   juce::CriticalSection txFileMutex;
   juce::CriticalSection rxFileMutex;
   juce::CriticalSection channelInfoMutex;
-  juce::StringArray storedChannelNames{"Local Instrument"};
+  juce::StringArray storedChannelNames{"Instrument"};
 };

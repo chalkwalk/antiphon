@@ -95,7 +95,10 @@ void NinjamLookAndFeel::drawToggleButton(juce::Graphics &g,
     g.setColour(baseColour);
     g.fillRoundedRectangle(bounds, 4.0f);
 
-    g.setColour(button.findColour(juce::TextButton::textColourOffId));
+    auto textColour = button.getToggleState()
+        ? button.findColour(juce::TextButton::textColourOnId)
+        : button.findColour(juce::TextButton::textColourOffId);
+    g.setColour(textColour);
     g.setFont(fontSize);
     g.drawFittedText(button.getButtonText(), button.getLocalBounds(),
                      juce::Justification::centred, 1);

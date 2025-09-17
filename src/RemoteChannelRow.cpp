@@ -30,18 +30,25 @@ RemoteChannelRow::RemoteChannelRow(NinjamAudioProcessor &p,
   };
   addAndMakeVisible(panSlider);
 
+  muteButton.setTooltip("Mute: silence this player in your mix (audio still downloads)");
   muteButton.onClick = [this]() {
     audioProcessor.ninjamClient.setRemoteUserMute(username, channelIndex,
                                                   muteButton.getToggleState());
   };
   addAndMakeVisible(muteButton);
 
+  soloButton.setTooltip("Solo: hear only soloed remote channels");
   soloButton.onClick = [this]() {
     audioProcessor.ninjamClient.setRemoteUserSolo(username, channelIndex,
                                                   soloButton.getToggleState());
   };
   addAndMakeVisible(soloButton);
 
+  recvButton.setTooltip("Receive: download this player's audio from the server");
+  recvButton.setColour(juce::TextButton::buttonOnColourId,  juce::Colour(0xff0d5c2a)); // green = receiving
+  recvButton.setColour(juce::TextButton::buttonColourId,    juce::Colour(0xff5a1515)); // red = not receiving
+  recvButton.setColour(juce::TextButton::textColourOnId,    juce::Colours::white);
+  recvButton.setColour(juce::TextButton::textColourOffId,   juce::Colour(0xffcc6666));
   recvButton.setToggleState(true, juce::dontSendNotification);
   recvButton.onClick = [this]() {
     audioProcessor.ninjamClient.setRemoteUserRecv(username, channelIndex,
