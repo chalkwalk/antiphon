@@ -27,6 +27,7 @@ private:
   juce::ToggleButton recvButton{"R"};
 
   float decayedPeak = 0.0f;
+  juce::Rectangle<int> vuArea;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(RemoteChannelRow)
 };

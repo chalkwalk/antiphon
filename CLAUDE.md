@@ -22,9 +22,9 @@ Design principles: clean modern C++ against JUCE — no NJClient wrapper, no Qt,
 - Remote mixer: per-user volume/pan/mute/solo + VU peak, applied in `getDecodedAudio`
 - Dynamic local channels: add/remove input buses; each `LocalChannel` has name, mono/stereo, vol/pan, monitor mute/solo, xmit toggle, VU peaks, `AbstractFifo` ring buffer. Monitor and transmit are independent gain stages: mute/solo affect only local headphone mix; xmit gates what is sent to the server; vol/pan apply to both.
 - Server browser popup: live room list fetched from ninbot.com, private server entry, username/password/anonymous fields
-- State persistence: `getStateInformation`/`setStateInformation` saves host, credentials, channel layout, mixer positions, metronome state
-- Chat: receive + display, send MSG/ADMIN/PRIVMSG, voting commands
-- UI: dark theme via `NinjamLookAndFeel`, local channel strips with VU meters, remote user strips with VU meters, chat panel, phase progress bar, debug Tx/Rx file dumps
+- State persistence: `getStateInformation`/`setStateInformation` saves host, credentials, channel layout, mixer positions, metronome state, chat panel visibility
+- Chat: receive + display, send MSG/ADMIN/PRIVMSG, voting commands; collapsible via Chat toggle in toolbar; visibility persisted
+- UI: three-column layout (local left | remote centre | chat right); vertical channel strips with rotary pan knob, vertical fader, flanking VU bars; dark theme via `NinjamLookAndFeel`; tooltips on all controls; TX/Recv buttons green/red coded; phase progress bar; debug Tx/Rx file dumps
 
 What remains is captured in the work table below.
 
@@ -54,12 +54,12 @@ All our code lives in `src/` — ~2 k lines, fits in your head.
 | File | Role |
 |---|---|
 | `PluginProcessor.{h,cpp}` | `juce::AudioProcessor`. Owns `NinjamClient`. Runs host sync, internal metronome, interval boundary detection, per-channel local capture in `processBlock`. Manages `vector<shared_ptr<LocalChannel>>` with `addLocalChannel`/`removeLastLocalChannel`; dynamic input bus count via `canAddBus`/`canRemoveBus`. State persistence. |
-| `PluginEditor.{h,cpp}` | Main UI. 30 Hz `Timer` syncs `LocalChannelStrip` and `RemoteUserStrip` children. Status bar with phase progress bar, BPM info, sync state. Server browser trigger. Chat panel. |
-| `LocalChannelStrip.{h,cpp}` | One horizontal strip per local input channel. Name editor, mono toggle, vol/pan sliders, monitor mute (M), monitor solo (S), xmit toggle (TX), remove button, dual L/R VU bars. Layout allocates buttons from the right so they are never clipped. Reads peaks from `LocalChannel` atomics. |
+| `PluginEditor.{h,cpp}` | Main UI. Three-column layout: local strips (left, 320 px fixed), remote cards (centre, horizontal scroll), chat (right, 320 px, collapsible). 30 Hz `Timer` positions strips horizontally and syncs peaks. Bottom toolbar holds Connect/Disconnect/+Channel/Metronome/SaveTx/SaveRx/Chat buttons. Status bar + phase progress bar at top. `TooltipWindow` (700 ms) provides hover tooltips. |
+| `LocalChannelStrip.{h,cpp}` | Vertical 90 px-wide strip per local input channel. Top-to-bottom: name editor (22 px), pan rotary (44 px), L/R VU bars flanking a vertical fader (flex), M+S row (22 px), TX button (22 px), Mono+Remove row (22 px). Reads peaks from `LocalChannel` atomics. |
 | `ServerBrowserDialog.{h,cpp}` | Popup dialog. Fetches live room list from ninbot.com. Table of servers (BPM, BPI, players). Host/port/username/password/anonymous fields. |
 | `NinjamClient.{h,cpp}` | Networking + protocol + encode/decode. `juce::Thread` subclass. Socket read loop, message dispatch, remote-user state, queue-based interval playback (`ChannelStream`/`DecodedInterval`/`PendingDownload`), Tx/Rx file dumps. ~half the complexity. |
-| `RemoteUserStrip.{h,cpp}` | Container card per remote user: username label + one `RemoteChannelRow` per channel. |
-| `RemoteChannelRow.{h,cpp}` | One row per remote channel: VU bar, channel name label, vol/pan sliders, mute (M), solo (S), recv (R) toggle. TX/Recv buttons use green/red colour coding to show live state. |
+| `RemoteUserStrip.{h,cpp}` | Card per remote user: 22 px username header, then channel rows arranged horizontally. `getPreferredWidth()` = 8 + n*90 + (n-1)*4. Height is set by the remote viewport. |
+| `RemoteChannelRow.{h,cpp}` | Vertical 90 px-wide strip per remote channel. Top-to-bottom: channel name label (22 px), pan rotary (44 px), single VU bar + vertical fader (flex), M+S row (22 px), R (Recv) button (22 px). Green/red colour coding on R; tooltips on all controls. |
 | `NinjamLookAndFeel.{h,cpp}` | `LookAndFeel_V4` subclass. Dark blue theme, teal accent (#00b4d8). Custom rotary, button, toggle, text editor outline. |
 | `utils/` | Vendored WDL headers: `vorbisencdec.h` (Ogg/Vorbis wrapper), `sha1.{h,cpp}`, `heapbuf`, `queue`, `wdlstring`, etc. Editable if necessary; treat as near-third-party. |
 
@@ -113,11 +113,9 @@ All message framing: 1-byte type + 4-byte little-endian payload length + payload
 Legend — **Complexity**: S = hours (self-contained), M = 1–3 days, L = 3–7 days, XL = weeks.  
 **UX impact**: High = major daily improvement; Medium = noticeable; Low = polish.
 
-**Completed:** #1 SET_USERMASK, #2 OGGv filter, #3 metronome default, #4 password/port UI, #5 tempo sync UX, #6 server browser, #7 channel info names, #8 dynamic local channels, #9 per-channel xmit toggle, #10 monitor/transmit gain split, #12 VU meters (local strips + remote strips), #13 multi-channel remote strips, #14 per-channel Recv toggle, #15 state persistence, #17 per-channel ring buffers.
+**Completed:** #1 SET_USERMASK, #2 OGGv filter, #3 metronome default, #4 password/port UI, #5 tempo sync UX, #6 server browser, #7 channel info names, #8 dynamic local channels, #9 per-channel xmit toggle, #10 monitor/transmit gain split, #11 vertical strip UI redesign, #12 VU meters (local strips + remote strips), #13 multi-channel remote strips, #14 per-channel Recv toggle, #15 state persistence, #17 per-channel ring buffers.
 
 | # | Item | Type | Complexity | UX Impact | Key notes |
-|---|---|---|---|---|---|
-| 11 | Full vertical strip UI redesign | Feature | L | High | Current strips are horizontal rows. Target: Jamtaba-style vertical cards -- local strips (left panel), remote player cards (centre, horizontally scrollable), chat (right, collapsible). Vertical faders, pan knobs. Near-complete rewrite of `PluginEditor::resized()`, `LocalChannelStrip`, and `RemoteUserStrip`. |
 | 16 | Plugin output bus routing per remote channel | Feature | L | Medium | Route individual remote player channels to specific plugin output buses (for DAW stems). Currently all remote audio mixes into the main stereo out. Requires dynamic output bus management and a routing selector per remote channel strip. |
 | 18 | Lock-free interval handoff | Architecture | M | Low | `processBlock` does `callAsync` with a full buffer copy at each interval boundary. Replace with a `juce::AbstractFifo` FIFO to eliminate the copy and reduce latency jitter. |
 | 19 | Video support | Future | XL | High | Jamtaba-proprietary extension only. Not planned; see Video section below. |
@@ -127,7 +125,7 @@ Legend — **Complexity**: S = hours (self-contained), M = 1–3 days, L = 3–7
 
 ## UI/UX specification
 
-This is the target design. The current implementation does not yet match it.
+The current implementation matches this spec. Use it as the reference for future changes.
 
 ### Overall layout
 

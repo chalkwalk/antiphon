@@ -5,25 +5,27 @@ RemoteChannelRow::RemoteChannelRow(NinjamAudioProcessor &p,
                                    juce::String uname, int chIdx)
     : audioProcessor(p), username(uname), channelIndex(chIdx) {
 
-  channelNameLabel.setFont(juce::Font(11.0f));
+  channelNameLabel.setFont(juce::FontOptions{}.withHeight(11.0f));
   channelNameLabel.setColour(juce::Label::textColourId,
                              juce::Colours::lightgrey);
   addAndMakeVisible(channelNameLabel);
 
-  volumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+  volumeSlider.setSliderStyle(juce::Slider::LinearVertical);
   volumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   volumeSlider.setRange(0.0, 2.0, 0.01);
   volumeSlider.setValue(0.5, juce::dontSendNotification);
+  volumeSlider.setTooltip("Volume: 0 = silent, 1.0 = unity, 2.0 = double");
   volumeSlider.onValueChange = [this]() {
     audioProcessor.ninjamClient.setRemoteUserVolume(
         username, channelIndex, (float)volumeSlider.getValue());
   };
   addAndMakeVisible(volumeSlider);
 
-  panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+  panSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
   panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   panSlider.setRange(-1.0, 1.0, 0.01);
   panSlider.setValue(0.0, juce::dontSendNotification);
+  panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
     audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
                                                  (float)panSlider.getValue());
@@ -72,30 +74,36 @@ void RemoteChannelRow::updatePeak(float peak) {
 }
 
 void RemoteChannelRow::paint(juce::Graphics &g) {
-  auto vu = getLocalBounds().reduced(0, 2).removeFromLeft(7);
   g.setColour(juce::Colour(0xff111122));
-  g.fillRect(vu);
-  if (decayedPeak > 0.0f) {
-    float frac = juce::jlimit(0.0f, 1.0f, decayedPeak);
-    auto fill = vu.removeFromBottom((int)(vu.getHeight() * frac));
+  g.fillRect(vuArea);
+  float frac = juce::jlimit(0.0f, 1.0f, decayedPeak);
+  if (frac > 0.0f) {
+    auto fill = vuArea;
+    fill.removeFromTop((int)(vuArea.getHeight() * (1.0f - frac)));
     g.setColour(frac > 0.7f ? juce::Colour(0xffe08000) : juce::Colour(0xff00c040));
     g.fillRect(fill);
   }
 }
 
 void RemoteChannelRow::resized() {
-  auto area = getLocalBounds().reduced(0, 2);
-  area.removeFromLeft(11); // VU bar drawn in paint()
+  auto area = getLocalBounds().reduced(4);
 
-  channelNameLabel.setBounds(area.removeFromLeft(80));
-  area.removeFromLeft(4);
-  volumeSlider.setBounds(area.removeFromLeft(80));
-  area.removeFromLeft(4);
-  panSlider.setBounds(area.removeFromLeft(60));
-  area.removeFromLeft(4);
-  muteButton.setBounds(area.removeFromLeft(22));
-  area.removeFromLeft(4);
-  soloButton.setBounds(area.removeFromLeft(22));
-  area.removeFromLeft(4);
-  recvButton.setBounds(area.removeFromLeft(22));
+  channelNameLabel.setBounds(area.removeFromTop(22));
+  area.removeFromTop(4);
+  panSlider.setBounds(area.removeFromTop(44));
+  area.removeFromTop(4);
+
+  area.removeFromBottom(4);
+  recvButton.setBounds(area.removeFromBottom(22));
+  area.removeFromBottom(4);
+  auto muteSoloRow = area.removeFromBottom(22);
+  soloButton.setBounds(muteSoloRow.removeFromRight(38));
+  muteSoloRow.removeFromRight(4);
+  muteButton.setBounds(muteSoloRow);
+  area.removeFromBottom(4);
+
+  // Remaining: single VU bar on left, fader fills the rest
+  vuArea = area.removeFromLeft(6);
+  area.removeFromLeft(2);
+  volumeSlider.setBounds(area);
 }

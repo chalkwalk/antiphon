@@ -39,6 +39,7 @@ private:
   juce::ToggleButton metronomeToggle;
   juce::ToggleButton saveTxToggle;
   juce::ToggleButton saveRxToggle;
+  juce::ToggleButton chatToggle;
 
   // Local Channel Strips
   juce::OwnedArray<LocalChannelStrip> localChannelStrips;

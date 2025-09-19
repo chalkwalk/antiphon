@@ -23,7 +23,7 @@ LocalChannelStrip::LocalChannelStrip(
   };
   addAndMakeVisible(monoButton);
 
-  volumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+  volumeSlider.setSliderStyle(juce::Slider::LinearVertical);
   volumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   volumeSlider.setRange(0.0, 2.0, 0.01);
   volumeSlider.setValue((double)channel->volume.load(), juce::dontSendNotification);
@@ -33,7 +33,7 @@ LocalChannelStrip::LocalChannelStrip(
   };
   addAndMakeVisible(volumeSlider);
 
-  panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+  panSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
   panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   panSlider.setRange(-1.0, 1.0, 0.01);
   panSlider.setValue((double)channel->pan.load(), juce::dontSendNotification);
@@ -95,13 +95,7 @@ void LocalChannelStrip::paint(juce::Graphics &g) {
   g.setColour(juce::Colour(0xff1e1e32));
   g.fillRoundedRectangle(getLocalBounds().toFloat(), 4.0f);
 
-  // VU bars: two 5px bars on the left
-  auto vuArea = getLocalBounds().reduced(2, 4).removeFromLeft(14);
-  auto vuL = vuArea.removeFromLeft(5);
-  vuArea.removeFromLeft(2);
-  auto vuR = vuArea.removeFromLeft(5);
-
-  auto drawBar = [&](juce::Rectangle<int> r, float peak) {
+  auto drawVBar = [&](juce::Rectangle<int> r, float peak) {
     g.setColour(juce::Colour(0xff111122));
     g.fillRect(r);
     float frac = juce::jlimit(0.0f, 1.0f, peak);
@@ -111,33 +105,38 @@ void LocalChannelStrip::paint(juce::Graphics &g) {
       g.fillRect(fill);
     }
   };
-  drawBar(vuL, decayedPeakL);
-  drawBar(vuR, decayedPeakR);
+  drawVBar(vuLArea, decayedPeakL);
+  drawVBar(vuRArea, decayedPeakR);
 }
 
 void LocalChannelStrip::resized() {
   auto area = getLocalBounds().reduced(4);
-  area.removeFromLeft(18); // VU bars
 
-  // Fixed left elements
-  nameEditor.setBounds(area.removeFromLeft(80));
-  area.removeFromLeft(4);
-  monoButton.setBounds(area.removeFromLeft(36));
-  area.removeFromLeft(4);
+  // Fixed top elements
+  nameEditor.setBounds(area.removeFromTop(22));
+  area.removeFromTop(4);
+  panSlider.setBounds(area.removeFromTop(44));
+  area.removeFromTop(4);
 
-  // Fixed right elements -- allocated from the right so they are never clipped
-  removeButton.setBounds(area.removeFromRight(22));
-  area.removeFromRight(4);
-  xmitButton.setBounds(area.removeFromRight(28));
-  area.removeFromRight(4);
-  soloButton.setBounds(area.removeFromRight(22));
-  area.removeFromRight(4);
-  muteButton.setBounds(area.removeFromRight(28));
-  area.removeFromRight(4);
+  // Fixed bottom elements
+  area.removeFromBottom(4);
+  auto monoRemoveRow = area.removeFromBottom(22);
+  removeButton.setBounds(monoRemoveRow.removeFromRight(38));
+  monoRemoveRow.removeFromRight(4);
+  monoButton.setBounds(monoRemoveRow);
 
-  // Sliders share remaining space; pan gets ~1/3, volume gets the rest
-  int panW = juce::jmax(40, area.getWidth() / 3);
-  panSlider.setBounds(area.removeFromRight(panW));
-  area.removeFromRight(4);
+  area.removeFromBottom(4);
+  xmitButton.setBounds(area.removeFromBottom(22));
+
+  area.removeFromBottom(4);
+  auto muteSoloRow = area.removeFromBottom(22);
+  soloButton.setBounds(muteSoloRow.removeFromRight(38));
+  muteSoloRow.removeFromRight(4);
+  muteButton.setBounds(muteSoloRow);
+  area.removeFromBottom(4);
+
+  // Remaining flex area: L VU bar | fader | R VU bar
+  vuLArea = area.removeFromLeft(4);
+  vuRArea = area.removeFromRight(4);
   volumeSlider.setBounds(area);
 }

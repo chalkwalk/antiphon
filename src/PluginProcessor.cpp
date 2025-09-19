@@ -387,6 +387,7 @@ static juce::String deobfuscate(const juce::String &b64) {
 void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
     juce::XmlElement xml("NinjamState");
     xml.setAttribute("metronome",     metronomeEnabled.load());
+    xml.setAttribute("chatVisible",   chatVisible.load());
     xml.setAttribute("lastHost",      lastHost);
     xml.setAttribute("lastPort",      lastPort);
     xml.setAttribute("lastUsername",  lastUsername);
@@ -414,6 +415,7 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
     auto xml = getXmlFromBinary(data, sizeInBytes);
     if (!xml || !xml->hasTagName("NinjamState")) return;
 
+    chatVisible.store(xml->getBoolAttribute("chatVisible", true));
     metronomeEnabled.store(xml->getBoolAttribute("metronome",
 #if JucePlugin_Build_Standalone
         true

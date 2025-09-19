@@ -93,6 +93,7 @@ public:
   std::atomic<bool> metronomeEnabled{true};
   std::atomic<bool> saveTxEnabled{false};
   std::atomic<bool> saveRxEnabled{false};
+  std::atomic<bool> chatVisible{true};
 
   // Flash state (written audio thread, decayed + read UI thread)
   std::atomic<float> intervalFlashIntensity{0.0f};

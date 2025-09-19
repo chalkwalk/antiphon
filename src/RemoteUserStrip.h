@@ -16,7 +16,7 @@ public:
   void updateChannels(
       const std::map<int, NinjamClient::RemoteUserChannel> &channels);
 
-  int getPreferredHeight() const;
+  int getPreferredWidth() const;
 
 private:
   NinjamAudioProcessor &audioProcessor;

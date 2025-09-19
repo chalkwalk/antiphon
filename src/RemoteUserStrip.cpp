@@ -4,14 +4,16 @@ RemoteUserStrip::RemoteUserStrip(NinjamAudioProcessor &p, const juce::String &u)
     : audioProcessor(p), username(u) {
 
   usernameLabel.setText(username, juce::dontSendNotification);
-  usernameLabel.setFont(juce::Font(13.0f, juce::Font::bold));
+  usernameLabel.setFont(juce::FontOptions{}.withHeight(13.0f).withStyle("Bold"));
   addAndMakeVisible(usernameLabel);
 }
 
 RemoteUserStrip::~RemoteUserStrip() {}
 
-int RemoteUserStrip::getPreferredHeight() const {
-  return 4 + 22 + (int)channelRows.size() * 28 + 4;
+int RemoteUserStrip::getPreferredWidth() const {
+  int n = channelRows.size();
+  if (n == 0) return 98;
+  return 8 + n * 90 + (n - 1) * 4;
 }
 
 void RemoteUserStrip::paint(juce::Graphics &g) {
@@ -22,8 +24,13 @@ void RemoteUserStrip::paint(juce::Graphics &g) {
 void RemoteUserStrip::resized() {
   auto area = getLocalBounds().reduced(4);
   usernameLabel.setBounds(area.removeFromTop(22));
+  area.removeFromTop(4);
+  int x = area.getX();
+  int y = area.getY();
+  int h = area.getHeight();
   for (auto *row : channelRows) {
-    row->setBounds(area.removeFromTop(28));
+    row->setBounds(x, y, 90, h);
+    x += 94;
   }
 }
 

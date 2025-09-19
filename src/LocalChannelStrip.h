@@ -22,6 +22,7 @@ private:
 
   float decayedPeakL = 0.0f;
   float decayedPeakR = 0.0f;
+  juce::Rectangle<int> vuLArea, vuRArea;
 
   juce::TextEditor nameEditor;
   juce::ToggleButton monoButton;
