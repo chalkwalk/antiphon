@@ -15,6 +15,7 @@ public:
 
   void updatePeaks();
   void setRemovable(bool removable);
+  void updateInputBusCount(int numBuses);
 
 private:
   NinjamAudioProcessor &audioProcessor;
@@ -32,6 +33,7 @@ private:
   juce::ToggleButton soloButton;
   juce::ToggleButton xmitButton;
   juce::TextButton removeButton;
+  juce::ComboBox inputBusBox;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LocalChannelStrip)
 };

@@ -2,6 +2,7 @@
 
 #include "NinjamClient.h"
 #include <JuceHeader.h>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -19,6 +20,7 @@ public:
     std::atomic<float> peakL{0.0f};
     std::atomic<float> peakR{0.0f};
     std::atomic<bool> isValid{true};
+    std::atomic<int> inputBusIndex{0};
 
     juce::AbstractFifo fifo{1};
     juce::AudioBuffer<float> ring;
@@ -32,9 +34,9 @@ public:
 
 #ifndef JucePlugin_PreferredChannelConfigurations
   bool isBusesLayoutSupported(const BusesLayout &layouts) const override;
-  bool canAddBus(bool isInput) const override { return isInput; }
+  bool canAddBus(bool) const override { return true; }
   bool canRemoveBus(bool isInput) const override {
-    return isInput && getBusCount(true) > 1;
+    return isInput ? getBusCount(true) > 1 : getBusCount(false) > 1;
   }
 #endif
 
@@ -61,9 +63,16 @@ public:
   void onConnected() override;
   void onDisconnected(const juce::String &error) override;
   void onServerConfig(int bpm, int bpi) override;
+  void onUserInfoChange() override;
 
   int addLocalChannel();
   void removeLastLocalChannel();
+  int addInputBus();
+  void removeLastInputBus();
+  int addOutputBus();
+  void removeLastOutputBus();
+  void setRemoteUserOutputBus(const juce::String &username, int channelIndex,
+                              int busIdx);
   void sendChannelInfoToServer();
 
   NinjamClient ninjamClient;
@@ -99,6 +108,10 @@ public:
   std::atomic<float> intervalFlashIntensity{0.0f};
   std::atomic<float> beatFlashIntensity{0.0f};
   std::atomic<int> lastBeatCrossedIndex{-1};
+
+  // Saved output bus routing for remote channels, keyed by (username, channelIndex).
+  // Persisted in state and reapplied when users rejoin.
+  std::map<std::pair<juce::String, int>, int> savedRemoteRoutings;
 
 private:
   int lastTimestampedBeat = -1;

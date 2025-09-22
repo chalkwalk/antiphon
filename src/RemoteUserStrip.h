@@ -17,6 +17,7 @@ public:
       const std::map<int, NinjamClient::RemoteUserChannel> &channels);
 
   int getPreferredWidth() const;
+  void updateOutputBusCount(int numBuses);
 
 private:
   NinjamAudioProcessor &audioProcessor;

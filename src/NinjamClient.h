@@ -60,6 +60,8 @@ public:
                          bool solo);
   void setRemoteUserRecv(const juce::String &username, int channelIndex,
                          bool recv);
+  void setRemoteUserOutputBus(const juce::String &username, int channelIndex,
+                              int busIdx);
 
   struct ChatMessage {
     juce::String type;
@@ -83,6 +85,7 @@ public:
     bool isSoloed = false;
     bool recvEnabled = true;
     float peakLevel = 0.0f;
+    int outputBusIndex = 0;
   };
 
   struct RemoteUser {

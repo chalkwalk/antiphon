@@ -45,10 +45,31 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   addAndMakeVisible(saveRxToggle);
 
   addChannelButton.setButtonText("+ Channel");
+  addChannelButton.setTooltip("Add a local channel strip (routes to Input Bus 1 by default)");
   addChannelButton.onClick = [this]() {
     audioProcessor.addLocalChannel();
   };
   addAndMakeVisible(addChannelButton);
+
+  addInputBusButton.setButtonText("+ Input Bus");
+  addInputBusButton.setTooltip("Add a new stereo input bus (for DAW to route another track into)");
+  addInputBusButton.onClick = [this]() { audioProcessor.addInputBus(); };
+  addAndMakeVisible(addInputBusButton);
+
+  removeInputBusButton.setButtonText("- Input Bus");
+  removeInputBusButton.setTooltip("Remove the last input bus (channels using it revert to bus 1)");
+  removeInputBusButton.onClick = [this]() { audioProcessor.removeLastInputBus(); };
+  addAndMakeVisible(removeInputBusButton);
+
+  addOutputBusButton.setButtonText("+ Output Bus");
+  addOutputBusButton.setTooltip("Add a new stereo output bus (for DAW stem recording)");
+  addOutputBusButton.onClick = [this]() { audioProcessor.addOutputBus(); };
+  addAndMakeVisible(addOutputBusButton);
+
+  removeOutputBusButton.setButtonText("- Output Bus");
+  removeOutputBusButton.setTooltip("Remove the last output bus (remote channels using it revert to bus 1)");
+  removeOutputBusButton.onClick = [this]() { audioProcessor.removeLastOutputBus(); };
+  addAndMakeVisible(removeOutputBusButton);
 
   chatToggle.setButtonText("Chat");
   chatToggle.setToggleState(audioProcessor.chatVisible.load(),
@@ -281,19 +302,27 @@ void NinjamAudioProcessorEditor::resized() {
   auto toolbar = area.removeFromBottom(28);
   area.removeFromBottom(10); // spacer above toolbar
 
-  browseButton.setBounds(toolbar.removeFromLeft(100).reduced(0, 4));
-  toolbar.removeFromLeft(6);
-  disconnectButton.setBounds(toolbar.removeFromLeft(100).reduced(0, 4));
-  toolbar.removeFromLeft(6);
-  addChannelButton.setBounds(toolbar.removeFromLeft(90).reduced(0, 4));
-  toolbar.removeFromLeft(6);
-  metronomeToggle.setBounds(toolbar.removeFromLeft(100).reduced(0, 4));
-  toolbar.removeFromLeft(6);
-  saveTxToggle.setBounds(toolbar.removeFromLeft(90).reduced(0, 4));
-  toolbar.removeFromLeft(6);
-  saveRxToggle.setBounds(toolbar.removeFromLeft(90).reduced(0, 4));
-  toolbar.removeFromLeft(6);
-  chatToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
+  browseButton.setBounds(toolbar.removeFromLeft(90).reduced(0, 4));
+  toolbar.removeFromLeft(4);
+  disconnectButton.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
+  toolbar.removeFromLeft(8);
+  addChannelButton.setBounds(toolbar.removeFromLeft(80).reduced(0, 4));
+  toolbar.removeFromLeft(8);
+  addInputBusButton.setBounds(toolbar.removeFromLeft(80).reduced(0, 4));
+  toolbar.removeFromLeft(2);
+  removeInputBusButton.setBounds(toolbar.removeFromLeft(80).reduced(0, 4));
+  toolbar.removeFromLeft(8);
+  addOutputBusButton.setBounds(toolbar.removeFromLeft(88).reduced(0, 4));
+  toolbar.removeFromLeft(2);
+  removeOutputBusButton.setBounds(toolbar.removeFromLeft(88).reduced(0, 4));
+  toolbar.removeFromLeft(8);
+  metronomeToggle.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
+  toolbar.removeFromLeft(8);
+  saveTxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
+  toolbar.removeFromLeft(2);
+  saveRxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
+  toolbar.removeFromLeft(8);
+  chatToggle.setBounds(toolbar.removeFromLeft(46).reduced(0, 4));
 
   // Section labels row
   area.removeFromTop(20);
@@ -396,10 +425,12 @@ void NinjamAudioProcessorEditor::timerCallback() {
       localChannelStrips[i]->setRemovable(i == localChannelStrips.size() - 1 &&
                                           localChannelStrips.size() > 1);
 
-    // Update peaks and layout (horizontal)
+    // Update peaks, bus counts, and layout (horizontal)
+    int numInBuses = audioProcessor.getBusCount(true);
     int x = 0;
     for (auto *s : localChannelStrips) {
       s->updatePeaks();
+      s->updateInputBusCount(numInBuses);
       s->setBounds(x, 0, 90, localChannelsViewport.getHeight());
       x += 94;
     }
@@ -437,8 +468,10 @@ void NinjamAudioProcessorEditor::timerCallback() {
       strip->updateChannels(user.channels);
     }
 
+    int numOutBuses = audioProcessor.getBusCount(false);
     int rx = 0;
     for (auto *s : remoteUserStrips) {
+      s->updateOutputBusCount(numOutBuses);
       int sw = s->getPreferredWidth();
       s->setBounds(rx, 0, sw, remoteUsersViewport.getHeight());
       rx += sw + 8;

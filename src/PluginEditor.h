@@ -44,6 +44,10 @@ private:
   // Local Channel Strips
   juce::OwnedArray<LocalChannelStrip> localChannelStrips;
   juce::TextButton addChannelButton;
+  juce::TextButton addInputBusButton;
+  juce::TextButton removeInputBusButton;
+  juce::TextButton addOutputBusButton;
+  juce::TextButton removeOutputBusButton;
   juce::Viewport localChannelsViewport;
   juce::Component localChannelsContainer;
 

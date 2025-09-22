@@ -77,12 +77,32 @@ LocalChannelStrip::LocalChannelStrip(
   };
   removeButton.setVisible(false);
   addAndMakeVisible(removeButton);
+
+  inputBusBox.setTooltip("Input bus: which DAW input bus feeds this channel");
+  inputBusBox.onChange = [this]() {
+    int sel = inputBusBox.getSelectedId() - 1;
+    if (sel >= 0) channel->inputBusIndex.store(sel);
+  };
+  addAndMakeVisible(inputBusBox);
+  updateInputBusCount(1);
 }
 
 LocalChannelStrip::~LocalChannelStrip() {}
 
 void LocalChannelStrip::setRemovable(bool removable) {
   removeButton.setVisible(removable);
+}
+
+void LocalChannelStrip::updateInputBusCount(int numBuses) {
+  int current = inputBusBox.getSelectedId();
+  inputBusBox.clear(juce::dontSendNotification);
+  for (int i = 0; i < numBuses; ++i)
+    inputBusBox.addItem("In " + juce::String(i + 1), i + 1);
+  int stored = channel->inputBusIndex.load() + 1;
+  inputBusBox.setSelectedId(
+      (stored >= 1 && stored <= numBuses) ? stored : 1,
+      juce::dontSendNotification);
+  (void)current;
 }
 
 void LocalChannelStrip::updatePeaks() {
@@ -124,6 +144,9 @@ void LocalChannelStrip::resized() {
   removeButton.setBounds(monoRemoveRow.removeFromRight(38));
   monoRemoveRow.removeFromRight(4);
   monoButton.setBounds(monoRemoveRow);
+
+  area.removeFromBottom(4);
+  inputBusBox.setBounds(area.removeFromBottom(22));
 
   area.removeFromBottom(4);
   xmitButton.setBounds(area.removeFromBottom(22));

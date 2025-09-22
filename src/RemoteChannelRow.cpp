@@ -57,6 +57,15 @@ RemoteChannelRow::RemoteChannelRow(NinjamAudioProcessor &p,
                                                   recvButton.getToggleState());
   };
   addAndMakeVisible(recvButton);
+
+  outputBusBox.setTooltip("Output bus: which plugin output bus receives this channel");
+  outputBusBox.onChange = [this]() {
+    int sel = outputBusBox.getSelectedId() - 1;
+    if (sel >= 0)
+      audioProcessor.setRemoteUserOutputBus(username, channelIndex, sel);
+  };
+  addAndMakeVisible(outputBusBox);
+  updateOutputBusCount(1);
 }
 
 void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
@@ -66,6 +75,18 @@ void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
   muteButton.setToggleState(c.isMuted, juce::dontSendNotification);
   soloButton.setToggleState(c.isSoloed, juce::dontSendNotification);
   recvButton.setToggleState(c.recvEnabled, juce::dontSendNotification);
+  int busId = c.outputBusIndex + 1;
+  if (busId != outputBusBox.getSelectedId())
+    outputBusBox.setSelectedId(busId, juce::dontSendNotification);
+}
+
+void RemoteChannelRow::updateOutputBusCount(int numBuses) {
+  int current = outputBusBox.getSelectedId();
+  outputBusBox.clear(juce::dontSendNotification);
+  for (int i = 0; i < numBuses; ++i)
+    outputBusBox.addItem("Out " + juce::String(i + 1), i + 1);
+  int sel = (current >= 1 && current <= numBuses) ? current : 1;
+  outputBusBox.setSelectedId(sel, juce::dontSendNotification);
 }
 
 void RemoteChannelRow::updatePeak(float peak) {
@@ -95,6 +116,8 @@ void RemoteChannelRow::resized() {
 
   area.removeFromBottom(4);
   recvButton.setBounds(area.removeFromBottom(22));
+  area.removeFromBottom(4);
+  outputBusBox.setBounds(area.removeFromBottom(22));
   area.removeFromBottom(4);
   auto muteSoloRow = area.removeFromBottom(22);
   soloButton.setBounds(muteSoloRow.removeFromRight(38));

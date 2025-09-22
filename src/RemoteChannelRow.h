@@ -11,6 +11,7 @@ public:
 
   void update(const NinjamClient::RemoteUserChannel &c);
   void updatePeak(float peak);
+  void updateOutputBusCount(int numBuses);
   void paint(juce::Graphics &g) override;
   void resized() override;
 
@@ -25,6 +26,7 @@ private:
   juce::ToggleButton muteButton{"M"};
   juce::ToggleButton soloButton{"S"};
   juce::ToggleButton recvButton{"R"};
+  juce::ComboBox outputBusBox;
 
   float decayedPeak = 0.0f;
   juce::Rectangle<int> vuArea;

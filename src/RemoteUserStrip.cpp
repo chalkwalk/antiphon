@@ -34,6 +34,11 @@ void RemoteUserStrip::resized() {
   }
 }
 
+void RemoteUserStrip::updateOutputBusCount(int numBuses) {
+  for (auto *row : channelRows)
+    row->updateOutputBusCount(numBuses);
+}
+
 void RemoteUserStrip::updateChannels(
     const std::map<int, NinjamClient::RemoteUserChannel> &channels) {
   // Add rows for new channels

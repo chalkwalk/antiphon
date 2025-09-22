@@ -20,11 +20,12 @@ Design principles: clean modern C++ against JUCE — no NJClient wrapper, no Qt,
 - Ogg/Vorbis encode/decode via vendored WDL `vorbisencdec.h` + `libogg`/`libvorbis` submodules
 - Queue-based interval playback: per-(user, channel) `ChannelStream` with `DecodedInterval` queue; late WRITE chunks extend the live interval's readable range atomically; metronome boundary pops the queue
 - Remote mixer: per-user volume/pan/mute/solo + VU peak, applied in `getDecodedAudio`
-- Dynamic local channels: add/remove input buses; each `LocalChannel` has name, mono/stereo, vol/pan, monitor mute/solo, xmit toggle, VU peaks, `AbstractFifo` ring buffer. Monitor and transmit are independent gain stages: mute/solo affect only local headphone mix; xmit gates what is sent to the server; vol/pan apply to both.
+- Dynamic local channels: each `LocalChannel` has name, mono/stereo, vol/pan, monitor mute/solo, xmit toggle, VU peaks, `AbstractFifo` ring buffer, and an explicit `inputBusIndex`. Monitor and transmit are independent gain stages: mute/solo affect only local headphone mix; xmit gates what is sent to the server; vol/pan apply to both. Channel count and input bus count are managed independently.
+- Per-channel bus routing: each local channel has an explicit input bus index (dropdown in strip); each remote channel has an output bus index (dropdown in strip) routing its decoded audio to a specific stereo output bus for DAW stem recording. Output bus count is dynamic. Routing persisted by (username, channelIndex) and reapplied when users rejoin.
 - Server browser popup: live room list fetched from ninbot.com, private server entry, username/password/anonymous fields
-- State persistence: `getStateInformation`/`setStateInformation` saves host, credentials, channel layout, mixer positions, metronome state, chat panel visibility
+- State persistence: `getStateInformation`/`setStateInformation` saves host, credentials, channel layout (including `inputBusIndex` per channel), mixer positions, metronome state, chat panel visibility, remote output bus routing
 - Chat: receive + display, send MSG/ADMIN/PRIVMSG, voting commands; collapsible via Chat toggle in toolbar; visibility persisted
-- UI: three-column layout (local left | remote centre | chat right); vertical channel strips with rotary pan knob, vertical fader, flanking VU bars; dark theme via `NinjamLookAndFeel`; tooltips on all controls; TX/Recv buttons green/red coded; phase progress bar; debug Tx/Rx file dumps
+- UI: three-column layout (local left | remote centre | chat right); vertical channel strips with rotary pan knob, vertical fader, flanking VU bars, input/output bus dropdowns; dark theme via `NinjamLookAndFeel`; tooltips on all controls; TX/Recv buttons green/red coded; phase progress bar; debug Tx/Rx file dumps
 
 What remains is captured in the work table below.
 
@@ -53,13 +54,13 @@ All our code lives in `src/` — ~2 k lines, fits in your head.
 
 | File | Role |
 |---|---|
-| `PluginProcessor.{h,cpp}` | `juce::AudioProcessor`. Owns `NinjamClient`. Runs host sync, internal metronome, interval boundary detection, per-channel local capture in `processBlock`. Manages `vector<shared_ptr<LocalChannel>>` with `addLocalChannel`/`removeLastLocalChannel`; dynamic input bus count via `canAddBus`/`canRemoveBus`. State persistence. |
-| `PluginEditor.{h,cpp}` | Main UI. Three-column layout: local strips (left, 320 px fixed), remote cards (centre, horizontal scroll), chat (right, 320 px, collapsible). 30 Hz `Timer` positions strips horizontally and syncs peaks. Bottom toolbar holds Connect/Disconnect/+Channel/Metronome/SaveTx/SaveRx/Chat buttons. Status bar + phase progress bar at top. `TooltipWindow` (700 ms) provides hover tooltips. |
-| `LocalChannelStrip.{h,cpp}` | Vertical 90 px-wide strip per local input channel. Top-to-bottom: name editor (22 px), pan rotary (44 px), L/R VU bars flanking a vertical fader (flex), M+S row (22 px), TX button (22 px), Mono+Remove row (22 px). Reads peaks from `LocalChannel` atomics. |
+| `PluginProcessor.{h,cpp}` | `juce::AudioProcessor`. Owns `NinjamClient`. Runs host sync, internal metronome, interval boundary detection, per-channel local capture in `processBlock`. Manages `vector<shared_ptr<LocalChannel>>` with `addLocalChannel`/`removeLastLocalChannel` (channel count) and `addInputBus`/`removeLastInputBus`/`addOutputBus`/`removeLastOutputBus` (bus count, independent). `LocalChannel::inputBusIndex` explicit field; `savedRemoteRoutings` map persists output bus assignments. `canAddBus`/`canRemoveBus` enabled for both input and output. State persistence. |
+| `PluginEditor.{h,cpp}` | Main UI. Three-column layout: local strips (left, 320 px fixed), remote cards (centre, horizontal scroll), chat (right, 320 px, collapsible). 30 Hz `Timer` positions strips, syncs peaks, and refreshes bus-count dropdowns. Bottom toolbar holds Connect/Disconnect/+Channel/+Input Bus/-Input Bus/+Output Bus/-Output Bus/Metronome/SaveTx/SaveRx/Chat. Status bar + phase progress bar at top. `TooltipWindow` (700 ms) provides hover tooltips. |
+| `LocalChannelStrip.{h,cpp}` | Vertical 90 px-wide strip per local input channel. Top-to-bottom: name editor (22 px), pan rotary (44 px), L/R VU bars flanking a vertical fader (flex), M+S row (22 px), TX button (22 px), input bus dropdown (22 px), Mono+Remove row (22 px). `updateInputBusCount(n)` repopulates dropdown. Reads peaks from `LocalChannel` atomics. |
 | `ServerBrowserDialog.{h,cpp}` | Popup dialog. Fetches live room list from ninbot.com. Table of servers (BPM, BPI, players). Host/port/username/password/anonymous fields. |
-| `NinjamClient.{h,cpp}` | Networking + protocol + encode/decode. `juce::Thread` subclass. Socket read loop, message dispatch, remote-user state, queue-based interval playback (`ChannelStream`/`DecodedInterval`/`PendingDownload`), Tx/Rx file dumps. ~half the complexity. |
-| `RemoteUserStrip.{h,cpp}` | Card per remote user: 22 px username header, then channel rows arranged horizontally. `getPreferredWidth()` = 8 + n*90 + (n-1)*4. Height is set by the remote viewport. |
-| `RemoteChannelRow.{h,cpp}` | Vertical 90 px-wide strip per remote channel. Top-to-bottom: channel name label (22 px), pan rotary (44 px), single VU bar + vertical fader (flex), M+S row (22 px), R (Recv) button (22 px). Green/red colour coding on R; tooltips on all controls. |
+| `NinjamClient.{h,cpp}` | Networking + protocol + encode/decode. `juce::Thread` subclass. Socket read loop, message dispatch, remote-user state, queue-based interval playback (`ChannelStream`/`DecodedInterval`/`PendingDownload`), Tx/Rx file dumps. `RemoteUserChannel` carries `outputBusIndex`; `getDecodedAudio` routes each stream to `busIdx*2`/`busIdx*2+1` in the output buffer. ~half the complexity. |
+| `RemoteUserStrip.{h,cpp}` | Card per remote user: 22 px username header, then channel rows arranged horizontally. `getPreferredWidth()` = 8 + n*90 + (n-1)*4. `updateOutputBusCount(n)` fans out to all child rows. Height is set by the remote viewport. |
+| `RemoteChannelRow.{h,cpp}` | Vertical 90 px-wide strip per remote channel. Top-to-bottom: channel name label (22 px), pan rotary (44 px), single VU bar + vertical fader (flex), M+S row (22 px), output bus dropdown (22 px), R (Recv) button (22 px). Green/red colour coding on R; tooltips on all controls. `updateOutputBusCount(n)` repopulates dropdown. |
 | `NinjamLookAndFeel.{h,cpp}` | `LookAndFeel_V4` subclass. Dark blue theme, teal accent (#00b4d8). Custom rotary, button, toggle, text editor outline. |
 | `utils/` | Vendored WDL headers: `vorbisencdec.h` (Ogg/Vorbis wrapper), `sha1.{h,cpp}`, `heapbuf`, `queue`, `wdlstring`, etc. Editable if necessary; treat as near-third-party. |
 
@@ -113,10 +114,9 @@ All message framing: 1-byte type + 4-byte little-endian payload length + payload
 Legend — **Complexity**: S = hours (self-contained), M = 1–3 days, L = 3–7 days, XL = weeks.  
 **UX impact**: High = major daily improvement; Medium = noticeable; Low = polish.
 
-**Completed:** #1 SET_USERMASK, #2 OGGv filter, #3 metronome default, #4 password/port UI, #5 tempo sync UX, #6 server browser, #7 channel info names, #8 dynamic local channels, #9 per-channel xmit toggle, #10 monitor/transmit gain split, #11 vertical strip UI redesign, #12 VU meters (local strips + remote strips), #13 multi-channel remote strips, #14 per-channel Recv toggle, #15 state persistence, #17 per-channel ring buffers.
+**Completed:** #1 SET_USERMASK, #2 OGGv filter, #3 metronome default, #4 password/port UI, #5 tempo sync UX, #6 server browser, #7 channel info names, #8 dynamic local channels, #9 per-channel xmit toggle, #10 monitor/transmit gain split, #11 vertical strip UI redesign, #12 VU meters (local strips + remote strips), #13 multi-channel remote strips, #14 per-channel Recv toggle, #15 state persistence, #16 per-channel bus routing (input + output), #17 per-channel ring buffers.
 
 | # | Item | Type | Complexity | UX Impact | Key notes |
-| 16 | Plugin output bus routing per remote channel | Feature | L | Medium | Route individual remote player channels to specific plugin output buses (for DAW stems). Currently all remote audio mixes into the main stereo out. Requires dynamic output bus management and a routing selector per remote channel strip. |
 | 18 | Lock-free interval handoff | Architecture | M | Low | `processBlock` does `callAsync` with a full buffer copy at each interval boundary. Replace with a `juce::AbstractFifo` FIFO to eliminate the copy and reduce latency jitter. |
 | 19 | Video support | Future | XL | High | Jamtaba-proprietary extension only. Not planned; see Video section below. |
 | 20 | OSC tempo sync | Future | M | Medium | Send `/tempo/raw {bpm}` OSC to localhost when server BPM changes (so DAW can auto-adjust). Reference: `abNinjam`. Not planned. |
@@ -151,15 +151,20 @@ Three columns: local input strips (left, fixed width), remote player strips (cen
 
 Each channel strip:
 - **Editable channel name** — protocol-level; transmitted to the server in `CLIENT_SET_CHANNEL_INFO` and `UPLOAD_INTERVAL_BEGIN`; other players see it.
-- **Mono/Stereo toggle** — determines how many plugin input buses this channel consumes.
+- **Mono/Stereo toggle** — toggles mono summing of the assigned input bus; does not add or remove a bus.
 - **Vertical VU meter** — live input level.
 - **Vertical volume fader** — scales both local monitor and transmitted audio (see next point).
 - **Pan knob**.
 - **Monitor Mute / Monitor Solo** — affect only what you hear of your own audio in the plugin output; do not affect what is encoded and sent.
 - **Xmit toggle** — whether this channel's audio is sent to the server. Mid-interval toggle: sends silence for the remainder of the current interval, then stops at the next boundary.
-- **Remove button** — deletes the channel strip and its plugin input buses.
+- **Input bus dropdown** — selects which plugin input bus feeds this channel. Multiple channels can share a bus. Defaults to bus 1.
+- **Remove button** — deletes the channel strip (does not remove the input bus).
 
-The **+ Add channel** button in the toolbar creates a new strip. Plugin starts with one stereo channel. **Local audio always passes through without delay**, regardless of connection state.
+Toolbar buttons manage channels and buses independently:
+- **+ Channel** — adds a new local channel strip (defaults to input bus 1).
+- **+ Input Bus / - Input Bus** — adds or removes a plugin input bus. Removing reroutes any channel using that bus to bus 1.
+
+Plugin starts with one channel and one input bus. **Local audio always passes through without delay**, regardless of connection state.
 
 ### Remote player strips (centre area)
 
@@ -172,7 +177,9 @@ Per channel within a card:
 - **Pan knob**.
 - **Mute / Solo** — independent of local input mute/solo. Solo silences all other remote channels.
 - **Recv toggle** — sends `CLIENT_SET_USERMASK` (0x81) with the channel bit cleared; the server stops forwarding that user's audio entirely (bandwidth saving). Distinct from Mute: Mute receives+decodes but silences output; Recv-off prevents download.
-- **Output routing selector** — routes this channel's audio to a specific plugin output bus for DAW stem capture. Multiple channels can share an output.
+- **Output bus dropdown** — routes this channel's decoded audio to a specific plugin output bus for DAW stem recording. Defaults to bus 1 (main mix). Multiple channels can share a bus. Routing is persisted by (username, channelIndex) and restored when the user rejoins.
+
+Toolbar buttons manage output buses: **+ Output Bus / - Output Bus** add or remove a stereo output bus. Removing the last bus used by a remote channel reroutes it to bus 1.
 
 ### Status bar and sync UX
 

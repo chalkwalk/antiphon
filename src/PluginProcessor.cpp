@@ -40,26 +40,80 @@ const juce::String NinjamAudioProcessor::getProgramName(int) { return {}; }
 void NinjamAudioProcessor::changeProgramName(int, const juce::String &) {}
 
 int NinjamAudioProcessor::addLocalChannel() {
+  juce::ScopedLock sl(localChannelMutex);
+  auto ch = std::make_shared<LocalChannel>();
+  int ringSize = (int)getSampleRate() * 30;
+  if (ringSize > 0) {
+    ch->ring.setSize(2, ringSize);
+    ch->fifo.setTotalSize(ringSize);
+  }
+  localChannels.push_back(ch);
+  return (int)localChannels.size() - 1;
+}
+
+void NinjamAudioProcessor::removeLastLocalChannel() {
+  juce::ScopedLock sl(localChannelMutex);
+  if (localChannels.size() <= 1) return;
+  localChannels.back()->isValid.store(false);
+  localChannels.pop_back();
+}
+
+int NinjamAudioProcessor::addInputBus() {
   if (!addBus(true)) return -1;
   updateHostDisplay();
   return getBusCount(true) - 1;
 }
 
-void NinjamAudioProcessor::removeLastLocalChannel() {
+void NinjamAudioProcessor::removeLastInputBus() {
   if (getBusCount(true) <= 1) return;
+  int removedIdx = getBusCount(true) - 1;
+  {
+    juce::ScopedLock sl(localChannelMutex);
+    for (auto &lc : localChannels)
+      if (lc->inputBusIndex.load() == removedIdx)
+        lc->inputBusIndex.store(0);
+  }
   removeBus(true);
   updateHostDisplay();
 }
 
-void NinjamAudioProcessor::prepareToPlay(double sampleRate, int) {
-  int numBuses = getBusCount(true);
-  juce::ScopedLock sl(localChannelMutex);
-  while ((int)localChannels.size() < numBuses)
-    localChannels.push_back(std::make_shared<LocalChannel>());
-  while ((int)localChannels.size() > numBuses) {
-    localChannels.back()->isValid.store(false);
-    localChannels.pop_back();
+int NinjamAudioProcessor::addOutputBus() {
+  if (!addBus(false)) return -1;
+  updateHostDisplay();
+  return getBusCount(false) - 1;
+}
+
+void NinjamAudioProcessor::removeLastOutputBus() {
+  if (getBusCount(false) <= 1) return;
+  int removedIdx = getBusCount(false) - 1;
+  auto users = ninjamClient.getRemoteUsers();
+  for (auto &[uname, user] : users)
+    for (auto &[chIdx, ch] : user.channels)
+      if (ch.outputBusIndex == removedIdx)
+        ninjamClient.setRemoteUserOutputBus(uname, chIdx, 0);
+  removeBus(false);
+  updateHostDisplay();
+}
+
+void NinjamAudioProcessor::setRemoteUserOutputBus(const juce::String &username,
+                                                  int channelIndex, int busIdx) {
+  ninjamClient.setRemoteUserOutputBus(username, channelIndex, busIdx);
+  savedRemoteRoutings[{username, channelIndex}] = busIdx;
+}
+
+void NinjamAudioProcessor::onUserInfoChange() {
+  auto users = ninjamClient.getRemoteUsers();
+  for (auto &[uname, user] : users) {
+    for (auto &[chIdx, ch] : user.channels) {
+      auto it = savedRemoteRoutings.find({uname, chIdx});
+      if (it != savedRemoteRoutings.end())
+        ninjamClient.setRemoteUserOutputBus(uname, chIdx, it->second);
+    }
   }
+}
+
+void NinjamAudioProcessor::prepareToPlay(double sampleRate, int) {
+  juce::ScopedLock sl(localChannelMutex);
   int ringSize = (int)sampleRate * 30;
   for (auto &lc : localChannels) {
     lc->ring.setSize(2, ringSize);
@@ -80,9 +134,9 @@ void NinjamAudioProcessor::releaseResources() {
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool NinjamAudioProcessor::isBusesLayoutSupported(
     const BusesLayout &layouts) const {
-  if (layouts.outputBuses.isEmpty() ||
-      layouts.outputBuses[0] != juce::AudioChannelSet::stereo())
-    return false;
+  if (layouts.outputBuses.isEmpty()) return false;
+  for (auto &ch : layouts.outputBuses)
+    if (ch != juce::AudioChannelSet::stereo()) return false;
   for (auto &ch : layouts.inputBuses)
     if (ch != juce::AudioChannelSet::stereo() &&
         ch != juce::AudioChannelSet::mono())
@@ -133,9 +187,11 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     for (auto &lcPtr : localChannels)
       if (lcPtr->monitorSolo.load()) { anyMonitorSolo = true; break; }
 
+    int numInBuses = getBusCount(true);
     for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
       auto &lc = *localChannels[ci];
-      auto *bus = getBus(true, ci);
+      int busIdx = juce::jlimit(0, numInBuses - 1, lc.inputBusIndex.load());
+      auto *bus = getBus(true, busIdx);
       if (!bus) continue;
       int offset = bus->getChannelIndexInProcessBlockBuffer(0);
       int busCh = bus->getNumberOfChannels();
@@ -152,10 +208,10 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       // Compute peaks on raw input (reflects what you're sending), display
       // scaled by monitor gain so the VU shows what you hear.
       {
-        const float *rawL = (ci == 0 && bus0Snapshot.getNumChannels() > 0)
+        const float *rawL = (busIdx == 0 && bus0Snapshot.getNumChannels() > 0)
             ? bus0Snapshot.getReadPointer(0)
             : (offset     < buffer.getNumChannels() ? buffer.getReadPointer(offset)     : nullptr);
-        const float *rawR = (ci == 0 && bus0Snapshot.getNumChannels() > 1)
+        const float *rawR = (busIdx == 0 && bus0Snapshot.getNumChannels() > 1)
             ? bus0Snapshot.getReadPointer(1)
             : (offset + 1 < buffer.getNumChannels() && busCh > 1 ? buffer.getReadPointer(offset + 1) : rawL);
         float pL = 0.0f, pR = 0.0f;
@@ -168,10 +224,10 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       if (totalNumOutputChannels < 2) continue;
 
       // Source: bus 0 from snapshot, buses 1+ from live buffer (not aliased).
-      const juce::AudioBuffer<float> &src = (ci == 0) ? bus0Snapshot : buffer;
-      int srcOff0 = (ci == 0) ? 0 : offset;
-      int srcOff1 = (ci == 0) ? (bus0Snapshot.getNumChannels() > 1 ? 1 : 0)
-                               : (busCh > 1 ? offset + 1 : offset);
+      const juce::AudioBuffer<float> &src = (busIdx == 0) ? bus0Snapshot : buffer;
+      int srcOff0 = (busIdx == 0) ? 0 : offset;
+      int srcOff1 = (busIdx == 0) ? (bus0Snapshot.getNumChannels() > 1 ? 1 : 0)
+                                  : (busCh > 1 ? offset + 1 : offset);
 
       // mono flag: both output channels read from the first source channel only.
       // This matches the transmit capture behavior.
@@ -310,9 +366,11 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   //    Bus 0 is read from bus0Snapshot because output 0/1 was overwritten above.
   {
     juce::ScopedLock sl(localChannelMutex);
+    int numInBusesCap = getBusCount(true);
     for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
       auto &lc = *localChannels[ci];
-      auto *bus = getBus(true, ci);
+      int busIdx = juce::jlimit(0, numInBusesCap - 1, lc.inputBusIndex.load());
+      auto *bus = getBus(true, busIdx);
       if (!bus) continue;
       int offset = bus->getChannelIndexInProcessBlockBuffer(0);
       int busCh = bus->getNumberOfChannels();
@@ -322,9 +380,9 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       float rG = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
       bool mono = lc.isMono.load();
 
-      const juce::AudioBuffer<float> &src = (ci == 0) ? bus0Snapshot : buffer;
-      int srcBase = (ci == 0) ? 0 : offset;
-      int srcCh   = (ci == 0) ? bus0Snapshot.getNumChannels() : busCh;
+      const juce::AudioBuffer<float> &src = (busIdx == 0) ? bus0Snapshot : buffer;
+      int srcBase = (busIdx == 0) ? 0 : offset;
+      int srcCh   = (busIdx == 0) ? bus0Snapshot.getNumChannels() : busCh;
 
       if (lc.fifo.getFreeSpace() >= ns) {
         int s1, n1, s2, n2;
@@ -394,18 +452,27 @@ void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
     xml.setAttribute("lastPassword",  obfuscate(lastPassword));
     xml.setAttribute("lastAnonymous", lastAnonymous);
 
-    juce::ScopedLock sl(localChannelMutex);
-    for (int i = 0; i < (int)localChannels.size(); ++i) {
-        auto &lc = *localChannels[i];
-        auto *ch = xml.createNewChildElement("LocalChannel");
-        ch->setAttribute("idx",    i);
-        ch->setAttribute("name",   lc.name);
-        ch->setAttribute("mono",   lc.isMono.load());
-        ch->setAttribute("volume", (double)lc.volume.load());
-        ch->setAttribute("pan",    (double)lc.pan.load());
-        ch->setAttribute("muted",  lc.muted.load());
-        ch->setAttribute("solo",   lc.monitorSolo.load());
-        ch->setAttribute("xmit",   lc.xmitEnabled.load());
+    {
+      juce::ScopedLock sl(localChannelMutex);
+      for (int i = 0; i < (int)localChannels.size(); ++i) {
+          auto &lc = *localChannels[i];
+          auto *ch = xml.createNewChildElement("LocalChannel");
+          ch->setAttribute("idx",      i);
+          ch->setAttribute("name",     lc.name);
+          ch->setAttribute("mono",     lc.isMono.load());
+          ch->setAttribute("volume",   (double)lc.volume.load());
+          ch->setAttribute("pan",      (double)lc.pan.load());
+          ch->setAttribute("muted",    lc.muted.load());
+          ch->setAttribute("solo",     lc.monitorSolo.load());
+          ch->setAttribute("xmit",     lc.xmitEnabled.load());
+          ch->setAttribute("inputBus", lc.inputBusIndex.load());
+      }
+    }
+    for (auto &[key, busIdx] : savedRemoteRoutings) {
+        auto *rr = xml.createNewChildElement("RemoteRouting");
+        rr->setAttribute("username", key.first);
+        rr->setAttribute("ch",       key.second);
+        rr->setAttribute("outputBus", busIdx);
     }
     copyXmlToBinary(xml, destData);
 }
@@ -429,20 +496,32 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
     lastPassword  = deobfuscate(xml->getStringAttribute("lastPassword", ""));
     lastAnonymous = xml->getBoolAttribute  ("lastAnonymous", true);
 
-    // Restore per-channel settings (fall back gracefully if no LocalChannel children)
+    savedRemoteRoutings.clear();
+    for (auto *child : xml->getChildIterator()) {
+        if (child->hasTagName("RemoteRouting")) {
+            juce::String uname = child->getStringAttribute("username");
+            int chIdx = child->getIntAttribute("ch", 0);
+            int bus   = child->getIntAttribute("outputBus", 0);
+            savedRemoteRoutings[{uname, chIdx}] = bus;
+        }
+    }
+
+    // Restore per-channel settings; create channels if needed
     juce::ScopedLock sl(localChannelMutex);
     for (auto *ch : xml->getChildIterator()) {
         if (!ch->hasTagName("LocalChannel")) continue;
         int idx = ch->getIntAttribute("idx", 0);
-        if (idx < 0 || idx >= (int)localChannels.size()) continue;
+        while (idx >= (int)localChannels.size())
+            localChannels.push_back(std::make_shared<LocalChannel>());
         auto &lc = *localChannels[idx];
-        lc.name = ch->getStringAttribute("name", "Local Instrument");
+        lc.name = ch->getStringAttribute("name", "Instrument");
         lc.isMono.store(ch->getBoolAttribute("mono", false));
         lc.volume.store((float)ch->getDoubleAttribute("volume", 1.0));
         lc.pan.store((float)ch->getDoubleAttribute("pan", 0.0));
         lc.muted.store(ch->getBoolAttribute("muted", false));
         lc.monitorSolo.store(ch->getBoolAttribute("solo", false));
         lc.xmitEnabled.store(ch->getBoolAttribute("xmit", true));
+        lc.inputBusIndex.store(ch->getIntAttribute("inputBus", 0));
     }
 }
 

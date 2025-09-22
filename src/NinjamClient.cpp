@@ -801,6 +801,16 @@ void NinjamClient::setRemoteUserRecv(const juce::String &username,
   sendUserMask();
 }
 
+void NinjamClient::setRemoteUserOutputBus(const juce::String &username,
+                                          int channelIndex, int busIdx) {
+  juce::ScopedLock sl(downloadMutex);
+  if (remoteUsers.find(username) != remoteUsers.end()) {
+    auto &user = remoteUsers[username];
+    if (user.channels.find(channelIndex) != user.channels.end())
+      user.channels[channelIndex].outputBusIndex = busIdx;
+  }
+}
+
 void NinjamClient::sendUserMask() {
   juce::MemoryBlock payload;
   {
@@ -839,6 +849,7 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     bool isMuted = false;
     bool isSoloed = false;
 
+    int outBusIdx = 0;
     auto uit = remoteUsers.find(stream.username);
     if (uit != remoteUsers.end()) {
       auto cit = uit->second.channels.find(stream.channelIndex);
@@ -847,6 +858,7 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
         pan = cit->second.pan;
         isMuted = cit->second.isMuted;
         isSoloed = cit->second.isSoloed;
+        outBusIdx = cit->second.outputBusIndex;
       }
     }
 
@@ -865,7 +877,7 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     int srcChannels = stream.current->buffer.getNumChannels();
 
     float peak = 0.0f;
-    for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
+    for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
       float chGain = (ch == 0) ? lGain : rGain;
       const float *src =
           stream.current->buffer.getReadPointer(ch, stream.readPos);
@@ -879,10 +891,15 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     }
 
     if (!isMuted) {
-      for (int ch = 0; ch < std::min(srcChannels, dstChannels); ++ch) {
-        float gain = (ch == 0) ? lGain : rGain;
-        buffer.addFrom(ch, 0, stream.current->buffer, ch, stream.readPos,
-                       toCopy, gain);
+      int maxBus = std::max(0, dstChannels / 2 - 1);
+      int busIdx = juce::jlimit(0, maxBus, outBusIdx);
+      for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
+        int dstCh = busIdx * 2 + ch;
+        if (dstCh < dstChannels) {
+          float gain = (ch == 0) ? lGain : rGain;
+          buffer.addFrom(dstCh, 0, stream.current->buffer, ch,
+                         stream.readPos, toCopy, gain);
+        }
       }
     }
 
