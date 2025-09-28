@@ -19,7 +19,7 @@ target_sources(Ninjam
         LocalChannelStrip.cpp
         NinjamLookAndFeel.cpp
         ServerBrowserDialog.cpp
-        utils/sha1.cpp
+        Sha1.cpp
 )
 
 clap_juce_extensions_plugin(TARGET Ninjam CLAP_ID "com.chalkwalk.ninjam" CLAP_FEATURES "audio-effect" "tool")

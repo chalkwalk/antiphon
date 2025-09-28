@@ -1,5 +1,5 @@
 #include "NinjamClient.h"
-#include "utils/sha1.h"
+#include "Sha1.h"
 #include "utils/vorbisencdec.h"
 
 NinjamClient::NinjamClient() : juce::Thread("NinjamClientThread") {}
@@ -532,7 +532,6 @@ void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
   // standard ninjam. In njclient.cpp it's SHA1(challenge + SHA1(user + ":" +
   // pass)) or just SHA1(challenge + pass)?
 
-  WDL_SHA1 hash;
   juce::MemoryBlock passHashResult(20, true);
 
   // According to Ninjam protocol:
@@ -548,7 +547,7 @@ void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
   // For anonymous logins, hash is 20 bytes of 0s usually, or hash of pass.
   // Let's do hash of challenge + password.
   // The password hash is: SHA1(SHA1(user:pass) + challenge)
-  WDL_SHA1 passHash;
+  Sha1 passHash;
   passHash.add(currentUsername.toRawUTF8(),
                currentUsername.getNumBytesAsUTF8());
   passHash.add(":", 1);
@@ -558,7 +557,7 @@ void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
   juce::MemoryBlock innerHashResult(20, true);
   passHash.result(innerHashResult.getData());
 
-  WDL_SHA1 finalHash;
+  Sha1 finalHash;
   finalHash.add(innerHashResult.getData(), 20);
   finalHash.add(challenge.getData(), 8);
 
