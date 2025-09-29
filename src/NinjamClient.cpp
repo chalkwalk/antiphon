@@ -1,6 +1,5 @@
 #include "NinjamClient.h"
 #include "Sha1.h"
-#include "utils/vorbisencdec.h"
 
 NinjamClient::NinjamClient() : juce::Thread("NinjamClientThread") {}
 
@@ -381,25 +380,21 @@ bool NinjamClient::handleMessage(juce::uint8 type,
         if (oggDataSize > 0 && pd.decoder != nullptr) {
           const char *oggData =
               static_cast<const char *>(payload.getData()) + 17;
-          void *decBuf = pd.decoder->DecodeGetSrcBuffer(oggDataSize);
-          if (decBuf) {
-            memcpy(decBuf, oggData, static_cast<size_t>(oggDataSize));
-            pd.decoder->DecodeWrote(oggDataSize);
-
+          pd.decoder->decode(oggData, oggDataSize);
+          {
             // Decode into the interval buffer, resampling if the OGG's native
             // sample rate differs from our local rate.
-            while (pd.decoder->Available() > 0) {
-              int availFrames =
-                  pd.decoder->Available() / pd.decoder->GetNumChannels();
-              int out_nch = pd.decoder->GetNumChannels();
+            while (pd.decoder->available() > 0) {
+              int out_nch = pd.decoder->numChannels();
+              int availFrames = pd.decoder->available() / out_nch;
               if (availFrames <= 0 || out_nch <= 0)
                 break;
 
-              float *decodedBlock = pd.decoder->Get();
+              const float *decodedBlock = pd.decoder->pcm();
               int writePos = interval.writePos.load();
               int remain = interval.buffer.getNumSamples() - writePos;
 
-              int decoderRate = pd.decoder->GetSampleRate();
+              int decoderRate = pd.decoder->sampleRate();
               bool needsResample =
                   (decoderRate > 0 && decoderRate != (int)sampleRate);
               double speedRatio =
@@ -446,10 +441,10 @@ bool NinjamClient::handleMessage(juce::uint8 type,
                     interval.writePos.fetch_add(numOut);
                   }
                 }
-                pd.decoder->Skip(toCopy * out_nch);
+                pd.decoder->skip(toCopy * out_nch);
               } else {
                 // Buffer full -- drain decoder.
-                pd.decoder->Skip(pd.decoder->Available());
+                pd.decoder->skip(pd.decoder->available());
                 break;
               }
             }
@@ -641,11 +636,6 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
   while (pos < numSamples) {
     int toProcess = std::min(blockSize, numSamples - pos);
 
-    // We need interleaved floats for WDL Encoder
-    // But WDL encoder takes interleaved array. Wait, `Encode` signature is:
-    // void Encode(float *in, int inlen, int advance=1, int spacing=1)
-    // Actually, in `WDL_VorbisEncoder`, if spacing isn't what we want, it
-    // might be tricky. Let's interleave the channels into a temporary buffer
     std::vector<float> interleaved(static_cast<std::size_t>(toProcess * numCh));
     if (mono) {
       const float *readPtr = buffer.getReadPointer(0, pos);
@@ -658,64 +648,53 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
           interleaved[i * numCh + ch] = readPtr[i];
       }
     }
-    encoder.Encode(interleaved.data(), toProcess, numCh, 1);
+    encoder.encode(interleaved.data(), toProcess);
 
-    // If output is generated
-    while (encoder.Available() > 0) {
-      void *oggData = encoder.Get();
-      int avail = encoder.Available(); // The queue gives available bytes
-      // Actually `Available` might return bytes available.
-      // `Get` returns the pointer to `Available` bytes.
+    while (encoder.available() > 0) {
+      int avail = encoder.available();
+      const void *oggData = encoder.data();
 
       juce::MemoryBlock writePacket;
       writePacket.append(guid.getData(), 16);
-
-      juce::uint8 flags = 0; // Not final chunk yet
+      juce::uint8 flags = 0;
       writePacket.append(&flags, 1);
-
       writePacket.append(oggData, avail);
       writeFull(0x84, writePacket.getData(),
                 static_cast<int>(writePacket.getSize()));
 
       {
         juce::ScopedLock sl(txFileMutex);
-        if (isSavingTx && txOggFile != nullptr) {
+        if (isSavingTx && txOggFile != nullptr)
           txOggFile->write(oggData, avail);
-        }
       }
 
-      encoder.Advance(avail);
-      encoder.Compact();
+      encoder.advance(avail);
     }
 
     pos += toProcess;
   }
 
-  // End of stream, send Encode(0)
-  encoder.Encode(nullptr, 0, 1, 1);
-  while (encoder.Available() > 0) {
-    void *oggData = encoder.Get();
-    int avail = encoder.Available();
+  // Flush end-of-stream.
+  encoder.encode(nullptr, 0);
+  while (encoder.available() > 0) {
+    int avail = encoder.available();
+    const void *oggData = encoder.data();
 
     juce::MemoryBlock writePacket;
     writePacket.append(guid.getData(), 16);
-
-    juce::uint8 flags = 1; // End of interval!
+    juce::uint8 flags = 1;
     writePacket.append(&flags, 1);
-
     writePacket.append(oggData, static_cast<std::size_t>(avail));
     writeFull(0x84, writePacket.getData(),
               static_cast<int>(writePacket.getSize()));
 
     {
       juce::ScopedLock sl(txFileMutex);
-      if (isSavingTx && txOggFile != nullptr) {
+      if (isSavingTx && txOggFile != nullptr)
         txOggFile->write(oggData, avail);
-      }
     }
 
-    encoder.Advance(avail);
-    encoder.Compact();
+    encoder.advance(avail);
   }
 }
 

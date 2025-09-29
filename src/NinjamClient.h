@@ -1,5 +1,5 @@
 #pragma once
-#include "utils/vorbisencdec.h"
+#include "VorbisCodec.h"
 #include <JuceHeader.h>
 #include <deque>
 #include <memory>

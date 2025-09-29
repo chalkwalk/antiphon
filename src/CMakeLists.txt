@@ -20,6 +20,7 @@ target_sources(Ninjam
         NinjamLookAndFeel.cpp
         ServerBrowserDialog.cpp
         Sha1.cpp
+        VorbisCodec.cpp
 )
 
 clap_juce_extensions_plugin(TARGET Ninjam CLAP_ID "com.chalkwalk.ninjam" CLAP_FEATURES "audio-effect" "tool")
@@ -37,7 +38,6 @@ target_link_libraries(Ninjam
         ogg
         vorbis
         vorbisenc
-        vorbisfile
     PUBLIC
         juce::juce_recommended_config_flags)
 
