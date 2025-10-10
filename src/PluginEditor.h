@@ -28,6 +28,7 @@ private:
   NinjamAudioProcessor &audioProcessor;
   NinjamLookAndFeel customLookAndFeel;
   juce::TooltipWindow tooltipWindow{this, 700};
+  int diagTickCounter = 0;
 
   juce::TextButton browseButton;
   juce::TextButton disconnectButton;

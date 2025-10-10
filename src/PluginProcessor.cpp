@@ -268,31 +268,19 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   };
 
-  // 5. Server interval sync
+  // 5. Local interval metronome (sole authority for swap timing).
+  // Per njclient's design, DOWNLOAD_INTERVAL_BEGIN is only used to queue
+  // incoming audio, never to drive the local clock. Network jitter would
+  // otherwise yank internalPhaseBeats mid-interval and discard seconds of
+  // un-played audio.
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
-    if (intervalSyncCooldown > 0) {
-      intervalSyncCooldown = std::max(0, intervalSyncCooldown - ns);
-      // Always clear in this block: BEGINs that arrived during cooldown (or in
-      // the same block that crosses to 0) must not trigger a mid-interval swap.
-      ninjamClient.intervalBeginSignal.store(false);
-    }
+    // Drain any pending signal so the diagnostic counter stays at 0.
+    ninjamClient.intervalBeginSignal.store(false);
 
     bool swappedBySignal = false;
-    if (ninjamClient.isConnected() && intervalSyncCooldown == 0 &&
-        ninjamClient.intervalBeginSignal.exchange(false)) {
-      fireCaptureLambdas();
-      ninjamClient.swapIntervalBuffers();
-      internalPhaseBeats = 0.0;
-      lastTimestampedBeat = -1;
-      intervalFlashIntensity.store(1.0f);
-      int bpm = internalBpm.load(), bpi = internalBpi.load();
-      intervalSyncCooldown = (bpm > 0 && bpi > 0)
-          ? (int)(sampleRate * 60.0 / bpm * bpi / 2) : 48000;
-      swappedBySignal = true;
-    }
 
-    // 6. Metronome click + fallback interval boundary detection
+    // 6. Metronome click + interval boundary detection
     int bpm = internalBpm.load();
     int bpi = internalBpi.load();
     double beatsPerSample = (bpm / 60.0) / sampleRate;
@@ -345,8 +333,12 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
     // Fallback swap fires after the per-sample loop (never inside it)
     if (needsFallbackSwap) {
+      juce::Logger::writeToLog(
+          juce::String::formatted("[diag] swap FALLBACK phase=%.3f bpi=%d",
+                                  internalPhaseBeats, internalBpi.load()));
       fireCaptureLambdas();
       ninjamClient.swapIntervalBuffers();
+      ninjamClient.diagSwapsByFallback.fetch_add(1);
       ninjamClient.intervalBeginSignal.store(false);
       int bpm2 = internalBpm.load(), bpi2 = internalBpi.load();
       intervalSyncCooldown = (bpm2 > 0 && bpi2 > 0)

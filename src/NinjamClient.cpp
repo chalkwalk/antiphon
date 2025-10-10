@@ -457,6 +457,11 @@ bool NinjamClient::handleMessage(juce::uint8 type,
 
         if (flags & 1) {
           interval.finalReceived.store(true);
+          diagLastIntervalSamples.store(interval.writePos.load());
+          int bpm = serverBpm, bpi = serverBpi;
+          if (bpm > 0 && bpi > 0)
+            diagLastIntervalExpected.store(
+                (int)(sampleRate * 60.0 / bpm * bpi));
           guidToInterval.erase(it);
         }
       }
@@ -699,8 +704,21 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
 }
 
 void NinjamClient::swapIntervalBuffers() {
+  constexpr int kFadeSamples = 256;
   juce::ScopedLock sl(downloadMutex);
   for (auto &[key, stream] : channelStreams) {
+    if (stream.current) {
+      int unplayed = stream.current->writePos.load() - stream.readPos;
+      if (unplayed > 0) {
+        diagSwapsBeforeConsumed.fetch_add(1);
+        diagSamplesDroppedOnSwap.fetch_add(unplayed);
+        int fadeLen = std::min(unplayed, kFadeSamples);
+        stream.fadeOut = stream.current;
+        stream.fadeOutPos = stream.readPos;
+        stream.fadeTotal = fadeLen;
+        stream.fadeRemaining = fadeLen;
+      }
+    }
     if (!stream.queue.empty()) {
       stream.current = stream.queue.front();
       stream.queue.pop_front();
@@ -709,6 +727,24 @@ void NinjamClient::swapIntervalBuffers() {
       stream.current = nullptr;
     }
   }
+}
+
+void NinjamClient::dumpDiagnostics() {
+  int sigSwaps = diagSwapsBySignal.exchange(0);
+  int fbSwaps  = diagSwapsByFallback.exchange(0);
+  int earlySwaps = diagSwapsBeforeConsumed.exchange(0);
+  int dropped = diagSamplesDroppedOnSwap.exchange(0);
+  int underruns = diagUnderrunBlocks.exchange(0);
+  int lastSamples = diagLastIntervalSamples.load();
+  int lastExpected = diagLastIntervalExpected.load();
+  if (sigSwaps == 0 && fbSwaps == 0 && earlySwaps == 0 && underruns == 0)
+    return;
+  juce::Logger::writeToLog(
+      juce::String::formatted(
+          "[diag] swaps sig=%d fb=%d early=%d droppedSmp=%d underrunBlocks=%d "
+          "lastInterval=%d/%d",
+          sigSwaps, fbSwaps, earlySwaps, dropped, underruns,
+          lastSamples, lastExpected));
 }
 
 std::map<juce::String, NinjamClient::RemoteUser>
@@ -819,7 +855,7 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
         anySolo = true;
 
   for (auto &[key, stream] : channelStreams) {
-    if (!stream.current)
+    if (!stream.current && !stream.fadeOut)
       continue;
 
     float vol = 0.5f;
@@ -845,13 +881,81 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
 
     float lGain = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
     float rGain = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+    int maxBus = std::max(0, dstChannels / 2 - 1);
+    int busIdx = juce::jlimit(0, maxBus, outBusIdx);
+
+    // Crossfade region: mix the old interval's tail (fade-out) with the new
+    // interval's head (fade-in) for the first fadeCopy samples of this block.
+    int fadeCopy = 0;
+    if (stream.fadeOut && stream.fadeRemaining > 0) {
+      fadeCopy = std::min(numSamples, stream.fadeRemaining);
+      int elapsed = stream.fadeTotal - stream.fadeRemaining;
+
+      if (!isMuted) {
+        int oldChannels = stream.fadeOut->buffer.getNumChannels();
+        for (int ch = 0; ch < std::min(oldChannels, 2); ++ch) {
+          int dstCh = busIdx * 2 + ch;
+          if (dstCh >= dstChannels) continue;
+          float chGain = (ch == 0) ? lGain : rGain;
+          const float *src =
+              stream.fadeOut->buffer.getReadPointer(ch, stream.fadeOutPos);
+          float *dst = buffer.getWritePointer(dstCh);
+          for (int s = 0; s < fadeCopy; ++s) {
+            float g = (float)(stream.fadeRemaining - s) / stream.fadeTotal;
+            dst[s] += src[s] * chGain * g;
+          }
+        }
+
+        if (stream.current) {
+          int newAvail = stream.current->writePos.load() - stream.readPos;
+          int newFadeCopy = std::min(fadeCopy, newAvail);
+          if (newFadeCopy > 0) {
+            int newChannels = stream.current->buffer.getNumChannels();
+            for (int ch = 0; ch < std::min(newChannels, 2); ++ch) {
+              int dstCh = busIdx * 2 + ch;
+              if (dstCh >= dstChannels) continue;
+              float chGain = (ch == 0) ? lGain : rGain;
+              const float *src =
+                  stream.current->buffer.getReadPointer(ch, stream.readPos);
+              float *dst = buffer.getWritePointer(dstCh);
+              for (int s = 0; s < newFadeCopy; ++s) {
+                float g = (float)(elapsed + s) / stream.fadeTotal;
+                dst[s] += src[s] * chGain * g;
+              }
+            }
+            stream.readPos += newFadeCopy;
+          }
+        }
+      } else if (stream.current) {
+        // Still advance readPos in muted streams so timing stays consistent.
+        int newAvail = stream.current->writePos.load() - stream.readPos;
+        stream.readPos += std::min(fadeCopy, newAvail);
+      }
+
+      stream.fadeOutPos += fadeCopy;
+      stream.fadeRemaining -= fadeCopy;
+      if (stream.fadeRemaining <= 0) {
+        stream.fadeOut.reset();
+        stream.fadeRemaining = 0;
+      }
+    }
+
+    // Post-fade region: normal mix from current at full gain.
+    if (!stream.current)
+      continue;
 
     auto &iv = *stream.current;
     int avail = iv.writePos.load() - stream.readPos;
-    if (avail <= 0)
+    int remainingSamples = numSamples - fadeCopy;
+    if (remainingSamples <= 0)
       continue;
+    if (avail <= 0) {
+      if (!iv.finalReceived.load())
+        diagUnderrunBlocks.fetch_add(1);
+      continue;
+    }
 
-    int toCopy = std::min(numSamples, avail);
+    int toCopy = std::min(remainingSamples, avail);
     int srcChannels = stream.current->buffer.getNumChannels();
 
     float peak = 0.0f;
@@ -869,13 +973,11 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     }
 
     if (!isMuted) {
-      int maxBus = std::max(0, dstChannels / 2 - 1);
-      int busIdx = juce::jlimit(0, maxBus, outBusIdx);
       for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
         int dstCh = busIdx * 2 + ch;
         if (dstCh < dstChannels) {
           float gain = (ch == 0) ? lGain : rGain;
-          buffer.addFrom(dstCh, 0, stream.current->buffer, ch,
+          buffer.addFrom(dstCh, fadeCopy, stream.current->buffer, ch,
                          stream.readPos, toCopy, gain);
         }
       }

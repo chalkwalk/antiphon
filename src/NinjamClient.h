@@ -99,6 +99,17 @@ public:
   // to align its swap phase to the server's interval boundary.
   std::atomic<bool> intervalBeginSignal{false};
 
+  // Diagnostics for the playback path. All counters are sticky totals; the
+  // dumper logs deltas. See plan: diagnose mid-interval stop/restart.
+  std::atomic<int> diagSwapsBySignal{0};
+  std::atomic<int> diagSwapsByFallback{0};
+  std::atomic<int> diagSwapsBeforeConsumed{0};
+  std::atomic<int> diagUnderrunBlocks{0};
+  std::atomic<int> diagSamplesDroppedOnSwap{0};
+  std::atomic<int> diagLastIntervalSamples{0};
+  std::atomic<int> diagLastIntervalExpected{0};
+  void dumpDiagnostics();
+
 private:
   juce::ListenerList<NinjamClientListener> listeners;
   std::unique_ptr<juce::StreamingSocket> socket;
@@ -115,12 +126,18 @@ private:
 
   // Per-(user, channel) playback stream.  The audio thread reads from current;
   // queue holds upcoming intervals in arrival order.
+  // fadeOut holds the previous interval's buffer for a short crossfade across
+  // the swap boundary, masking the discontinuity from un-played tail samples.
   struct ChannelStream {
     juce::String username;
     int channelIndex = 0;
     std::deque<std::shared_ptr<DecodedInterval>> queue;
     std::shared_ptr<DecodedInterval> current;
     int readPos = 0;
+    std::shared_ptr<DecodedInterval> fadeOut;
+    int fadeOutPos = 0;
+    int fadeTotal = 0;
+    int fadeRemaining = 0;
   };
 
   // Routes DOWNLOAD_INTERVAL_WRITE chunks to the correct DecodedInterval.

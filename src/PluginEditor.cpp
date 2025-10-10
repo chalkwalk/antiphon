@@ -396,6 +396,11 @@ void NinjamAudioProcessorEditor::timerCallback() {
   decay(audioProcessor.intervalFlashIntensity);
   decay(audioProcessor.beatFlashIntensity);
 
+  if (++diagTickCounter >= 30) {
+    diagTickCounter = 0;
+    audioProcessor.ninjamClient.dumpDiagnostics();
+  }
+
   repaint();
 
   // Sync local channel strips to the processor's localChannels vector
