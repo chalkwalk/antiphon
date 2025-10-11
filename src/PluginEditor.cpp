@@ -280,16 +280,15 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   g.setColour(juce::Colours::white);
   g.setFont(juce::FontOptions{}.withHeight(14.0f));
 
-  g.drawFittedText("Local Channels:", labelRow.removeFromLeft(320),
-                   juce::Justification::left, 1);
-  labelRow.removeFromLeft(10);
-
   bool showChat = audioProcessor.chatVisible.load();
   if (showChat) {
     g.drawFittedText("Chat:", labelRow.removeFromRight(320),
                      juce::Justification::left, 1);
     labelRow.removeFromRight(10);
   }
+  g.drawFittedText("Local Channels:", labelRow.removeFromLeft(channelAreaLocalW),
+                   juce::Justification::left, 1);
+  labelRow.removeFromLeft(10);
   g.drawFittedText("Remote Players:", labelRow, juce::Justification::left, 1);
 }
 
@@ -327,12 +326,7 @@ void NinjamAudioProcessorEditor::resized() {
   // Section labels row
   area.removeFromTop(20);
 
-  // Left panel: local channel strips
-  auto leftPanel = area.removeFromLeft(320);
-  localChannelsViewport.setBounds(leftPanel);
-  area.removeFromLeft(10);
-
-  // Right panel: chat (conditionally visible)
+  // Right panel: chat (conditionally visible) -- remove before elastic split
   bool showChat = audioProcessor.chatVisible.load();
   if (showChat) {
     auto rightPanel = area.removeFromRight(320);
@@ -347,8 +341,9 @@ void NinjamAudioProcessorEditor::resized() {
     chatInput.setVisible(false);
   }
 
-  // Centre: remote users
-  remoteUsersViewport.setBounds(area);
+  // Elastic local/remote split
+  cachedChannelPanelBounds = area;
+  relayoutChannelArea();
 }
 
 void NinjamAudioProcessorEditor::openServerBrowser() {
@@ -386,6 +381,77 @@ void NinjamAudioProcessorEditor::closeServerBrowser() {
     removeChildComponent(serverBrowser.get());
     serverBrowser.reset();
   }
+}
+
+void NinjamAudioProcessorEditor::relayoutChannelArea() {
+  if (cachedChannelPanelBounds.isEmpty()) return;
+
+  auto bounds = cachedChannelPanelBounds;
+  const int gap = 10;
+  const int panel_w = bounds.getWidth() - gap;
+
+  // Content needs
+  int numLocal = localChannelStrips.size();
+  int local_need = numLocal > 0 ? numLocal * 94 - 4 : 0;
+
+  int remote_need = 0;
+  for (auto *s : remoteUserStrips) remote_need += s->getPreferredWidth() + 8;
+  if (!remoteUserStrips.isEmpty()) remote_need -= 8;
+
+  // Hard allocations: 40/60 split with 200 px floor, capped at half
+  int local_hard = juce::jlimit(std::min(200, panel_w / 2),
+                                panel_w / 2,
+                                (int)(panel_w * 0.4f));
+  int remote_hard = panel_w - local_hard;
+
+  // Elastic four-case split
+  int local_w, remote_w;
+  if (local_need <= local_hard && remote_need <= remote_hard) {
+    local_w  = local_hard;
+    remote_w = remote_hard;
+  } else if (local_need > local_hard && remote_need <= remote_hard) {
+    remote_w = remote_need;
+    local_w  = panel_w - remote_w;
+  } else if (remote_need > remote_hard && local_need <= local_hard) {
+    local_w  = local_need;
+    remote_w = panel_w - local_w;
+  } else {
+    local_w  = local_hard;
+    remote_w = remote_hard;
+  }
+
+  channelAreaLocalW = local_w;
+
+  localChannelsViewport.setBounds(bounds.removeFromLeft(local_w));
+  bounds.removeFromLeft(gap);
+  remoteUsersViewport.setBounds(bounds);
+
+  // Position local strips: left-flush within container
+  int h = localChannelsViewport.getHeight();
+  int x = 0;
+  for (auto *s : localChannelStrips) {
+    s->setBounds(x, 0, 90, h);
+    x += 94;
+  }
+  localChannelsContainer.setSize(
+      std::max(x, localChannelsViewport.getWidth()), h);
+
+  // Position remote strips: right-flush within container
+  int rh = remoteUsersViewport.getHeight();
+  int total_remote = 0;
+  for (auto *s : remoteUserStrips) total_remote += s->getPreferredWidth() + 8;
+  if (!remoteUserStrips.isEmpty()) total_remote -= 8;
+
+  int container_w = std::max(total_remote, remoteUsersViewport.getWidth());
+  int right_offset = container_w - total_remote;
+
+  int rx = 0;
+  for (auto *s : remoteUserStrips) {
+    int sw = s->getPreferredWidth();
+    s->setBounds(right_offset + rx, 0, sw, rh);
+    rx += sw + 8;
+  }
+  remoteUsersContainer.setSize(container_w, rh);
 }
 
 void NinjamAudioProcessorEditor::timerCallback() {
@@ -430,18 +496,12 @@ void NinjamAudioProcessorEditor::timerCallback() {
       localChannelStrips[i]->setRemovable(i == localChannelStrips.size() - 1 &&
                                           localChannelStrips.size() > 1);
 
-    // Update peaks, bus counts, and layout (horizontal)
+    // Update peaks and bus counts; positioning is handled by relayoutChannelArea()
     int numInBuses = audioProcessor.getBusCount(true);
-    int x = 0;
     for (auto *s : localChannelStrips) {
       s->updatePeaks();
       s->updateInputBusCount(numInBuses);
-      s->setBounds(x, 0, 90, localChannelsViewport.getHeight());
-      x += 94;
     }
-    localChannelsContainer.setSize(
-        std::max(x, localChannelsViewport.getWidth()),
-        localChannelsViewport.getHeight());
   }
 
   // Sync remote user strips
@@ -474,19 +534,11 @@ void NinjamAudioProcessorEditor::timerCallback() {
     }
 
     int numOutBuses = audioProcessor.getBusCount(false);
-    int rx = 0;
-    for (auto *s : remoteUserStrips) {
+    for (auto *s : remoteUserStrips)
       s->updateOutputBusCount(numOutBuses);
-      int sw = s->getPreferredWidth();
-      s->setBounds(rx, 0, sw, remoteUsersViewport.getHeight());
-      rx += sw + 8;
-    }
-    remoteUsersContainer.setSize(
-        std::max(rx, remoteUsersViewport.getWidth()),
-        remoteUsersViewport.getHeight());
   } else if (!remoteUserStrips.isEmpty()) {
     remoteUserStrips.clear();
-    remoteUsersContainer.setSize(remoteUsersViewport.getWidth(),
-                                 remoteUsersViewport.getHeight());
   }
+
+  relayoutChannelArea();
 }

@@ -30,6 +30,11 @@ private:
   juce::TooltipWindow tooltipWindow{this, 700};
   int diagTickCounter = 0;
 
+  // Elastic channel-panel layout state
+  juce::Rectangle<int> cachedChannelPanelBounds;
+  int channelAreaLocalW = 320; // stored for paint() label alignment
+  void relayoutChannelArea();
+
   juce::TextButton browseButton;
   juce::TextButton disconnectButton;
 
