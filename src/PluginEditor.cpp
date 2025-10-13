@@ -12,12 +12,14 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
 
   browseButton.setButtonText("Connect...");
   browseButton.onClick = [this]() { openServerBrowser(); };
+  browseButton.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(browseButton);
 
   disconnectButton.setButtonText("Disconnect");
   disconnectButton.onClick = [this]() {
     audioProcessor.ninjamClient.disconnectFromServer();
   };
+  disconnectButton.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(disconnectButton);
 
   metronomeToggle.setButtonText("Metronome");
@@ -26,6 +28,7 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   metronomeToggle.onClick = [this]() {
     audioProcessor.metronomeEnabled = metronomeToggle.getToggleState();
   };
+  metronomeToggle.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(metronomeToggle);
 
   saveTxToggle.setButtonText("Save Tx Audio");
@@ -34,6 +37,7 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   saveTxToggle.onClick = [this]() {
     audioProcessor.saveTxEnabled = saveTxToggle.getToggleState();
   };
+  saveTxToggle.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(saveTxToggle);
 
   saveRxToggle.setButtonText("Save Rx Audio");
@@ -42,34 +46,67 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   saveRxToggle.onClick = [this]() {
     audioProcessor.saveRxEnabled = saveRxToggle.getToggleState();
   };
+  saveRxToggle.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(saveRxToggle);
 
-  addChannelButton.setButtonText("+ Channel");
+  // Compact toolbar groups
+  channelGroupLabel.setText("Channel:", juce::dontSendNotification);
+  channelGroupLabel.setJustificationType(juce::Justification::centredRight);
+  channelGroupLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(channelGroupLabel);
+
+  addChannelButton.setButtonText("+");
   addChannelButton.setTooltip("Add a local channel strip (routes to Input Bus 1 by default)");
-  addChannelButton.onClick = [this]() {
-    audioProcessor.addLocalChannel();
-  };
+  addChannelButton.onClick = [this]() { audioProcessor.addLocalChannel(); };
+  addChannelButton.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(addChannelButton);
 
-  addInputBusButton.setButtonText("+ Input Bus");
-  addInputBusButton.setTooltip("Add a new stereo input bus (for DAW to route another track into)");
-  addInputBusButton.onClick = [this]() { audioProcessor.addInputBus(); };
-  addAndMakeVisible(addInputBusButton);
+  inputBusGroupLabel.setText("Input bus:", juce::dontSendNotification);
+  inputBusGroupLabel.setJustificationType(juce::Justification::centredRight);
+  inputBusGroupLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(inputBusGroupLabel);
 
-  removeInputBusButton.setButtonText("- Input Bus");
-  removeInputBusButton.setTooltip("Remove the last input bus (channels using it revert to bus 1)");
-  removeInputBusButton.onClick = [this]() { audioProcessor.removeLastInputBus(); };
-  addAndMakeVisible(removeInputBusButton);
+  addInBusButton.setButtonText("+");
+  addInBusButton.setTooltip("Add a new stereo input bus (for DAW to route another track into)");
+  addInBusButton.onClick = [this]() { audioProcessor.addInputBus(); };
+  addInBusButton.setRepaintsOnMouseActivity(true);
+  addAndMakeVisible(addInBusButton);
 
-  addOutputBusButton.setButtonText("+ Output Bus");
-  addOutputBusButton.setTooltip("Add a new stereo output bus (for DAW stem recording)");
-  addOutputBusButton.onClick = [this]() { audioProcessor.addOutputBus(); };
-  addAndMakeVisible(addOutputBusButton);
+  removeInBusButton.setButtonText("-");
+  removeInBusButton.setTooltip("Remove the last input bus (channels using it revert to bus 1)");
+  removeInBusButton.onClick = [this]() { audioProcessor.removeLastInputBus(); };
+  removeInBusButton.setRepaintsOnMouseActivity(true);
+  addAndMakeVisible(removeInBusButton);
 
-  removeOutputBusButton.setButtonText("- Output Bus");
-  removeOutputBusButton.setTooltip("Remove the last output bus (remote channels using it revert to bus 1)");
-  removeOutputBusButton.onClick = [this]() { audioProcessor.removeLastOutputBus(); };
-  addAndMakeVisible(removeOutputBusButton);
+  outputBusGroupLabel.setText("Output bus:", juce::dontSendNotification);
+  outputBusGroupLabel.setJustificationType(juce::Justification::centredRight);
+  outputBusGroupLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(outputBusGroupLabel);
+
+  addOutBusButton.setButtonText("+");
+  addOutBusButton.setTooltip("Add a new stereo output bus (for DAW stem recording)");
+  addOutBusButton.onClick = [this]() { audioProcessor.addOutputBus(); };
+  addOutBusButton.setRepaintsOnMouseActivity(true);
+  addAndMakeVisible(addOutBusButton);
+
+  removeOutBusButton.setButtonText("-");
+  removeOutBusButton.setTooltip("Remove the last output bus (remote channels using it revert to bus 1)");
+  removeOutBusButton.onClick = [this]() { audioProcessor.removeLastOutputBus(); };
+  removeOutBusButton.setRepaintsOnMouseActivity(true);
+  addAndMakeVisible(removeOutBusButton);
+
+  metronomeToggle.setRepaintsOnMouseActivity(true);
+
+  metronomeVolumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+  metronomeVolumeSlider.setRange(0.0, 1.0);
+  metronomeVolumeSlider.setValue(audioProcessor.metronomeVolume.load(),
+                                 juce::dontSendNotification);
+  metronomeVolumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+  metronomeVolumeSlider.setTooltip("Metronome volume");
+  metronomeVolumeSlider.onValueChange = [this]() {
+    audioProcessor.metronomeVolume.store((float)metronomeVolumeSlider.getValue());
+  };
+  addAndMakeVisible(metronomeVolumeSlider);
 
   chatToggle.setButtonText("Chat");
   chatToggle.setToggleState(audioProcessor.chatVisible.load(),
@@ -78,6 +115,7 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
     audioProcessor.chatVisible.store(chatToggle.getToggleState());
     resized();
   };
+  chatToggle.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(chatToggle);
 
   localChannelsViewport.setViewedComponent(&localChannelsContainer, false);
@@ -304,19 +342,34 @@ void NinjamAudioProcessorEditor::resized() {
   browseButton.setBounds(toolbar.removeFromLeft(90).reduced(0, 4));
   toolbar.removeFromLeft(4);
   disconnectButton.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
-  toolbar.removeFromLeft(8);
-  addChannelButton.setBounds(toolbar.removeFromLeft(80).reduced(0, 4));
-  toolbar.removeFromLeft(8);
-  addInputBusButton.setBounds(toolbar.removeFromLeft(80).reduced(0, 4));
+  toolbar.removeFromLeft(10);
+
+  // Channel: [+]
+  channelGroupLabel.setBounds(toolbar.removeFromLeft(62));
   toolbar.removeFromLeft(2);
-  removeInputBusButton.setBounds(toolbar.removeFromLeft(80).reduced(0, 4));
-  toolbar.removeFromLeft(8);
-  addOutputBusButton.setBounds(toolbar.removeFromLeft(88).reduced(0, 4));
+  addChannelButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
+  toolbar.removeFromLeft(10);
+
+  // Input bus: [+] [-]
+  inputBusGroupLabel.setBounds(toolbar.removeFromLeft(70));
   toolbar.removeFromLeft(2);
-  removeOutputBusButton.setBounds(toolbar.removeFromLeft(88).reduced(0, 4));
-  toolbar.removeFromLeft(8);
+  addInBusButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
+  toolbar.removeFromLeft(2);
+  removeInBusButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
+  toolbar.removeFromLeft(10);
+
+  // Output bus: [+] [-]
+  outputBusGroupLabel.setBounds(toolbar.removeFromLeft(76));
+  toolbar.removeFromLeft(2);
+  addOutBusButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
+  toolbar.removeFromLeft(2);
+  removeOutBusButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
+  toolbar.removeFromLeft(10);
+
   metronomeToggle.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
-  toolbar.removeFromLeft(8);
+  toolbar.removeFromLeft(4);
+  metronomeVolumeSlider.setBounds(toolbar.removeFromLeft(60).reduced(0, 6));
+  toolbar.removeFromLeft(10);
   saveTxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
   toolbar.removeFromLeft(2);
   saveRxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
@@ -381,6 +434,10 @@ void NinjamAudioProcessorEditor::closeServerBrowser() {
     removeChildComponent(serverBrowser.get());
     serverBrowser.reset();
   }
+}
+
+void NinjamAudioProcessorEditor::mouseExit(const juce::MouseEvent &) {
+  repaint();
 }
 
 void NinjamAudioProcessorEditor::relayoutChannelArea() {

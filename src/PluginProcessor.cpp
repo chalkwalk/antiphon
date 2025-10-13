@@ -324,7 +324,7 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
           float clickSample =
               std::sin(posInBeat * juce::MathConstants<float>::twoPi * freq /
                        (float)bpm) *
-              envelope * amp;
+              envelope * amp * metronomeVolume.load();
           for (int ch = 0; ch < std::min(2, totalNumOutputChannels); ++ch)
             buffer.addSample(ch, sample, clickSample);
         }
@@ -437,6 +437,7 @@ static juce::String deobfuscate(const juce::String &b64) {
 void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
     juce::XmlElement xml("NinjamState");
     xml.setAttribute("metronome",     metronomeEnabled.load());
+    xml.setAttribute("metronomeVol",  (double)metronomeVolume.load());
     xml.setAttribute("chatVisible",   chatVisible.load());
     xml.setAttribute("lastHost",      lastHost);
     xml.setAttribute("lastPort",      lastPort);
@@ -475,6 +476,7 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
     if (!xml || !xml->hasTagName("NinjamState")) return;
 
     chatVisible.store(xml->getBoolAttribute("chatVisible", true));
+    metronomeVolume.store((float)xml->getDoubleAttribute("metronomeVol", 1.0));
     metronomeEnabled.store(xml->getBoolAttribute("metronome",
 #if JucePlugin_Build_Standalone
         true

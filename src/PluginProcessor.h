@@ -100,6 +100,7 @@ public:
 
   // Debug / Integration Testing Features
   std::atomic<bool> metronomeEnabled{true};
+  std::atomic<float> metronomeVolume{1.0f};
   std::atomic<bool> saveTxEnabled{false};
   std::atomic<bool> saveRxEnabled{false};
   std::atomic<bool> chatVisible{true};

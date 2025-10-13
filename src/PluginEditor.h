@@ -19,6 +19,7 @@ public:
   void paint(juce::Graphics &) override;
   void resized() override;
   void timerCallback() override;
+  void mouseExit(const juce::MouseEvent &) override;
 
   // NinjamClientListener
   void onChatMessage(const juce::String &type, const juce::String &username,
@@ -43,17 +44,23 @@ private:
   void closeServerBrowser();
 
   juce::ToggleButton metronomeToggle;
+  juce::Slider metronomeVolumeSlider;
   juce::ToggleButton saveTxToggle;
   juce::ToggleButton saveRxToggle;
   juce::ToggleButton chatToggle;
 
+  // Compact toolbar groups: "Channel: [+]"  "Input bus: [+][-]"  "Output bus: [+][-]"
+  juce::Label channelGroupLabel;
+  juce::TextButton addChannelButton;
+  juce::Label inputBusGroupLabel;
+  juce::TextButton addInBusButton;
+  juce::TextButton removeInBusButton;
+  juce::Label outputBusGroupLabel;
+  juce::TextButton addOutBusButton;
+  juce::TextButton removeOutBusButton;
+
   // Local Channel Strips
   juce::OwnedArray<LocalChannelStrip> localChannelStrips;
-  juce::TextButton addChannelButton;
-  juce::TextButton addInputBusButton;
-  juce::TextButton removeInputBusButton;
-  juce::TextButton addOutputBusButton;
-  juce::TextButton removeOutputBusButton;
   juce::Viewport localChannelsViewport;
   juce::Component localChannelsContainer;
 
