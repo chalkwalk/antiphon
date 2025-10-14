@@ -35,6 +35,7 @@ private:
   juce::Rectangle<int> cachedChannelPanelBounds;
   int channelAreaLocalW = 320; // stored for paint() label alignment
   void relayoutChannelArea();
+  void updateToolbarStates();
 
   juce::TextButton browseButton;
   juce::TextButton disconnectButton;

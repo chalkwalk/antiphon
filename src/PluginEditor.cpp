@@ -440,6 +440,17 @@ void NinjamAudioProcessorEditor::mouseExit(const juce::MouseEvent &) {
   repaint();
 }
 
+void NinjamAudioProcessorEditor::updateToolbarStates() {
+  const bool connected = audioProcessor.ninjamClient.isConnected();
+  const int inBuses    = audioProcessor.getBusCount(true);
+  const int outBuses   = audioProcessor.getBusCount(false);
+
+  browseButton.setEnabled(!connected);
+  disconnectButton.setEnabled(connected);
+  removeInBusButton.setEnabled(inBuses > 1);
+  removeOutBusButton.setEnabled(outBuses > 1);
+}
+
 void NinjamAudioProcessorEditor::relayoutChannelArea() {
   if (cachedChannelPanelBounds.isEmpty()) return;
 
@@ -524,6 +535,7 @@ void NinjamAudioProcessorEditor::timerCallback() {
     audioProcessor.ninjamClient.dumpDiagnostics();
   }
 
+  updateToolbarStates();
   repaint();
 
   // Sync local channel strips to the processor's localChannels vector
