@@ -286,7 +286,18 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     double beatsPerSample = (bpm / 60.0) / sampleRate;
     bool needsFallbackSwap = false;
 
+    // Reset phase on disconnect (flag set by onDisconnected on message thread)
+    if (phaseResetPending.exchange(false)) {
+      internalPhaseBeats = 0.0;
+      lastTimestampedBeat = -1;
+      intervalFlashIntensity.store(0.0f);
+      beatFlashIntensity.store(0.0f);
+    }
+
+    const bool isConnected = ninjamClient.isConnected();
     for (int sample = 0; sample < ns; ++sample) {
+      if (!isConnected) continue;
+
       internalPhaseBeats += beatsPerSample;
       if (internalPhaseBeats >= bpi)
         internalPhaseBeats -= bpi;
@@ -531,11 +542,17 @@ void NinjamAudioProcessor::sendChannelInfoToServer() {
 
 void NinjamAudioProcessor::onConnected() {
   connectionStatus = "Connected";
+  hasConnectedSinceLastAttempt = true;
+  lastConnectFailed.store(false);
   sendChannelInfoToServer();
 }
 
 void NinjamAudioProcessor::onDisconnected(const juce::String &error) {
-  connectionStatus = "Disconnected: " + error;
+  if (!hasConnectedSinceLastAttempt)
+    lastConnectFailed.store(true);
+  hasConnectedSinceLastAttempt = false;
+  connectionStatus = error.isEmpty() ? "Disconnected" : "Disconnected: " + error;
+  phaseResetPending.store(true);
 }
 
 void NinjamAudioProcessor::onServerConfig(int bpm, int bpi) {

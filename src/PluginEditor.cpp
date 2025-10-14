@@ -202,10 +202,21 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   auto area = getLocalBounds().reduced(10);
   auto header = area.removeFromTop(80);
 
-  g.setColour(juce::Colour(0xff0d0d1a));
+  const bool connected      = audioProcessor.ninjamClient.isConnected();
+  const bool connectFailed  = audioProcessor.lastConnectFailed.load();
+#if !JucePlugin_Build_Standalone
+  const bool mismatch = connected &&
+      std::abs(audioProcessor.hostBpm - (double)audioProcessor.internalBpm.load()) > 0.5;
+  const bool headerWarning = connectFailed || mismatch;
+#else
+  const bool headerWarning = connectFailed;
+#endif
+  juce::Colour headerBg = connected      ? juce::Colour(0xff0d0d1a)   // navy -- normal
+                        : headerWarning  ? juce::Colour(0xff2a1a0a)   // amber -- failed/mismatch
+                                         : juce::Colour(0xff111111);  // dark grey -- idle
+  g.setColour(headerBg);
   g.fillRect(header);
 
-  const bool connected = audioProcessor.ninjamClient.isConnected();
   const juce::Colour teal(0xff00b4d8);
 
   auto row1 = header.removeFromTop(22);
@@ -239,7 +250,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   auto phaseBar = header.removeFromTop(8);
   g.setColour(juce::Colour(0xff1a1a2e));
   g.fillRect(phaseBar);
-  if (connected && audioProcessor.internalBpi.load() > 0) {
+  if (audioProcessor.internalBpi.load() > 0) {
     int bpi = audioProcessor.internalBpi.load();
     float frac = juce::jlimit(
         0.0f, 1.0f, (float)(audioProcessor.internalPhaseBeats / bpi));
@@ -248,30 +259,32 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
     int barY = phaseBar.getY();
     int barH = phaseBar.getHeight();
 
-    g.setColour(teal);
+    g.setColour(connected ? teal : juce::Colour(0xff444444));
     g.fillRect(phaseBar.withWidth((int)(barW * frac)));
 
-    for (int i = 1; i < bpi; ++i) {
-      int lineX = barX + (int)((float)i / bpi * barW);
-      bool isBarBoundary = (i % 4 == 0);
-      g.setColour(isBarBoundary ? juce::Colours::white.withAlpha(0.55f)
-                                : juce::Colours::white.withAlpha(0.18f));
-      int lineH = isBarBoundary ? barH : barH - 2;
-      int lineY = barY + (barH - lineH) / 2;
-      g.drawVerticalLine(lineX, (float)lineY, (float)(lineY + lineH));
-    }
+    if (connected) {
+      for (int i = 1; i < bpi; ++i) {
+        int lineX = barX + (int)((float)i / bpi * barW);
+        bool isBarBoundary = (i % 4 == 0);
+        g.setColour(isBarBoundary ? juce::Colours::white.withAlpha(0.55f)
+                                  : juce::Colours::white.withAlpha(0.18f));
+        int lineH = isBarBoundary ? barH : barH - 2;
+        int lineY = barY + (barH - lineH) / 2;
+        g.drawVerticalLine(lineX, (float)lineY, (float)(lineY + lineH));
+      }
 
-    float iFlash = audioProcessor.intervalFlashIntensity.load();
-    if (iFlash > 0.0f) {
-      g.setColour(juce::Colours::white.withAlpha(iFlash * 0.80f));
-      g.fillRect(phaseBar);
-    }
-    float bFlash = audioProcessor.beatFlashIntensity.load();
-    if (bFlash > 0.0f) {
-      int flashBeat = audioProcessor.lastBeatCrossedIndex.load();
-      float alpha = (flashBeat % 4 == 0) ? 0.50f : 0.25f;
-      g.setColour(juce::Colours::white.withAlpha(bFlash * alpha));
-      g.fillRect(phaseBar);
+      float iFlash = audioProcessor.intervalFlashIntensity.load();
+      if (iFlash > 0.0f) {
+        g.setColour(juce::Colours::white.withAlpha(iFlash * 0.80f));
+        g.fillRect(phaseBar);
+      }
+      float bFlash = audioProcessor.beatFlashIntensity.load();
+      if (bFlash > 0.0f) {
+        int flashBeat = audioProcessor.lastBeatCrossedIndex.load();
+        float alpha = (flashBeat % 4 == 0) ? 0.50f : 0.25f;
+        g.setColour(juce::Colours::white.withAlpha(bFlash * alpha));
+        g.fillRect(phaseBar);
+      }
     }
   }
 
@@ -286,9 +299,6 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
           juce::String(audioProcessor.internalBpi.load()),
       row3, juce::Justification::centredLeft, 1);
 #else
-  const bool mismatch =
-      connected &&
-      std::abs(audioProcessor.hostBpm - (double)audioProcessor.internalBpm.load()) > 0.5;
   const bool pendingTransport = connected && !mismatch && !audioProcessor.hostIsPlaying;
   if (mismatch) {
     g.setColour(juce::Colours::orange);
@@ -420,6 +430,7 @@ void NinjamAudioProcessorEditor::openServerBrowser() {
     audioProcessor.lastUsername  = serverBrowser->usernameInput.getText().trim();
     audioProcessor.lastPassword  = serverBrowser->passwordInput.getText();
     audioProcessor.lastAnonymous = serverBrowser->anonymousToggle.getToggleState();
+    audioProcessor.lastConnectFailed.store(false);
     audioProcessor.ninjamClient.connectToServer(host, port, user, pass);
   };
   serverBrowser->onClose = [this]() { closeServerBrowser(); };

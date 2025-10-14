@@ -101,6 +101,7 @@ public:
   // Debug / Integration Testing Features
   std::atomic<bool> metronomeEnabled{true};
   std::atomic<float> metronomeVolume{1.0f};
+  std::atomic<bool> lastConnectFailed{false};
   std::atomic<bool> saveTxEnabled{false};
   std::atomic<bool> saveRxEnabled{false};
   std::atomic<bool> chatVisible{true};
@@ -117,5 +118,7 @@ public:
 private:
   int lastTimestampedBeat = -1;
   int intervalSyncCooldown = 0;
+  std::atomic<bool> phaseResetPending{false};
+  bool hasConnectedSinceLastAttempt{false};
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessor)
 };
