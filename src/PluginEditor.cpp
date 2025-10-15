@@ -168,6 +168,7 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   for (const auto &msg : audioProcessor.ninjamClient.getChatLog())
     onChatMessage(msg.type, msg.username, msg.text);
 
+  setChatConnectedState(audioProcessor.ninjamClient.isConnected());
   startTimerHz(30);
 }
 
@@ -449,6 +450,33 @@ void NinjamAudioProcessorEditor::closeServerBrowser() {
 
 void NinjamAudioProcessorEditor::mouseExit(const juce::MouseEvent &) {
   repaint();
+}
+
+void NinjamAudioProcessorEditor::setChatConnectedState(bool connected) {
+  const juce::Colour bg   = connected ? juce::Colour(0xff0a0a0a) : juce::Colour(0xff121212);
+  const juce::Colour text = connected ? juce::Colour(0xffe0e0e0) : juce::Colour(0xff1e1e1e);
+
+  chatDisplay.setColour(juce::TextEditor::backgroundColourId, bg);
+  chatDisplay.setColour(juce::TextEditor::textColourId, text);
+  chatDisplay.repaint();
+
+  chatInput.setEnabled(connected);
+  chatInput.setColour(juce::TextEditor::backgroundColourId, bg);
+  chatInput.setColour(juce::TextEditor::textColourId, text);
+  chatInput.setTextToShowWhenEmpty(
+      connected ? "Enter message or command (!vote bpm 120, /msg user text, /topic text)"
+                : "(not connected)",
+      connected ? juce::Colours::grey : juce::Colour(0xff2e2e2e));
+  chatInput.repaint();
+}
+
+void NinjamAudioProcessorEditor::onConnected() {
+  chatDisplay.clear();
+  setChatConnectedState(true);
+}
+
+void NinjamAudioProcessorEditor::onDisconnected(const juce::String &) {
+  setChatConnectedState(false);
 }
 
 void NinjamAudioProcessorEditor::updateToolbarStates() {

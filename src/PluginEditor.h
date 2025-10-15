@@ -22,6 +22,8 @@ public:
   void mouseExit(const juce::MouseEvent &) override;
 
   // NinjamClientListener
+  void onConnected() override;
+  void onDisconnected(const juce::String &error) override;
   void onChatMessage(const juce::String &type, const juce::String &username,
                      const juce::String &text) override;
 
@@ -36,6 +38,7 @@ private:
   int channelAreaLocalW = 320; // stored for paint() label alignment
   void relayoutChannelArea();
   void updateToolbarStates();
+  void setChatConnectedState(bool connected);
 
   juce::TextButton browseButton;
   juce::TextButton disconnectButton;
