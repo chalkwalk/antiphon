@@ -14,18 +14,19 @@ Design principles: clean modern C++ against JUCE — no NJClient wrapper, no Qt,
 
 - JUCE plugin skeleton: VST3 + CLAP + Standalone, CMake build, stereo I/O
 - Host sync: reads DAW BPM/PPQ via `AudioPlayHead`; BPM mismatch warning; "Start transport" prompt
-- Internal metronome: BPI/BPM-based click, 880 Hz downbeat / 440 Hz beats; off by default in plugin mode
+- Internal metronome: BPI/BPM-based click, 880 Hz downbeat / 440 Hz beats; volume control; off by default in plugin mode; only active when connected
 - Networking: full TCP connect/auth/keepalive loop in a `juce::Thread`
 - Protocol: auth, server config, user info + `SET_USERMASK`, interval begin/write (OGGv only), chat, keepalive, `CLIENT_SET_CHANNEL_INFO`
-- Ogg/Vorbis encode/decode via vendored WDL `vorbisencdec.h` + `libogg`/`libvorbis` submodules
-- Queue-based interval playback: per-(user, channel) `ChannelStream` with `DecodedInterval` queue; late WRITE chunks extend the live interval's readable range atomically; metronome boundary pops the queue
+- Ogg/Vorbis encode/decode via first-party `VorbisCodec.{h,cpp}` (pimpl wrapping direct libogg/libvorbis APIs); `VorbisDecoder`/`VorbisEncoder` classes
+- SHA1 via first-party `Sha1.{h,cpp}` (minimal FIPS 180-1; only `add` + `result` interface used for auth)
+- Queue-based interval playback: per-(user, channel) `ChannelStream` with `DecodedInterval` queue; late WRITE chunks extend the live interval's readable range atomically; local metronome boundary (sole authority) pops the queue; 256-sample crossfade at swap boundaries
 - Remote mixer: per-user volume/pan/mute/solo + VU peak, applied in `getDecodedAudio`
 - Dynamic local channels: each `LocalChannel` has name, mono/stereo, vol/pan, monitor mute/solo, xmit toggle, VU peaks, `AbstractFifo` ring buffer, and an explicit `inputBusIndex`. Monitor and transmit are independent gain stages: mute/solo affect only local headphone mix; xmit gates what is sent to the server; vol/pan apply to both. Channel count and input bus count are managed independently.
 - Per-channel bus routing: each local channel has an explicit input bus index (dropdown in strip); each remote channel has an output bus index (dropdown in strip) routing its decoded audio to a specific stereo output bus for DAW stem recording. Output bus count is dynamic. Routing persisted by (username, channelIndex) and reapplied when users rejoin.
 - Server browser popup: live room list fetched from ninbot.com, private server entry, username/password/anonymous fields
-- State persistence: `getStateInformation`/`setStateInformation` saves host, credentials, channel layout (including `inputBusIndex` per channel), mixer positions, metronome state, chat panel visibility, remote output bus routing
-- Chat: receive + display, send MSG/ADMIN/PRIVMSG, voting commands; collapsible via Chat toggle in toolbar; visibility persisted
-- UI: three-column layout (local left | remote centre | chat right); vertical channel strips with rotary pan knob, vertical fader, flanking VU bars, input/output bus dropdowns; dark theme via `NinjamLookAndFeel`; tooltips on all controls; TX/Recv buttons green/red coded; phase progress bar; debug Tx/Rx file dumps
+- State persistence: `getStateInformation`/`setStateInformation` saves host, credentials, channel layout (including `inputBusIndex` per channel), mixer positions, metronome state + volume, chat panel visibility, remote output bus routing
+- Chat: receive + display, send MSG/ADMIN/PRIVMSG, voting commands; collapsible via Chat toggle in toolbar; visibility persisted; ghosted (disabled, dimmed) when disconnected; cleared on next successful connect
+- UI: three-column elastic layout (local left | remote centre | chat right); 40/60 proportional split with 200 px floor; local left-flush, remote right-flush; vertical channel strips with rotary pan knob, vertical fader, flanking VU bars, input/output bus dropdowns; dark theme via `NinjamLookAndFeel`; tooltips on all controls; TX/Recv buttons green/red coded; phase progress bar (pauses + dims when disconnected); header background tint reflects connection state (navy/grey/amber); toolbar buttons enable/disable by connection state and bus count; debug Tx/Rx file dumps
 
 What remains is captured in the work table below.
 
@@ -54,15 +55,17 @@ All our code lives in `src/` — ~2 k lines, fits in your head.
 
 | File | Role |
 |---|---|
-| `PluginProcessor.{h,cpp}` | `juce::AudioProcessor`. Owns `NinjamClient`. Runs host sync, internal metronome, interval boundary detection, per-channel local capture in `processBlock`. Manages `vector<shared_ptr<LocalChannel>>` with `addLocalChannel`/`removeLastLocalChannel` (channel count) and `addInputBus`/`removeLastInputBus`/`addOutputBus`/`removeLastOutputBus` (bus count, independent). `LocalChannel::inputBusIndex` explicit field; `savedRemoteRoutings` map persists output bus assignments. `canAddBus`/`canRemoveBus` enabled for both input and output. State persistence. |
-| `PluginEditor.{h,cpp}` | Main UI. Three-column layout: local strips (left, 320 px fixed), remote cards (centre, horizontal scroll), chat (right, 320 px, collapsible). 30 Hz `Timer` positions strips, syncs peaks, and refreshes bus-count dropdowns. Bottom toolbar holds Connect/Disconnect/+Channel/+Input Bus/-Input Bus/+Output Bus/-Output Bus/Metronome/SaveTx/SaveRx/Chat. Status bar + phase progress bar at top. `TooltipWindow` (700 ms) provides hover tooltips. |
+| `PluginProcessor.{h,cpp}` | `juce::AudioProcessor`. Owns `NinjamClient`. Runs host sync, internal metronome (with volume), interval boundary detection (local metronome is sole authority -- `intervalBeginSignal` is drained but never acted on), per-channel local capture in `processBlock`. Phase advance gated on `isConnected()`; `phaseResetPending` atomic flag triggers audio-thread reset on disconnect. Tracks `lastConnectFailed` for header tint. Manages `vector<shared_ptr<LocalChannel>>` with `addLocalChannel`/`removeLastLocalChannel` and `addInputBus`/`removeLastInputBus`/`addOutputBus`/`removeLastOutputBus`. `LocalChannel::inputBusIndex` explicit field; `savedRemoteRoutings` map persists output bus assignments. `canAddBus`/`canRemoveBus` enabled for both. State persistence. |
+| `PluginEditor.{h,cpp}` | Main UI. Three-column elastic layout: local strips (left, ~40% with 200 px floor), remote cards (centre, ~60%), chat (right, 320 px, collapsible). `relayoutChannelArea()` computes the 4-case proportional split and positions strips; called from `resized()` and 30 Hz `timerCallback`. Local strips left-flush, remote strips right-flush within their viewport. `updateToolbarStates()` enables/disables toolbar buttons by connection state and bus count (called every tick). Bottom toolbar: Connect/Disconnect, compact groups `Channel:[+]` `Input bus:[+][-]` `Output bus:[+][-]`, Metronome toggle + volume slider, SaveTx/SaveRx, Chat. Status bar + phase progress bar at top; header background tints navy/grey/amber by connection state; phase bar teal when connected, grey when not. Chat panel ghosted (disabled, dimmed background) when disconnected; cleared on `onConnected`. `TooltipWindow` (700 ms). |
 | `LocalChannelStrip.{h,cpp}` | Vertical 90 px-wide strip per local input channel. Top-to-bottom: name editor (22 px), pan rotary (44 px), L/R VU bars flanking a vertical fader (flex), M+S row (22 px), TX button (22 px), input bus dropdown (22 px), Mono+Remove row (22 px). `updateInputBusCount(n)` repopulates dropdown. Reads peaks from `LocalChannel` atomics. |
 | `ServerBrowserDialog.{h,cpp}` | Popup dialog. Fetches live room list from ninbot.com. Table of servers (BPM, BPI, players). Host/port/username/password/anonymous fields. |
-| `NinjamClient.{h,cpp}` | Networking + protocol + encode/decode. `juce::Thread` subclass. Socket read loop, message dispatch, remote-user state, queue-based interval playback (`ChannelStream`/`DecodedInterval`/`PendingDownload`), Tx/Rx file dumps. `RemoteUserChannel` carries `outputBusIndex`; `getDecodedAudio` routes each stream to `busIdx*2`/`busIdx*2+1` in the output buffer. ~half the complexity. |
+| `NinjamClient.{h,cpp}` | Networking + protocol + encode/decode. `juce::Thread` subclass. Socket read loop, message dispatch, remote-user state, queue-based interval playback (`ChannelStream`/`DecodedInterval`/`PendingDownload`), Tx/Rx file dumps. `ChannelStream` carries crossfade fields (`fadeOut`/`fadeOutPos`/`fadeTotal`/`fadeRemaining`) for 256-sample crossfade at swap boundaries. `RemoteUserChannel` carries `outputBusIndex`; `getDecodedAudio` routes each stream to `busIdx*2`/`busIdx*2+1` in the output buffer. Diagnostic atomics (`diagSwapsByFallback`, `diagUnderrunBlocks`, etc.) log playback health via `dumpDiagnostics()`. ~half the complexity. |
 | `RemoteUserStrip.{h,cpp}` | Card per remote user: 22 px username header, then channel rows arranged horizontally. `getPreferredWidth()` = 8 + n*90 + (n-1)*4. `updateOutputBusCount(n)` fans out to all child rows. Height is set by the remote viewport. |
 | `RemoteChannelRow.{h,cpp}` | Vertical 90 px-wide strip per remote channel. Top-to-bottom: channel name label (22 px), pan rotary (44 px), single VU bar + vertical fader (flex), M+S row (22 px), output bus dropdown (22 px), R (Recv) button (22 px). Green/red colour coding on R; tooltips on all controls. `updateOutputBusCount(n)` repopulates dropdown. |
-| `NinjamLookAndFeel.{h,cpp}` | `LookAndFeel_V4` subclass. Dark blue theme, teal accent (#00b4d8). Custom rotary, button, toggle, text editor outline. |
-| `utils/` | Vendored WDL headers: `vorbisencdec.h` (Ogg/Vorbis wrapper), `sha1.{h,cpp}`, `heapbuf`, `queue`, `wdlstring`, etc. Editable if necessary; treat as near-third-party. |
+| `NinjamLookAndFeel.{h,cpp}` | `LookAndFeel_V4` subclass. Dark blue theme, teal accent (#00b4d8). Custom rotary, button, toggle, text editor outline. Disabled buttons get alpha * 0.5 automatically. |
+| `Sha1.{h,cpp}` | Minimal first-party SHA1 (FIPS 180-1). Interface: constructor + `add(const void*, int)` + `result(void*)`. Used only for the double-hash challenge-response in `CLIENT_AUTH_USER`. Replaced WDL `sha1.{h,cpp}`. |
+| `VorbisCodec.{h,cpp}` | First-party Ogg/Vorbis encode/decode wrapping direct libogg/libvorbis APIs. `VorbisDecoder`: `decode(data,len)`, `available()`, `pcm()`, `skip(n)`, `sampleRate()`, `numChannels()`. `VorbisEncoder`: constructed with `(sampleRate, numChannels, bitrateKbps, serialNumber)`, `encode(float*,n)`, `available()`, `data()`, `advance()`. Both use pimpl to keep libogg/libvorbis types out of headers. Replaced WDL `vorbisencdec.h`. |
+| `utils/` | Remaining vendored WDL headers: `heapbuf`, `queue`, `wdlstring`, etc. `sha1.{h,cpp}` and `vorbisencdec.h` are no longer used by our code. Treat as near-third-party; edit only if necessary. |
 
 ---
 
@@ -114,12 +117,12 @@ All message framing: 1-byte type + 4-byte little-endian payload length + payload
 Legend — **Complexity**: S = hours (self-contained), M = 1–3 days, L = 3–7 days, XL = weeks.  
 **UX impact**: High = major daily improvement; Medium = noticeable; Low = polish.
 
-**Completed:** #1 SET_USERMASK, #2 OGGv filter, #3 metronome default, #4 password/port UI, #5 tempo sync UX, #6 server browser, #7 channel info names, #8 dynamic local channels, #9 per-channel xmit toggle, #10 monitor/transmit gain split, #11 vertical strip UI redesign, #12 VU meters (local strips + remote strips), #13 multi-channel remote strips, #14 per-channel Recv toggle, #15 state persistence, #16 per-channel bus routing (input + output), #17 per-channel ring buffers.
+**Completed:** #1 SET_USERMASK, #2 OGGv filter, #3 metronome default, #4 password/port UI, #5 tempo sync UX, #6 server browser, #7 channel info names, #8 dynamic local channels, #9 per-channel xmit toggle, #10 monitor/transmit gain split, #11 vertical strip UI redesign, #12 VU meters (local strips + remote strips), #13 multi-channel remote strips, #14 per-channel Recv toggle, #15 state persistence, #16 per-channel bus routing (input + output), #17 per-channel ring buffers, #18 SHA1 replacement (first-party), #19 VorbisCodec replacement (direct libogg/libvorbis), #20 playback phase-lock fix (removed signal-driven swaps; local metronome is sole authority), #21 interval crossfade (256-sample fade at swap boundary), #22 elastic channel panel layout (40/60 proportional, left/right justified), #23 UI polish -- compact toolbar groups, metronome volume slider, hover fix, button enable/disable states, connection-state header tint, phase bar state colour, chat ghost + clear-on-reconnect.
 
 | # | Item | Type | Complexity | UX Impact | Key notes |
-| 18 | Lock-free interval handoff | Architecture | M | Low | `processBlock` does `callAsync` with a full buffer copy at each interval boundary. Replace with a `juce::AbstractFifo` FIFO to eliminate the copy and reduce latency jitter. |
-| 19 | Video support | Future | XL | High | Jamtaba-proprietary extension only. Not planned; see Video section below. |
-| 20 | OSC tempo sync | Future | M | Medium | Send `/tempo/raw {bpm}` OSC to localhost when server BPM changes (so DAW can auto-adjust). Reference: `abNinjam`. Not planned. |
+| 24 | Lock-free TX handoff | Architecture | M | Low | `processBlock` does `callAsync` with a full buffer copy at each interval boundary. Replace with a `juce::AbstractFifo` FIFO to eliminate the copy and reduce TX latency jitter. (RX path already lock-light.) |
+| 25 | Video support | Future | XL | High | Jamtaba-proprietary extension only. Not planned; see Video section below. |
+| 26 | OSC tempo sync | Future | M | Medium | Send `/tempo/raw {bpm}` OSC to localhost when server BPM changes (so DAW can auto-adjust). Reference: `abNinjam`. Not planned. |
 
 ---
 
@@ -145,7 +148,9 @@ The current implementation matches this spec. Use it as the reference for future
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Three columns: local input strips (left, fixed width), remote player strips (centre, horizontal scroll), chat (right, collapsible). Full-width status bar at top. Toolbar at bottom.
+Three columns: local input strips (left), remote player strips (centre, horizontal scroll), chat (right, collapsible). Full-width status bar at top. Toolbar at bottom.
+
+The channel panel (everything between the chat column and the left edge) uses an **elastic 40/60 split** with a 200 px floor on each side. Local strips are left-flush within their allocation; remote strips are right-flush within theirs. When neither side fills its allocation the unused space appears as a gap between them. When one side overflows its hard allocation but the other has slack, it borrows that slack; when both overflow each gets exactly its hard allocation and scrollbars appear. `relayoutChannelArea()` in the editor recalculates this every 30 Hz tick.
 
 ### Local input channel strips (left panel)
 
@@ -160,9 +165,9 @@ Each channel strip:
 - **Input bus dropdown** — selects which plugin input bus feeds this channel. Multiple channels can share a bus. Defaults to bus 1.
 - **Remove button** — deletes the channel strip (does not remove the input bus).
 
-Toolbar buttons manage channels and buses independently:
-- **+ Channel** — adds a new local channel strip (defaults to input bus 1).
-- **+ Input Bus / - Input Bus** — adds or removes a plugin input bus. Removing reroutes any channel using that bus to bus 1.
+Toolbar buttons manage channels and buses independently, grouped as compact labelled groups:
+- **Channel: [+]** — adds a new local channel strip (defaults to input bus 1).
+- **Input bus: [+] [-]** — adds or removes a plugin input bus. Removing reroutes any channel using that bus to bus 1. The [-] button is disabled when only one input bus exists.
 
 Plugin starts with one channel and one input bus. **Local audio always passes through without delay**, regardless of connection state.
 
@@ -179,7 +184,7 @@ Per channel within a card:
 - **Recv toggle** — sends `CLIENT_SET_USERMASK` (0x81) with the channel bit cleared; the server stops forwarding that user's audio entirely (bandwidth saving). Distinct from Mute: Mute receives+decodes but silences output; Recv-off prevents download.
 - **Output bus dropdown** — routes this channel's decoded audio to a specific plugin output bus for DAW stem recording. Defaults to bus 1 (main mix). Multiple channels can share a bus. Routing is persisted by (username, channelIndex) and restored when the user rejoins.
 
-Toolbar buttons manage output buses: **+ Output Bus / - Output Bus** add or remove a stereo output bus. Removing the last bus used by a remote channel reroutes it to bus 1.
+Toolbar buttons manage output buses: **Output bus: [+] [-]** add or remove a stereo output bus. The [-] button is disabled when only one output bus exists. Removing the last bus used by a remote channel reroutes it to bus 1.
 
 ### Status bar and sync UX
 
@@ -189,6 +194,14 @@ Always visible at the top. Shows:
 - Interval phase progress indicator (bar from 0 → BPI beats).
 - Connection status: Disconnected / Connecting / Connected as user@host.
 
+**Header background tint** reflects connection state:
+- Connected, in sync: dark navy `0xff0d0d1a` (normal).
+- Disconnected after a failed connect attempt, or BPM mismatch active: dim amber `0xff2a1a0a`.
+- Idle / never connected: dark grey `0xff111111`.
+The amber clears when the user clicks Connect again.
+
+**Phase bar** advances only when connected. It is teal (`0xff00b4d8`) when connected, grey (`0xff444444`) when not. Beat tick marks and flash effects are suppressed when disconnected. Phase resets to 0 on disconnect.
+
 **BPM mismatch**: when server BPM ≠ host BPM, show a prominent warning. Remote audio stops; local audio is not transmitted. The plugin cannot push tempo to the DAW (that requires OSC, which is deferred). The user must change the DAW tempo manually; the warning disappears automatically when they match.
 
 **Pending state**: once BPM matches (warning gone), if the DAW transport is not running, prompt "Start transport to begin." When the transport starts, the plugin phase-locks to the DAW's "1" and enters normal transmit/receive mode.
@@ -197,10 +210,11 @@ Always visible at the top. Shows:
 
 ### Metronome
 
-- Toggle button (on toolbar or top area).
+- Toggle button in toolbar.
 - Default: **off** in plugin/DAW mode, **on** in standalone.
-- Volume control (small fader or knob).
-- Downbeat accent at 880 Hz, beat clicks at 440 Hz (already implemented).
+- **Volume slider** (horizontal, ~60 px) immediately right of the toggle. Range 0--1, persisted in state.
+- Downbeat at 880 Hz, bar-start at 660 Hz, beat clicks at 440 Hz.
+- Only active when connected; the per-sample click logic skips entirely when disconnected.
 
 ### Connection / server browser
 
@@ -217,6 +231,12 @@ A panel or popup (triggered from the toolbar) containing:
 - Single-line input with hint text showing supported commands.
 - Commands: `!vote bpm <n>`, `!vote bpi <n>`, `/me <text>`, `/topic <text>`, `/kick <user>`, `/msg <user> <text>`.
 - Collapsible via a toggle button. Defaults to visible.
+- **When disconnected**: both the history display and input are visually ghosted (near-black background `0xff0a0a0a`, very dark text `0xff2e2e2e`); input is disabled and shows "(not connected)" placeholder. Prior messages remain readable but dimmed.
+- **On next successful connect**: history is cleared before new JOIN/TOPIC messages arrive; normal colours and input are restored.
+
+### Toolbar button states
+
+The Connect button is disabled while connected; Disconnect is disabled while disconnected. The `[-]` bus buttons are disabled when only one bus of that type exists. All other toolbar buttons are always enabled. `updateToolbarStates()` is called every 30 Hz tick (no-op when state is unchanged).
 
 ---
 
