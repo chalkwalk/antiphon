@@ -148,7 +148,7 @@ bool NinjamAudioProcessor::isBusesLayoutSupported(
 void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                                         juce::MidiBuffer &) {
   juce::ScopedNoDenormals noDenormals;
-  auto totalNumOutputChannels = getTotalNumOutputChannels();
+  auto totalNumOutputChannels = std::min(getTotalNumOutputChannels(), buffer.getNumChannels());
   int ns = buffer.getNumSamples();
 
   // 1. Host Sync
