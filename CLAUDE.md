@@ -104,8 +104,8 @@ All message framing: 1-byte type + 4-byte little-endian payload length + payload
 | KEEP_ALIVE | C→S | `0xFD` | Zero-byte payload; send every 3 s |
 | CLIENT_AUTH_USER | C→S | `0x80` | 20-byte SHA1 + NUL-term username + 4-byte caps (LE) + 4-byte version (LE). Hash = `SHA1(SHA1(user+":"+pass) + challenge[0..8])`. Caps = 1, version = `0x00020000`. |
 | CLIENT_SET_USERMASK | C→S | `0x81` | List of: NUL-term username + 32-bit channel bitmask (LE). Bit N = subscribe to channel N. Sent on every USER_INFO_CHANGE to subscribe all channels; also the mechanism for the per-channel Recv toggle. |
-| CLIENT_SET_CHANNEL_INFO | C→S | `0x82` | Announces our local channel names. Payload: list of NUL-term channel name strings. |
-| UPLOAD_INTERVAL_BEGIN | C→S | `0x83` | 16-byte GUID + 4-byte nch (LE) + NUL-term channel name. fourCC field omitted (server infers Ogg). |
+| CLIENT_SET_CHANNEL_INFO | C→S | `0x82` | 2-byte LE mpisize (= 4) + per channel: NUL-term name + 2-byte LE volume (0 = 0dB) + 1-byte pan (-128..127) + 1-byte flags. Server reads mpisize bytes of metadata after each name; broadcasts USER_INFO_CHANGE to all clients. |
+| UPLOAD_INTERVAL_BEGIN | C→S | `0x83` | Exactly 25 bytes: 16-byte GUID + 4-byte estsize LE + 4-byte fourcc LE (OGGv = bytes 'O','G','G','v') + 1-byte chidx. No channel name string. |
 | UPLOAD_INTERVAL_WRITE | C→S | `0x84` | 16-byte GUID + 1-byte flags (1 = final) + Ogg chunk |
 
 **Reference**: `references/ninjam/ninjam/mpb.h` for message constants, `server/usercon.cpp` for server-side behaviour, `njclient.cpp` for client-side reference flows.
@@ -155,7 +155,7 @@ The channel panel (everything between the chat column and the left edge) uses an
 ### Local input channel strips (left panel)
 
 Each channel strip:
-- **Editable channel name** — protocol-level; transmitted to the server in `CLIENT_SET_CHANNEL_INFO` and `UPLOAD_INTERVAL_BEGIN`; other players see it.
+- **Editable channel name** — protocol-level; transmitted to the server in `CLIENT_SET_CHANNEL_INFO`; other players see it.
 - **Mono/Stereo toggle** — toggles mono summing of the assigned input bus; does not add or remove a bus.
 - **Vertical VU meter** — live input level.
 - **Vertical volume fader** — scales both local monitor and transmitted audio (see next point).

@@ -243,14 +243,14 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // Helper: fire per-channel callAsync at interval boundary
   auto fireCaptureLambdas = [this]() {
     juce::ScopedLock sl(localChannelMutex);
-    for (auto &lcPtr : localChannels) {
+    for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
+      auto &lcPtr = localChannels[ci];
       if (!lcPtr->xmitEnabled.load()) { lcPtr->fifo.reset(); continue; }
       int length = lcPtr->fifo.getNumReady();
       if (ninjamClient.isConnected() && length > 0) {
-        juce::String name = lcPtr->name;
         bool mono = lcPtr->isMono.load();
         auto capturedPtr = lcPtr;
-        juce::MessageManager::callAsync([this, capturedPtr, length, name, mono]() {
+        juce::MessageManager::callAsync([this, capturedPtr, length, ci, mono]() {
           if (!capturedPtr->isValid.load()) return;
           juce::AudioBuffer<float> buf(2, length);
           int s1, n1, s2, n2;
@@ -260,7 +260,7 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
             if (n2 > 0) buf.copyFrom(ch, n1, capturedPtr->ring, ch, s2, n2);
           }
           capturedPtr->fifo.finishedRead(n1 + n2);
-          ninjamClient.processCapturedAudio(buf, length, name, mono);
+          ninjamClient.processCapturedAudio(buf, length, ci, mono);
         });
       } else {
         lcPtr->fifo.reset();

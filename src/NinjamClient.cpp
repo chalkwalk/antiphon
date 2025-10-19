@@ -587,8 +587,15 @@ void NinjamClient::sendChannelInfo() {
     names = storedChannelNames;
   }
   juce::MemoryBlock payload;
-  for (const auto &name : names)
+  // 2-byte LE mpisize header: 4 bytes of per-channel metadata (vol, pan, flags)
+  juce::uint8 msz[2] = { 4, 0 };
+  payload.append(msz, 2);
+  for (const auto &name : names) {
     payload.append(name.toRawUTF8(), name.getNumBytesAsUTF8() + 1);
+    // volume (2 bytes LE, 0 = 0dB), pan (1 byte, 0 = centre), flags (1 byte, 0 = default)
+    juce::uint8 meta[4] = { 0, 0, 0, 0 };
+    payload.append(meta, 4);
+  }
   writeFull(0x82, payload.getData(), static_cast<int>(payload.getSize()));
 }
 
@@ -603,7 +610,7 @@ void NinjamClient::updateChannelInfo(const juce::StringArray &names) {
 
 void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
                                         int numSamples,
-                                        const juce::String &channelName,
+                                        int channelIndex,
                                         bool mono) {
   if (!isConnected())
     return;
@@ -615,19 +622,20 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  // Let's generate a naive GUID for the interval
   juce::MemoryBlock guid(16, true);
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 16; i++)
     guid[i] = (juce::uint8)(juce::Random::getSystemRandom().nextInt(256));
-  }
 
-  // Send UPLOAD_INTERVAL_BEGIN (0x83)
+  // UPLOAD_INTERVAL_BEGIN (0x83): 16-byte GUID + 4-byte estsize LE + 4-byte fourcc LE + 1-byte chidx
   int numCh = mono ? 1 : buffer.getNumChannels();
   juce::MemoryBlock beginPacket;
   beginPacket.append(guid.getData(), 16);
-  juce::uint32 nch = juce::ByteOrder::swapIfBigEndian((juce::uint32)numCh);
-  beginPacket.append(&nch, 4);
-  beginPacket.append(channelName.toRawUTF8(), channelName.getNumBytesAsUTF8() + 1);
+  juce::uint32 estsize = 0;
+  beginPacket.append(&estsize, 4);
+  juce::uint8 fourcc[4] = { 'O', 'G', 'G', 'v' };
+  beginPacket.append(fourcc, 4);
+  juce::uint8 chidx = (juce::uint8)channelIndex;
+  beginPacket.append(&chidx, 1);
   writeFull(0x83, beginPacket.getData(), static_cast<int>(beginPacket.getSize()));
 
   VorbisEncoder encoder(48000, numCh, 128, juce::Random::getSystemRandom().nextInt());
