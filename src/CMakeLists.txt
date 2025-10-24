@@ -14,6 +14,7 @@ target_sources(Ninjam
         PluginProcessor.cpp
         PluginEditor.cpp
         NinjamClient.cpp
+        NinjamProtocol.cpp
         RemoteUserStrip.cpp
         RemoteChannelRow.cpp
         LocalChannelStrip.cpp

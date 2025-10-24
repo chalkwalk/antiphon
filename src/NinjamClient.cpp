@@ -1,5 +1,5 @@
 #include "NinjamClient.h"
-#include "Sha1.h"
+#include "NinjamProtocol.h"
 
 NinjamClient::NinjamClient() : juce::Thread("NinjamClientThread") {}
 
@@ -113,12 +113,11 @@ bool NinjamClient::writeFull(juce::uint8 type, const void *payload,
   if (!socket || !socket->isConnected())
     return false;
 
-  juce::uint8 header[5];
-  header[0] = type;
-  juce::uint32 len = juce::ByteOrder::swapIfBigEndian((juce::uint32)numBytes);
-  memcpy(header + 1, &len, 4);
+  juce::uint8 header[NinjamProtocol::kHeaderSize];
+  NinjamProtocol::writeFrameHeader(header, type, (juce::uint32)numBytes);
 
-  if (socket->write(header, 5) != 5)
+  if (socket->write(header, NinjamProtocol::kHeaderSize) !=
+      NinjamProtocol::kHeaderSize)
     return false;
   if (numBytes > 0 && socket->write(payload, numBytes) != numBytes)
     return false;
@@ -156,27 +155,24 @@ void NinjamClient::run() {
     if (ready == 0)
       continue; // Timeout, loop again to check keep-alive
 
-    juce::uint8 header[5];
-    if (!readFull(header, 5))
+    juce::uint8 header[NinjamProtocol::kHeaderSize];
+    if (!readFull(header, NinjamProtocol::kHeaderSize))
       break;
 
-    juce::uint8 type = header[0];
-    juce::uint32 payloadLen;
-    memcpy(&payloadLen, header + 1, 4);
-    payloadLen = juce::ByteOrder::swapIfBigEndian(payloadLen);
-
-    // Safeguard against ridiculous sizes
-    if (payloadLen > 1024 * 1024 * 10)
+    // A length above the sanity cap means the stream is desynchronised; there
+    // is no way to resynchronise, so drop the connection.
+    NinjamProtocol::FrameHeader frame;
+    if (!NinjamProtocol::readFrameHeader(header, frame))
       break;
 
     juce::MemoryBlock payload;
-    if (payloadLen > 0) {
-      payload.setSize(payloadLen, true);
-      if (!readFull(payload.getData(), static_cast<int>(payloadLen)))
+    if (frame.length > 0) {
+      payload.setSize(frame.length, true);
+      if (!readFull(payload.getData(), static_cast<int>(frame.length)))
         break;
     }
 
-    if (!handleMessage(type, payload))
+    if (!handleMessage(frame.type, payload))
       break;
   }
 
@@ -191,99 +187,82 @@ void NinjamClient::run() {
 
 bool NinjamClient::handleMessage(juce::uint8 type,
                                  const juce::MemoryBlock &payload) {
+  // A malformed message is dropped rather than treated as fatal: the framing
+  // layer already resynchronised, so the connection stays usable.
+  auto malformed = [type]() {
+    juce::Logger::writeToLog("[protocol] dropped malformed message type 0x" +
+                             juce::String::toHexString((int)type));
+    return true;
+  };
+
   // SERVER_AUTH_CHALLENGE
   if (type == 0x00) {
-    if (payload.getSize() >= 8) {
-      juce::MemoryBlock challenge(payload.getData(), 8);
-      sendAuthRequest(challenge);
-    }
+    NinjamProtocol::AuthChallenge c;
+    if (!NinjamProtocol::parseAuthChallenge(payload, c))
+      return malformed();
+    sendAuthRequest(c.challenge);
   }
   // SERVER_AUTH_REPLY
   else if (type == 0x01) {
-    if (payload.getSize() >= 1) {
-      juce::uint8 flag = static_cast<const juce::uint8 *>(payload.getData())[0];
-      if (flag == 1) // Access Granted
-      {
-        connectionState = 3;
-        sendChannelInfo();
-        juce::MessageManager::callAsync(
-            [this]() { listeners.call(&NinjamClientListener::onConnected); });
-      } else // Access Denied
-      {
-        return false;
-      }
-    }
+    NinjamProtocol::AuthReply reply;
+    if (!NinjamProtocol::parseAuthReply(payload, reply))
+      return malformed();
+    if (!reply.granted)
+      return false;
+
+    connectionState = 3;
+    sendChannelInfo();
+    juce::MessageManager::callAsync(
+        [this]() { listeners.call(&NinjamClientListener::onConnected); });
   }
   // SERVER_CONFIG_CHANGE
   else if (type == 0x02) {
-    if (payload.getSize() >= 4) {
-      juce::uint16 bpm, bpi;
-      memcpy(&bpm, payload.getData(), 2);
-      memcpy(&bpi, static_cast<const char *>(payload.getData()) + 2, 2);
-      bpm = juce::ByteOrder::swapIfBigEndian(bpm);
-      bpi = juce::ByteOrder::swapIfBigEndian(bpi);
+    NinjamProtocol::ServerConfig cfg;
+    if (!NinjamProtocol::parseServerConfig(payload, cfg))
+      return malformed();
 
-      // Update immediately so buffer sizing in DOWNLOAD_INTERVAL_BEGIN is correct.
-      serverBpm = bpm;
-      serverBpi = bpi;
+    // Update immediately so buffer sizing in DOWNLOAD_INTERVAL_BEGIN is correct.
+    serverBpm = cfg.bpm;
+    serverBpi = cfg.bpi;
 
-      juce::MessageManager::callAsync([this, bpm, bpi]() {
-        listeners.call(&NinjamClientListener::onServerConfig, bpm, bpi);
-      });
-    }
+    const int bpm = cfg.bpm, bpi = cfg.bpi;
+    juce::MessageManager::callAsync([this, bpm, bpi]() {
+      listeners.call(&NinjamClientListener::onServerConfig, bpm, bpi);
+    });
   }
   // USER_INFO_CHANGE
   else if (type == 0x03) {
-    int offset = 0;
-    int payloadSize = payload.getSize();
-    const char *data = static_cast<const char *>(payload.getData());
+    std::vector<NinjamProtocol::UserInfoEntry> entries;
+    const bool wellFormed = NinjamProtocol::parseUserInfo(payload, entries);
 
     bool changed = false;
-    while (offset < payloadSize) {
-      if (offset + 4 > payloadSize)
-        break;
-
-      juce::uint8 active = data[offset++];
-      juce::uint8 channelIndex = data[offset++];
-      juce::int16 volume;
-      memcpy(&volume, data + offset, 2);
-      volume =
-          juce::ByteOrder::swapIfBigEndian(static_cast<juce::uint16>(volume));
-      offset += 2;
-      juce::int8 pan = data[offset++];
-      juce::uint8 flags = data[offset++];
-
-      juce::String username = juce::String::fromUTF8(data + offset);
-      offset += username.getNumBytesAsUTF8() + 1;
-
-      juce::String channelName = juce::String::fromUTF8(data + offset);
-      offset += channelName.getNumBytesAsUTF8() + 1;
-
+    {
       juce::ScopedLock sl(downloadMutex);
-      if (active) {
-        if (remoteUsers.find(username) == remoteUsers.end()) {
-          remoteUsers[username] = RemoteUser{username, {}};
-        }
-        auto &user = remoteUsers[username];
-        if (user.channels.find(channelIndex) == user.channels.end()) {
-          RemoteUserChannel newChan;
-          newChan.channelIndex = channelIndex;
-          newChan.channelName = channelName;
-          user.channels[channelIndex] = newChan;
-          changed = true;
-        } else if (user.channels[channelIndex].channelName != channelName) {
-          user.channels[channelIndex].channelName = channelName;
-          changed = true;
-        }
-      } else {
-        if (remoteUsers.find(username) != remoteUsers.end()) {
-          auto &user = remoteUsers[username];
-          if (user.channels.find(channelIndex) != user.channels.end()) {
-            user.channels.erase(channelIndex);
+      for (const auto &e : entries) {
+        if (e.active) {
+          if (remoteUsers.find(e.username) == remoteUsers.end())
+            remoteUsers[e.username] = RemoteUser{e.username, {}};
+
+          auto &user = remoteUsers[e.username];
+          if (user.channels.find(e.channelIndex) == user.channels.end()) {
+            RemoteUserChannel newChan;
+            newChan.channelIndex = e.channelIndex;
+            newChan.channelName = e.channelName;
+            user.channels[e.channelIndex] = newChan;
+            changed = true;
+          } else if (user.channels[e.channelIndex].channelName !=
+                     e.channelName) {
+            user.channels[e.channelIndex].channelName = e.channelName;
             changed = true;
           }
-          if (user.channels.empty()) {
-            remoteUsers.erase(username);
+        } else {
+          auto it = remoteUsers.find(e.username);
+          if (it != remoteUsers.end()) {
+            auto &user = it->second;
+            if (user.channels.erase(e.channelIndex) > 0)
+              changed = true;
+            if (user.channels.empty())
+              remoteUsers.erase(it);
           }
         }
       }
@@ -296,79 +275,59 @@ bool NinjamClient::handleMessage(juce::uint8 type,
         listeners.call(&NinjamClientListener::onUserInfoChange);
       });
     }
+
+    if (!wellFormed)
+      return malformed();
   }
   // SERVER_DOWNLOAD_INTERVAL_BEGIN
   else if (type == 0x04) {
-    if (payload.getSize() >= 16) {
-      juce::String guid = juce::String::toHexString(payload.getData(), 16);
+    NinjamProtocol::IntervalBegin begin;
+    if (!NinjamProtocol::parseIntervalBegin(payload, begin))
+      return malformed();
 
-      int estSize = 0;
-      juce::uint8 fourcc[4] = {0};
-      juce::uint8 channelIndex = 0;
-      juce::String username;
+    // Non-audio fourCCs (notably Jamtaba's JTBv video) are ignored outright.
+    // Queueing them would create a channel stream that swaps forever in
+    // silence and shows up as a phantom channel in the mixer.
+    if (!begin.isOggAudio())
+      return true;
 
-      int offset = 16;
-      if (offset + 4 <= payload.getSize()) {
-        memcpy(&estSize, static_cast<const char *>(payload.getData()) + offset,
-               4);
-        estSize = juce::ByteOrder::swapIfBigEndian(
-            static_cast<juce::uint32>(estSize));
-        offset += 4;
+    auto interval = std::make_shared<DecodedInterval>();
+    interval->guid = begin.guidHex;
+    int bufferSamples = static_cast<int>(
+        sampleRate * 60.0 / std::max(1, serverBpm) * serverBpi * 1.5f);
+    interval->buffer.setSize(2, bufferSamples);
+    interval->buffer.clear();
 
-        if (offset + 4 <= payload.getSize()) {
-          memcpy(fourcc, static_cast<const char *>(payload.getData()) + offset,
-                 4);
-          offset += 4;
+    PendingDownload pd;
+    pd.target = interval;
+    pd.username = begin.username;
+    pd.channelIndex = begin.channelIndex;
+    pd.decoder = std::make_unique<VorbisDecoder>();
 
-          if (offset + 1 <= payload.getSize()) {
-            channelIndex =
-                static_cast<const juce::uint8 *>(payload.getData())[offset++];
-            if (offset < payload.getSize()) {
-              username = juce::String::fromUTF8(
-                  static_cast<const char *>(payload.getData()) + offset);
-            }
-          }
-        }
-      }
+    juce::ScopedLock sl(downloadMutex);
+    guidToInterval[begin.guidHex] = std::move(pd);
 
-      auto interval = std::make_shared<DecodedInterval>();
-      interval->guid = guid;
-      int bufferSamples = static_cast<int>(
-          sampleRate * 60.0 / std::max(1, serverBpm) * serverBpi * 1.5f);
-      interval->buffer.setSize(2, bufferSamples);
-      interval->buffer.clear();
+    auto key = std::make_pair(begin.username, begin.channelIndex);
+    auto &stream = channelStreams[key];
+    stream.username = begin.username;
+    stream.channelIndex = begin.channelIndex;
+    stream.queue.push_back(interval);
 
-      PendingDownload pd;
-      pd.target = interval;
-      pd.username = username;
-      pd.channelIndex = channelIndex;
-      if (fourcc[0] == 'O' && fourcc[1] == 'G' && fourcc[2] == 'G' &&
-          fourcc[3] == 'v')
-        pd.decoder = std::make_unique<VorbisDecoder>();
-
-      juce::ScopedLock sl(downloadMutex);
-      guidToInterval[guid] = std::move(pd);
-
-      auto key = std::make_pair(username, (int)channelIndex);
-      auto &stream = channelStreams[key];
-      stream.username = username;
-      stream.channelIndex = channelIndex;
-      stream.queue.push_back(interval);
-
-      // Signal the audio thread that a new server interval has started.
-      // compare_exchange prevents re-signalling if the audio thread hasn't
-      // processed the previous signal yet (avoids double-swap for multi-channel
-      // sessions where several DOWNLOAD_INTERVAL_BEGIN messages arrive per boundary).
-      bool expected = false;
-      intervalBeginSignal.compare_exchange_strong(expected, true);
-    }
+    // Signal the audio thread that a new server interval has started.
+    // compare_exchange prevents re-signalling if the audio thread hasn't
+    // processed the previous signal yet (avoids double-swap for multi-channel
+    // sessions where several DOWNLOAD_INTERVAL_BEGIN messages arrive per boundary).
+    bool expected = false;
+    intervalBeginSignal.compare_exchange_strong(expected, true);
   }
   // SERVER_DOWNLOAD_INTERVAL_WRITE
   else if (type == 0x05) {
-    if (payload.getSize() >= 17) {
-      juce::String guid = juce::String::toHexString(payload.getData(), 16);
-      juce::uint8 flags =
-          static_cast<const juce::uint8 *>(payload.getData())[16];
+    NinjamProtocol::IntervalWrite write;
+    if (!NinjamProtocol::parseIntervalWrite(payload, write))
+      return malformed();
+    {
+      const juce::String &guid = write.guidHex;
+      const juce::uint8 flags = write.isFinal ? 1 : 0;
 
       juce::ScopedLock sl(downloadMutex);
       auto it = guidToInterval.find(guid);
@@ -376,10 +335,9 @@ bool NinjamClient::handleMessage(juce::uint8 type,
         auto &pd = it->second;
         auto &interval = *pd.target;
 
-        int oggDataSize = static_cast<int>(payload.getSize()) - 17;
+        int oggDataSize = write.audioSize;
         if (oggDataSize > 0 && pd.decoder != nullptr) {
-          const char *oggData =
-              static_cast<const char *>(payload.getData()) + 17;
+          const char *oggData = static_cast<const char *>(write.audioData);
           pd.decoder->decode(oggData, oggDataSize);
           {
             // Decode into the interval buffer, resampling if the OGG's native
@@ -469,114 +427,52 @@ bool NinjamClient::handleMessage(juce::uint8 type,
   }
   // CHAT_MESSAGE
   else if (type == 0xC0) {
-    if (payload.getSize() >= 1) {
-      const char *data = static_cast<const char *>(payload.getData());
-      const char *endp = data + payload.getSize();
-      juce::StringArray parms;
+    NinjamProtocol::Chat parsed;
+    if (!NinjamProtocol::parseChat(payload, parsed))
+      return malformed();
 
-      const char *p = data;
-      for (int i = 0; i < 5; ++i) {
-        if (p < endp) {
-          juce::String s = juce::String::fromUTF8(p);
-          parms.add(s);
-          p += s.getNumBytesAsUTF8() + 1;
-        } else {
-          parms.add(juce::String());
-        }
+    if (parsed.type.isNotEmpty()) {
+      ChatMessage msg;
+      msg.type = parsed.type;
+      if (msg.type == "MSG" || msg.type == "PRIVMSG") {
+        msg.username = parsed.p1;
+        msg.text = parsed.p2;
+      } else if (msg.type == "TOPIC") {
+        msg.username = "Server";
+        msg.text = "Topic: " + parsed.p2;
+      } else if (msg.type == "JOIN") {
+        msg.username = "Server";
+        msg.text = parsed.p1 + " joined";
+      } else if (msg.type == "PART") {
+        msg.username = "Server";
+        msg.text = parsed.p1 + " left";
+      } else {
+        msg.username = "Server";
+        msg.text = "[" + msg.type + "] " + parsed.p1 + " " + parsed.p2;
       }
 
-      if (parms.size() >= 1 && parms[0].isNotEmpty()) {
-        ChatMessage msg;
-        msg.type = parms[0];
-        if (msg.type == "MSG" || msg.type == "PRIVMSG") {
-          msg.username = parms[1];
-          msg.text = parms[2];
-        } else if (msg.type == "TOPIC") {
-          msg.username = "Server";
-          msg.text = "Topic: " + parms[2];
-        } else if (msg.type == "JOIN") {
-          msg.username = "Server";
-          msg.text = parms[1] + " joined";
-        } else if (msg.type == "PART") {
-          msg.username = "Server";
-          msg.text = parms[1] + " left";
-        } else {
-          msg.username = "Server";
-          msg.text = "[" + msg.type + "] " + parms[1] + " " + parms[2];
-        }
-
-        {
-          juce::ScopedLock sl(chatMutex);
-          chatLog.add(msg);
-          if (chatLog.size() > 100)
-            chatLog.remove(0); // keep history bounded
-        }
-
-        juce::MessageManager::callAsync(
-            [this, type = msg.type, user = msg.username, text = msg.text]() {
-              listeners.call(&NinjamClientListener::onChatMessage, type, user,
-                             text);
-            });
+      {
+        juce::ScopedLock sl(chatMutex);
+        chatLog.add(msg);
+        if (chatLog.size() > 100)
+          chatLog.remove(0); // keep history bounded
       }
+
+      juce::MessageManager::callAsync(
+          [this, type = msg.type, user = msg.username, text = msg.text]() {
+            listeners.call(&NinjamClientListener::onChatMessage, type, user,
+                           text);
+          });
     }
   }
   return true;
 }
 
-void NinjamClient::sendAuthRequest(const juce::MemoryBlock &challenge) {
-  // MSG_CLIENT_AUTH:
-  // 20 bytes SHA1 hash of (User + Pass)
-  // Username (NUL terminated)
-  // maybe capabilities... we'll just send standard.
-  // Wait, the hash is SHA1(challenge + SHA1(user + ":" + pass)). Let me check
-  // standard ninjam. In njclient.cpp it's SHA1(challenge + SHA1(user + ":" +
-  // pass)) or just SHA1(challenge + pass)?
-
-  juce::MemoryBlock passHashResult(20, true);
-
-  // According to Ninjam protocol:
-  // if password is empty hash is SHA1(challenge) ?
-  // Actually, let's use the password as is for anonymous login since they
-  // don't use it.
-
-  // Auth packet:
-  // 20 bytes: Hash
-  // N bytes (null term): Username
-  // 4 bytes: Client Capabilities (0x00010000 = keepalive support, etc)
-
-  // For anonymous logins, hash is 20 bytes of 0s usually, or hash of pass.
-  // Let's do hash of challenge + password.
-  // The password hash is: SHA1(SHA1(user:pass) + challenge)
-  Sha1 passHash;
-  passHash.add(currentUsername.toRawUTF8(),
-               currentUsername.getNumBytesAsUTF8());
-  passHash.add(":", 1);
-  passHash.add(currentPassword.toRawUTF8(),
-               currentPassword.getNumBytesAsUTF8());
-
-  juce::MemoryBlock innerHashResult(20, true);
-  passHash.result(innerHashResult.getData());
-
-  Sha1 finalHash;
-  finalHash.add(innerHashResult.getData(), 20);
-  finalHash.add(challenge.getData(), 8);
-
-  juce::MemoryBlock finalHashResult(20, true);
-  finalHash.result(finalHashResult.getData());
-
-  juce::MemoryBlock packet;
-  packet.append(finalHashResult.getData(), 20);
-  packet.append(currentUsername.toRawUTF8(),
-                currentUsername.getNumBytesAsUTF8() + 1);
-
-  juce::uint32 caps =
-      juce::ByteOrder::swapIfBigEndian((juce::uint32)1); // client caps
-  packet.append(&caps, 4);
-
-  juce::uint32 version = juce::ByteOrder::swapIfBigEndian(
-      (juce::uint32)0x00020000); // protocol version
-  packet.append(&version, 4);
-
+void NinjamClient::sendAuthRequest(const juce::uint8 challenge[8]) {
+  juce::uint8 hash[20];
+  NinjamProtocol::computeAuthHash(currentUsername, currentPassword, challenge,
+                                  hash);
+  auto packet = NinjamProtocol::buildAuthUser(hash, currentUsername);
   writeFull(0x80, packet.getData(), static_cast<int>(packet.getSize()));
 }
 
@@ -586,16 +482,7 @@ void NinjamClient::sendChannelInfo() {
     juce::ScopedLock sl(channelInfoMutex);
     names = storedChannelNames;
   }
-  juce::MemoryBlock payload;
-  // 2-byte LE mpisize header: 4 bytes of per-channel metadata (vol, pan, flags)
-  juce::uint8 msz[2] = { 4, 0 };
-  payload.append(msz, 2);
-  for (const auto &name : names) {
-    payload.append(name.toRawUTF8(), name.getNumBytesAsUTF8() + 1);
-    // volume (2 bytes LE, 0 = 0dB), pan (1 byte, 0 = centre), flags (1 byte, 0 = default)
-    juce::uint8 meta[4] = { 0, 0, 0, 0 };
-    payload.append(meta, 4);
-  }
+  auto payload = NinjamProtocol::buildChannelInfo(names);
   writeFull(0x82, payload.getData(), static_cast<int>(payload.getSize()));
 }
 
@@ -622,23 +509,19 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  juce::MemoryBlock guid(16, true);
+  juce::uint8 guid[16];
   for (int i = 0; i < 16; i++)
     guid[i] = (juce::uint8)(juce::Random::getSystemRandom().nextInt(256));
 
-  // UPLOAD_INTERVAL_BEGIN (0x83): 16-byte GUID + 4-byte estsize LE + 4-byte fourcc LE + 1-byte chidx
   int numCh = mono ? 1 : buffer.getNumChannels();
-  juce::MemoryBlock beginPacket;
-  beginPacket.append(guid.getData(), 16);
-  juce::uint32 estsize = 0;
-  beginPacket.append(&estsize, 4);
-  juce::uint8 fourcc[4] = { 'O', 'G', 'G', 'v' };
-  beginPacket.append(fourcc, 4);
-  juce::uint8 chidx = (juce::uint8)channelIndex;
-  beginPacket.append(&chidx, 1);
-  writeFull(0x83, beginPacket.getData(), static_cast<int>(beginPacket.getSize()));
+  const char fourcc[4] = {'O', 'G', 'G', 'v'};
+  auto beginPacket =
+      NinjamProtocol::buildIntervalBegin(guid, 0, fourcc, channelIndex);
+  writeFull(0x83, beginPacket.getData(),
+            static_cast<int>(beginPacket.getSize()));
 
-  VorbisEncoder encoder(48000, numCh, 128, juce::Random::getSystemRandom().nextInt());
+  VorbisEncoder encoder(48000, numCh, 128,
+                        juce::Random::getSystemRandom().nextInt());
 
   // We should send smaller chunks, but for now just encode the whole thing in
   // chunks and construct the UPLOAD_INTERVAL_WRITE payload
@@ -667,11 +550,8 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
       int avail = encoder.available();
       const void *oggData = encoder.data();
 
-      juce::MemoryBlock writePacket;
-      writePacket.append(guid.getData(), 16);
-      juce::uint8 flags = 0;
-      writePacket.append(&flags, 1);
-      writePacket.append(oggData, avail);
+      auto writePacket =
+          NinjamProtocol::buildIntervalWrite(guid, false, oggData, avail);
       writeFull(0x84, writePacket.getData(),
                 static_cast<int>(writePacket.getSize()));
 
@@ -693,11 +573,8 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
     int avail = encoder.available();
     const void *oggData = encoder.data();
 
-    juce::MemoryBlock writePacket;
-    writePacket.append(guid.getData(), 16);
-    juce::uint8 flags = 1;
-    writePacket.append(&flags, 1);
-    writePacket.append(oggData, static_cast<std::size_t>(avail));
+    auto writePacket =
+        NinjamProtocol::buildIntervalWrite(guid, true, oggData, avail);
     writeFull(0x84, writePacket.getData(),
               static_cast<int>(writePacket.getSize()));
 
@@ -834,21 +711,22 @@ void NinjamClient::setRemoteUserOutputBus(const juce::String &username,
 }
 
 void NinjamClient::sendUserMask() {
-  juce::MemoryBlock payload;
+  std::vector<std::pair<juce::String, juce::uint32>> masks;
   {
     juce::ScopedLock sl(downloadMutex);
     for (auto &[uname, user] : remoteUsers) {
       juce::uint32 mask = 0;
       for (auto &[chIdx, ch] : user.channels)
-        if (chIdx < 32 && ch.recvEnabled)
+        if (chIdx >= 0 && chIdx < 32 && ch.recvEnabled)
           mask |= (1u << chIdx);
-      payload.append(uname.toRawUTF8(), uname.getNumBytesAsUTF8() + 1);
-      juce::uint32 leM = juce::ByteOrder::swapIfBigEndian(mask);
-      payload.append(&leM, 4);
+      masks.emplace_back(uname, mask);
     }
   }
-  if (payload.getSize() > 0)
-    writeFull(0x81, payload.getData(), (int)payload.getSize());
+  if (masks.empty())
+    return;
+
+  auto payload = NinjamProtocol::buildUsermask(masks);
+  writeFull(0x81, payload.getData(), (int)payload.getSize());
 }
 
 void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
@@ -1009,28 +887,14 @@ juce::Array<NinjamClient::ChatMessage> NinjamClient::getChatLog() const {
 void NinjamClient::sendChatMessage(const juce::String &text) {
   if (!isConnected())
     return;
-  juce::MemoryBlock msgBlock;
-  juce::String type = "MSG";
-  msgBlock.append(type.toUTF8(), type.getNumBytesAsUTF8() + 1);
-  msgBlock.append(text.toUTF8(), text.getNumBytesAsUTF8() + 1);
-  char empty[1] = {0};
-  msgBlock.append(empty, 1);
-  msgBlock.append(empty, 1);
-  msgBlock.append(empty, 1);
+  auto msgBlock = NinjamProtocol::buildChat("MSG", text);
   writeFull(0xC0, msgBlock.getData(), static_cast<int>(msgBlock.getSize()));
 }
 
 void NinjamClient::sendAdminCommand(const juce::String &command) {
   if (!isConnected())
     return;
-  juce::MemoryBlock msgBlock;
-  juce::String type = "ADMIN";
-  msgBlock.append(type.toUTF8(), type.getNumBytesAsUTF8() + 1);
-  msgBlock.append(command.toUTF8(), command.getNumBytesAsUTF8() + 1);
-  char empty[1] = {0};
-  msgBlock.append(empty, 1);
-  msgBlock.append(empty, 1);
-  msgBlock.append(empty, 1);
+  auto msgBlock = NinjamProtocol::buildChat("ADMIN", command);
   writeFull(0xC0, msgBlock.getData(), static_cast<int>(msgBlock.getSize()));
 }
 
@@ -1038,13 +902,6 @@ void NinjamClient::sendPrivateMessage(const juce::String &username,
                                       const juce::String &text) {
   if (!isConnected())
     return;
-  juce::MemoryBlock msgBlock;
-  juce::String type = "PRIVMSG";
-  msgBlock.append(type.toUTF8(), type.getNumBytesAsUTF8() + 1);
-  msgBlock.append(username.toUTF8(), username.getNumBytesAsUTF8() + 1);
-  msgBlock.append(text.toUTF8(), text.getNumBytesAsUTF8() + 1);
-  char empty[1] = {0};
-  msgBlock.append(empty, 1);
-  msgBlock.append(empty, 1);
+  auto msgBlock = NinjamProtocol::buildChat("PRIVMSG", username, text);
   writeFull(0xC0, msgBlock.getData(), static_cast<int>(msgBlock.getSize()));
 }

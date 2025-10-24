@@ -20,8 +20,10 @@ target_sources(NinjamTests
         TestMain.cpp
         Sha1Tests.cpp
         VorbisCodecTests.cpp
+        NinjamProtocolTests.cpp
         ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
         ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp
+        ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
 )
 
 target_compile_definitions(NinjamTests

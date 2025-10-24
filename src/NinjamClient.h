@@ -168,7 +168,7 @@ private:
   juce::String currentPassword;
 
   bool handleMessage(juce::uint8 type, const juce::MemoryBlock &payload);
-  void sendAuthRequest(const juce::MemoryBlock &challenge);
+  void sendAuthRequest(const juce::uint8 challenge[8]);
   void sendChannelInfo();
   void sendUserMask();
 

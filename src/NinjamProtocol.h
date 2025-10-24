@@ -1,0 +1,194 @@
+#pragma once
+#include <JuceHeader.h>
+#include <utility>
+#include <vector>
+
+// Byte-level Ninjam protocol: framing, message parsing, message building.
+//
+// Everything here is pure -- no sockets, no threads, no shared state -- so it
+// can be exercised directly by tests, including with deliberately malformed
+// input. NinjamClient keeps the stateful dispatch; only the wire format lives
+// here.
+//
+// All multi-byte integers in the Ninjam protocol are LITTLE-ENDIAN
+// (references/ninjam/ninjam/mpb.cpp:192-195 for bpm/bpi, :281-282 for volume).
+
+namespace NinjamProtocol {
+
+enum Msg : juce::uint8 {
+  ServerAuthChallenge = 0x00,
+  ServerAuthReply = 0x01,
+  ServerConfigChange = 0x02,
+  ServerUserInfoChange = 0x03,
+  DownloadIntervalBegin = 0x04,
+  DownloadIntervalWrite = 0x05,
+  ClientAuthUser = 0x80,
+  ClientSetUsermask = 0x81,
+  ClientSetChannelInfo = 0x82,
+  UploadIntervalBegin = 0x83,
+  UploadIntervalWrite = 0x84,
+  ChatMessage = 0xC0,
+  KeepAlive = 0xFD
+};
+
+// ---------------------------------------------------------------------------
+// Framing: 1-byte type + 4-byte little-endian payload length.
+// ---------------------------------------------------------------------------
+
+static constexpr int kHeaderSize = 5;
+static constexpr juce::uint32 kMaxPayload = 10u * 1024 * 1024;
+
+struct FrameHeader {
+  juce::uint8 type = 0;
+  juce::uint32 length = 0;
+};
+
+void writeFrameHeader(juce::uint8 out[kHeaderSize], juce::uint8 type,
+                      juce::uint32 length);
+
+// Rejects lengths above kMaxPayload.
+bool readFrameHeader(const void *fiveBytes, FrameHeader &out);
+
+// ---------------------------------------------------------------------------
+// Bounds-checked cursor. Every accessor returns false and leaves the output
+// untouched if the read would run past the end; once a read fails the cursor
+// latches failed so callers may check ok() once at the end instead of after
+// every field.
+// ---------------------------------------------------------------------------
+
+class Reader {
+public:
+  Reader(const void *data, size_t size) noexcept;
+
+  bool u8(juce::uint8 &out) noexcept;
+  bool i8(juce::int8 &out) noexcept;
+  bool u16le(juce::uint16 &out) noexcept;
+  bool i16le(juce::int16 &out) noexcept;
+  bool u32le(juce::uint32 &out) noexcept;
+  bool bytes(void *dest, size_t n) noexcept;
+  bool skip(size_t n) noexcept;
+
+  // Reads up to the next NUL. Fails, without advancing, if no NUL appears
+  // before the end of the payload. This is what keeps a truncated or hostile
+  // record from walking off the end of the buffer.
+  bool cstr(juce::String &out) noexcept;
+
+  const void *rest() const noexcept { return p; }
+  size_t remaining() const noexcept { return (size_t)(end - p); }
+  bool ok() const noexcept { return !failed; }
+  bool atEnd() const noexcept { return p >= end; }
+
+private:
+  bool need(size_t n) noexcept;
+
+  const juce::uint8 *p;
+  const juce::uint8 *end;
+  bool failed = false;
+};
+
+// ---------------------------------------------------------------------------
+// Parsed message forms.
+// ---------------------------------------------------------------------------
+
+struct AuthChallenge {
+  juce::uint8 challenge[8] = {};
+};
+
+struct AuthReply {
+  bool granted = false;
+};
+
+struct ServerConfig {
+  int bpm = 0;
+  int bpi = 0;
+};
+
+struct UserInfoEntry {
+  bool active = false;
+  int channelIndex = 0;
+  int volume = 0;
+  int pan = 0;
+  juce::uint8 flags = 0;
+  juce::String username;
+  juce::String channelName;
+};
+
+struct IntervalBegin {
+  juce::uint8 guid[16] = {};
+  juce::String guidHex;
+  juce::uint32 estimatedSize = 0;
+  char fourcc[4] = {};
+  int channelIndex = 0;
+  juce::String username; // empty for the 0x83 upload form
+  bool isOggAudio() const;
+};
+
+struct IntervalWrite {
+  juce::uint8 guid[16] = {};
+  juce::String guidHex;
+  bool isFinal = false;
+  const void *audioData = nullptr; // view into the caller's payload
+  int audioSize = 0;
+};
+
+struct Chat {
+  juce::String type, p1, p2, p3, p4;
+};
+
+// Each returns false on malformed input, having read nothing past the payload.
+bool parseAuthChallenge(const juce::MemoryBlock &payload, AuthChallenge &out);
+bool parseAuthReply(const juce::MemoryBlock &payload, AuthReply &out);
+bool parseServerConfig(const juce::MemoryBlock &payload, ServerConfig &out);
+
+// Returns false if any record is malformed. Records successfully parsed before
+// the failure are retained in `out`, matching the reference server's forgiving
+// treatment of trailing garbage.
+bool parseUserInfo(const juce::MemoryBlock &payload,
+                   std::vector<UserInfoEntry> &out);
+
+// Handles both DOWNLOAD_INTERVAL_BEGIN (0x04, with username) and
+// UPLOAD_INTERVAL_BEGIN (0x83, exactly 25 bytes, no username).
+bool parseIntervalBegin(const juce::MemoryBlock &payload, IntervalBegin &out);
+
+// Handles both 0x05 and 0x84 -- the payload layouts are identical.
+bool parseIntervalWrite(const juce::MemoryBlock &payload, IntervalWrite &out);
+
+bool parseChat(const juce::MemoryBlock &payload, Chat &out);
+
+// ---------------------------------------------------------------------------
+// Builders.
+// ---------------------------------------------------------------------------
+
+// Ninjam challenge-response: SHA1(SHA1(user + ":" + pass) + challenge[0..8]).
+void computeAuthHash(const juce::String &username, const juce::String &password,
+                     const juce::uint8 challenge[8], juce::uint8 out[20]);
+
+juce::MemoryBlock buildAuthUser(const juce::uint8 hash[20],
+                                const juce::String &username,
+                                juce::uint32 caps = 1,
+                                juce::uint32 version = 0x00020000);
+
+// Channel indices >= 32 are dropped rather than shifted (1u << 32 is UB).
+juce::MemoryBlock
+buildUsermask(const std::vector<std::pair<juce::String, juce::uint32>> &masks);
+
+juce::MemoryBlock buildChannelInfo(const juce::StringArray &names);
+
+// Pass an empty username for the 0x83 upload form (exactly 25 bytes).
+juce::MemoryBlock buildIntervalBegin(const juce::uint8 guid[16],
+                                     juce::uint32 estimatedSize,
+                                     const char fourcc[4], int channelIndex,
+                                     const juce::String &username = {});
+
+juce::MemoryBlock buildIntervalWrite(const juce::uint8 guid[16], bool isFinal,
+                                     const void *audio, int audioSize);
+
+juce::MemoryBlock buildChat(const juce::String &type,
+                            const juce::String &p1 = {},
+                            const juce::String &p2 = {},
+                            const juce::String &p3 = {},
+                            const juce::String &p4 = {});
+
+juce::String guidToHex(const juce::uint8 guid[16]);
+
+} // namespace NinjamProtocol
