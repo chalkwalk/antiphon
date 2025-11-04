@@ -21,6 +21,10 @@ target_sources(NinjamTests
         Sha1Tests.cpp
         VorbisCodecTests.cpp
         NinjamProtocolTests.cpp
+        IntervalClockTests.cpp
+        MetronomeVoiceTests.cpp
+        ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
+        ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
         ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
         ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp

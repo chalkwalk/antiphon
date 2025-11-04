@@ -1,5 +1,7 @@
 #pragma once
 
+#include "IntervalClock.h"
+#include "MetronomeVoice.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
 #include <map>
@@ -89,7 +91,16 @@ public:
   // Internal Metronome State (atomic: written on message thread, read on audio+UI threads)
   std::atomic<int> internalBpm{120};
   std::atomic<int> internalBpi{16};
-  double internalPhaseBeats = 0.0; // audio thread only
+
+  // Sample-exact beat/interval grid. Audio thread only; the UI reads the
+  // published phase below rather than touching the clock.
+  IntervalClock intervalClock;
+  MetronomeVoice metronomeVoice;
+  std::vector<IntervalClock::Event> clockEvents; // reused, never reallocated
+  juce::AudioBuffer<float> metronomeScratch;
+
+  // Interval phase in beats, published for the UI phase bar.
+  std::atomic<float> publishedPhaseBeats{0.0f};
 
   // Last-used connection settings (persisted via getStateInformation)
   juce::String lastHost{"ninbot.com"};
@@ -116,8 +127,12 @@ public:
   std::map<std::pair<juce::String, int>, int> savedRemoteRoutings;
 
 private:
-  int lastTimestampedBeat = -1;
-  int intervalSyncCooldown = 0;
+  // Adds `count` samples of the current click, starting at `startSample`, into
+  // the first two output channels. Renders once into scratch so the voice is
+  // advanced exactly once per sample regardless of channel count.
+  void renderMetronome(juce::AudioBuffer<float> &buffer, int startSample,
+                       int count, float gain, int totalNumOutputChannels);
+
   std::atomic<bool> phaseResetPending{false};
   bool hasConnectedSinceLastAttempt{false};
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessor)

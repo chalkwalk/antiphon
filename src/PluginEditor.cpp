@@ -254,7 +254,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   if (audioProcessor.internalBpi.load() > 0) {
     int bpi = audioProcessor.internalBpi.load();
     float frac = juce::jlimit(
-        0.0f, 1.0f, (float)(audioProcessor.internalPhaseBeats / bpi));
+        0.0f, 1.0f, audioProcessor.publishedPhaseBeats.load() / (float)bpi);
     int barW = phaseBar.getWidth();
     int barX = phaseBar.getX();
     int barY = phaseBar.getY();
@@ -296,7 +296,8 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
 #if JucePlugin_Build_Standalone
   g.setColour(juce::Colours::lightgrey);
   g.drawFittedText(
-      "Phase: " + juce::String(audioProcessor.internalPhaseBeats, 2) + " / " +
+      "Phase: " +
+          juce::String(audioProcessor.publishedPhaseBeats.load(), 2) + " / " +
           juce::String(audioProcessor.internalBpi.load()),
       row3, juce::Justification::centredLeft, 1);
 #else

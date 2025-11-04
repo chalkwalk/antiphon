@@ -112,7 +112,8 @@ void NinjamAudioProcessor::onUserInfoChange() {
   }
 }
 
-void NinjamAudioProcessor::prepareToPlay(double sampleRate, int) {
+void NinjamAudioProcessor::prepareToPlay(double sampleRate,
+                                         int samplesPerBlock) {
   juce::ScopedLock sl(localChannelMutex);
   int ringSize = (int)sampleRate * 30;
   for (auto &lc : localChannels) {
@@ -121,6 +122,31 @@ void NinjamAudioProcessor::prepareToPlay(double sampleRate, int) {
     lc->fifo.setTotalSize(ringSize);
   }
   ninjamClient.setSampleRate(sampleRate);
+
+  intervalClock.prepare(sampleRate);
+  intervalClock.setTempo(internalBpm.load(), internalBpi.load());
+  metronomeVoice.prepare(sampleRate);
+  metronomeScratch.setSize(1, juce::jmax(samplesPerBlock, 1));
+
+  // Preallocated so advance() never allocates on the audio thread. Two events
+  // per beat is already generous; the vector only ever grows here.
+  clockEvents.reserve((size_t)juce::jmax(64, internalBpi.load() * 2 + 4));
+}
+
+void NinjamAudioProcessor::renderMetronome(juce::AudioBuffer<float> &buffer,
+                                           int startSample, int count,
+                                           float gain,
+                                           int totalNumOutputChannels) {
+  if (count <= 0 || gain <= 0.0f || !metronomeVoice.isActive())
+    return;
+  if (metronomeScratch.getNumSamples() < count)
+    return; // block larger than prepareToPlay promised; skip rather than allocate
+
+  metronomeScratch.clear(0, 0, count);
+  metronomeVoice.render(metronomeScratch.getWritePointer(0), count, gain);
+
+  for (int ch = 0; ch < std::min(2, totalNumOutputChannels); ++ch)
+    buffer.addFrom(ch, startSample, metronomeScratch, 0, 0, count);
 }
 
 void NinjamAudioProcessor::releaseResources() {
@@ -271,89 +297,66 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // 5. Local interval metronome (sole authority for swap timing).
   // Per njclient's design, DOWNLOAD_INTERVAL_BEGIN is only used to queue
   // incoming audio, never to drive the local clock. Network jitter would
-  // otherwise yank internalPhaseBeats mid-interval and discard seconds of
+  // otherwise yank the interval clock mid-interval and discard seconds of
   // un-played audio.
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
     // Drain any pending signal so the diagnostic counter stays at 0.
     ninjamClient.intervalBeginSignal.store(false);
 
-    bool swappedBySignal = false;
-
-    // 6. Metronome click + interval boundary detection
-    int bpm = internalBpm.load();
-    int bpi = internalBpi.load();
-    double beatsPerSample = (bpm / 60.0) / sampleRate;
-    bool needsFallbackSwap = false;
+    // 6. Metronome click + interval boundary detection.
+    // IntervalClock owns the grid; it is sample-exact and every interval is
+    // the same length, matching the reference client's integer arithmetic.
+    intervalClock.setTempo(internalBpm.load(), internalBpi.load());
 
     // Reset phase on disconnect (flag set by onDisconnected on message thread)
     if (phaseResetPending.exchange(false)) {
-      internalPhaseBeats = 0.0;
-      lastTimestampedBeat = -1;
+      intervalClock.reset();
+      metronomeVoice.reset();
       intervalFlashIntensity.store(0.0f);
       beatFlashIntensity.store(0.0f);
     }
 
     const bool isConnected = ninjamClient.isConnected();
-    for (int sample = 0; sample < ns; ++sample) {
-      if (!isConnected) continue;
+    bool needsSwap = false;
 
-      internalPhaseBeats += beatsPerSample;
-      if (internalPhaseBeats >= bpi)
-        internalPhaseBeats -= bpi;
+    if (isConnected) {
+      clockEvents.clear();
+      intervalClock.advance(ns, clockEvents);
 
-      double fractionalBeat = internalPhaseBeats - std::floor(internalPhaseBeats);
+      const float metroGain =
+          metronomeEnabled.load() ? metronomeVolume.load() : 0.0f;
+      int renderedTo = 0;
 
-      if (internalPhaseBeats < beatsPerSample) {
-        if (!swappedBySignal) {
-          needsFallbackSwap = true;
-          swappedBySignal = true;
-        }
-        intervalFlashIntensity.store(1.0f);
-      }
+      for (const auto &e : clockEvents) {
+        // Render any click still sounding up to this event before retriggering.
+        renderMetronome(buffer, renderedTo, e.sampleOffset - renderedTo,
+                        metroGain, totalNumOutputChannels);
+        renderedTo = e.sampleOffset;
 
-      if (fractionalBeat < 0.05) {
-        int currentBeat = (int)std::floor(internalPhaseBeats);
-        if (currentBeat != lastTimestampedBeat) {
-          lastTimestampedBeat = currentBeat;
-          lastBeatCrossedIndex.store(currentBeat);
-          if (currentBeat != 0)
+        if (e.type == IntervalClock::Event::Type::IntervalStart) {
+          needsSwap = true;
+          intervalFlashIntensity.store(1.0f);
+        } else {
+          lastBeatCrossedIndex.store(e.beatIndex);
+          if (e.beatIndex != 0)
             beatFlashIntensity.store(1.0f);
-        }
-
-        if (metronomeEnabled) {
-          float freq, amp;
-          if (currentBeat == 0) {
-            freq = 880.0f; amp = 0.10f;
-          } else if (currentBeat % 4 == 0) {
-            freq = 660.0f; amp = 0.06f;
-          } else {
-            freq = 440.0f; amp = 0.03f;
-          }
-          float posInBeat = (float)fractionalBeat * 20.0f;
-          float envelope = 1.0f - posInBeat;
-          float clickSample =
-              std::sin(posInBeat * juce::MathConstants<float>::twoPi * freq /
-                       (float)bpm) *
-              envelope * amp * metronomeVolume.load();
-          for (int ch = 0; ch < std::min(2, totalNumOutputChannels); ++ch)
-            buffer.addSample(ch, sample, clickSample);
+          metronomeVoice.trigger(e.beatIndex);
         }
       }
+
+      renderMetronome(buffer, renderedTo, ns - renderedTo, metroGain,
+                      totalNumOutputChannels);
     }
 
-    // Fallback swap fires after the per-sample loop (never inside it)
-    if (needsFallbackSwap) {
-      juce::Logger::writeToLog(
-          juce::String::formatted("[diag] swap FALLBACK phase=%.3f bpi=%d",
-                                  internalPhaseBeats, internalBpi.load()));
+    publishedPhaseBeats.store((float)intervalClock.phaseBeats());
+
+    // The swap fires once per block, after the event walk (never inside it).
+    if (needsSwap) {
       fireCaptureLambdas();
       ninjamClient.swapIntervalBuffers();
       ninjamClient.diagSwapsByFallback.fetch_add(1);
       ninjamClient.intervalBeginSignal.store(false);
-      int bpm2 = internalBpm.load(), bpi2 = internalBpi.load();
-      intervalSyncCooldown = (bpm2 > 0 && bpi2 > 0)
-          ? (int)(sampleRate * 60.0 / bpm2 * bpi2 / 2) : 48000;
     }
   }
 

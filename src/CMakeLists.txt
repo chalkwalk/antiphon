@@ -15,6 +15,8 @@ target_sources(Ninjam
         PluginEditor.cpp
         NinjamClient.cpp
         NinjamProtocol.cpp
+        IntervalClock.cpp
+        MetronomeVoice.cpp
         RemoteUserStrip.cpp
         RemoteChannelRow.cpp
         LocalChannelStrip.cpp
