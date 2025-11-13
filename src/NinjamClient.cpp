@@ -180,6 +180,16 @@ void NinjamClient::run() {
   if (socket)
     socket->close();
 
+  // Drop all per-session state. Without this a reconnect shows the previous
+  // session's users, and their orphaned channel streams keep being swapped
+  // every interval, silently, forever.
+  {
+    juce::ScopedLock sl(downloadMutex);
+    guidToInterval.clear();
+    channelStreams.clear();
+    remoteUsers.clear();
+  }
+
   juce::MessageManager::callAsync([this]() {
     listeners.call(&NinjamClientListener::onDisconnected, "Connection closed");
   });

@@ -23,6 +23,9 @@ target_sources(NinjamTests
         NinjamProtocolTests.cpp
         IntervalClockTests.cpp
         MetronomeVoiceTests.cpp
+        FakeNinjamServer.cpp
+        LoopbackTests.cpp
+        ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
         ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
