@@ -31,8 +31,9 @@ void NinjamClient::setSaveTx(bool shouldSave) {
     }
 
     juce::StringPairArray strArr;
+    const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
     txWavWriter.reset(wavFormat.createWriterFor(
-        new juce::FileOutputStream(wavF), 48000, 2, 32, strArr, 0));
+        new juce::FileOutputStream(wavF), rate, 2, 32, strArr, 0));
   } else if (!shouldSave && isSavingTx) {
     txOggFile.reset();
     txWavWriter.reset();
@@ -58,8 +59,9 @@ void NinjamClient::setSaveRx(bool shouldSave) {
     }
 
     juce::StringPairArray strArr;
+    const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
     rxWavWriter.reset(wavFormat.createWriterFor(
-        new juce::FileOutputStream(wavF), 48000, 2, 32, strArr, 0));
+        new juce::FileOutputStream(wavF), rate, 2, 32, strArr, 0));
   } else if (!shouldSave && isSavingRx) {
     rxOggFile.reset();
     rxWavWriter.reset();
@@ -530,7 +532,11 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
   writeFull(0x83, beginPacket.getData(),
             static_cast<int>(beginPacket.getSize()));
 
-  VorbisEncoder encoder(48000, numCh, 128,
+  // The stream must declare the rate the audio is actually at, or every
+  // listener resamples it -- a 44.1 kHz session sent as 48 kHz plays back
+  // 8.8% sharp.
+  const int encodeRate = sampleRate > 0.0 ? (int)sampleRate : 48000;
+  VorbisEncoder encoder(encodeRate, numCh, 128,
                         juce::Random::getSystemRandom().nextInt());
 
   // We should send smaller chunks, but for now just encode the whole thing in

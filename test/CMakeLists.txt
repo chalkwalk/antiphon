@@ -25,6 +25,7 @@ target_sources(NinjamTests
         MetronomeVoiceTests.cpp
         FakeNinjamServer.cpp
         LoopbackTests.cpp
+        AudioLoopbackTests.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
