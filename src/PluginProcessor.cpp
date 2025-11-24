@@ -133,6 +133,48 @@ void NinjamAudioProcessor::prepareToPlay(double sampleRate,
   clockEvents.reserve((size_t)juce::jmax(64, internalBpi.load() * 2 + 4));
 }
 
+void NinjamAudioProcessor::injectTestTone(juce::AudioBuffer<float> &buffer,
+                                          juce::AudioBuffer<float> &bus0Snapshot,
+                                          int numSamples) {
+  const double sr = getSampleRate();
+  const int intervalLen = intervalClock.samplesPerInterval();
+  if (sr <= 0.0 || intervalLen <= 0)
+    return;
+
+  constexpr double kToneHz = 440.0;
+  constexpr float kToneAmp = 0.25f;
+  const double phaseInc = 2.0 * juce::MathConstants<double>::pi * kToneHz / sr;
+
+  // Position at the start of this block; the clock has not advanced yet.
+  const int64_t startPos = intervalClock.samplePosInInterval();
+
+  toneScratch.setSize(1, numSamples, false, false, true);
+  auto *t = toneScratch.getWritePointer(0);
+
+  for (int i = 0; i < numSamples; ++i) {
+    const int64_t pos = (startPos + i) % intervalLen;
+    // Full-scale single-sample impulse exactly at the top of the interval.
+    t[i] = (pos == 0) ? 1.0f
+                      : (float)(std::sin(testTonePhase) * (double)kToneAmp);
+    testTonePhase += phaseInc;
+    if (testTonePhase >= 2.0 * juce::MathConstants<double>::pi)
+      testTonePhase -= 2.0 * juce::MathConstants<double>::pi;
+  }
+
+  for (int ch = 0; ch < bus0Snapshot.getNumChannels(); ++ch)
+    bus0Snapshot.copyFrom(ch, 0, toneScratch, 0, 0, numSamples);
+
+  for (int busIdx = 1; busIdx < getBusCount(true); ++busIdx) {
+    auto *bus = getBus(true, busIdx);
+    if (!bus || !bus->isEnabled())
+      continue;
+    const int offset = bus->getChannelIndexInProcessBlockBuffer(0);
+    for (int ch = 0; ch < bus->getNumberOfChannels(); ++ch)
+      if (offset + ch < buffer.getNumChannels())
+        buffer.copyFrom(offset + ch, 0, toneScratch, 0, 0, numSamples);
+  }
+}
+
 void NinjamAudioProcessor::renderMetronome(juce::AudioBuffer<float> &buffer,
                                            int startSample, int count,
                                            float gain,
@@ -204,6 +246,15 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // 3. Clear output channels 0/1 (and any trailing unused outputs).
   for (int i = 0; i < totalNumOutputChannels; ++i)
     buffer.clear(i, 0, ns);
+
+  // 3b. Debug test-tone injection. Replaces every input bus with a known
+  //     signal so that a server-side session archive can be measured rather
+  //     than listened to. Done here, after the output clear, so both the
+  //     monitor pass and the capture pass see it. The interval position is
+  //     read before the clock advances, so it is the position at the start of
+  //     this block.
+  if (testToneEnabled.load())
+    injectTestTone(buffer, bus0Snapshot, ns);
 
   // 4. Monitor mix pass -- mix all local input buses into output 0/1.
   {

@@ -115,6 +115,7 @@ public:
   std::atomic<bool> lastConnectFailed{false};
   std::atomic<bool> saveTxEnabled{false};
   std::atomic<bool> saveRxEnabled{false};
+  std::atomic<bool> testToneEnabled{false};
   std::atomic<bool> chatVisible{true};
 
   // Flash state (written audio thread, decayed + read UI thread)
@@ -132,6 +133,15 @@ private:
   // advanced exactly once per sample regardless of channel count.
   void renderMetronome(juce::AudioBuffer<float> &buffer, int startSample,
                        int count, float gain, int totalNumOutputChannels);
+
+  // Overwrites every input bus with a 440 Hz sine plus a full-scale one-sample
+  // impulse at the top of each interval. The impulse's offset within an
+  // archived interval is the transmit alignment error, in samples.
+  void injectTestTone(juce::AudioBuffer<float> &buffer,
+                      juce::AudioBuffer<float> &bus0Snapshot, int numSamples);
+
+  double testTonePhase = 0.0;
+  juce::AudioBuffer<float> toneScratch;
 
   std::atomic<bool> phaseResetPending{false};
   bool hasConnectedSinceLastAttempt{false};

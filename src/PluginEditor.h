@@ -50,7 +50,9 @@ private:
   juce::ToggleButton metronomeToggle;
   juce::Slider metronomeVolumeSlider;
   juce::ToggleButton saveTxToggle;
-  juce::ToggleButton saveRxToggle;  juce::ToggleButton chatToggle;
+  juce::ToggleButton saveRxToggle;
+  juce::ToggleButton testToneToggle;
+  juce::ToggleButton chatToggle;
 
   // Compact toolbar groups: "Channel: [+]"  "Input bus: [+][-]"  "Output bus: [+][-]"
   juce::Label channelGroupLabel;

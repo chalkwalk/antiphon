@@ -49,6 +49,19 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   saveRxToggle.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(saveRxToggle);
 
+  testToneToggle.setButtonText("Test Tone");
+  testToneToggle.setTooltip(
+      "Debug: replace all local inputs with a 440 Hz tone plus a one-sample "
+      "impulse at the top of every interval, so a server session archive can "
+      "be measured for transmit alignment.");
+  testToneToggle.setToggleState(audioProcessor.testToneEnabled,
+                                juce::dontSendNotification);
+  testToneToggle.onClick = [this]() {
+    audioProcessor.testToneEnabled = testToneToggle.getToggleState();
+  };
+  testToneToggle.setRepaintsOnMouseActivity(true);
+  addAndMakeVisible(testToneToggle);
+
   // Compact toolbar groups
   channelGroupLabel.setText("Channel:", juce::dontSendNotification);
   channelGroupLabel.setJustificationType(juce::Justification::centredRight);
@@ -385,6 +398,8 @@ void NinjamAudioProcessorEditor::resized() {
   saveTxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
   toolbar.removeFromLeft(2);
   saveRxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
+  toolbar.removeFromLeft(2);
+  testToneToggle.setBounds(toolbar.removeFromLeft(76).reduced(0, 4));
   toolbar.removeFromLeft(8);
   chatToggle.setBounds(toolbar.removeFromLeft(46).reduced(0, 4));
 
