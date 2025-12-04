@@ -43,7 +43,21 @@ No generator flag — use whatever CMake picks (usually Ninja or Make). Targets:
 - `Ninjam_Standalone` — easiest for iteration
 - `Ninjam_VST3` — the VST3; CLAP is built from the same target via `clap_juce_extensions_plugin`
 
-Testing is manual: launch Standalone, connect to `ninbot.com:2049` as `anonymous`, exercise the feature. No automated test suite.
+Automated tests:
+
+```
+cmake --build build -j $(nproc)
+ctest --test-dir build --output-on-failure
+./build/test/NinjamTests_artefacts/NinjamTests IntervalClock   # filter by suite
+```
+
+Three layers -- unit tests, an in-process loopback server exercising the real
+socket path, and an opt-in rig against a local `ninjamsrv` whose session archive
+is measured by `scripts/analyze_archive.py`. **See `test/README.md`** for the
+full story, including how to run the parsers under ASan and how to compare our
+transmitted audio against Jamtaba/ReaNINJAM.
+
+Manual smoke test: launch Standalone, connect to `ninbot.com:2049` as `anonymous`, exercise the feature.
 
 **Debug dumps:** UI toggles **Save Tx / Save Rx** write `tx.ogg`, `tx.wav`, `rx.ogg`, `rx.wav` to the desktop. Useful for diagnosing encode/decode problems without a full round-trip.
 
@@ -65,6 +79,10 @@ All our code lives in `src/` — ~2 k lines, fits in your head.
 | `NinjamLookAndFeel.{h,cpp}` | `LookAndFeel_V4` subclass. Dark blue theme, teal accent (#00b4d8). Custom rotary, button, toggle, text editor outline. Disabled buttons get alpha * 0.5 automatically. |
 | `Sha1.{h,cpp}` | Minimal first-party SHA1 (FIPS 180-1). Interface: constructor + `add(const void*, int)` + `result(void*)`. Used only for the double-hash challenge-response in `CLIENT_AUTH_USER`. Replaced WDL `sha1.{h,cpp}`. |
 | `VorbisCodec.{h,cpp}` | First-party Ogg/Vorbis encode/decode wrapping direct libogg/libvorbis APIs. `VorbisDecoder`: `decode(data,len)`, `available()`, `pcm()`, `skip(n)`, `sampleRate()`, `numChannels()`. `VorbisEncoder`: constructed with `(sampleRate, numChannels, bitrateKbps, serialNumber)`, `encode(float*,n)`, `available()`, `data()`, `advance()`. Both use pimpl to keep libogg/libvorbis types out of headers. Replaced WDL `vorbisencdec.h`. |
+| `NinjamProtocol.{h,cpp}` | Pure wire format: framing, message parsing, message building, `computeAuthHash`. No sockets, no threads, no state. All parsing goes through a bounds-checked `Reader` whose accessors fail rather than read past the payload -- `NinjamClient` owns dispatch only. Ninjam is little-endian throughout. |
+| `IntervalClock.{h,cpp}` | Sample-exact beat/interval grid. Replaced a float phase accumulator whose wrap residual made the boundary walk a sample per interval, jittering every transmitted interval's length. `samplesPerInterval()` uses the reference client's arithmetic verbatim (`njclient.cpp:806`, truncated) so our boundaries align with other clients; beat offsets are rounded, since they only drive the local click. `advance()` emits events and never allocates. |
+| `MetronomeVoice.{h,cpp}` | One-shot click, split out so its pitch is testable. 880/660/440 Hz by downbeat/bar/beat, `phaseInc = 2*pi*freq/sampleRate`. |
+| `test/` | `juce::UnitTest` console app (`NinjamTests`) plus `FakeNinjamServer`, the in-process loopback. Production sources are re-listed in `test/CMakeLists.txt` rather than shared -- `juce_generate_juce_header` only works on `juce_add_*` targets, and each target needs its own `JuceHeader.h`. `PluginProcessor.cpp` and the UI are excluded (they need `JucePlugin_*` defines). |
 | `utils/` | Remaining vendored WDL headers: `heapbuf`, `queue`, `wdlstring`, etc. `sha1.{h,cpp}` and `vorbisencdec.h` are no longer used by our code. Treat as near-third-party; edit only if necessary. |
 
 ---
@@ -96,8 +114,8 @@ All message framing: 1-byte type + 4-byte little-endian payload length + payload
 |---|---|---|---|
 | SERVER_AUTH_CHALLENGE | S→C | `0x00` | 8-byte challenge + more; we read first 8 |
 | SERVER_AUTH_REPLY | S→C | `0x01` | 1-byte flag: 1 = granted, 0 = denied |
-| SERVER_CONFIG_CHANGE | S→C | `0x02` | 2-byte BPM + 2-byte BPI, big-endian uint16 each |
-| USER_INFO_CHANGE | S→C | `0x03` | List of: active(u8), chIdx(u8), vol(i16-be), pan(i8), flags(u8), username(NUL), chanName(NUL) |
+| SERVER_CONFIG_CHANGE | S→C | `0x02` | 2-byte BPM + 2-byte BPI, **little-endian** uint16 each (`references/ninjam/ninjam/mpb.cpp:192-195`) |
+| USER_INFO_CHANGE | S→C | `0x03` | List of: active(u8), chIdx(u8), vol(i16-**le**), pan(i8), flags(u8), username(NUL), chanName(NUL). Fixed part is 6 bytes, not 4. |
 | DOWNLOAD_INTERVAL_BEGIN | S→C | `0x04` | 16-byte GUID + 4-byte estSize + 4-byte fourCC + 1-byte chIdx + NUL-term username. fourCC `OGGv` = audio; `JTBv` = Jamtaba video (skip). |
 | DOWNLOAD_INTERVAL_WRITE | S→C | `0x05` | 16-byte GUID + 1-byte flags (1 = final) + Ogg payload |
 | CHAT_MESSAGE | S↔C | `0xC0` | 5 NUL-terminated strings: type, then type-specific params. Types: MSG, PRIVMSG, TOPIC, JOIN, PART, ADMIN |
@@ -119,8 +137,29 @@ Legend — **Complexity**: S = hours (self-contained), M = 1–3 days, L = 3–7
 
 **Completed:** #1 SET_USERMASK, #2 OGGv filter, #3 metronome default, #4 password/port UI, #5 tempo sync UX, #6 server browser, #7 channel info names, #8 dynamic local channels, #9 per-channel xmit toggle, #10 monitor/transmit gain split, #11 vertical strip UI redesign, #12 VU meters (local strips + remote strips), #13 multi-channel remote strips, #14 per-channel Recv toggle, #15 state persistence, #16 per-channel bus routing (input + output), #17 per-channel ring buffers, #18 SHA1 replacement (first-party), #19 VorbisCodec replacement (direct libogg/libvorbis), #20 playback phase-lock fix (removed signal-driven swaps; local metronome is sole authority), #21 interval crossfade (256-sample fade at swap boundary), #22 elastic channel panel layout (40/60 proportional, left/right justified), #23 UI polish -- compact toolbar groups, metronome volume slider, hover fix, button enable/disable states, connection-state header tint, phase bar state colour, chat ghost + clear-on-reconnect.
 
+**Test infrastructure and the bugs it found (see `test/README.md`):** three-layer
+suite -- unit tests, in-process loopback, local-server archive rig. Fixed along
+the way, each with a test that fails without the fix:
+
+- **Encoder sample rate was hardcoded to 48000** regardless of the session rate. At 44.1 kHz we transmitted 8.8% sharp and 8% short; at 96 kHz, 150% long and an octave down. (`NinjamClient.cpp` `processCapturedAudio`; the debug WAV dumps had the same bug.)
+- **Five unbounded string reads past the end of the payload** in the `0x03` and `0xC0` parsers, including a 6-vs-4-byte off-by-two. `MemoryBlock` is sized to exactly the payload and is not NUL-padded, so these walked the heap. Reproduced as a heap-buffer-overflow under ASan; now impossible by construction.
+- **Interval length jittered by a sample** every interval, because the float phase accumulator wrapped by subtraction. Now an integer grid matching the reference client.
+- **Metronome click sounded at a third of its nominal pitch** (880 Hz came out near 293) -- the old formula swept `2*pi*freq/bpm` radians over a `3/bpm`-second click and never referenced the sample rate.
+- **Reconnecting left the previous session's users and channel streams in place**, so a rejoined session showed phantom users whose orphaned streams were swapped silently forever.
+- **Jamtaba `JTBv` video intervals were queued as audio**, creating a permanently silent channel stream that swapped every interval. Now filtered on fourCC.
+- `CLAUDE.md` claimed `0x02`/`0x03` integers were big-endian; they are little-endian (`mpb.cpp:192-195`). The code was right, the doc was wrong.
+
+Characterised, not bugs: Ogg only emits a page every ~4 kB, so a short or tonal
+interval produces **no** decodable audio until the end-of-stream flush. Interval
+delivery is therefore all-or-nothing, and a receiver cannot start playing an
+interval early just because some WRITE chunks arrived. Pinned by a test.
+
 | # | Item | Type | Complexity | UX Impact | Key notes |
-| 24 | Lock-free TX handoff | Architecture | M | Low | `processBlock` does `callAsync` with a full buffer copy at each interval boundary. Replace with a `juce::AbstractFifo` FIFO to eliminate the copy and reduce TX latency jitter. (RX path already lock-light.) |
+| 24 | Lock-free TX handoff | Architecture | M | Low | `processBlock` does `callAsync` with a full buffer copy at each interval boundary. Replace with a `juce::AbstractFifo` FIFO to eliminate the copy and reduce TX latency jitter. (RX path already lock-light.) Much safer to attempt now the loopback tests exist. |
+| 27 | Capture alignment at the interval boundary | Correctness | M | Medium | The ring buffer is drained at the boundary but filled in whole blocks, so a transmitted interval is block-quantised rather than sample-exact. Measure the size with the Test Tone toggle + `scripts/analyze_archive.py` (impulse offset column), then decide whether it needs fixing. |
+| 28 | Audio-thread hygiene | Correctness | S | Low | `getDecodedAudio` takes `downloadMutex` on the audio thread; `setSaveTx/Rx` are called from `processBlock` every block and do file I/O on the toggling call. |
+| 29 | Destructor race in `NinjamClient` | Correctness | S | Low | `~NinjamClient` closes the socket while `run()` may be blocked in `read()`. Currently only visible as test-teardown flakiness. |
+| 30 | Underrun tail | Correctness | S | Low | `getDecodedAudio` leaves the rest of the block silent when the decoded interval runs short, rather than holding or fading. |
 | 25 | Video support | Future | XL | High | Jamtaba-proprietary extension only. Not planned; see Video section below. |
 | 26 | OSC tempo sync | Future | M | Medium | Send `/tempo/raw {bpm}` OSC to localhost when server BPM changes (so DAW can auto-adjust). Reference: `abNinjam`. Not planned. |
 
