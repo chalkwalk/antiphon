@@ -63,6 +63,79 @@ Manual smoke test: launch Standalone, connect to `ninbot.com:2049` as `anonymous
 
 ---
 
+## Testing expectations
+
+Read this before changing anything. The bugs the suite found were all invisible
+to listening -- audio a few percent sharp, an interval a sample short, a parser
+reading past a buffer. Assume your change has the same failure mode.
+
+### Which layer to reach for
+
+| Change touches | Write | Notes |
+|---|---|---|
+| Wire format, parsing, message building | `test/NinjamProtocolTests.cpp` | Add the message to the **truncation sweep** in `runTruncationTests()`, not just a happy-path case. |
+| Beat/interval timing | `test/IntervalClockTests.cpp` | Sweep bpm x bpi x sample rate x block size. A bug that only shows at 44.1 kHz or block size 61 is the normal case, not the exotic one. |
+| Click synthesis | `test/MetronomeVoiceTests.cpp` | Assert measured pitch, never the formula. |
+| Encode/decode | `test/VorbisCodecTests.cpp` | Always test at 44.1 **and** 48 kHz. |
+| Anything crossing the socket | `test/LoopbackTests.cpp` | `FakeNinjamServer` needs no production changes -- point the client at `127.0.0.1`. |
+| Mixing, routing, playback delay | `test/AudioLoopbackTests.cpp` | Drives the real path end to end. |
+| Server-visible behaviour | `test/RealServerTests.cpp` | Opt-in via `NINJAM_TEST_SERVER`; keep the default suite hermetic. |
+
+### Rules that are easy to get wrong
+
+- **Fix bugs test-first, and prove the test has teeth.** Write the failing test,
+  then fix. If a fix is a one-liner, temporarily reinstate the bug and confirm
+  the test goes red -- a test that passes both ways is worthless. That is how the
+  48 kHz encoder bug was pinned.
+- **Audio assertions must be statistical.** RMS, and pitch by zero crossings
+  (`test/TestSignal.h`). Vorbis is lossy and has codec delay; sample-by-sample
+  comparison against the input will never hold.
+- **A new `src/*.cpp` must be added to BOTH `src/CMakeLists.txt` and
+  `test/CMakeLists.txt`.** The test target deliberately re-lists production
+  sources rather than sharing them -- see the comment at the top of
+  `test/CMakeLists.txt` for why.
+- **Keep testable logic out of `PluginProcessor`.** It cannot be compiled into
+  the test target (it needs `JucePlugin_*` defines). That is the whole reason
+  `IntervalClock` and `MetronomeVoice` exist as separate modules. New
+  audio-thread logic belongs in a module like those, with `processBlock` as a
+  thin caller.
+- **Do not link `juce_audio_utils` into the test target.** It drags in
+  `juce_audio_processors`/`juce_audio_devices` and thus X11/ALSA, which breaks
+  headless runs.
+- **Parser changes get an ASan run.** Over-reads pass silently otherwise. Build
+  instructions are in `test/README.md`; ignore UBSan noise from inside libvorbis.
+- **Audio-thread code must not allocate, lock, do file I/O, or log.**
+  `IntervalClock::advance()` and `MetronomeVoice::render()` honour this;
+  `getDecodedAudio` (takes `downloadMutex`) and the Save Tx/Rx toggles (file I/O)
+  do not -- work item #28. Do not add to that list.
+
+### Invariants worth not breaking
+
+- **`IntervalClock::samplesPerInterval()` truncates on purpose.** It reproduces
+  `njclient.cpp:806` verbatim so our interval boundaries line up with every other
+  client on the server. Rounding it "correctly" would silently desync us from
+  Jamtaba and ReaNINJAM. Beat offsets inside the interval are rounded, because
+  they only drive the local click.
+- **The local metronome is the sole authority for interval swaps.**
+  `intervalBeginSignal` is drained and never acted on. Network jitter must not
+  move the playback clock.
+- **Interval delivery is all-or-nothing.** Ogg emits a page only every ~4 kB, so
+  a quiet or tonal interval decodes to nothing until the end-of-stream flush. Do
+  not build anything that assumes a partially received interval is playable.
+
+### Before claiming a change works
+
+```
+cmake --build build -j $(nproc) && ctest --test-dir build --output-on-failure
+```
+
+Plus, when the change warrants it: the ASan build for parser work, and a
+Standalone launch for anything touching the UI or the audio thread. Quote the
+actual output -- "tests pass" without having run them is how the hardcoded
+48 kHz encoder survived this long.
+
+---
+
 ## Code map
 
 All our code lives in `src/` — ~2 k lines, fits in your head.
