@@ -27,6 +27,7 @@ target_sources(NinjamTests
         LoopbackTests.cpp
         AudioLoopbackTests.cpp
         RealServerTests.cpp
+        InteropTests.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
@@ -61,3 +62,9 @@ target_include_directories(NinjamTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME ninjam-unit-tests COMMAND NinjamTests)
 set_tests_properties(ninjam-unit-tests PROPERTIES TIMEOUT 120)
+
+# Temporary interop harness around the official reference client. Defines a
+# target only when system libogg/libvorbis are present; see refclient/README
+# notes in test/README.md for how to remove it once parity is captured as
+# golden fixtures.
+add_subdirectory(refclient)
