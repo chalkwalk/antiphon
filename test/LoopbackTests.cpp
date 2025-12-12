@@ -319,6 +319,40 @@ public:
       expect(s.client.isConnected());
     }
 
+    beginTest("destroying a client with queued callbacks is safe");
+    {
+      // Listener callbacks are delivered with callAsync, so a message can
+      // still be in the queue when the client is destroyed -- a plugin closed
+      // shortly after a disconnect. The queued lambda then runs against a
+      // dangling `this`. Under ASan this test reports stack-use-after-return
+      // without the aliveFlag guard in NinjamClient.
+      FakeNinjamServer server;
+      expect(server.start(120, 8));
+
+      {
+        NinjamClient shortLived;
+        RecordingListener listener;
+        shortLived.addListener(&listener);
+        shortLived.setSampleRate(48000.0);
+        shortLived.connectToServer("127.0.0.1", server.port(), "tester", "");
+        expect(waitUntil([&] { return shortLived.isConnected(); }, 5000));
+
+        server.sendChat("MSG", "alice", "queued");
+        server.sendUserInfo("peer", 0, "gtr");
+        shortLived.disconnectFromServer();
+
+        // Deliberately do NOT pump the message loop here: leave the callbacks
+        // queued, then destroy the client and its listener.
+        shortLived.removeListener(&listener);
+      }
+
+      server.stop();
+
+      // Draining now must not touch the destroyed client.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(200);
+      expect(true, "survived draining callbacks queued by a destroyed client");
+    }
+
     beginTest("disconnect and reconnect clears stale remote state");
     {
       Session s;

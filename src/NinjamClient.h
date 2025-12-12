@@ -191,5 +191,29 @@ private:
   juce::CriticalSection txFileMutex;
   juce::CriticalSection rxFileMutex;
   juce::CriticalSection channelInfoMutex;
+  // Serialises whole frames onto the socket; see writeFull.
+  juce::CriticalSection writeMutex;
+
+  // Listener callbacks are bounced to the message thread with callAsync, which
+  // means a message can still be sitting in the queue when this object is
+  // destroyed -- closing a plugin shortly after a disconnect, for instance.
+  // The queued lambda would then run against a dangling `this`. Every such
+  // lambda captures a copy of this flag and checks it first; the destructor
+  // clears it before tearing anything down.
+  //
+  // This is airtight as long as the destructor runs on the message thread
+  // (it does in the plugin: the processor is destroyed there), because the
+  // check and the destruction cannot then interleave.
+  std::shared_ptr<std::atomic<bool>> aliveFlag{
+      std::make_shared<std::atomic<bool>>(true)};
+
+  template <typename Fn> void callAsyncIfAlive(Fn &&fn) {
+    auto alive = aliveFlag;
+    juce::MessageManager::callAsync(
+        [alive, fn = std::forward<Fn>(fn)]() mutable {
+          if (alive->load())
+            fn();
+        });
+  }
   juce::StringArray storedChannelNames{"Instrument"};
 };

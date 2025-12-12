@@ -3,7 +3,12 @@
 
 NinjamClient::NinjamClient() : juce::Thread("NinjamClientThread") {}
 
-NinjamClient::~NinjamClient() { disconnectFromServer(); }
+NinjamClient::~NinjamClient() {
+  // Clear the flag before anything else, so any callAsync lambda still queued
+  // on the message thread becomes a no-op rather than a use-after-free.
+  aliveFlag->store(false);
+  disconnectFromServer();
+}
 
 void NinjamClient::addListener(NinjamClientListener *listener) {
   listeners.add(listener);
@@ -112,6 +117,15 @@ bool NinjamClient::readFull(void *dest, int numBytes) {
 
 bool NinjamClient::writeFull(juce::uint8 type, const void *payload,
                              int numBytes) {
+  // A frame is a header write followed by a payload write, and writeFull is
+  // called from three threads: the network thread (keep-alive, usermask,
+  // channel info), the message thread (interval uploads) and the UI thread
+  // (chat, recv toggles). Without this lock two frames can interleave, so the
+  // server reads one message's header followed by another's payload, desyncs,
+  // and drops the connection. It shows up as a random disconnect while
+  // playing, which is easy to blame on the network.
+  juce::ScopedLock sl(writeMutex);
+
   if (!socket || !socket->isConnected())
     return false;
 
@@ -132,7 +146,7 @@ void NinjamClient::run() {
 
   if (!socket->connect(currentHost, currentPort, 2000)) {
     connectionState = 0;
-    juce::MessageManager::callAsync([this]() {
+    callAsyncIfAlive([this]() {
       listeners.call(&NinjamClientListener::onDisconnected,
                      "Connection timed out");
     });
@@ -192,7 +206,7 @@ void NinjamClient::run() {
     remoteUsers.clear();
   }
 
-  juce::MessageManager::callAsync([this]() {
+  callAsyncIfAlive([this]() {
     listeners.call(&NinjamClientListener::onDisconnected, "Connection closed");
   });
 }
@@ -224,7 +238,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
 
     connectionState = 3;
     sendChannelInfo();
-    juce::MessageManager::callAsync(
+    callAsyncIfAlive(
         [this]() { listeners.call(&NinjamClientListener::onConnected); });
   }
   // SERVER_CONFIG_CHANGE
@@ -238,7 +252,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     serverBpi = cfg.bpi;
 
     const int bpm = cfg.bpm, bpi = cfg.bpi;
-    juce::MessageManager::callAsync([this, bpm, bpi]() {
+    callAsyncIfAlive([this, bpm, bpi]() {
       listeners.call(&NinjamClientListener::onServerConfig, bpm, bpi);
     });
   }
@@ -283,7 +297,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     sendUserMask();
 
     if (changed) {
-      juce::MessageManager::callAsync([this]() {
+      callAsyncIfAlive([this]() {
         listeners.call(&NinjamClientListener::onUserInfoChange);
       });
     }
@@ -470,7 +484,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
           chatLog.remove(0); // keep history bounded
       }
 
-      juce::MessageManager::callAsync(
+      callAsyncIfAlive(
           [this, type = msg.type, user = msg.username, text = msg.text]() {
             listeners.call(&NinjamClientListener::onChatMessage, type, user,
                            text);

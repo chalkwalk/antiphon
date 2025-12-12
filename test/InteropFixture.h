@@ -3,6 +3,12 @@
 #include <JuceHeader.h>
 
 #include "FakeNinjamServer.h" // waitUntil
+#include "IntervalClock.h"
+#include "NinjamClient.h"
+
+#include <cmath>
+#include <utility>
+#include <vector>
 
 // Fixtures for the interop tests: a real ninjamsrv and the reference-client
 // harness, both launched as child processes and driven from the test.
@@ -102,10 +108,16 @@ public:
             8000))
       return true;
 
+    // Note: readAllProcessOutput() blocks until the child exits, so it must
+    // never be called on a process that is still running.
+    const bool alive = proc.isRunning();
+    if (alive)
+      proc.kill();
     lastError = "server did not accept connections on port " +
-                juce::String(port) + "; running=" +
-                (proc.isRunning() ? "yes" : "no") + "; output: " +
-                proc.readAllProcessOutput().substring(0, 400);
+                juce::String(port) +
+                (alive ? "; process was still running"
+                       : "; process had already exited: " +
+                             proc.readAllProcessOutput().substring(0, 400));
     return false;
   }
 
@@ -148,13 +160,33 @@ public:
                     juce::String(blockSize)))
       return false;
 
-    conn.reset(listener.waitForNextConnection());
-    if (conn == nullptr)
+    // Bounded: waitForNextConnection() alone blocks forever if the harness
+    // never dials back, which turns any startup failure into a hung test run.
+    if (listener.waitUntilReady(true, 10000) != 1) {
+      const bool alive = proc.isRunning();
+      if (alive)
+        proc.kill();
+      lastError = "harness never connected to the control port" +
+                  juce::String(alive ? "; process was still running"
+                                     : "; process had already exited: " +
+                                           proc.readAllProcessOutput()
+                                               .substring(0, 400));
       return false;
+    }
+    conn.reset(listener.waitForNextConnection());
+    if (conn == nullptr) {
+      lastError = "control connection was not accepted";
+      return false;
+    }
 
     // The harness announces itself once its audio thread is up.
-    return waitForEvent("ready", 5000).isNotEmpty();
+    if (waitForEvent("ready", 5000).isNotEmpty())
+      return true;
+    lastError = "harness connected but never signalled ready";
+    return false;
   }
+
+  juce::String getLastError() const { return lastError; }
 
   void stop() {
     if (conn != nullptr && conn->isConnected())
@@ -300,25 +332,19 @@ public:
         timeoutMs);
   }
 
-  bool waitForUser(const juce::String &namePart, int timeoutMs = 20000) {
-    return waitUntil(
-        [&] {
-          send("users");
-          juce::String line;
-          bool found = false;
-          const auto deadline = juce::Time::getMillisecondCounter() + 1000;
-          while (juce::Time::getMillisecondCounter() < deadline) {
-            line = waitForReply(500);
-            if (line.isEmpty())
-              break;
-            if (line.startsWith("OK user") && line.contains(namePart))
-              found = true;
-            if (line.startsWith("OK users"))
-              break;
-          }
-          return found;
-        },
-        timeoutMs);
+  // "OK hasuser <0|1> <peak>"
+  bool hasUser(const juce::String &namePart, float *peakOut = nullptr) {
+    const auto reply = command("hasuser " + namePart, 3000);
+    auto tok = juce::StringArray::fromTokens(reply, " ", "");
+    if (tok.size() < 4 || tok[1] != "hasuser")
+      return false;
+    if (peakOut != nullptr)
+      *peakOut = (float)tok[3].getDoubleValue();
+    return tok[2].getIntValue() == 1;
+  }
+
+  bool waitForUser(const juce::String &namePart, int timeoutMs = 30000) {
+    return waitUntil([&] { return hasUser(namePart); }, timeoutMs);
   }
 
 private:
@@ -348,8 +374,156 @@ private:
   juce::ChildProcess proc;
   juce::StreamingSocket listener;
   std::unique_ptr<juce::StreamingSocket> conn;
-  juce::String pending;
+  juce::String pending, lastError;
   juce::StringArray replies, events;
+};
+
+// Drives our NinjamClient the way PluginProcessor::processBlock does: an
+// IntervalClock advanced in blocks, transmitting one complete interval at each
+// boundary and mixing decoded remote audio every block.
+//
+// PluginProcessor itself cannot be linked into the test target (it needs the
+// JucePlugin_* defines), so this mirrors its loop rather than reusing it. Keep
+// the two in step -- see test/README.md.
+class OurClientDriver : private juce::Thread {
+public:
+  explicit OurClientDriver(NinjamClient &c)
+      : juce::Thread("OurClientDriver"), client(c) {}
+  ~OurClientDriver() override { stop(); }
+
+  void configure(double sr, int bpm, int bpi, int blk = 512) {
+    sampleRate = sr;
+    blockSize = blk;
+    clock.prepare(sr);
+    clock.setTempo(bpm, bpi);
+    clock.reset();
+    intervalLen = clock.samplesPerInterval();
+  }
+
+  void setTone(double freq, double amp, bool impulseAtBoundary) {
+    toneFreq = freq;
+    toneAmp = amp;
+    impulse = impulseAtBoundary;
+  }
+
+  void setCapture(bool on) { capturing = on; }
+
+  void begin() { startThread(); }
+
+  void stop() {
+    signalThreadShouldExit();
+    stopThread(3000);
+  }
+
+  int samplesPerInterval() const { return intervalLen; }
+
+  // Decoded remote audio, interleaved stereo, and where interval boundaries
+  // fell within it.
+  struct Capture {
+    std::vector<float> audio;
+    std::vector<std::pair<int64_t, int>> markers; // (sample offset, interval #)
+  };
+
+  Capture takeCapture() {
+    juce::ScopedLock sl(captureLock);
+    Capture c;
+    c.audio.swap(capture.audio);
+    c.markers.swap(capture.markers);
+    return c;
+  }
+
+  int intervalsElapsed() const { return intervalCount.load(); }
+
+private:
+  void run() override {
+    std::vector<IntervalClock::Event> events;
+    std::vector<float> txAccum;
+    txAccum.reserve((size_t)intervalLen * 2);
+
+    juce::AudioBuffer<float> outBlock(2, blockSize);
+    const double inc = 2.0 * 3.14159265358979323846 * toneFreq / sampleRate;
+
+    while (!threadShouldExit()) {
+      const int64_t posAtBlockStart = clock.samplePosInInterval();
+      events.clear();
+      clock.advance(blockSize, events);
+
+      int boundaryOffset = -1;
+      for (const auto &e : events)
+        if (e.type == IntervalClock::Event::Type::IntervalStart)
+          boundaryOffset = e.sampleOffset;
+
+      // Generate this block of the transmit signal on the interval grid.
+      std::vector<float> block((size_t)blockSize);
+      for (int i = 0; i < blockSize; ++i) {
+        const int64_t pos =
+            intervalLen > 0 ? (posAtBlockStart + i) % intervalLen : 0;
+        block[(size_t)i] =
+            (impulse && pos == 0)
+                ? 1.0f
+                : (float)(toneAmp * std::sin(inc * (double)(sampleCounter + i)));
+      }
+
+      if (boundaryOffset >= 0) {
+        txAccum.insert(txAccum.end(), block.begin(),
+                       block.begin() + boundaryOffset);
+
+        if ((int)txAccum.size() == intervalLen && client.isConnected()) {
+          juce::AudioBuffer<float> tx(2, intervalLen);
+          for (int ch = 0; ch < 2; ++ch)
+            memcpy(tx.getWritePointer(ch), txAccum.data(),
+                   (size_t)intervalLen * sizeof(float));
+          client.processCapturedAudio(tx, intervalLen, 0, false);
+        }
+        txAccum.clear();
+        txAccum.insert(txAccum.end(), block.begin() + boundaryOffset,
+                       block.end());
+
+        client.swapIntervalBuffers();
+        intervalCount.fetch_add(1);
+
+        if (capturing) {
+          juce::ScopedLock sl(captureLock);
+          capture.markers.emplace_back(
+              (int64_t)capture.audio.size() / 2 + boundaryOffset,
+              intervalCount.load());
+        }
+      } else {
+        txAccum.insert(txAccum.end(), block.begin(), block.end());
+      }
+
+      outBlock.clear();
+      client.getDecodedAudio(outBlock);
+
+      if (capturing) {
+        juce::ScopedLock sl(captureLock);
+        const float *l = outBlock.getReadPointer(0);
+        const float *r = outBlock.getReadPointer(1);
+        for (int i = 0; i < blockSize; ++i) {
+          capture.audio.push_back(l[i]);
+          capture.audio.push_back(r[i]);
+        }
+      }
+
+      sampleCounter += blockSize;
+      juce::Thread::sleep(
+          juce::jmax(1, (int)(1000.0 * blockSize / sampleRate)));
+    }
+  }
+
+  NinjamClient &client;
+  IntervalClock clock;
+  double sampleRate = 48000.0;
+  int blockSize = 512;
+  int intervalLen = 0;
+  double toneFreq = 440.0, toneAmp = 0.0;
+  bool impulse = false;
+  std::atomic<bool> capturing{false};
+  std::atomic<int> intervalCount{0};
+  int64_t sampleCounter = 0;
+
+  juce::CriticalSection captureLock;
+  Capture capture;
 };
 
 } // namespace Interop
