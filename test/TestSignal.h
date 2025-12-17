@@ -57,14 +57,19 @@ inline double toDb(double linear) {
 }
 
 // Estimates the dominant frequency by counting zero crossings, gated by a
-// hysteresis band at +/- 20% of peak so that codec noise near zero does not
-// register as extra crossings.
+// hysteresis band so codec noise near zero does not register as extra
+// crossings.
+//
+// The gate is derived from RMS, not peak: a signal carrying a transient (such
+// as the interval-marker impulse in the interop tests) has a peak far above
+// the steady tone, and a peak-relative gate then sits above the tone entirely
+// and counts almost nothing, reporting a confidently wrong frequency.
 inline double dominantFrequency(const float *data, int numSamples,
                                 double sampleRate, int stride = 1) {
   if (numSamples < 2 || sampleRate <= 0.0)
     return 0.0;
 
-  const double threshold = 0.2 * peak(data, numSamples, stride);
+  const double threshold = 0.5 * rms(data, numSamples, stride);
   if (threshold <= 0.0)
     return 0.0;
 
