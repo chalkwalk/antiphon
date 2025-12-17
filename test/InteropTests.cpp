@@ -198,15 +198,35 @@ public:
       return;
     }
 
-    // Measure over a steady stretch, avoiding the very start and end.
+    // Locate the timing bursts first: the pitch of the bed tone has to be
+    // measured BETWEEN them. The bursts are deliberately a different, much
+    // higher frequency, so including one in the analysis window inflates a
+    // zero-crossing estimate (it reads ~456 Hz instead of 440).
     const int anaStart = firstAudio + usable / 8;
     const int anaLen = usable * 3 / 4;
+    const auto &probe = driver.getProbe();
+    auto bursts = TestSignal::findBursts(left.data() + anaStart, anaLen,
+                                         probe.burstHz, probe.burstSeconds, sr);
+
+    const int burstLen = (int)(probe.burstSeconds * sr);
+    int pitchAt = anaStart, pitchLen = std::min(anaLen, (int)(sr / 2));
+    if (bursts.size() >= 2) {
+      // Sit in the gap after the first burst, clear of both neighbours.
+      const int gapStart = anaStart + bursts[0] + burstLen * 4;
+      const int gapEnd = anaStart + bursts[1] - burstLen * 4;
+      if (gapEnd - gapStart > (int)(sr / 10)) {
+        pitchAt = gapStart;
+        pitchLen = std::min(gapEnd - gapStart, (int)(sr / 2));
+      }
+    }
+
     const double freq =
-        TestSignal::dominantFrequency(left.data() + anaStart, anaLen, sr);
-    const double rms = TestSignal::rms(left.data() + anaStart, anaLen);
+        TestSignal::dominantFrequency(left.data() + pitchAt, pitchLen, sr);
+    const double rms = TestSignal::rms(left.data() + pitchAt, pitchLen);
 
     logMessage("reference decoded: " + juce::String(freq, 1) + " Hz, rms " +
-               juce::String(rms, 4));
+               juce::String(rms, 4) + " (measured in a " +
+               juce::String(pitchLen) + "-sample gap between bursts)");
 
     // Pitch is the assertion that matters: it catches sample-rate and encoder
     // mismatches, which is the failure mode that silently ruins a session.
@@ -214,50 +234,57 @@ public:
            "reference client decoded our tone at " + juce::String(freq, 1) +
                " Hz, expected 440 -- a sample-rate or encoder mismatch");
 
-    // Level is measured and reported rather than asserted against an absolute
-    // target. The reference applies its own remote-user and channel gains, so
-    // the observed level is not directly comparable with what we sent; the
-    // ratio is recorded here so a regression in OUR gain staging would show up
-    // as a change, and so the constant factor can be pinned down separately.
+    // The reference plays remote channels at its default gain of 0.25
+    // (njclient.cpp:2948 x :1967), so a correctly transmitted unity-level
+    // signal comes back at exactly a quarter. Any other ratio means our
+    // transmit gain staging has drifted.
     const double sentRms = 0.25 / std::sqrt(2.0);
+    const double ratio = rms / sentRms;
     logMessage("level: reference rms " + juce::String(rms, 4) + " vs sent " +
-               juce::String(sentRms, 4) + " (ratio " +
-               juce::String(rms / sentRms, 3) + ")");
-    expect(rms > 0.01, "reference client decoded essentially no audio (rms " +
-                           juce::String(rms, 5) + ")");
+               juce::String(sentRms, 4) + " (ratio " + juce::String(ratio, 3) +
+               ", reference default gain is 0.25)");
+    expect(std::fabs(ratio - 0.25) < 0.05,
+           "reference played our audio at " + juce::String(ratio, 3) +
+               " of the sent level, expected 0.25 -- our transmit gain has "
+               "changed");
 
-    // Alignment: locate our per-interval impulses and measure their spacing.
-    // The threshold is relative to the tone, not absolute, because the level
-    // the reference plays us back at is not something we control.
-    std::vector<int> impulses;
-    const double threshold = std::max(4.0 * rms, 0.02);
-    for (int i = anaStart; i < firstAudio + usable; ++i) {
-      if (left[(size_t)i] > threshold &&
-          (impulses.empty() || i - impulses.back() > 1000))
-        impulses.push_back(i);
-    }
-    logMessage("impulses found: " + juce::String((int)impulses.size()));
+    // Timing. The probe places short 3 kHz bursts at 0, 1/4, 1/2 and 3/4 of
+    // every interval, so consecutive bursts must arrive exactly a quarter of an
+    // interval apart. This is stricter than checking interval length alone: a
+    // stretched or shifted interval moves the later bursts within it, which a
+    // single marker at the boundary cannot detect.
+    const int expectedSpacing =
+        driver.samplesPerInterval() / (int)probe.positions.size();
+    logMessage("timing: " + juce::String((int)bursts.size()) +
+               " bursts found, expected spacing " +
+               juce::String(expectedSpacing) + " samples");
 
-    if (impulses.size() >= 2) {
+    expect(bursts.size() >= 3,
+           "found only " + juce::String((int)bursts.size()) +
+               " timing bursts -- not enough to verify interval timing");
+
+    if (bursts.size() >= 3) {
       std::vector<int> spacings;
-      for (size_t i = 1; i < impulses.size(); ++i)
-        spacings.push_back(impulses[i] - impulses[i - 1]);
+      for (size_t i = 1; i < bursts.size(); ++i)
+        spacings.push_back(bursts[i] - bursts[i - 1]);
       const int minS = *std::min_element(spacings.begin(), spacings.end());
       const int maxS = *std::max_element(spacings.begin(), spacings.end());
-      logMessage("impulse spacing: min " + juce::String(minS) + ", max " +
-                 juce::String(maxS) + ", interval " +
-                 juce::String(driver.samplesPerInterval()));
+      logMessage("timing: burst spacing min " + juce::String(minS) + ", max " +
+                 juce::String(maxS));
 
-      expect(std::abs(minS - driver.samplesPerInterval()) < 2000,
-             "impulse spacing " + juce::String(minS) +
-                 " does not match the interval length " +
-                 juce::String(driver.samplesPerInterval()));
-      expect(maxS - minS < 2000,
-             "impulse spacing drifted by " + juce::String(maxS - minS) +
-                 " samples between intervals");
-    } else {
-      logMessage("note: too few impulses to measure spacing; the codec may "
-                 "have smoothed them away at this bitrate");
+      // One block of slack (the transmit capture is block-quantised, work
+      // item #27), plus a little for the burst detector's hop size.
+      const int tolerance = 2048;
+      expect(std::abs(minS - expectedSpacing) < tolerance &&
+                 std::abs(maxS - expectedSpacing) < tolerance,
+             "burst spacing " + juce::String(minS) + ".." +
+                 juce::String(maxS) + " does not match the expected " +
+                 juce::String(expectedSpacing) +
+                 " -- interval timing is wrong through the reference client");
+
+      expect(maxS - minS < tolerance,
+             "burst spacing drifted by " + juce::String(maxS - minS) +
+                 " samples across the capture");
     }
 
     ours.removeListener(&rec);

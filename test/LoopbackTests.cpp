@@ -163,6 +163,25 @@ public:
       expectEquals((int)b[5], 1, "channel 0 bit should be set");
     }
 
+    beginTest("new remote channels default to the reference client's gain");
+    {
+      // The reference plays remote channels at 0.25 (-12 dB) by default:
+      // RemoteUser_Channel::volume is 0.25 and RemoteUser::volume is 1.0, and
+      // they are multiplied at mix time (njclient.cpp:2948, :1967). Matching it
+      // keeps our balance between "me" and "everyone else" the same as every
+      // other client in the session. Verified against the real reference client
+      // by the interop tests, which measure 0.253.
+      Session s;
+      expect(s.connect());
+      s.server.sendUserInfo("peer", 0, "gtr");
+      expect(waitUntil([&] { return s.client.getRemoteUsers().size() == 1; }));
+
+      auto users = s.client.getRemoteUsers();
+      expectEquals(users["peer"].channels.at(0).volume, 0.25f,
+                   "remote channel default gain must match the reference");
+      expectEquals(users["peer"].channels.at(0).pan, 0.0f);
+    }
+
     beginTest("recv toggle clears the channel bit in the usermask");
     {
       Session s;

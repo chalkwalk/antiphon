@@ -210,6 +210,51 @@ public:
       expectEquals(d.numFrames(), 0);
     }
 
+    beginTest("interval timing probe survives the codec");
+    {
+      // Timing markers are only useful if they come back where they went in.
+      // A single-sample impulse does not survive a perceptual codec, so the
+      // probe uses short enveloped tone bursts instead. This pins that they
+      // are recoverable, and located to within a millisecond, after a real
+      // encode/decode round trip -- the property the interop timing tests and
+      // the archive analysis both depend on.
+      const int sr = 48000;
+      const int intervalLen = sr * 2; // 2 s "interval"
+      TestSignal::IntervalProbe probe;
+
+      std::vector<float> pcm((size_t)intervalLen * 2);
+      for (int i = 0; i < intervalLen; ++i) {
+        const float v = probe.sampleAt(i, intervalLen, i, sr);
+        pcm[(size_t)i * 2] = v;
+        pcm[(size_t)i * 2 + 1] = v;
+      }
+
+      auto d = decodeAll(encodeAll(pcm.data(), intervalLen, sr, 2));
+      expect(d.numFrames() > intervalLen / 2, "codec returned too little");
+
+      std::vector<float> left((size_t)d.numFrames());
+      for (int i = 0; i < d.numFrames(); ++i)
+        left[(size_t)i] = d.interleaved[(size_t)i * 2];
+
+      auto found = TestSignal::findBursts(left.data(), (int)left.size(),
+                                          probe.burstHz, probe.burstSeconds,
+                                          sr);
+      expectEquals((int)found.size(), (int)probe.positions.size(),
+                   "expected one detected burst per probe position");
+
+      if (found.size() == probe.positions.size()) {
+        const double tolerance = 0.001 * sr; // 1 ms
+        for (size_t i = 0; i < found.size(); ++i) {
+          const int expectedAt =
+              (int)(probe.positions[i] * (double)intervalLen);
+          expect(std::abs(found[i] - expectedAt) < tolerance,
+                 "burst " + juce::String((int)i) + " found at " +
+                     juce::String(found[i]) + ", expected near " +
+                     juce::String(expectedAt));
+        }
+      }
+    }
+
     beginTest("decoder tolerates single-byte feeding");
     {
       const int sr = 48000, frames = 4800;

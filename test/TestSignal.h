@@ -102,6 +102,114 @@ inline double dominantFrequency(const float *data, int numSamples,
   return (double)(crossings - 1) / (2.0 * seconds);
 }
 
+// ---------------------------------------------------------------------------
+// Interval timing probe
+// ---------------------------------------------------------------------------
+//
+// Timing is the thing Ninjam gets wrong most visibly, so it needs a marker
+// that survives the round trip. A single-sample impulse does not: Vorbis
+// smears a lone broadband click, and its amplitude relative to the tone is not
+// preserved, which makes threshold detection unreliable.
+//
+// Instead the interval is marked with SHORT BURSTS of a distinct high
+// frequency at known fractional positions. A few milliseconds of a pure tone
+// is exactly what a perceptual codec preserves well, and it can be located by
+// energy in a narrow band rather than by absolute amplitude. Placing bursts at
+// several positions (not just sample 0) catches errors that a single marker at
+// the boundary cannot -- a stretched or shifted interval moves the later
+// bursts more than the first.
+
+struct IntervalProbe {
+  double burstHz = 3000.0;   // well clear of the 440 Hz bed tone
+  double burstSeconds = 0.008;
+  float burstAmp = 0.9f;
+  double bedHz = 440.0;
+  float bedAmp = 0.25f;
+
+  // Fractions of the interval at which bursts start.
+  std::vector<double> positions{0.0, 0.25, 0.5, 0.75};
+
+  // Value at `posInInterval` of an interval `intervalLen` samples long.
+  // `globalSample` drives the continuous bed tone so it has no discontinuity.
+  float sampleAt(int64_t posInInterval, int intervalLen, int64_t globalSample,
+                 double sampleRate) const {
+    const int burstLen = (int)(burstSeconds * sampleRate);
+    for (double f : positions) {
+      const int64_t start = (int64_t)(f * (double)intervalLen);
+      if (posInInterval >= start && posInInterval < start + burstLen) {
+        const int64_t k = posInInterval - start;
+        // Raised-cosine envelope: no click, so the codec has an easy time and
+        // the burst stays narrow-band.
+        const double env =
+            0.5 * (1.0 - std::cos(2.0 * kPi * (double)k / (double)burstLen));
+        return (float)(burstAmp * env *
+                       std::sin(2.0 * kPi * burstHz * (double)k / sampleRate));
+      }
+    }
+    return (float)(bedAmp * std::sin(2.0 * kPi * bedHz * (double)globalSample /
+                                     sampleRate));
+  }
+};
+
+// Energy of `data` in a narrow band around `hz`, computed by a single-bin
+// Goertzel. Used to find the probe bursts without an FFT dependency.
+inline double bandEnergy(const float *data, int numSamples, double hz,
+                         double sampleRate, int stride = 1) {
+  if (numSamples <= 0 || sampleRate <= 0.0)
+    return 0.0;
+  const double w = 2.0 * kPi * hz / sampleRate;
+  const double coeff = 2.0 * std::cos(w);
+  double s0 = 0.0, s1 = 0.0, s2 = 0.0;
+  for (int i = 0; i < numSamples; ++i) {
+    s0 = (double)data[i * stride] + coeff * s1 - s2;
+    s2 = s1;
+    s1 = s0;
+  }
+  return std::sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / (double)numSamples;
+}
+
+// Positions where burst energy peaks, found by sliding a window of the burst
+// length. Returns the start sample of each detected burst.
+inline std::vector<int> findBursts(const float *data, int numSamples,
+                                   double burstHz, double burstSeconds,
+                                   double sampleRate, int stride = 1) {
+  const int win = std::max(8, (int)(burstSeconds * sampleRate));
+  const int hop = std::max(1, win / 4);
+
+  std::vector<double> energy;
+  std::vector<int> at;
+  for (int i = 0; i + win <= numSamples; i += hop) {
+    energy.push_back(bandEnergy(data + (size_t)i * stride, win, burstHz,
+                                sampleRate, stride));
+    at.push_back(i);
+  }
+  if (energy.empty())
+    return {};
+
+  double maxE = 0.0;
+  for (double e : energy)
+    maxE = std::max(maxE, e);
+  if (maxE <= 0.0)
+    return {};
+
+  // Peak-pick above half the maximum, merging adjacent windows.
+  std::vector<int> out;
+  const double gate = 0.5 * maxE;
+  int bestIdx = -1;
+  for (size_t i = 0; i < energy.size(); ++i) {
+    if (energy[i] >= gate) {
+      if (bestIdx < 0 || energy[i] > energy[(size_t)bestIdx])
+        bestIdx = (int)i;
+    } else if (bestIdx >= 0) {
+      out.push_back(at[(size_t)bestIdx]);
+      bestIdx = -1;
+    }
+  }
+  if (bestIdx >= 0)
+    out.push_back(at[(size_t)bestIdx]);
+  return out;
+}
+
 // Longest run of exactly-zero samples strictly inside the buffer. Used to catch
 // dropouts that a plain RMS check would average away.
 inline int longestZeroRun(const float *data, int numSamples, int stride = 1) {

@@ -123,6 +123,57 @@ reading past a buffer. Assume your change has the same failure mode.
   a quiet or tonal interval decodes to nothing until the end-of-stream flush. Do
   not build anything that assumes a partially received interval is playable.
 
+### Debugging: what actually works here
+
+Learned the hard way; each of these cost real time.
+
+- **Reach for a sanitiser before gdb.** The default build has no `-g`, so gdb
+  backtraces are useless address soup. ASan found a use-after-free instantly,
+  with file and line, in code gdb could not even name. Build it once and keep it
+  around:
+
+  ```
+  cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+    -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+  cmake --build build-asan -j $(nproc)
+  ./build-asan/test/NinjamTests_artefacts/Debug/NinjamTests
+  ```
+
+  Note the binary is under `Debug/` in that build, not beside the artefacts dir.
+  Ignore UBSan output from inside libvorbis; it is pre-existing and benign.
+
+- **For gdb, you need symbols.** Use a RelWithDebInfo build rather than the
+  default:
+  `cmake -S . -B build-dbg -DCMAKE_BUILD_TYPE=RelWithDebInfo`. Worth it for
+  logic bugs where ASan has nothing to say.
+
+- **TSan for the threading bugs ASan cannot see.** This codebase has four
+  threads touching shared state, and both bugs found so far were threading
+  ones. TSan needs its own build (it cannot be combined with ASan):
+  `-DCMAKE_CXX_FLAGS="-fsanitize=thread -g"`.
+
+- **Never diagnose a "hang" through `timeout` and a pipe.** JUCE's output is
+  block-buffered, so `timeout 300 ... | tail` throws away everything the run
+  printed when it kills the process, and a merely slow test is indistinguishable
+  from a deadlocked one. `stdbuf` does not help (C++ iostreams do their own
+  buffering). Redirect to a file and let the process finish.
+
+- **Blocking calls that turn a failure into a hang.** `juce::ChildProcess::
+  readAllProcessOutput()` blocks until the child exits -- never call it on a
+  process that is still running. `StreamingSocket::waitForNextConnection()`
+  blocks forever. Both were mistaken for deadlocks; bound them and report why
+  instead.
+
+- **When a test fails, suspect the measurement first.** A "294.7 Hz instead of
+  440" turned out to be the test's own pitch detector gating on peak, with the
+  peak set by a transient. Cross-check with an independent method (autocorrelation,
+  a Python script over the raw capture) before believing a number.
+
+- **Kill strays.** Interop runs leave `ninjamsrv` processes behind when the test
+  is killed: `pkill -f njinterop; rm -rf /tmp/njinterop_*`.
+
 ### Before claiming a change works
 
 ```

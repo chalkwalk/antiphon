@@ -79,7 +79,15 @@ public:
   struct RemoteUserChannel {
     int channelIndex = 0;
     juce::String channelName;
-    float volume = 0.5f;
+    // 0.25 (-12 dB) matches the reference client, which is what ReaNINJAM and
+    // the other canonical clients are built on: RemoteUser_Channel defaults to
+    // volume 0.25 and RemoteUser to 1.0, multiplied together at mix time
+    // (references/ninjam/ninjam/njclient.cpp:2948 and :1967). Remote players
+    // are deliberately quieter than your own signal. Confirmed by measurement:
+    // the reference plays our transmitted tone back at 0.253 of the sent
+    // level. Do not "fix" this to unity -- it would make us 12 dB louder than
+    // everyone else in the same session.
+    float volume = 0.25f;
     float pan = 0.0f;
     bool isMuted = false;
     bool isSoloed = false;

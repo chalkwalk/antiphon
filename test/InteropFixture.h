@@ -5,6 +5,7 @@
 #include "FakeNinjamServer.h" // waitUntil
 #include "IntervalClock.h"
 #include "NinjamClient.h"
+#include "TestSignal.h"
 
 #include <cmath>
 #include <utility>
@@ -400,11 +401,15 @@ public:
     intervalLen = clock.samplesPerInterval();
   }
 
-  void setTone(double freq, double amp, bool impulseAtBoundary) {
+  void setTone(double freq, double amp, bool useIntervalProbe) {
     toneFreq = freq;
     toneAmp = amp;
-    impulse = impulseAtBoundary;
+    probe.bedHz = freq;
+    probe.bedAmp = (float)amp;
+    useProbe = useIntervalProbe;
   }
+
+  const TestSignal::IntervalProbe &getProbe() const { return probe; }
 
   void setCapture(bool on) { capturing = on; }
 
@@ -459,9 +464,10 @@ private:
         const int64_t pos =
             intervalLen > 0 ? (posAtBlockStart + i) % intervalLen : 0;
         block[(size_t)i] =
-            (impulse && pos == 0)
-                ? 1.0f
-                : (float)(toneAmp * std::sin(inc * (double)(sampleCounter + i)));
+            useProbe ? probe.sampleAt(pos, intervalLen, sampleCounter + i,
+                                      sampleRate)
+                     : (float)(toneAmp *
+                               std::sin(inc * (double)(sampleCounter + i)));
       }
 
       if (boundaryOffset >= 0) {
@@ -517,7 +523,8 @@ private:
   int blockSize = 512;
   int intervalLen = 0;
   double toneFreq = 440.0, toneAmp = 0.0;
-  bool impulse = false;
+  bool useProbe = false;
+  TestSignal::IntervalProbe probe;
   std::atomic<bool> capturing{false};
   std::atomic<int> intervalCount{0};
   int64_t sampleCounter = 0;
