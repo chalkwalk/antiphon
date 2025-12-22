@@ -177,9 +177,18 @@ public:
       expect(waitUntil([&] { return s.client.getRemoteUsers().size() == 1; }));
 
       auto users = s.client.getRemoteUsers();
-      expectEquals(users["peer"].channels.at(0).volume, 0.25f,
+      const float vol = users["peer"].channels.at(0).volume;
+      expectEquals(vol, NinjamClient::kDefaultRemoteChannelVolume);
+      expectEquals(vol, 0.25f,
                    "remote channel default gain must match the reference");
       expectEquals(users["peer"].channels.at(0).pan, 0.0f);
+
+      // Stated in dB as well, because that is how the intent is expressed:
+      // remote players sit 12 dB below your own signal.
+      const double db = TestSignal::toDb(vol);
+      expect(std::fabs(db - (-12.04)) < 0.1,
+             "default remote gain is " + juce::String(db, 2) +
+                 " dB, expected -12.04 dB");
     }
 
     beginTest("recv toggle clears the channel bit in the usermask");

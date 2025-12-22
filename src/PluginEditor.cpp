@@ -1,3 +1,4 @@
+#include "GainUtils.h"
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "ServerBrowserDialog.h"
@@ -111,13 +112,16 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   metronomeToggle.setRepaintsOnMouseActivity(true);
 
   metronomeVolumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-  metronomeVolumeSlider.setRange(0.0, 1.0);
-  metronomeVolumeSlider.setValue(audioProcessor.metronomeVolume.load(),
-                                 juce::dontSendNotification);
+  metronomeVolumeSlider.setRange(GainUtils::kMinDb, GainUtils::kMaxDb,
+                                 GainUtils::kStepDb);
+  metronomeVolumeSlider.setValue(
+      GainUtils::gainToDb(audioProcessor.metronomeVolume.load()),
+      juce::dontSendNotification);
   metronomeVolumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-  metronomeVolumeSlider.setTooltip("Metronome volume");
+  metronomeVolumeSlider.setTooltip("Metronome volume in dB: -inf to +6");
   metronomeVolumeSlider.onValueChange = [this]() {
-    audioProcessor.metronomeVolume.store((float)metronomeVolumeSlider.getValue());
+    audioProcessor.metronomeVolume.store(
+        GainUtils::dbToGain(metronomeVolumeSlider.getValue()));
   };
   addAndMakeVisible(metronomeVolumeSlider);
 

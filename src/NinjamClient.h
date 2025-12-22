@@ -76,18 +76,25 @@ public:
 
   juce::Array<ChatMessage> getChatLog() const;
 
+  // Default gain applied to every remote channel: 0.25 linear, -12.04 dB.
+  //
+  // This matches the reference client, which is what ReaNINJAM and the other
+  // canonical clients are built on: RemoteUser_Channel defaults to volume 0.25
+  // and RemoteUser to 1.0, and they are multiplied at mix time
+  // (references/ninjam/ninjam/njclient.cpp:2948 and :1967). Remote players are
+  // deliberately quieter than your own signal. Confirmed by measurement
+  // against the real reference client, which plays our transmitted tone back
+  // at 0.253 of the level we sent.
+  //
+  // Do not "fix" this to unity: it would make us 12 dB louder than everyone
+  // else in the same session. The UI fader initialises from this too, so the
+  // two cannot drift apart.
+  static constexpr float kDefaultRemoteChannelVolume = 0.25f;
+
   struct RemoteUserChannel {
     int channelIndex = 0;
     juce::String channelName;
-    // 0.25 (-12 dB) matches the reference client, which is what ReaNINJAM and
-    // the other canonical clients are built on: RemoteUser_Channel defaults to
-    // volume 0.25 and RemoteUser to 1.0, multiplied together at mix time
-    // (references/ninjam/ninjam/njclient.cpp:2948 and :1967). Remote players
-    // are deliberately quieter than your own signal. Confirmed by measurement:
-    // the reference plays our transmitted tone back at 0.253 of the sent
-    // level. Do not "fix" this to unity -- it would make us 12 dB louder than
-    // everyone else in the same session.
-    float volume = 0.25f;
+    float volume = kDefaultRemoteChannelVolume;
     float pan = 0.0f;
     bool isMuted = false;
     bool isSoloed = false;

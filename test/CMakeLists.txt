@@ -23,6 +23,7 @@ target_sources(NinjamTests
         NinjamProtocolTests.cpp
         IntervalClockTests.cpp
         MetronomeVoiceTests.cpp
+        GainUtilsTests.cpp
         FakeNinjamServer.cpp
         LoopbackTests.cpp
         AudioLoopbackTests.cpp

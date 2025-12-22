@@ -1,3 +1,4 @@
+#include "GainUtils.h"
 #include "LocalChannelStrip.h"
 
 LocalChannelStrip::LocalChannelStrip(
@@ -25,11 +26,15 @@ LocalChannelStrip::LocalChannelStrip(
 
   volumeSlider.setSliderStyle(juce::Slider::LinearVertical);
   volumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-  volumeSlider.setRange(0.0, 2.0, 0.01);
-  volumeSlider.setValue((double)channel->volume.load(), juce::dontSendNotification);
-  volumeSlider.setTooltip("Volume: 0 = silent, 1.0 = unity (centre), 2.0 = double");
+  volumeSlider.setRange(GainUtils::kMinDb, GainUtils::kMaxDb,
+                        GainUtils::kStepDb);
+  volumeSlider.setValue(GainUtils::gainToDb(channel->volume.load()),
+                        juce::dontSendNotification);
+  volumeSlider.setTooltip(
+      "Volume in dB: -inf to +6, unity at 0. Applies to both your monitor mix "
+      "and what is transmitted.");
   volumeSlider.onValueChange = [this]() {
-    channel->volume.store((float)volumeSlider.getValue());
+    channel->volume.store(GainUtils::dbToGain(volumeSlider.getValue()));
   };
   addAndMakeVisible(volumeSlider);
 

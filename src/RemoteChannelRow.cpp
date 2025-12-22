@@ -1,3 +1,4 @@
+#include "GainUtils.h"
 #include "RemoteChannelRow.h"
 #include "PluginProcessor.h"
 
@@ -12,12 +13,17 @@ RemoteChannelRow::RemoteChannelRow(NinjamAudioProcessor &p,
 
   volumeSlider.setSliderStyle(juce::Slider::LinearVertical);
   volumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-  volumeSlider.setRange(0.0, 2.0, 0.01);
-  volumeSlider.setValue(0.5, juce::dontSendNotification);
-  volumeSlider.setTooltip("Volume: 0 = silent, 1.0 = unity, 2.0 = double");
+  volumeSlider.setRange(GainUtils::kMinDb, GainUtils::kMaxDb,
+                        GainUtils::kStepDb);
+  volumeSlider.setValue(
+      GainUtils::gainToDb(NinjamClient::kDefaultRemoteChannelVolume),
+      juce::dontSendNotification);
+  volumeSlider.setTooltip(
+      "Volume in dB: -inf to +6, unity at 0. Remote channels default to "
+      "-12 dB, matching the reference client.");
   volumeSlider.onValueChange = [this]() {
     audioProcessor.ninjamClient.setRemoteUserVolume(
-        username, channelIndex, (float)volumeSlider.getValue());
+        username, channelIndex, GainUtils::dbToGain(volumeSlider.getValue()));
   };
   addAndMakeVisible(volumeSlider);
 
@@ -70,7 +76,8 @@ RemoteChannelRow::RemoteChannelRow(NinjamAudioProcessor &p,
 
 void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
   channelNameLabel.setText(c.channelName, juce::dontSendNotification);
-  volumeSlider.setValue(c.volume, juce::dontSendNotification);
+  volumeSlider.setValue(GainUtils::gainToDb(c.volume),
+                        juce::dontSendNotification);
   panSlider.setValue(c.pan, juce::dontSendNotification);
   muteButton.setToggleState(c.isMuted, juce::dontSendNotification);
   soloButton.setToggleState(c.isSoloed, juce::dontSendNotification);
