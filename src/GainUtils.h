@@ -36,8 +36,54 @@ inline juce::String formatDb(double db) {
   return juce::String(db, 1) + " dB";
 }
 
-// Deliberately no slider helper here: this header is compiled into the test
-// target, which does not link juce_gui_basics. Call sites use
-// setRange(kMinDb, kMaxDb, kStepDb) directly.
+// ---------------------------------------------------------------------------
+// Meters
+// ---------------------------------------------------------------------------
+//
+// Meters are scaled in dBFS so they agree with the faders. A linear meter is
+// close to useless: everything below -20 dBFS lives in the bottom tenth of the
+// bar, so ordinary playing barely moves it and quiet signals look like silence.
+//
+// The meter range is not the fader range. A fader goes to +6 because gain can
+// boost; a meter tops out at 0 dBFS, which is full scale, with anything above
+// it flagged as over rather than drawn longer.
+
+static constexpr double kMeterMinDb = -60.0;
+static constexpr double kMeterMaxDb = 0.0;
+// Below this is comfortable, above it is approaching full scale.
+static constexpr double kMeterHotDb = -6.0;
+
+// dB of a measured peak, without the fader's upper clamp -- a peak can legally
+// exceed 0 dBFS and the meter needs to know.
+inline double peakToDb(float peak) {
+  if (peak <= 0.0f)
+    return kMeterMinDb;
+  return (double)juce::Decibels::gainToDecibels(peak, (float)kMeterMinDb);
+}
+
+// Fraction of the meter to fill, 0 at kMeterMinDb and 1 at kMeterMaxDb.
+inline float meterFraction(float peak) {
+  const double db = peakToDb(peak);
+  return (float)juce::jlimit(
+      0.0, 1.0, (db - kMeterMinDb) / (kMeterMaxDb - kMeterMinDb));
+}
+
+// Colour band, kept numeric so this header stays free of juce_graphics (the
+// test target does not link it).
+enum class MeterZone { Normal, Hot, Over };
+
+inline MeterZone meterZone(float peak) {
+  const double db = peakToDb(peak);
+  if (db >= kMeterMaxDb)
+    return MeterZone::Over;
+  if (db >= kMeterHotDb)
+    return MeterZone::Hot;
+  return MeterZone::Normal;
+}
+
+// Deliberately no slider or colour helpers here: this header is compiled into
+// the test target, which links neither juce_gui_basics nor juce_graphics. Call
+// sites use setRange(kMinDb, kMaxDb, kStepDb) and map MeterZone to a colour
+// themselves.
 
 } // namespace GainUtils

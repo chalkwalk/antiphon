@@ -52,6 +52,49 @@ public:
       previous = g;
     }
 
+    beginTest("meter scale endpoints");
+    expectWithinAbsoluteError((double)GainUtils::meterFraction(1.0f), 1.0,
+                              0.001, "0 dBFS should fill the meter");
+    expectEquals(GainUtils::meterFraction(0.0f), 0.0f,
+                 "silence should show nothing");
+    // Half amplitude is -6 dBFS, which on a -60..0 scale is 90% of the way up.
+    expectWithinAbsoluteError((double)GainUtils::meterFraction(0.5f), 0.9,
+                              0.005);
+
+    beginTest("meter gives quiet signals visible travel");
+    {
+      // The point of the change: on the old linear meter, -40 dBFS filled 1%
+      // of the bar and was indistinguishable from silence. On a dB scale it
+      // sits a third of the way up.
+      const float quiet = GainUtils::dbToGain(-40.0);
+      const float frac = GainUtils::meterFraction(quiet);
+      expectWithinAbsoluteError((double)frac, 1.0 / 3.0, 0.01);
+      expect(frac > (double)quiet * 10.0,
+             "dB meter should give a quiet signal far more travel than linear");
+    }
+
+    beginTest("meter is monotonic and clamped");
+    {
+      float previous = -1.0f;
+      for (double db = -80.0; db <= 12.0; db += 0.5) {
+        const float f = GainUtils::meterFraction(GainUtils::dbToGain(db));
+        expect(f >= previous, "meter fraction decreased as level rose");
+        expect(f >= 0.0f && f <= 1.0f, "meter fraction left 0..1");
+        previous = f;
+      }
+      // Above full scale the meter pins rather than overflowing.
+      expectEquals(GainUtils::meterFraction(4.0f), 1.0f);
+    }
+
+    beginTest("meter zones");
+    expect(GainUtils::meterZone(GainUtils::dbToGain(-20.0)) ==
+           GainUtils::MeterZone::Normal);
+    expect(GainUtils::meterZone(GainUtils::dbToGain(-3.0)) ==
+           GainUtils::MeterZone::Hot);
+    expect(GainUtils::meterZone(1.0f) == GainUtils::MeterZone::Over);
+    expect(GainUtils::meterZone(2.0f) == GainUtils::MeterZone::Over);
+    expect(GainUtils::meterZone(0.0f) == GainUtils::MeterZone::Normal);
+
     beginTest("formatting");
     expectEquals(GainUtils::formatDb(GainUtils::kMinDb), juce::String("-inf"));
     expectEquals(GainUtils::formatDb(0.0), juce::String("0.0 dB"));

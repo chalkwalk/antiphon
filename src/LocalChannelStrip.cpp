@@ -1,4 +1,5 @@
 #include "GainUtils.h"
+#include "NinjamLookAndFeel.h"
 #include "LocalChannelStrip.h"
 
 LocalChannelStrip::LocalChannelStrip(
@@ -123,10 +124,10 @@ void LocalChannelStrip::paint(juce::Graphics &g) {
   auto drawVBar = [&](juce::Rectangle<int> r, float peak) {
     g.setColour(juce::Colour(0xff111122));
     g.fillRect(r);
-    float frac = juce::jlimit(0.0f, 1.0f, peak);
+    const float frac = GainUtils::meterFraction(peak);
     if (frac > 0.0f) {
       auto fill = r.removeFromBottom((int)(r.getHeight() * frac));
-      g.setColour(frac > 0.7f ? juce::Colour(0xffe08000) : juce::Colour(0xff00c040));
+      g.setColour(meterColour(GainUtils::meterZone(peak)));
       g.fillRect(fill);
     }
   };

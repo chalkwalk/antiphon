@@ -1,4 +1,5 @@
 #include "GainUtils.h"
+#include "NinjamLookAndFeel.h"
 #include "RemoteChannelRow.h"
 #include "PluginProcessor.h"
 
@@ -104,11 +105,11 @@ void RemoteChannelRow::updatePeak(float peak) {
 void RemoteChannelRow::paint(juce::Graphics &g) {
   g.setColour(juce::Colour(0xff111122));
   g.fillRect(vuArea);
-  float frac = juce::jlimit(0.0f, 1.0f, decayedPeak);
+  const float frac = GainUtils::meterFraction(decayedPeak);
   if (frac > 0.0f) {
     auto fill = vuArea;
     fill.removeFromTop((int)(vuArea.getHeight() * (1.0f - frac)));
-    g.setColour(frac > 0.7f ? juce::Colour(0xffe08000) : juce::Colour(0xff00c040));
+    g.setColour(meterColour(GainUtils::meterZone(decayedPeak)));
     g.fillRect(fill);
   }
 }
