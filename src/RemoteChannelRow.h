@@ -29,6 +29,9 @@ private:
   juce::ComboBox outputBusBox;
 
   float decayedPeak = 0.0f;
+  // Meter release is a rate, so it needs real elapsed time rather than a
+  // per-tick constant. 0 means "first update, do not decay".
+  double lastPeakUpdateMs = 0.0;
   juce::Rectangle<int> vuArea;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(RemoteChannelRow)

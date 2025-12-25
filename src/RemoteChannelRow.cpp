@@ -98,7 +98,14 @@ void RemoteChannelRow::updateOutputBusCount(int numBuses) {
 }
 
 void RemoteChannelRow::updatePeak(float peak) {
-  decayedPeak = juce::jmax(decayedPeak * 0.92f, peak);
+  const double now = juce::Time::getMillisecondCounterHiRes();
+  const double elapsed =
+      lastPeakUpdateMs > 0.0
+          ? juce::jlimit(0.0, 0.25, (now - lastPeakUpdateMs) / 1000.0)
+          : 0.0;
+  lastPeakUpdateMs = now;
+
+  decayedPeak = GainUtils::decayMeterPeak(decayedPeak, peak, elapsed);
   repaint();
 }
 

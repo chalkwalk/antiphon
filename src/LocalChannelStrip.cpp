@@ -112,8 +112,19 @@ void LocalChannelStrip::updateInputBusCount(int numBuses) {
 }
 
 void LocalChannelStrip::updatePeaks() {
-  decayedPeakL = std::max(decayedPeakL * 0.92f, channel->peakL.load());
-  decayedPeakR = std::max(decayedPeakR * 0.92f, channel->peakR.load());
+  const double now = juce::Time::getMillisecondCounterHiRes();
+  // Clamped so a long gap (editor hidden, host stalled) drops the meter by a
+  // sane amount instead of snapping it straight to silence.
+  const double elapsed =
+      lastPeakUpdateMs > 0.0
+          ? juce::jlimit(0.0, 0.25, (now - lastPeakUpdateMs) / 1000.0)
+          : 0.0;
+  lastPeakUpdateMs = now;
+
+  decayedPeakL =
+      GainUtils::decayMeterPeak(decayedPeakL, channel->peakL.load(), elapsed);
+  decayedPeakR =
+      GainUtils::decayMeterPeak(decayedPeakR, channel->peakR.load(), elapsed);
   repaint();
 }
 

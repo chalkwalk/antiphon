@@ -23,6 +23,9 @@ private:
 
   float decayedPeakL = 0.0f;
   float decayedPeakR = 0.0f;
+  // Meter release is a rate, so it needs real elapsed time rather than a
+  // per-tick constant. 0 means "first update, do not decay".
+  double lastPeakUpdateMs = 0.0;
   juce::Rectangle<int> vuLArea, vuRArea;
 
   juce::TextEditor nameEditor;

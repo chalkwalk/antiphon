@@ -95,6 +95,61 @@ public:
     expect(GainUtils::meterZone(2.0f) == GainUtils::MeterZone::Over);
     expect(GainUtils::meterZone(0.0f) == GainUtils::MeterZone::Normal);
 
+    beginTest("meter release runs at the stated dB per second");
+    {
+      // One second of release from full scale must land exactly
+      // kMeterDecayDbPerSecond below it.
+      const float after = GainUtils::decayMeterPeak(1.0f, 0.0f, 1.0);
+      expectWithinAbsoluteError(GainUtils::peakToDb(after),
+                                -GainUtils::kMeterDecayDbPerSecond, 0.01);
+
+      const float half = GainUtils::decayMeterPeak(1.0f, 0.0f, 0.5);
+      expectWithinAbsoluteError(GainUtils::peakToDb(half),
+                                -GainUtils::kMeterDecayDbPerSecond / 2.0, 0.01);
+    }
+
+    beginTest("meter release is frame-rate independent");
+    {
+      // The reason this is a rate and not a per-tick multiplier: the old
+      // `peak *= 0.92` only meant 21.7 dB/s while the timer really ran at
+      // 30 Hz, and stretched out whenever ticks were dropped. Applying the
+      // same total time in different numbers of steps must now agree.
+      const double total = 0.5;
+      const float oneStep = GainUtils::decayMeterPeak(1.0f, 0.0f, total);
+
+      for (int steps : {2, 15, 30, 60, 200}) {
+        float p = 1.0f;
+        for (int i = 0; i < steps; ++i)
+          p = GainUtils::decayMeterPeak(p, 0.0f, total / (double)steps);
+        expectWithinAbsoluteError(
+            GainUtils::peakToDb(p), GainUtils::peakToDb(oneStep), 0.05,
+            "release differed when applied in " + juce::String(steps) +
+                " steps");
+      }
+    }
+
+    beginTest("meter attack is instant");
+    {
+      // Peak meters must catch a transient on the tick it arrives, however
+      // long the gap was.
+      expectEquals(GainUtils::decayMeterPeak(0.0f, 0.8f, 0.033), 0.8f);
+      expectEquals(GainUtils::decayMeterPeak(0.1f, 0.9f, 1.0), 0.9f);
+      // A quieter new peak must not raise a still-falling meter.
+      const float held = GainUtils::decayMeterPeak(1.0f, 0.01f, 0.01);
+      expect(held > 0.01f, "release should hold above a quieter new peak");
+    }
+
+    beginTest("meter release reaches silence and stays there");
+    {
+      // Crossing the bottom of the scale should read as nothing, not a tiny
+      // residue that keeps the meter faintly lit forever.
+      const double secondsToFall =
+          -GainUtils::kMeterMinDb / GainUtils::kMeterDecayDbPerSecond;
+      expectEquals(GainUtils::decayMeterPeak(1.0f, 0.0f, secondsToFall + 0.1),
+                   0.0f);
+      expectEquals(GainUtils::decayMeterPeak(0.0f, 0.0f, 0.033), 0.0f);
+    }
+
     beginTest("formatting");
     expectEquals(GainUtils::formatDb(GainUtils::kMinDb), juce::String("-inf"));
     expectEquals(GainUtils::formatDb(0.0), juce::String("0.0 dB"));

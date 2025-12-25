@@ -68,6 +68,30 @@ inline float meterFraction(float peak) {
       0.0, 1.0, (db - kMeterMinDb) / (kMeterMaxDb - kMeterMinDb));
 }
 
+// Peak-hold release rate. Digital peak meters typically fall at 20-25 dB/s
+// (IEC PPM types are slower, around 9-12 dB/s, which feels sticky for a jam
+// where you want to see transients settle).
+//
+// Expressed as a rate rather than a per-tick multiplier so it does not silently
+// change when the UI timer rate changes or ticks are dropped: the previous
+// `peak *= 0.92` was 21.7 dB/s only as long as the timer really ran at 30 Hz,
+// and stretched out whenever the editor was busy.
+static constexpr double kMeterDecayDbPerSecond = 20.0;
+
+// Applies the release over `secondsElapsed` and lets a new peak through
+// instantly -- peak meters attack immediately and only the release is damped.
+inline float decayMeterPeak(float currentPeak, float newPeak,
+                            double secondsElapsed) {
+  if (secondsElapsed <= 0.0)
+    return juce::jmax(currentPeak, newPeak);
+
+  const double db = -kMeterDecayDbPerSecond * secondsElapsed;
+  // Past the bottom of the meter there is nothing left to show.
+  const float factor =
+      db <= kMeterMinDb ? 0.0f : (float)juce::Decibels::decibelsToGain(db);
+  return juce::jmax(currentPeak * factor, newPeak);
+}
+
 // Colour band, kept numeric so this header stays free of juce_graphics (the
 // test target does not link it).
 enum class MeterZone { Normal, Hot, Over };
