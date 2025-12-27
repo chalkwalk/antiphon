@@ -119,6 +119,9 @@ void RemoteChannelRow::paint(juce::Graphics &g) {
     g.setColour(meterColour(GainUtils::meterZone(decayedPeak)));
     g.fillRect(fill);
   }
+
+  if (!scaleArea.isEmpty())
+    drawDbScale(g, volumeSlider, scaleArea);
 }
 
 void RemoteChannelRow::resized() {
@@ -140,8 +143,13 @@ void RemoteChannelRow::resized() {
   muteButton.setBounds(muteSoloRow);
   area.removeFromBottom(4);
 
-  // Remaining: single VU bar on left, fader fills the rest
-  vuArea = area.removeFromLeft(6);
+  // Remaining: VU bar | dB scale | fader, sharing one scale.
+  auto meter = area.removeFromLeft(6);
+  area.removeFromLeft(1);
+  scaleArea = area.removeFromLeft(22);
   area.removeFromLeft(2);
   volumeSlider.setBounds(area);
+
+  // Meter extent comes from the fader, so it stops at the 0 dB tick.
+  vuArea = meterAreaFor(volumeSlider, meter.getX(), meter.getWidth());
 }

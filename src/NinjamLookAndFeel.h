@@ -16,6 +16,44 @@ inline juce::Colour meterColour(GainUtils::MeterZone zone) {
   }
 }
 
+// Vertical position of a dB value, taken from the fader itself rather than
+// computed from the bounds: JUCE insets a linear slider's track by half the
+// thumb, so an independently calculated scale would sit a few pixels off.
+// Everything on the strip -- ticks, labels and the meter extent -- is derived
+// from this one mapping, which is what lets the meter stop exactly at the
+// 0 dB tick while the fader carries on up to +6.
+inline int yForDb(const juce::Slider &fader, double db) {
+  return fader.getY() + (int)std::round(fader.getPositionOfValue(db));
+}
+
+// The meter occupies only the part of the strip from the bottom of the scale
+// up to 0 dBFS, so it is physically shorter than the fader and cannot imply a
+// level it could not reach.
+inline juce::Rectangle<int> meterAreaFor(const juce::Slider &fader, int x,
+                                         int width) {
+  const int top = yForDb(fader, GainUtils::kMeterMaxDb);
+  const int bottom = yForDb(fader, GainUtils::kMinDb);
+  return juce::Rectangle<int>(x, top, width, juce::jmax(1, bottom - top));
+}
+
+inline void drawDbScale(juce::Graphics &g, const juce::Slider &fader,
+                        juce::Rectangle<int> gutter) {
+  g.setFont(juce::FontOptions{}.withHeight(9.0f));
+  for (double db : GainUtils::scaleTicksDb()) {
+    const int y = yForDb(fader, db);
+    const bool isUnity = (db == 0.0);
+
+    g.setColour(isUnity ? juce::Colour(0xff90a0b0) : juce::Colour(0xff4a4a5a));
+    g.fillRect(gutter.getRight() - (isUnity ? 6 : 4), y, isUnity ? 6 : 4, 1);
+
+    g.setColour(isUnity ? juce::Colour(0xffb0c0d0) : juce::Colour(0xff70707e));
+    g.drawText(db <= GainUtils::kMinDb ? juce::String("-inf")
+                                       : juce::String((int)db),
+               gutter.getX(), y - 5, gutter.getWidth() - 7, 10,
+               juce::Justification::centredRight, false);
+  }
+}
+
 class NinjamLookAndFeel : public juce::LookAndFeel_V4 {
 public:
   NinjamLookAndFeel();

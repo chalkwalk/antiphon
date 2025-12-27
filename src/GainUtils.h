@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <vector>
 
 // Level controls are presented in decibels, but every gain in the audio model
 // stays a linear multiplier. Only the slider mapping changes, so persisted
@@ -90,6 +91,14 @@ inline float decayMeterPeak(float currentPeak, float newPeak,
   const float factor =
       db <= kMeterMinDb ? 0.0f : (float)juce::Decibels::decibelsToGain(db);
   return juce::jmax(currentPeak * factor, newPeak);
+}
+
+// Values printed on the strip scale, top to bottom. The bottom entry is drawn
+// as "-inf" rather than "-60".
+inline const std::vector<double> &scaleTicksDb() {
+  static const std::vector<double> ticks{6.0,   0.0,   -6.0,  -12.0,
+                                         -24.0, -40.0, kMinDb};
+  return ticks;
 }
 
 // Colour band, kept numeric so this header stays free of juce_graphics (the

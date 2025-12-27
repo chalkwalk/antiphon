@@ -144,6 +144,9 @@ void LocalChannelStrip::paint(juce::Graphics &g) {
   };
   drawVBar(vuLArea, decayedPeakL);
   drawVBar(vuRArea, decayedPeakR);
+
+  if (!scaleArea.isEmpty())
+    drawDbScale(g, volumeSlider, scaleArea);
 }
 
 void LocalChannelStrip::resized() {
@@ -175,8 +178,17 @@ void LocalChannelStrip::resized() {
   muteButton.setBounds(muteSoloRow);
   area.removeFromBottom(4);
 
-  // Remaining flex area: L VU bar | fader | R VU bar
-  vuLArea = area.removeFromLeft(4);
-  vuRArea = area.removeFromRight(4);
+  // Remaining flex area: L/R VU bars | dB scale | fader.
+  // The meters sit together on the left so a single scale gutter serves both
+  // them and the fader.
+  auto meters = area.removeFromLeft(10);
+  area.removeFromLeft(1);
+  scaleArea = area.removeFromLeft(22);
+  area.removeFromLeft(2);
   volumeSlider.setBounds(area);
+
+  // Meter extent comes from the fader, so a given dB is at the same height on
+  // both, and the meters stop at the 0 dB tick.
+  vuLArea = meterAreaFor(volumeSlider, meters.getX(), 4);
+  vuRArea = meterAreaFor(volumeSlider, meters.getX() + 6, 4);
 }
