@@ -84,6 +84,226 @@ public:
     testIntervalGridAgreement();
     testChatBothDirections();
     testOurAudioReachesReference();
+    testReferenceAudioReachesUs();
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase 3: do we decode what the official client transmits?
+  //
+  // The mirror of phase 2. Together the two directions also settle whether
+  // the -12 dB remote convention is symmetric: the reference plays us at its
+  // 0.25 default, and we should play it at ours.
+  // ---------------------------------------------------------------------
+  void testReferenceAudioReachesUs() {
+    beginTest("we decode the reference client's transmitted audio");
+
+    const int bpm = 120, bpi = 8;
+    const double sr = 48000.0;
+
+    LocalServer server;
+    if (!server.start(bpm, bpi)) {
+      expect(false, "could not start server: " + server.getLastError());
+      return;
+    }
+
+    RefClient ref;
+    if (!ref.start((int)sr)) {
+      expect(false, "could not start reference harness: " + ref.getLastError());
+      return;
+    }
+    ref.command("connect 127.0.0.1:" + juce::String(server.getPort()) +
+                " anonymous:refbot");
+    if (!ref.waitUntilConnected() || !ref.waitForTempo(bpm, bpi)) {
+      expect(false, "reference client never settled on the session tempo");
+      return;
+    }
+    // Same probe waveform the test side generates, from the shared header.
+    ref.command("channel refchan");
+    ref.command("probe on");
+
+    NinjamClient ours;
+    ChatRecorder rec;
+    ours.addListener(&rec);
+    ours.setSampleRate(sr);
+    ours.setServerBpm(bpm);
+    ours.setServerBpi(bpi);
+    ours.updateChannelInfo({"ourchan"});
+    ours.connectToServer("127.0.0.1", server.getPort(), "anonymous:ourbot", "");
+    if (!waitUntil([&] { return ours.isConnected(); }, 15000)) {
+      expect(false, "our client never connected");
+      return;
+    }
+
+    // We transmit nothing; this direction is purely about what we receive.
+    OurClientDriver driver(ours);
+    driver.configure(sr, bpm, bpi);
+    driver.setTone(440.0, 0.0, false);
+    driver.setCapture(true);
+    driver.begin();
+
+    const bool sawThem = waitUntil(
+        [&] {
+          auto users = ours.getRemoteUsers();
+          for (const auto &[name, u] : users)
+            if (name.contains("refbot") && !u.channels.empty())
+              return true;
+          return false;
+        },
+        30000);
+    expect(sawThem, "we never saw the reference client's channel appear");
+    if (!sawThem) {
+      ours.removeListener(&rec);
+      ours.disconnectFromServer();
+      return;
+    }
+
+    // Deliberately leave the remote gain at our default, so the level we
+    // measure exercises the -12 dB convention end to end.
+    const int wanted = 4;
+    waitUntil([&] { return driver.intervalsElapsed() >= wanted + 2; },
+              (int)(1000.0 * (wanted + 4) * bpi * 60.0 / bpm));
+
+    driver.stop();
+    auto cap = driver.takeCapture();
+
+    const int frames = (int)cap.audio.size() / 2;
+    expect(frames > 0, "we captured nothing");
+    if (frames == 0) {
+      ours.removeListener(&rec);
+      ours.disconnectFromServer();
+      return;
+    }
+
+    std::vector<float> left((size_t)frames);
+    for (int i = 0; i < frames; ++i)
+      left[(size_t)i] = cap.audio[(size_t)i * 2];
+
+    logMessage("we captured " + juce::String(frames) + " frames (" +
+               juce::String(frames / sr, 2) + " s)");
+
+    int firstAudio = 0;
+    while (firstAudio < frames && std::fabs(left[(size_t)firstAudio]) < 1.0e-4f)
+      ++firstAudio;
+    const int usable = frames - firstAudio;
+    expect(usable > (int)sr,
+           "less than a second of audio received from the reference client");
+    if (usable <= (int)sr) {
+      ours.removeListener(&rec);
+      ours.disconnectFromServer();
+      return;
+    }
+
+    // Save the capture so a failure can be analysed offline rather than
+    // guessed at; the interop runs are slow to reproduce.
+    {
+      const auto dump = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("interop_our_capture.f32");
+      dump.replaceWithData(cap.audio.data(),
+                           cap.audio.size() * sizeof(float));
+      logMessage("capture written to " + dump.getFullPathName());
+    }
+
+    const int anaStart = firstAudio + usable / 8;
+    const int anaLen = usable * 3 / 4;
+    // The reference transmits the probe with its DEFAULT settings. The
+    // driver's own probe was zeroed to silence our transmit, so it must not be
+    // used as the expectation here.
+    const TestSignal::IntervalProbe probe;
+    auto bursts = TestSignal::findBursts(left.data() + anaStart, anaLen,
+                                         probe.burstHz, probe.burstSeconds, sr);
+
+    // Pitch of the bed tone, measured clear of the bursts.
+    const int burstLen = (int)(probe.burstSeconds * sr);
+    int pitchAt = anaStart, pitchLen = std::min(anaLen, (int)(sr / 2));
+    if (bursts.size() >= 2) {
+      const int gapStart = anaStart + bursts[0] + burstLen * 4;
+      const int gapEnd = anaStart + bursts[1] - burstLen * 4;
+      if (gapEnd - gapStart > (int)(sr / 10)) {
+        pitchAt = gapStart;
+        pitchLen = std::min(gapEnd - gapStart, (int)(sr / 2));
+      }
+    }
+
+    const double freq =
+        TestSignal::dominantFrequency(left.data() + pitchAt, pitchLen, sr);
+    const double rms = TestSignal::rms(left.data() + pitchAt, pitchLen);
+    logMessage("we decoded: " + juce::String(freq, 1) + " Hz, rms " +
+               juce::String(rms, 4));
+
+    expect(std::fabs(freq - probe.bedHz) / probe.bedHz < 0.03,
+           "we decoded the reference client's tone at " +
+               juce::String(freq, 1) + " Hz, expected " +
+               juce::String(probe.bedHz, 0));
+
+    // The reference sent at probe.bedAmp; we apply our default remote gain.
+    // If this matches phase 2's 0.25, the convention is symmetric.
+    const double sentRms = (double)probe.bedAmp / std::sqrt(2.0);
+    const double ratio = rms / sentRms;
+    logMessage("level: rms " + juce::String(rms, 4) + " vs sent " +
+               juce::String(sentRms, 4) + " (ratio " + juce::String(ratio, 3) +
+               ", our default remote gain is " +
+               juce::String(NinjamClient::kDefaultRemoteChannelVolume, 2) +
+               ")");
+    expect(std::fabs(ratio -
+                     (double)NinjamClient::kDefaultRemoteChannelVolume) < 0.05,
+           "we played the reference client at " + juce::String(ratio, 3) +
+               " of the sent level, expected " +
+               juce::String(NinjamClient::kDefaultRemoteChannelVolume, 2));
+
+    // Timing, as in phase 2 but on the receive side.
+    const int expectedSpacing =
+        driver.samplesPerInterval() / (int)probe.positions.size();
+    logMessage("timing: " + juce::String((int)bursts.size()) +
+               " bursts found, expected spacing " +
+               juce::String(expectedSpacing));
+    expect(bursts.size() >= 3,
+           "found only " + juce::String((int)bursts.size()) +
+               " timing bursts in the received audio");
+
+    if (bursts.size() >= 3) {
+      std::vector<int> spacings;
+      for (size_t i = 1; i < bursts.size(); ++i)
+        spacings.push_back(bursts[i] - bursts[i - 1]);
+      const int minS = *std::min_element(spacings.begin(), spacings.end());
+      const int maxS = *std::max_element(spacings.begin(), spacings.end());
+      logMessage("timing: burst spacing min " + juce::String(minS) + ", max " +
+                 juce::String(maxS));
+
+      // A gap is not the same failure as drift. If an interval never arrived
+      // there is nothing to play and the correct behaviour is silence, which
+      // shows up as a spacing of an exact multiple of the expected value.
+      // Drift shows up as spacings that are NOT multiples. Only the latter
+      // means the timing is wrong.
+      const int tolerance = 2048;
+      int drops = 0;
+      bool drifted = false;
+      for (int sp : spacings) {
+        const int multiple = (int)std::lround((double)sp / expectedSpacing);
+        if (multiple < 1 ||
+            std::abs(sp - multiple * expectedSpacing) > tolerance)
+          drifted = true;
+        else
+          drops += multiple - 1;
+      }
+      logMessage("timing: " + juce::String(drops) +
+                 " dropped interval(s), spacing otherwise on the grid");
+
+      expect(!drifted,
+             "received burst spacing " + juce::String(minS) + ".." +
+                 juce::String(maxS) +
+                 " is not a multiple of the expected " +
+                 juce::String(expectedSpacing) +
+                 " -- the timing itself is wrong, not just a dropped interval");
+
+      // An occasional drop is legitimate under jitter, but a stream of them
+      // means we are not keeping up.
+      expect(drops <= 1, "lost " + juce::String(drops) +
+                             " intervals of the reference client's audio");
+    }
+
+    ours.removeListener(&rec);
+    ours.disconnectFromServer();
+    waitUntil([&] { return !ours.isConnected(); }, 5000);
   }
 
   // Reads back the harness's raw float32 stereo capture.

@@ -447,6 +447,7 @@ private:
 
     juce::AudioBuffer<float> outBlock(2, blockSize);
     const double inc = 2.0 * 3.14159265358979323846 * toneFreq / sampleRate;
+    nextBlockDueMs = juce::Time::getMillisecondCounterHiRes();
 
     while (!threadShouldExit()) {
       const int64_t posAtBlockStart = clock.samplePosInInterval();
@@ -512,8 +513,18 @@ private:
       }
 
       sampleCounter += blockSize;
-      juce::Thread::sleep(
-          juce::jmax(1, (int)(1000.0 * blockSize / sampleRate)));
+
+      // Pace against an absolute schedule, not a fixed sleep. A block of 512
+      // at 48 kHz is 10.667 ms; sleeping a truncated 10 ms runs 6.7% fast, and
+      // against a real-time peer that eventually outruns the sender and starves
+      // an interval. The drop is correct client behaviour -- there is nothing
+      // to play -- but it is the harness's clock causing it, not the client.
+      nextBlockDueMs += 1000.0 * (double)blockSize / sampleRate;
+      const double waitMs = nextBlockDueMs - juce::Time::getMillisecondCounterHiRes();
+      if (waitMs > 0.0)
+        juce::Thread::sleep((int)std::ceil(waitMs));
+      else if (waitMs < -500.0)
+        nextBlockDueMs = juce::Time::getMillisecondCounterHiRes(); // resync
     }
   }
 
@@ -528,6 +539,7 @@ private:
   std::atomic<bool> capturing{false};
   std::atomic<int> intervalCount{0};
   int64_t sampleCounter = 0;
+  double nextBlockDueMs = 0.0;
 
   juce::CriticalSection captureLock;
   Capture capture;
