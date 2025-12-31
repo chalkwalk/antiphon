@@ -148,6 +148,19 @@ What to read:
   all, stable. A constant non-zero offset is a fixed latency worth
   characterising; an offset that drifts interval to interval is a clock bug.
 
+## Layer 4 -- differential tests against the official client (temporary)
+
+`test/refclient/` holds a headless harness around the official NINJAM
+reference client, and the interop tests that drive it. Both directions of the
+audio path have been confirmed against it: pitch, level and sample-exact
+interval timing. See `test/refclient/README.md`.
+
+It is deliberately self-contained and **meant to be deleted** once the parity it
+proves is captured as golden fixtures -- `rm -rf test/refclient`, or
+`git filter-repo --path test/refclient --invert-paths` for the published
+history. The build guards `add_subdirectory(refclient)` with an `EXISTS` check,
+so its absence changes nothing else.
+
 ### Comparing against a known-good client
 
 This is what the rig is for.

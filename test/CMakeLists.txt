@@ -28,7 +28,6 @@ target_sources(NinjamTests
         LoopbackTests.cpp
         AudioLoopbackTests.cpp
         RealServerTests.cpp
-        InteropTests.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
@@ -64,8 +63,10 @@ target_include_directories(NinjamTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME ninjam-unit-tests COMMAND NinjamTests)
 set_tests_properties(ninjam-unit-tests PROPERTIES TIMEOUT 120)
 
-# Temporary interop harness around the official reference client. Defines a
-# target only when system libogg/libvorbis are present; see refclient/README
-# notes in test/README.md for how to remove it once parity is captured as
-# golden fixtures.
-add_subdirectory(refclient)
+# Temporary interop harness around the official reference client, plus the
+# interop tests that drive it. Everything to do with it lives in refclient/ so
+# that deleting that one directory removes it completely -- the guard below is
+# what makes the rest of the build survive its absence. See test/README.md.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/refclient/CMakeLists.txt)
+  add_subdirectory(refclient)
+endif()
