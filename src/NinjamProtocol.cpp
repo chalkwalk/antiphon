@@ -145,12 +145,36 @@ bool parseAuthChallenge(const juce::MemoryBlock &payload, AuthChallenge &out) {
 }
 
 bool parseAuthReply(const juce::MemoryBlock &payload, AuthReply &out) {
+  out = AuthReply{};
   Reader r(payload.getData(), payload.getSize());
   juce::uint8 flag;
   if (!r.u8(flag))
     return false;
   out.granted = (flag == 1);
+
+  // The message and channel cap are optional trailing fields; older servers
+  // send the flag alone (mpb.cpp mpb_server_auth_reply::parse).
+  if (r.atEnd())
+    return true;
+  if (!r.cstr(out.errorMessage))
+    return true; // tolerate a truncated tail rather than dropping the reply
+
+  juce::uint8 maxchan;
+  if (r.u8(maxchan))
+    out.maxChannels = maxchan;
   return true;
+}
+
+juce::MemoryBlock buildAuthReply(bool granted, const juce::String &errorMessage,
+                                 int maxChannels) {
+  juce::MemoryBlock b;
+  const juce::uint8 flag = granted ? 1 : 0;
+  b.append(&flag, 1);
+  b.append(errorMessage.toRawUTF8(),
+           (size_t)errorMessage.getNumBytesAsUTF8() + 1);
+  const juce::uint8 mc = (juce::uint8)juce::jlimit(0, 255, maxChannels);
+  b.append(&mc, 1);
+  return b;
 }
 
 bool parseServerConfig(const juce::MemoryBlock &payload, ServerConfig &out) {

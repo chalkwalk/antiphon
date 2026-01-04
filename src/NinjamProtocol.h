@@ -96,6 +96,13 @@ struct AuthChallenge {
 
 struct AuthReply {
   bool granted = false;
+  juce::String errorMessage;
+  // Maximum local channel index the server will accept. The reference client
+  // refuses to transmit on any channel at or above this
+  // (references/ninjam/ninjam/njclient.cpp:1096, :1476), so a server that
+  // omits it gets no audio at all from a stock client. Absent on older
+  // servers, in which case it stays 0.
+  int maxChannels = 0;
 };
 
 struct ServerConfig {
@@ -162,6 +169,12 @@ bool parseChat(const juce::MemoryBlock &payload, Chat &out);
 // Ninjam challenge-response: SHA1(SHA1(user + ":" + pass) + challenge[0..8]).
 void computeAuthHash(const juce::String &username, const juce::String &password,
                      const juce::uint8 challenge[8], juce::uint8 out[20]);
+
+// Server side, used by the test fixtures. A real server always sends the
+// channel cap; omitting it stops a stock client transmitting entirely.
+juce::MemoryBlock buildAuthReply(bool granted,
+                                 const juce::String &errorMessage = {},
+                                 int maxChannels = 32);
 
 juce::MemoryBlock buildAuthUser(const juce::uint8 hash[20],
                                 const juce::String &username,

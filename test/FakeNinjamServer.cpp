@@ -154,9 +154,12 @@ void FakeNinjamServer::run() {
 void FakeNinjamServer::handleClientMessage(juce::uint8 type,
                                            const juce::MemoryBlock &payload) {
   if (type == 0x80) {
-    // CLIENT_AUTH_USER -> grant or deny.
-    const juce::uint8 flag = grantAccess.load() ? 1 : 0;
-    send(0x01, &flag, 1);
+    // CLIENT_AUTH_USER -> grant or deny. The reply must carry the channel cap:
+    // the reference client stores it as m_max_localch and silently refuses to
+    // transmit on any channel index at or above it, so a reply of just the
+    // flag byte gets no audio at all from a stock client.
+    auto reply = NinjamProtocol::buildAuthReply(grantAccess.load(), {}, 32);
+    send(0x01, reply.getData(), (int)reply.getSize());
     if (!grantAccess.load())
       return;
 
