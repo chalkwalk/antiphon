@@ -128,50 +128,83 @@ void NinjamAudioProcessor::prepareToPlay(double sampleRate,
   metronomeVoice.prepare(sampleRate);
   metronomeScratch.setSize(1, juce::jmax(samplesPerBlock, 1));
 
+  // Sized here so processBlock never allocates. Generous on channels so that
+  // adding an input bus at runtime does not outgrow it before the host calls
+  // prepareToPlay again.
+  inputSnapshot.setSize(juce::jmax(2, getTotalNumInputChannels() + 8),
+                        juce::jmax(samplesPerBlock, 1));
+  inputSnapshot.clear();
+  captureSegments.reserve(8);
+
   // Preallocated so advance() never allocates on the audio thread. Two events
   // per beat is already generous; the vector only ever grows here.
   clockEvents.reserve((size_t)juce::jmax(64, internalBpi.load() * 2 + 4));
 }
 
-void NinjamAudioProcessor::injectTestTone(juce::AudioBuffer<float> &buffer,
-                                          juce::AudioBuffer<float> &bus0Snapshot,
-                                          int numSamples) {
+void NinjamAudioProcessor::injectTestTone(int numSamples) {
   const double sr = getSampleRate();
   const int intervalLen = intervalClock.samplesPerInterval();
-  if (sr <= 0.0 || intervalLen <= 0)
+  if (sr <= 0.0 || intervalLen <= 0 || inputSnapshot.getNumSamples() < numSamples)
     return;
 
-  constexpr double kToneHz = 440.0;
-  constexpr float kToneAmp = 0.25f;
-  const double phaseInc = 2.0 * juce::MathConstants<double>::pi * kToneHz / sr;
-
-  // Position at the start of this block; the clock has not advanced yet.
+  const auto &probe = testProbe;
   const int64_t startPos = intervalClock.samplePosInInterval();
 
-  toneScratch.setSize(1, numSamples, false, false, true);
-  auto *t = toneScratch.getWritePointer(0);
-
+  // Written into the input snapshot, so the monitor mix and the capture both
+  // see it exactly as if it had arrived on every input bus.
   for (int i = 0; i < numSamples; ++i) {
     const int64_t pos = (startPos + i) % intervalLen;
-    // Full-scale single-sample impulse exactly at the top of the interval.
-    t[i] = (pos == 0) ? 1.0f
-                      : (float)(std::sin(testTonePhase) * (double)kToneAmp);
-    testTonePhase += phaseInc;
-    if (testTonePhase >= 2.0 * juce::MathConstants<double>::pi)
-      testTonePhase -= 2.0 * juce::MathConstants<double>::pi;
+    const float v =
+        probe.sampleAt(pos, intervalLen, testToneSample + i, sr);
+    for (int ch = 0; ch < inputSnapshot.getNumChannels(); ++ch)
+      inputSnapshot.setSample(ch, i, v);
   }
+  testToneSample += numSamples;
+}
 
-  for (int ch = 0; ch < bus0Snapshot.getNumChannels(); ++ch)
-    bus0Snapshot.copyFrom(ch, 0, toneScratch, 0, 0, numSamples);
+void NinjamAudioProcessor::captureInputRange(int startSample, int count) {
+  if (count <= 0)
+    return;
 
-  for (int busIdx = 1; busIdx < getBusCount(true); ++busIdx) {
+  juce::ScopedLock sl(localChannelMutex);
+  const int numInBuses = getBusCount(true);
+
+  for (auto &lcPtr : localChannels) {
+    auto &lc = *lcPtr;
+    const int busIdx = juce::jlimit(0, numInBuses - 1, lc.inputBusIndex.load());
     auto *bus = getBus(true, busIdx);
-    if (!bus || !bus->isEnabled())
+    if (!bus)
       continue;
     const int offset = bus->getChannelIndexInProcessBlockBuffer(0);
-    for (int ch = 0; ch < bus->getNumberOfChannels(); ++ch)
-      if (offset + ch < buffer.getNumChannels())
-        buffer.copyFrom(offset + ch, 0, toneScratch, 0, 0, numSamples);
+    const int busCh = bus->getNumberOfChannels();
+
+    // Gain is vol*pan only -- mute and solo are monitor-only and must not
+    // affect what other players hear.
+    const float vol = lc.volume.load(), pan = lc.pan.load();
+    const float lG = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
+    const float rG = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+    const bool mono = lc.isMono.load();
+
+    if (lc.fifo.getFreeSpace() < count)
+      continue;
+
+    int s1, n1, s2, n2;
+    lc.fifo.prepareToWrite(count, s1, n1, s2, n2);
+    for (int ch = 0; ch < 2; ++ch) {
+      const float gain = (ch == 0) ? lG : rG;
+      const int srcCh = (mono || ch >= busCh) ? offset : offset + ch;
+      if (srcCh >= inputSnapshot.getNumChannels())
+        continue;
+      if (n1 > 0) {
+        lc.ring.copyFrom(ch, s1, inputSnapshot, srcCh, startSample, n1);
+        lc.ring.applyGain(ch, s1, n1, gain);
+      }
+      if (n2 > 0) {
+        lc.ring.copyFrom(ch, s2, inputSnapshot, srcCh, startSample + n1, n2);
+        lc.ring.applyGain(ch, s2, n2, gain);
+      }
+    }
+    lc.fifo.finishedWrite(n1 + n2);
   }
 }
 
@@ -229,18 +262,19 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  // 2. Snapshot bus 0 input -- output channels 0/1 alias bus 0 in JUCE, so we
-  //    must capture it before clearing/overwriting the output.
-  juce::AudioBuffer<float> bus0Snapshot;
-  {
-    auto *bus0 = getBus(true, 0);
-    if (bus0) {
-      int off = bus0->getChannelIndexInProcessBlockBuffer(0);
-      int nch = bus0->getNumberOfChannels();
-      bus0Snapshot.setSize(nch, ns, false, false, true);
-      for (int ch = 0; ch < nch; ++ch)
-        bus0Snapshot.copyFrom(ch, 0, buffer, off + ch, 0, ns);
-    }
+  // 2. Snapshot every input channel before anything overwrites it.
+  //    JUCE aliases input and output buses in the same buffer, so clearing the
+  //    output (step 3) and mixing remote audio into it (step 7) both destroy
+  //    input data. Only bus 0 used to be snapshotted, which left input bus 1
+  //    onwards reading whatever had just been written to the matching output
+  //    bus. Everything downstream now reads this copy instead of `buffer`.
+  //    Allocated in prepareToPlay, never on the audio thread.
+  const int numInCh =
+      juce::jmin(getTotalNumInputChannels(), buffer.getNumChannels());
+  if (inputSnapshot.getNumSamples() >= ns &&
+      inputSnapshot.getNumChannels() >= numInCh) {
+    for (int ch = 0; ch < numInCh; ++ch)
+      inputSnapshot.copyFrom(ch, 0, buffer, ch, 0, ns);
   }
 
   // 3. Clear output channels 0/1 (and any trailing unused outputs).
@@ -254,7 +288,7 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   //     read before the clock advances, so it is the position at the start of
   //     this block.
   if (testToneEnabled.load())
-    injectTestTone(buffer, bus0Snapshot, ns);
+    injectTestTone(ns);
 
   // 4. Monitor mix pass -- mix all local input buses into output 0/1.
   {
@@ -285,12 +319,13 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       // Compute peaks on raw input (reflects what you're sending), display
       // scaled by monitor gain so the VU shows what you hear.
       {
-        const float *rawL = (busIdx == 0 && bus0Snapshot.getNumChannels() > 0)
-            ? bus0Snapshot.getReadPointer(0)
-            : (offset     < buffer.getNumChannels() ? buffer.getReadPointer(offset)     : nullptr);
-        const float *rawR = (busIdx == 0 && bus0Snapshot.getNumChannels() > 1)
-            ? bus0Snapshot.getReadPointer(1)
-            : (offset + 1 < buffer.getNumChannels() && busCh > 1 ? buffer.getReadPointer(offset + 1) : rawL);
+        const float *rawL = offset < inputSnapshot.getNumChannels()
+                                ? inputSnapshot.getReadPointer(offset)
+                                : nullptr;
+        const float *rawR =
+            (busCh > 1 && offset + 1 < inputSnapshot.getNumChannels())
+                ? inputSnapshot.getReadPointer(offset + 1)
+                : rawL;
         float pL = 0.0f, pR = 0.0f;
         if (rawL) for (int s = 0; s < ns; ++s) pL = std::max(pL, std::abs(rawL[s]));
         if (rawR) for (int s = 0; s < ns; ++s) pR = std::max(pR, std::abs(rawR[s]));
@@ -300,11 +335,13 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
       if (totalNumOutputChannels < 2) continue;
 
-      // Source: bus 0 from snapshot, buses 1+ from live buffer (not aliased).
-      const juce::AudioBuffer<float> &src = (busIdx == 0) ? bus0Snapshot : buffer;
-      int srcOff0 = (busIdx == 0) ? 0 : offset;
-      int srcOff1 = (busIdx == 0) ? (bus0Snapshot.getNumChannels() > 1 ? 1 : 0)
-                                  : (busCh > 1 ? offset + 1 : offset);
+      // Every bus reads the snapshot: the live buffer no longer holds valid
+      // input for any bus once the output has been cleared.
+      const juce::AudioBuffer<float> &src = inputSnapshot;
+      int srcOff0 = offset;
+      int srcOff1 = (busCh > 1 && offset + 1 < inputSnapshot.getNumChannels())
+                        ? offset + 1
+                        : offset;
 
       // mono flag: both output channels read from the first source channel only.
       // This matches the transmit capture behavior.
@@ -369,7 +406,6 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
 
     const bool isConnected = ninjamClient.isConnected();
-    bool needsSwap = false;
 
     if (isConnected) {
       clockEvents.clear();
@@ -386,7 +422,6 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         renderedTo = e.sampleOffset;
 
         if (e.type == IntervalClock::Event::Type::IntervalStart) {
-          needsSwap = true;
           intervalFlashIntensity.store(1.0f);
         } else {
           lastBeatCrossedIndex.store(e.beatIndex);
@@ -402,12 +437,26 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
     publishedPhaseBeats.store((float)intervalClock.phaseBeats());
 
-    // The swap fires once per block, after the event walk (never inside it).
-    if (needsSwap) {
-      fireCaptureLambdas();
-      ninjamClient.swapIntervalBuffers();
-      ninjamClient.diagSwapsByFallback.fetch_add(1);
-      ninjamClient.intervalBeginSignal.store(false);
+    // Capture, split at the interval boundary.
+    //
+    // The samples before the boundary belong to the interval that is ending
+    // and must be in the buffer we transmit; the samples after it start the
+    // next one. Capturing whole blocks and flushing at the boundary instead
+    // rounds every transmitted interval up to a multiple of the block size --
+    // measured against the reference client as roughly +1.3 ms of stretch at
+    // each interval seam (work item #27).
+    if (isConnected) {
+      IntervalClock::splitAtIntervalStarts(clockEvents, ns, captureSegments);
+      for (const auto &seg : captureSegments) {
+        if (seg.count > 0)
+          captureInputRange(seg.start, seg.count);
+        if (seg.closesInterval) {
+          fireCaptureLambdas();
+          ninjamClient.swapIntervalBuffers();
+          ninjamClient.diagSwapsByFallback.fetch_add(1);
+          ninjamClient.intervalBeginSignal.store(false);
+        }
+      }
     }
   }
 
@@ -418,50 +467,6 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   ninjamClient.setSaveTx(saveTxEnabled);
   ninjamClient.setSaveRx(saveRxEnabled);
 
-  // 8. Capture raw input into per-channel ring buffers.
-  //    Gain is vol*pan only (no mute factor -- mute is monitor-only).
-  //    Bus 0 is read from bus0Snapshot because output 0/1 was overwritten above.
-  {
-    juce::ScopedLock sl(localChannelMutex);
-    int numInBusesCap = getBusCount(true);
-    for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
-      auto &lc = *localChannels[ci];
-      int busIdx = juce::jlimit(0, numInBusesCap - 1, lc.inputBusIndex.load());
-      auto *bus = getBus(true, busIdx);
-      if (!bus) continue;
-      int offset = bus->getChannelIndexInProcessBlockBuffer(0);
-      int busCh = bus->getNumberOfChannels();
-
-      float vol = lc.volume.load(), pan = lc.pan.load();
-      float lG = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
-      float rG = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
-      bool mono = lc.isMono.load();
-
-      const juce::AudioBuffer<float> &src = (busIdx == 0) ? bus0Snapshot : buffer;
-      int srcBase = (busIdx == 0) ? 0 : offset;
-      int srcCh   = (busIdx == 0) ? bus0Snapshot.getNumChannels() : busCh;
-
-      if (lc.fifo.getFreeSpace() >= ns) {
-        int s1, n1, s2, n2;
-        lc.fifo.prepareToWrite(ns, s1, n1, s2, n2);
-        for (int ch = 0; ch < 2; ++ch) {
-          float gain = (ch == 0) ? lG : rG;
-          int srcOff = (mono || ch >= srcCh) ? srcBase : srcBase + ch;
-          if (srcOff < src.getNumChannels()) {
-            if (n1 > 0) {
-              lc.ring.copyFrom(ch, s1, src, srcOff, 0, n1);
-              lc.ring.applyGain(ch, s1, n1, gain);
-            }
-            if (n2 > 0) {
-              lc.ring.copyFrom(ch, s2, src, srcOff, n1, n2);
-              lc.ring.applyGain(ch, s2, n2, gain);
-            }
-          }
-        }
-        lc.fifo.finishedWrite(n1 + n2);
-      }
-    }
-  }
 }
 
 bool NinjamAudioProcessor::hasEditor() const { return true; }

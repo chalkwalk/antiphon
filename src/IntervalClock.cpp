@@ -85,6 +85,32 @@ int IntervalClock::currentBeat() const {
   return nextBeat > 0 ? nextBeat - 1 : bpi - 1;
 }
 
+void IntervalClock::splitAtIntervalStarts(const std::vector<Event> &events,
+                                          int numSamples,
+                                          std::vector<BlockSegment> &out) {
+  out.clear();
+  if (numSamples <= 0)
+    return;
+
+  int cursor = 0;
+  for (const auto &e : events) {
+    if (e.type != Event::Type::IntervalStart)
+      continue;
+    const int at = e.sampleOffset < 0
+                       ? 0
+                       : (e.sampleOffset > numSamples ? numSamples
+                                                      : e.sampleOffset);
+    if (at < cursor)
+      continue; // events are ordered; defensive
+    // A zero-length piece is still emitted: the interval may have been
+    // completed by earlier blocks, and the boundary must still fire.
+    out.push_back({cursor, at - cursor, true});
+    cursor = at;
+  }
+  if (cursor < numSamples)
+    out.push_back({cursor, numSamples - cursor, false});
+}
+
 void IntervalClock::advance(int numSamples, std::vector<Event> &out) {
   if (numSamples <= 0 || !isValid())
     return;

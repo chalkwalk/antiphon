@@ -225,6 +225,83 @@ public:
           }
         }
 
+    beginTest("block splitting reconstructs the block exactly");
+    {
+      // Every sample of the block must land in exactly one segment, in order.
+      IntervalClock c;
+      c.prepare(48000.0);
+      c.setTempo(137, 16);
+      std::vector<IntervalClock::Event> ev;
+      std::vector<IntervalClock::BlockSegment> segs;
+
+      for (int block : {1, 32, 64, 441, 512, 1024}) {
+        c.reset();
+        for (int i = 0; i < 4000; ++i) {
+          ev.clear();
+          c.advance(block, ev);
+          IntervalClock::splitAtIntervalStarts(ev, block, segs);
+
+          int covered = 0;
+          for (size_t s = 0; s < segs.size(); ++s) {
+            expectEquals(segs[s].start, covered, "segments must be contiguous");
+            expect(segs[s].count >= 0);
+            covered += segs[s].count;
+          }
+          expectEquals(covered, block, "segments must cover the whole block");
+        }
+      }
+    }
+
+    beginTest("transmitted intervals are exactly one interval long");
+    {
+      // The point of the split. Accumulating whole blocks and flushing at the
+      // boundary rounds each transmitted interval up to a block multiple --
+      // measured as roughly +1.3 ms of stretch at every seam against the real
+      // reference client (work item #27). Splitting makes it exact for any
+      // block size, including ones that do not divide the interval.
+      const std::vector<std::pair<int, int>> tempos{{137, 16}, {120, 8},
+                                                    {90, 16}};
+      for (const auto &[bpm, bpi] : tempos)
+        for (double sr : {44100.0, 48000.0})
+          for (int block : {64, 127, 512, 1024}) {
+            IntervalClock c;
+            c.prepare(sr);
+            c.setTempo(bpm, bpi);
+            const int len = c.samplesPerInterval();
+
+            std::vector<IntervalClock::Event> ev;
+            std::vector<IntervalClock::BlockSegment> segs;
+            int pending = 0;
+            std::vector<int> transmitted;
+
+            const int totalBlocks = (len * 6) / block;
+            for (int i = 0; i < totalBlocks; ++i) {
+              ev.clear();
+              c.advance(block, ev);
+              IntervalClock::splitAtIntervalStarts(ev, block, segs);
+              for (const auto &s : segs) {
+                pending += s.count;
+                if (s.closesInterval) {
+                  transmitted.push_back(pending);
+                  pending = 0;
+                }
+              }
+            }
+
+            // The first entry is a partial interval (the clock starts at a
+            // boundary), so ignore it and require the rest to be exact.
+            expect(transmitted.size() >= 3,
+                   "too few intervals at block " + juce::String(block));
+            for (size_t i = 1; i < transmitted.size(); ++i)
+              expectEquals(transmitted[i], len,
+                           "interval " + juce::String((int)i) + " at " +
+                               juce::String(bpm) + "bpm/" +
+                               juce::String(bpi) + "bpi/" +
+                               juce::String(sr, 0) + "Hz block " +
+                               juce::String(block));
+          }
+    }
+
     beginTest("reset returns to the top of an interval");
     {
       IntervalClock c;

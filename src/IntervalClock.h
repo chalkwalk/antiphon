@@ -57,6 +57,24 @@ public:
   int getBpi() const { return bpi; }
   bool isValid() const { return intervalSamples > 0; }
 
+  // One contiguous piece of a processBlock buffer, split at interval
+  // boundaries: [start, start + count). closesInterval is true when the piece
+  // ends exactly on a boundary, i.e. it completes the interval in progress.
+  //
+  // Capture has to be split this way or the transmitted interval is rounded to
+  // a whole number of blocks. Measured against the reference client that was
+  // about +1.3 ms of stretch at every interval seam (work item #27).
+  struct BlockSegment {
+    int start = 0;
+    int count = 0;
+    bool closesInterval = false;
+  };
+
+  // Pure: depends only on the event list, so it is unit-tested directly.
+  static void splitAtIntervalStarts(const std::vector<Event> &events,
+                                    int numSamples,
+                                    std::vector<BlockSegment> &out);
+
 private:
   void recomputeGrid();
 

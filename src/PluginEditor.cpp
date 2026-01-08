@@ -52,9 +52,9 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
 
   testToneToggle.setButtonText("Test Tone");
   testToneToggle.setTooltip(
-      "Debug: replace all local inputs with a 440 Hz tone plus a one-sample "
-      "impulse at the top of every interval, so a server session archive can "
-      "be measured for transmit alignment.");
+      "Debug: replace all local inputs with a 440 Hz tone plus short 3 kHz "
+      "bursts at 0, 1/4, 1/2 and 3/4 of every interval, so transmit timing "
+      "can be measured rather than listened to.");
   testToneToggle.setToggleState(audioProcessor.testToneEnabled,
                                 juce::dontSendNotification);
   testToneToggle.onClick = [this]() {

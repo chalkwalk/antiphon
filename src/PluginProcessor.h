@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IntervalClock.h"
+#include "IntervalProbe.h"
 #include "MetronomeVoice.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
@@ -98,6 +99,10 @@ public:
   MetronomeVoice metronomeVoice;
   std::vector<IntervalClock::Event> clockEvents; // reused, never reallocated
   juce::AudioBuffer<float> metronomeScratch;
+  // Copy of every input channel taken before the output is cleared or mixed
+  // into; JUCE aliases input and output buses in one buffer.
+  juce::AudioBuffer<float> inputSnapshot;
+  std::vector<IntervalClock::BlockSegment> captureSegments;
 
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
@@ -137,11 +142,15 @@ private:
   // Overwrites every input bus with a 440 Hz sine plus a full-scale one-sample
   // impulse at the top of each interval. The impulse's offset within an
   // archived interval is the transmit alignment error, in samples.
-  void injectTestTone(juce::AudioBuffer<float> &buffer,
-                      juce::AudioBuffer<float> &bus0Snapshot, int numSamples);
+  void injectTestTone(int numSamples);
 
-  double testTonePhase = 0.0;
-  juce::AudioBuffer<float> toneScratch;
+  // Captures [startSample, startSample + count) of the input snapshot into
+  // every local channel's ring. Called once per segment of a block so that a
+  // transmitted interval ends on the exact sample, not on a block boundary.
+  void captureInputRange(int startSample, int count);
+
+  int64_t testToneSample = 0;
+  ninjam::IntervalProbe testProbe;
 
   std::atomic<bool> phaseResetPending{false};
   bool hasConnectedSinceLastAttempt{false};
