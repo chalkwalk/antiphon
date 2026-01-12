@@ -7,6 +7,10 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
     : AudioProcessorEditor(&p), audioProcessor(p) {
   audioProcessor.ninjamClient.addListener(this);
   setLookAndFeel(&customLookAndFeel);
+
+  // Without this the editor never accepts keyboard focus, so a host that only
+  // forwards key events to a focused plugin view leaves every text field dead.
+  setWantsKeyboardFocus(true);
   setResizable(true, true);
   setResizeLimits(900, 600, 2400, 1600);
   setSize(1100, 700);
@@ -458,7 +462,15 @@ void NinjamAudioProcessorEditor::openServerBrowser() {
 
   addAndMakeVisible(*serverBrowser);
   serverBrowser->setBounds(getLocalBounds().reduced(20));
-  serverBrowser->toFront(false);
+
+  // toFront(true) -- the `true` is "also take keyboard focus". With false the
+  // dialog came to the front but never accepted key events, so text could be
+  // selected with the mouse but not typed into. Inside a DAW that is worse
+  // than in the standalone: the host keeps keyboard focus unless the plugin
+  // editor asks for it, so nothing reached the text fields at all.
+  serverBrowser->toFront(true);
+  serverBrowser->grabKeyboardFocus();
+  serverBrowser->hostInput.grabKeyboardFocus();
 }
 
 void NinjamAudioProcessorEditor::closeServerBrowser() {

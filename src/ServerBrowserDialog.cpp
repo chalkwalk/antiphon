@@ -8,6 +8,12 @@ static const ServerBrowserDialog::ServerEntry kStaticServers[] = {
 
 ServerBrowserDialog::ServerBrowserDialog()
     : table("Servers", this) {
+  // The dialog is an overlay child of the editor, not a modal window. It must
+  // both accept keyboard focus itself and swallow clicks, or focus and mouse
+  // events leak through to the mixer behind it.
+  setWantsKeyboardFocus(true);
+  setInterceptsMouseClicks(true, true);
+
 
   closeButton.onClick = [this]() { dismiss(); };
   addAndMakeVisible(closeButton);
