@@ -52,6 +52,7 @@ private:
   juce::ToggleButton saveTxToggle;
   juce::ToggleButton saveRxToggle;
   juce::ToggleButton testToneToggle;
+  juce::TextButton syncButton;
   juce::ToggleButton chatToggle;
 
   // Compact toolbar groups: "Channel: [+]"  "Input bus: [+][-]"  "Output bus: [+][-]"

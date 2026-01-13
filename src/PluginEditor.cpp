@@ -67,6 +67,16 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   testToneToggle.setRepaintsOnMouseActivity(true);
   addAndMakeVisible(testToneToggle);
 
+  syncButton.setButtonText("Sync");
+  syncButton.setTooltip(
+      "Lock the jam to your DAW transport. Press this, then start the "
+      "transport -- the interval grid begins on that downbeat. The timeline "
+      "position is deliberately ignored, so this works in clip/session view "
+      "as well as with a loop.");
+  syncButton.onClick = [this]() { audioProcessor.requestSync(); };
+  syncButton.setRepaintsOnMouseActivity(true);
+  addAndMakeVisible(syncButton);
+
   // Compact toolbar groups
   channelGroupLabel.setText("Channel:", juce::dontSendNotification);
   channelGroupLabel.setJustificationType(juce::Justification::centredRight);
@@ -322,19 +332,35 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
           juce::String(audioProcessor.internalBpi.load()),
       row3, juce::Justification::centredLeft, 1);
 #else
-  const bool pendingTransport = connected && !mismatch && !audioProcessor.hostIsPlaying;
-  if (mismatch) {
-    g.setColour(juce::Colours::orange);
-    g.drawFittedText("BPM mismatch - set DAW to " +
-                         juce::String((double)audioProcessor.internalBpm.load(), 1) + " BPM",
-                     row3, juce::Justification::centredLeft, 1);
-  } else if (pendingTransport) {
-    g.setColour(juce::Colours::grey);
-    g.drawFittedText("Start transport to begin", row3,
-                     juce::Justification::centredLeft, 1);
-  } else if (connected) {
-    g.setColour(juce::Colours::lightgreen);
-    g.drawFittedText("In sync", row3, juce::Justification::centredLeft, 1);
+  // Driven by the sync state machine rather than re-derived here, so the text
+  // and the audio gating can never disagree about what is happening.
+  const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
+  if (connected && sync != SyncState::State::Disconnected) {
+    juce::Colour c = juce::Colours::grey;
+    juce::String msg = SyncState::describe(sync);
+    switch (sync) {
+    case SyncState::State::TempoMismatch:
+      c = juce::Colours::orange;
+      msg = "DAW tempo does not match - set the DAW to " +
+            juce::String(audioProcessor.internalBpm.load()) + " BPM";
+      break;
+    case SyncState::State::ReadyToSync:
+      c = juce::Colours::yellow;
+      msg = "Tempo matches - press Sync to arm";
+      break;
+    case SyncState::State::WaitingForPlay:
+      c = juce::Colours::yellow;
+      msg = "Armed - start the DAW transport to join";
+      break;
+    case SyncState::State::Running:
+      c = juce::Colours::lightgreen;
+      msg = "In sync";
+      break;
+    default:
+      break;
+    }
+    g.setColour(c);
+    g.drawFittedText(msg, row3, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
     g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) + " BPM",
@@ -401,6 +427,8 @@ void NinjamAudioProcessorEditor::resized() {
 
   metronomeToggle.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
   toolbar.removeFromLeft(4);
+  syncButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
+  toolbar.removeFromLeft(8);
   metronomeVolumeSlider.setBounds(toolbar.removeFromLeft(60).reduced(0, 6));
   toolbar.removeFromLeft(10);
   saveTxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
@@ -515,6 +543,11 @@ void NinjamAudioProcessorEditor::updateToolbarStates() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
   const int inBuses    = audioProcessor.getBusCount(true);
   const int outBuses   = audioProcessor.getBusCount(false);
+
+  const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
+  syncButton.setEnabled(sync == SyncState::State::ReadyToSync ||
+                        sync == SyncState::State::WaitingForPlay ||
+                        sync == SyncState::State::Running);
 
   browseButton.setEnabled(!connected);
   disconnectButton.setEnabled(connected);

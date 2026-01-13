@@ -2,6 +2,7 @@
 
 #include "IntervalClock.h"
 #include "IntervalProbe.h"
+#include "SyncState.h"
 #include "MetronomeVoice.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
@@ -103,6 +104,15 @@ public:
   // into; JUCE aliases input and output buses in one buffer.
   juce::AudioBuffer<float> inputSnapshot;
   std::vector<IntervalClock::BlockSegment> captureSegments;
+
+  // DAW sync. We lock the interval grid to the transport START rather than the
+  // timeline: a clip/session view advances a timeline that is musically
+  // meaningless, and jogging during a live jam is not a real use case.
+  SyncState syncState;                      // audio thread only
+  std::atomic<int> publishedSyncState{0};   // SyncState::State, for the UI
+  std::atomic<bool> syncRequested{false};   // set by the Sync button
+
+  void requestSync() { syncRequested.store(true); }
 
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};

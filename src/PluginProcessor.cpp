@@ -405,7 +405,31 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       beatFlashIntensity.store(0.0f);
     }
 
-    const bool isConnected = ninjamClient.isConnected();
+    // Sync state: decides whether we are actually in the jam, and resets the
+    // interval clock on the transport-start edge we were armed for.
+    SyncState::Inputs si;
+    si.connected = ninjamClient.isConnected();
+    si.transportPlaying = hostIsPlaying;
+    si.syncRequested = syncRequested.exchange(false);
+#if JucePlugin_Build_Standalone
+    si.hasTransport = false;
+#else
+    si.hasTransport = (getPlayHead() != nullptr);
+#endif
+    // Compare at whole-BPM resolution; the server only carries an integer.
+    si.tempoMatches =
+        !si.hasTransport || (int)std::lround(hostBpm) == internalBpm.load();
+
+    if (syncState.update(si)) {
+      intervalClock.reset();
+      metronomeVoice.reset();
+    }
+    publishedSyncState.store((int)syncState.get());
+
+    // Everything below is gated on being in step, not merely connected: before
+    // the user has synced we neither transmit nor play, so a jam never starts
+    // out of phase with their DAW.
+    const bool isConnected = syncState.isRunning();
 
     if (isConnected) {
       clockEvents.clear();
