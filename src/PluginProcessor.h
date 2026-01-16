@@ -33,6 +33,18 @@ public:
   NinjamAudioProcessor();
   ~NinjamAudioProcessor() override;
 
+  // True only when this instance really is the Standalone app.
+  //
+  // Deliberately NOT the JucePlugin_Build_Standalone macro. That macro is a
+  // project-level flag meaning "Standalone is one of the FORMATS", and this
+  // file is compiled once into the shared code that the VST3 and CLAP also
+  // link against -- so the macro is 1 in every format. Using it here compiled
+  // the DAW sync flow out of the plugin entirely: hasTransport was forced
+  // false, tempo was never compared, and the state machine ran on connect.
+  bool isStandaloneApp() const {
+    return wrapperType == wrapperType_Standalone;
+  }
+
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   void releaseResources() override;
 

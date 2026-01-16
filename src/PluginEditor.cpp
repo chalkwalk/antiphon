@@ -236,13 +236,9 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
 
   const bool connected      = audioProcessor.ninjamClient.isConnected();
   const bool connectFailed  = audioProcessor.lastConnectFailed.load();
-#if !JucePlugin_Build_Standalone
-  const bool mismatch = connected &&
+  const bool mismatch = !audioProcessor.isStandaloneApp() && connected &&
       std::abs(audioProcessor.hostBpm - (double)audioProcessor.internalBpm.load()) > 0.5;
   const bool headerWarning = connectFailed || mismatch;
-#else
-  const bool headerWarning = connectFailed;
-#endif
   juce::Colour headerBg = connected      ? juce::Colour(0xff0d0d1a)   // navy -- normal
                         : headerWarning  ? juce::Colour(0xff2a1a0a)   // amber -- failed/mismatch
                                          : juce::Colour(0xff111111);  // dark grey -- idle
@@ -324,49 +320,49 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
 
   auto row3 = header.removeFromTop(20);
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
-#if JucePlugin_Build_Standalone
-  g.setColour(juce::Colours::lightgrey);
-  g.drawFittedText(
-      "Phase: " +
-          juce::String(audioProcessor.publishedPhaseBeats.load(), 2) + " / " +
-          juce::String(audioProcessor.internalBpi.load()),
-      row3, juce::Justification::centredLeft, 1);
-#else
-  // Driven by the sync state machine rather than re-derived here, so the text
-  // and the audio gating can never disagree about what is happening.
-  const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
-  if (connected && sync != SyncState::State::Disconnected) {
-    juce::Colour c = juce::Colours::grey;
-    juce::String msg = SyncState::describe(sync);
-    switch (sync) {
-    case SyncState::State::TempoMismatch:
-      c = juce::Colours::orange;
-      msg = "DAW tempo does not match - set the DAW to " +
-            juce::String(audioProcessor.internalBpm.load()) + " BPM";
-      break;
-    case SyncState::State::ReadyToSync:
-      c = juce::Colours::yellow;
-      msg = "Tempo matches - press Sync to arm";
-      break;
-    case SyncState::State::WaitingForPlay:
-      c = juce::Colours::yellow;
-      msg = "Armed - start the DAW transport to join";
-      break;
-    case SyncState::State::Running:
-      c = juce::Colours::lightgreen;
-      msg = "In sync";
-      break;
-    default:
-      break;
-    }
-    g.setColour(c);
-    g.drawFittedText(msg, row3, juce::Justification::centredLeft, 1);
+  if (audioProcessor.isStandaloneApp()) {
+    g.setColour(juce::Colours::lightgrey);
+    g.drawFittedText(
+        "Phase: " +
+            juce::String(audioProcessor.publishedPhaseBeats.load(), 2) + " / " +
+            juce::String(audioProcessor.internalBpi.load()),
+        row3, juce::Justification::centredLeft, 1);
   } else {
-    g.setColour(juce::Colours::darkgrey);
-    g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) + " BPM",
-                     row3, juce::Justification::centredLeft, 1);
+    // Driven by the sync state machine rather than re-derived here, so the text
+    // and the audio gating can never disagree about what is happening.
+    const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
+    if (connected && sync != SyncState::State::Disconnected) {
+      juce::Colour c = juce::Colours::grey;
+      juce::String msg = SyncState::describe(sync);
+      switch (sync) {
+      case SyncState::State::TempoMismatch:
+        c = juce::Colours::orange;
+        msg = "DAW tempo does not match - set the DAW to " +
+              juce::String(audioProcessor.internalBpm.load()) + " BPM";
+        break;
+      case SyncState::State::ReadyToSync:
+        c = juce::Colours::yellow;
+        msg = "Tempo matches - press Sync to arm";
+        break;
+      case SyncState::State::WaitingForPlay:
+        c = juce::Colours::yellow;
+        msg = "Armed - start the DAW transport to join";
+        break;
+      case SyncState::State::Running:
+        c = juce::Colours::lightgreen;
+        msg = "In sync";
+        break;
+      default:
+        break;
+      }
+      g.setColour(c);
+      g.drawFittedText(msg, row3, juce::Justification::centredLeft, 1);
+    } else {
+      g.setColour(juce::Colours::darkgrey);
+      g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) + " BPM",
+                       row3, juce::Justification::centredLeft, 1);
+    }
   }
-#endif
 
   // Section labels -- mirror resized() geometry
   area.removeFromBottom(28); // toolbar

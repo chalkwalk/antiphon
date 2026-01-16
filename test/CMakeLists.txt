@@ -65,6 +65,14 @@ target_include_directories(NinjamTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME ninjam-unit-tests COMMAND NinjamTests)
 set_tests_properties(ninjam-unit-tests PROPERTIES TIMEOUT 120)
 
+# Source-level guard; see the script for why this one is worth a test of its
+# own. The bug it catches is invisible in the standalone, which is where we do
+# most of our manual testing.
+add_test(NAME no-build-standalone-macro
+         COMMAND ${CMAKE_COMMAND}
+                 -DSRC_DIR=${CMAKE_SOURCE_DIR}/src
+                 -P ${CMAKE_SOURCE_DIR}/cmake/CheckNoStandaloneMacro.cmake)
+
 # Temporary interop harness around the official reference client, plus the
 # interop tests that drive it. Everything to do with it lives in refclient/ so
 # that deleting that one directory removes it completely -- the guard below is

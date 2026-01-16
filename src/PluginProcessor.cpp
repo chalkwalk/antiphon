@@ -16,9 +16,7 @@ NinjamAudioProcessor::NinjamAudioProcessor()
 {
   ninjamClient.addListener(this);
   localChannels.push_back(std::make_shared<LocalChannel>());
-#if !JucePlugin_Build_Standalone
-  metronomeEnabled = false;
-#endif
+  if (!isStandaloneApp()) metronomeEnabled = false;
 }
 
 NinjamAudioProcessor::~NinjamAudioProcessor() {
@@ -411,11 +409,7 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     si.connected = ninjamClient.isConnected();
     si.transportPlaying = hostIsPlaying;
     si.syncRequested = syncRequested.exchange(false);
-#if JucePlugin_Build_Standalone
-    si.hasTransport = false;
-#else
-    si.hasTransport = (getPlayHead() != nullptr);
-#endif
+    si.hasTransport = !isStandaloneApp() && getPlayHead() != nullptr;
     // Compare at whole-BPM resolution; the server only carries an integer.
     si.tempoMatches =
         !si.hasTransport || (int)std::lround(hostBpm) == internalBpm.load();
@@ -571,13 +565,8 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
 
     chatVisible.store(xml->getBoolAttribute("chatVisible", true));
     metronomeVolume.store((float)xml->getDoubleAttribute("metronomeVol", 1.0));
-    metronomeEnabled.store(xml->getBoolAttribute("metronome",
-#if JucePlugin_Build_Standalone
-        true
-#else
-        false
-#endif
-    ));
+    metronomeEnabled.store(
+        xml->getBoolAttribute("metronome", isStandaloneApp()));
     lastHost      = xml->getStringAttribute("lastHost",      "ninbot.com");
     lastPort      = xml->getIntAttribute   ("lastPort",      2049);
     lastUsername  = xml->getStringAttribute("lastUsername",  "");
