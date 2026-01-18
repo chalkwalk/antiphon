@@ -1,0 +1,39 @@
+diff --git a/modules/juce_gui_basics/components/juce_Component.cpp b/modules/juce_gui_basics/components/juce_Component.cpp
+index e11740f2c5..74006ff804 100644
+--- a/modules/juce_gui_basics/components/juce_Component.cpp
++++ b/modules/juce_gui_basics/components/juce_Component.cpp
+@@ -2679,6 +2679,11 @@ void Component::takeKeyboardFocus (FocusChangeType cause, FocusChangeDirection d
+     if (auto* peer = getPeer())
+     {
+         const WeakReference<Component> safePointer (this);
++        // Ninjam: tell the peer which component this grab is for before asking
++        // for focus. On Linux the FocusIn arrives after this call returns, and
++        // handleFocusGain() would otherwise restore the previously focused
++        // component -- or the top-level one -- over the top of this request.
++        peer->setLastFocusedComponent (this);
+         peer->grabFocus();
+ 
+         if (! peer->isFocused() || currentlyFocusedComponent == this)
+diff --git a/modules/juce_gui_basics/windows/juce_ComponentPeer.h b/modules/juce_gui_basics/windows/juce_ComponentPeer.h
+index b10de7f4f7..3823c2efeb 100644
+--- a/modules/juce_gui_basics/windows/juce_ComponentPeer.h
++++ b/modules/juce_gui_basics/windows/juce_ComponentPeer.h
+@@ -362,6 +362,18 @@ public:
+ 
+     Component* getLastFocusedSubcomponent() const noexcept;
+ 
++    /** Ninjam: records which subcomponent a focus grab is being made for, so
++        that handleFocusGain() restores that one rather than whichever
++        component happened to be focused previously.
++
++        An embedded plugin window on Linux does not consider itself focused, so
++        Component::takeKeyboardFocus() asks the peer to grab focus and the X
++        FocusIn arrives afterwards. By then handleFocusGain() has no record of
++        the intended target and falls back to focusing the top-level component,
++        which silently steals focus from the text field that was clicked.
++    */
++    void setLastFocusedComponent (Component* c) { lastFocusedComponent = c; }
++
+     /** Called when a key is pressed.
+         For keycode info, see the KeyPress class.
+         Returns true if the keystroke was used.
