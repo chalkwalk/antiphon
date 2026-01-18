@@ -43,7 +43,14 @@ private:
   juce::TextButton browseButton;
   juce::TextButton disconnectButton;
 
+  // A real top-level window, not a child overlay. An embedded plugin view can
+  // never hold the X input focus -- JUCE decides focus with
+  // isParentWindowOf(ourWindow, focusedWindow), and the host's window is our
+  // ancestor, not our descendant -- so juce::Component::takeKeyboardFocus
+  // bails out and no text field inside the editor can ever be typed into.
+  // A desktop window has its own peer and takes focus normally.
   std::unique_ptr<ServerBrowserDialog> serverBrowser;
+  juce::Component::SafePointer<juce::DialogWindow> serverBrowserWindow;
   void openServerBrowser();
   void closeServerBrowser();
 

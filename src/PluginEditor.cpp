@@ -160,6 +160,7 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
                         juce::Colour(0xff121212));
   addAndMakeVisible(chatDisplay);
 
+  chatInput.setName("chatInput");
   chatInput.setMultiLine(false);
   chatInput.setReturnKeyStartsNewLine(false);
   chatInput.setTextToShowWhenEmpty(
@@ -484,24 +485,26 @@ void NinjamAudioProcessorEditor::openServerBrowser() {
   };
   serverBrowser->onClose = [this]() { closeServerBrowser(); };
 
-  addAndMakeVisible(*serverBrowser);
-  serverBrowser->setBounds(getLocalBounds().reduced(20));
+  serverBrowser->setSize(700, 460);
 
-  // toFront(true) -- the `true` is "also take keyboard focus". With false the
-  // dialog came to the front but never accepted key events, so text could be
-  // selected with the mouse but not typed into. Inside a DAW that is worse
-  // than in the standalone: the host keeps keyboard focus unless the plugin
-  // editor asks for it, so nothing reached the text fields at all.
-  serverBrowser->toFront(true);
-  serverBrowser->grabKeyboardFocus();
-  serverBrowser->hostInput.grabKeyboardFocus();
+  juce::DialogWindow::LaunchOptions opts;
+  opts.dialogTitle = "Connect to a Ninjam server";
+  opts.dialogBackgroundColour = juce::Colour(0xff1a1a2e);
+  opts.content.setNonOwned(serverBrowser.get());
+  opts.escapeKeyTriggersCloseButton = true;
+  opts.useNativeTitleBar = true;
+  opts.resizable = false;
+  serverBrowserWindow = opts.launchAsync();
 }
 
 void NinjamAudioProcessorEditor::closeServerBrowser() {
-  if (serverBrowser) {
-    removeChildComponent(serverBrowser.get());
-    serverBrowser.reset();
+  // The window owns itself once launched, and clears the SafePointer if the
+  // user closes it from the title bar.
+  if (auto *w = serverBrowserWindow.getComponent()) {
+    serverBrowserWindow = nullptr;
+    delete w;
   }
+  serverBrowser.reset();
 }
 
 void NinjamAudioProcessorEditor::mouseExit(const juce::MouseEvent &) {

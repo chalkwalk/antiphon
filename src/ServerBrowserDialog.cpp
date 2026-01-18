@@ -30,17 +30,21 @@ ServerBrowserDialog::ServerBrowserDialog()
   addAndMakeVisible(table);
 
   hostInput.setText("ninbot.com");
+  hostInput.setName("hostInput");
   addAndMakeVisible(hostInput);
 
   portInput.setText("2049");
   portInput.setInputRestrictions(5, "0123456789");
+  portInput.setName("portInput");
   addAndMakeVisible(portInput);
 
   usernameInput.setTextToShowWhenEmpty("Nickname", juce::Colours::grey);
+  usernameInput.setName("usernameInput");
   addAndMakeVisible(usernameInput);
 
   passwordInput.setPasswordCharacter('*');
   passwordInput.setTextToShowWhenEmpty("Password", juce::Colours::grey);
+  passwordInput.setName("passwordInput");
   addChildComponent(passwordInput);
 
   anonymousToggle.setToggleState(true, juce::dontSendNotification);

@@ -5,6 +5,10 @@ juce_add_plugin(Ninjam
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     FORMATS VST3 Standalone
+    # Tells the host the editor needs key events. Defaults to FALSE, which
+    # leaves hosts free to keep the keyboard for their own shortcuts and is one
+    # half of why no text field could be typed into inside a DAW.
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     PRODUCT_NAME "Ninjam")
 
 juce_generate_juce_header(Ninjam)
