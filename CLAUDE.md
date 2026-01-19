@@ -39,6 +39,35 @@ mkdir -p build && cd build && cmake ..      # configure (first time, from repo r
 cmake --build build -j $(nproc)            # build (always from repo root)
 ```
 
+**JUCE is patched at configure time.** `patches/*.patch` are applied to the JUCE
+submodule by the block at the top of the root `CMakeLists.txt`, following the
+same paradigm as `seq_play`. Each is idempotent (`git apply --reverse --check`
+detects an already-applied patch), so configuring twice is a no-op and a fresh
+clone gets them once. Do not hand-edit JUCE: change the `.patch` file, revert
+the submodule, and reconfigure.
+
+- `juce-linux-plugin-keyboard-focus.patch` — an embedded plugin window on Linux
+  never considers itself focused, so `Component::takeKeyboardFocus()` asks the
+  peer for focus and the X `FocusIn` lands afterwards. By then
+  `ComponentPeer::handleFocusGain()` has no record of the intended target and
+  focuses the *top-level* component instead, stealing focus from the text field
+  that was clicked. Symptom: caret and selection appear, typing does nothing;
+  invisible in the standalone, where the peer already holds focus. The patch
+  records the target before the grab. See
+  <https://forum.juce.com/t/any-idea-why-vst-plugins-on-linux-immediately-lose-focus/35456>.
+
+**Never branch on `JucePlugin_Build_Standalone` in `src/`.** It is a
+project-level flag meaning "Standalone is one of the `FORMATS`", and it is 1 in
+the shared-code target that the VST3 and CLAP link against — so it is true in
+*every* format. It once compiled the whole DAW sync flow out of the plugin.
+Use `NinjamAudioProcessor::isStandaloneApp()` (runtime `wrapperType`). The
+`no-build-standalone-macro` ctest fails if the macro comes back.
+
+**Text entry belongs in a `juce::DialogWindow`**, not a child overlay, even with
+the patch above: a dialog is a real top-level window with its own peer and takes
+focus normally. `ServerBrowserDialog` is launched via
+`DialogWindow::LaunchOptions::launchAsync()`.
+
 No generator flag — use whatever CMake picks (usually Ninja or Make). Targets:
 - `Ninjam_Standalone` — easiest for iteration
 - `Ninjam_VST3` — the VST3; CLAP is built from the same target via `clap_juce_extensions_plugin`
@@ -56,6 +85,11 @@ socket path, and an opt-in rig against a local `ninjamsrv` whose session archive
 is measured by `scripts/analyze_archive.py`. **See `test/README.md`** for the
 full story, including how to run the parsers under ASan and how to compare our
 transmitted audio against Jamtaba/ReaNINJAM.
+
+**See `PARITY.md`** for what has been verified against the official reference
+client, with the measured numbers. That file is the durable record: the harness
+in `test/refclient/` is temporary and will be excised before release, so any
+claim about interoperability should be checked there rather than re-derived.
 
 Manual smoke test: launch Standalone, connect to `ninbot.com:2049` as `anonymous`, exercise the feature.
 
@@ -280,7 +314,7 @@ interval early just because some WRITE chunks arrived. Pinned by a test.
 
 | # | Item | Type | Complexity | UX Impact | Key notes |
 | 24 | Lock-free TX handoff | Architecture | M | Low | `processBlock` does `callAsync` with a full buffer copy at each interval boundary. Replace with a `juce::AbstractFifo` FIFO to eliminate the copy and reduce TX latency jitter. (RX path already lock-light.) Much safer to attempt now the loopback tests exist. |
-| 27 | Capture alignment at the interval boundary | Correctness | M | Medium | **Measured, confirmed real.** The ring buffer is drained at the boundary but filled in whole blocks, so a transmitted interval is cut on a block edge rather than the exact sample. Live measurement against the reference client (137 bpm / 16 bpi / 48 kHz, 6 intervals, 96 notes from a DAW arpeggiator): note spacings **within** an interval average -7.4 samples of error, but every one of the 5 interval **seams** was long, mean **+54.5 samples (+1.29 ms), sd 24**. All five the same sign. Under one buffer, as the mechanism predicts. Not audible as a flam (a human confirmed our bursts land on the beat by ear) but it is a real defect. Fixing it means draining the ring to an exact sample count at the boundary rather than in whole blocks. |
+| 27 | Capture alignment at the interval boundary | Correctness | M | Low | **Withdrawn -- most likely never real.** Originally recorded as measured at +54.5 samples mean across 5 interval seams, all positive, from an arpeggiator run scored by onset detection. Re-measured against the reference client with the calibrated `IntervalProbe` (see `PARITY.md`): our interval placement sits on the reference-to-reference baseline at both 100/16 and 137/11, and a constant transmit offset cancels out of every inter-onset interval anyway, so it could not produce a seam-only error. Repeating the original arp measurement after the supposed fix gave +52.2 sd 21.5 -- statistically identical to the figure it was meant to remove. Presumed onset-detection artifact near a seam. The sample-exact capture commit (`02a58b2`) is correct on its own merits and stays. |
 | 28 | Audio-thread hygiene | Correctness | S | Low | `getDecodedAudio` takes `downloadMutex` on the audio thread; `setSaveTx/Rx` are called from `processBlock` every block and do file I/O on the toggling call. |
 | 29 | Destructor race in `NinjamClient` | Correctness | S | Low | `~NinjamClient` closes the socket while `run()` may be blocked in `read()`. Currently only visible as test-teardown flakiness. |
 | 30 | Underrun tail | Correctness | S | Low | `getDecodedAudio` leaves the rest of the block silent when the decoded interval runs short, rather than holding or fading. |
