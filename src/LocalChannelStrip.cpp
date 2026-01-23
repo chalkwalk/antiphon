@@ -142,8 +142,14 @@ void LocalChannelStrip::paint(juce::Graphics &g) {
       g.fillRect(fill);
     }
   };
-  drawVBar(vuLArea, decayedPeakL);
-  drawVBar(vuRArea, decayedPeakR);
+  // A mono channel transmits one summed signal, so it gets one bar spanning
+  // both gutters. Two bars would imply a stereo pair that is not being sent.
+  if (channel != nullptr && channel->isMono.load()) {
+    drawVBar(vuLArea.getUnion(vuRArea), decayedPeakL);
+  } else {
+    drawVBar(vuLArea, decayedPeakL);
+    drawVBar(vuRArea, decayedPeakR);
+  }
 
   if (!scaleArea.isEmpty())
     drawDbScale(g, volumeSlider, scaleArea);

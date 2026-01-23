@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "ChannelMix.h"
 #include "PluginEditor.h"
 
 NinjamAudioProcessor::NinjamAudioProcessor()
@@ -167,6 +168,14 @@ void NinjamAudioProcessor::captureInputRange(int startSample, int count) {
   juce::ScopedLock sl(localChannelMutex);
   const int numInBuses = getBusCount(true);
 
+  // Null for a channel index the snapshot does not have, which ChannelMix
+  // treats as absent rather than reading past the end.
+  auto sourcePointer = [this](int ch) -> const float * {
+    return ch >= 0 && ch < inputSnapshot.getNumChannels()
+               ? inputSnapshot.getReadPointer(ch)
+               : nullptr;
+  };
+
   for (auto &lcPtr : localChannels) {
     auto &lc = *lcPtr;
     const int busIdx = juce::jlimit(0, numInBuses - 1, lc.inputBusIndex.load());
@@ -178,30 +187,26 @@ void NinjamAudioProcessor::captureInputRange(int startSample, int count) {
 
     // Gain is vol*pan only -- mute and solo are monitor-only and must not
     // affect what other players hear.
-    const float vol = lc.volume.load(), pan = lc.pan.load();
-    const float lG = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
-    const float rG = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+    const auto gains =
+        ChannelMix::panGains(lc.volume.load(), lc.pan.load());
     const bool mono = lc.isMono.load();
 
     if (lc.fifo.getFreeSpace() < count)
       continue;
 
+    const float *srcL = sourcePointer(offset);
+    const float *srcR = busCh > 1 ? sourcePointer(offset + 1) : nullptr;
+
     int s1, n1, s2, n2;
     lc.fifo.prepareToWrite(count, s1, n1, s2, n2);
-    for (int ch = 0; ch < 2; ++ch) {
-      const float gain = (ch == 0) ? lG : rG;
-      const int srcCh = (mono || ch >= busCh) ? offset : offset + ch;
-      if (srcCh >= inputSnapshot.getNumChannels())
-        continue;
-      if (n1 > 0) {
-        lc.ring.copyFrom(ch, s1, inputSnapshot, srcCh, startSample, n1);
-        lc.ring.applyGain(ch, s1, n1, gain);
-      }
-      if (n2 > 0) {
-        lc.ring.copyFrom(ch, s2, inputSnapshot, srcCh, startSample + n1, n2);
-        lc.ring.applyGain(ch, s2, n2, gain);
-      }
-    }
+    if (n1 > 0)
+      ChannelMix::write(lc.ring.getWritePointer(0, s1),
+                        lc.ring.getWritePointer(1, s1), srcL, srcR, mono,
+                        startSample, n1, gains);
+    if (n2 > 0)
+      ChannelMix::write(lc.ring.getWritePointer(0, s2),
+                        lc.ring.getWritePointer(1, s2), srcL, srcR, mono,
+                        startSample + n1, n2, gains);
     lc.fifo.finishedWrite(n1 + n2);
   }
 }
@@ -305,50 +310,38 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       int offset = bus->getChannelIndexInProcessBlockBuffer(0);
       int busCh = bus->getNumberOfChannels();
 
-      float vol = lc.volume.load(), pan = lc.pan.load();
       bool muted = lc.muted.load();
       bool solo  = lc.monitorSolo.load();
       float monitorFactor = (muted ? 0.0f : 1.0f) *
                             (anyMonitorSolo && !solo ? 0.0f : 1.0f);
-      float lG = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan) * monitorFactor;
-      float rG = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan) * monitorFactor;
+      const auto txGains =
+          ChannelMix::panGains(lc.volume.load(), lc.pan.load());
+      const ChannelMix::Frame monGains{txGains.left * monitorFactor,
+                                       txGains.right * monitorFactor};
       bool mono = lc.isMono.load();
-
-      // Compute peaks on raw input (reflects what you're sending), display
-      // scaled by monitor gain so the VU shows what you hear.
-      {
-        const float *rawL = offset < inputSnapshot.getNumChannels()
-                                ? inputSnapshot.getReadPointer(offset)
-                                : nullptr;
-        const float *rawR =
-            (busCh > 1 && offset + 1 < inputSnapshot.getNumChannels())
-                ? inputSnapshot.getReadPointer(offset + 1)
-                : rawL;
-        float pL = 0.0f, pR = 0.0f;
-        if (rawL) for (int s = 0; s < ns; ++s) pL = std::max(pL, std::abs(rawL[s]));
-        if (rawR) for (int s = 0; s < ns; ++s) pR = std::max(pR, std::abs(rawR[s]));
-        lc.peakL.store(pL * lG);
-        lc.peakR.store(pR * rG);
-      }
-
-      if (totalNumOutputChannels < 2) continue;
 
       // Every bus reads the snapshot: the live buffer no longer holds valid
       // input for any bus once the output has been cleared.
-      const juce::AudioBuffer<float> &src = inputSnapshot;
-      int srcOff0 = offset;
-      int srcOff1 = (busCh > 1 && offset + 1 < inputSnapshot.getNumChannels())
-                        ? offset + 1
-                        : offset;
+      auto snapshotPointer = [this](int ch) -> const float * {
+        return ch >= 0 && ch < inputSnapshot.getNumChannels()
+                   ? inputSnapshot.getReadPointer(ch)
+                   : nullptr;
+      };
+      const float *srcL = snapshotPointer(offset);
+      const float *srcR = busCh > 1 ? snapshotPointer(offset + 1) : nullptr;
 
-      // mono flag: both output channels read from the first source channel only.
-      // This matches the transmit capture behavior.
-      int readL = srcOff0;
-      int readR = (mono || busCh == 1) ? srcOff0 : srcOff1;
-      if (readL < src.getNumChannels())
-        buffer.addFrom(0, 0, src, readL, 0, ns, lG);
-      if (readR < src.getNumChannels())
-        buffer.addFrom(1, 0, src, readR, 0, ns, rG);
+      // Metered after mono summing, so a mono channel shows the single signal
+      // it actually transmits rather than an unrelated stereo pair. Scaled by
+      // monitor gain, so the VU shows what you hear.
+      const auto p =
+          ChannelMix::peaks(srcL, srcR, mono, 0, ns, monGains);
+      lc.peakL.store(p.left);
+      lc.peakR.store(p.right);
+
+      if (totalNumOutputChannels < 2) continue;
+
+      ChannelMix::addInto(buffer.getWritePointer(0), buffer.getWritePointer(1),
+                          srcL, srcR, mono, ns, monGains);
     }
   }
 
