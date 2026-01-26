@@ -6,6 +6,12 @@
 NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
     : AudioProcessorEditor(&p), audioProcessor(p) {
   audioProcessor.ninjamClient.addListener(this);
+
+  // The embedded typeface, on JUCE's DEFAULT look-and-feel. It cannot ride on
+  // customLookAndFeel below: a Font naming no typeface -- which is all of ours
+  // -- resolves through the default look, never the component's.
+  installProductLookAndFeel();
+
   setLookAndFeel(&customLookAndFeel);
 
   // Without this the editor never accepts keyboard focus, so a host that only

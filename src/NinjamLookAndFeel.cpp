@@ -1,5 +1,50 @@
 #include "NinjamLookAndFeel.h"
 
+#include <AntiphonFonts.h>
+
+namespace {
+
+// Parsed once and kept. createSystemTypefaceFor reads the whole font file, and
+// getTypefaceForFont is called for every Font the surface builds -- which, on a
+// paint path that constructs fonts inline, is many per frame.
+juce::Typeface::Ptr interRegular() {
+  static const juce::Typeface::Ptr t = juce::Typeface::createSystemTypefaceFor(
+      AntiphonFonts::InterRegular_ttf, AntiphonFonts::InterRegular_ttfSize);
+  return t;
+}
+
+// The real Bold cut, not a synthesised one: resolving bold to the regular face
+// would silently render every bold label as regular.
+juce::Typeface::Ptr interBold() {
+  static const juce::Typeface::Ptr t = juce::Typeface::createSystemTypefaceFor(
+      AntiphonFonts::InterBold_ttf, AntiphonFonts::InterBold_ttfSize);
+  return t;
+}
+
+} // namespace
+
+juce::Typeface::Ptr
+NinjamLookAndFeel::getTypefaceForFont(const juce::Font &f) {
+  // Substitute only for the unnamed default sans, so that a future request for
+  // a monospace face gets one instead of Inter.
+  if (f.getTypefaceName() == juce::Font::getDefaultSansSerifFontName())
+    if (auto t = f.isBold() ? interBold() : interRegular())
+      return t;
+
+  return LookAndFeel_V4::getTypefaceForFont(f);
+}
+
+void installProductLookAndFeel() {
+  // Process lifetime, destroyed at exit rather than leaked: it must outlive
+  // every editor, because JUCE reads the default-look pointer long after a
+  // plugin window closes. Destruction order is safe either way -- Desktop holds
+  // a WeakReference, so the pointer nulls rather than dangles.
+  static NinjamLookAndFeel productLnf;
+
+  if (&juce::LookAndFeel::getDefaultLookAndFeel() != &productLnf)
+    juce::LookAndFeel::setDefaultLookAndFeel(&productLnf);
+}
+
 NinjamLookAndFeel::NinjamLookAndFeel() {
   setColour(juce::ResizableWindow::backgroundColourId,
             juce::Colour(0xff1a1a2e)); // Dark background

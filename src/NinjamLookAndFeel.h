@@ -74,4 +74,19 @@ public:
 
   void drawTextEditorOutline(juce::Graphics &g, int width, int height,
                              juce::TextEditor &textEditor) override;
+
+  // The product typeface. Nothing in src/ names a font family, so this single
+  // hook decides what the whole surface renders with.
+  //
+  // It has to live on a LookAndFeel because that is the only seam JUCE offers:
+  // a Font that names no typeface resolves through
+  // LookAndFeel::getDefaultLookAndFeel(), NOT through the component's own
+  // look-and-feel. Hence installProductLookAndFeel() below -- setting this
+  // class on the editor alone would leave every font as the platform default.
+  juce::Typeface::Ptr getTypefaceForFont(const juce::Font &) override;
 };
+
+// Installs the product look (and with it the embedded typeface) as JUCE's
+// default. Idempotent; call from the editor constructor in addition to
+// setLookAndFeel(). See the comment above for why both are needed.
+void installProductLookAndFeel();

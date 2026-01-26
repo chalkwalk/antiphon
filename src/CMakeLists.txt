@@ -13,6 +13,20 @@ juce_add_plugin(Ninjam
 
 juce_generate_juce_header(Ninjam)
 
+# Embedded product typeface (Inter, OFL-1.1 -- see assets/fonts/OFL.txt).
+#
+# The surface renders with the same glyphs on every platform: a platform-default
+# sans varies by distro and machine, which is a look the product never chose.
+# Only the two static cuts we ask for are embedded (every Font in src/ is either
+# plain or bold); the variable font is deliberately not vendored, since a face
+# JUCE must instance per size reintroduces exactly that variability.
+juce_add_binary_data(antiphon_fonts
+    NAMESPACE AntiphonFonts
+    HEADER_NAME AntiphonFonts.h
+    SOURCES
+        ${CMAKE_SOURCE_DIR}/assets/fonts/Inter-Regular.ttf
+        ${CMAKE_SOURCE_DIR}/assets/fonts/Inter-Bold.ttf)
+
 target_sources(Ninjam
     PRIVATE
         PluginProcessor.cpp
@@ -40,6 +54,7 @@ target_compile_definitions(Ninjam
 
 target_link_libraries(Ninjam
     PRIVATE
+        antiphon_fonts
         juce::juce_audio_utils
         juce::juce_audio_plugin_client
         ogg
