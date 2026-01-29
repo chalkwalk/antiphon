@@ -1,4 +1,4 @@
-juce_add_plugin(Ninjam
+juce_add_plugin(Antiphon
     COMPANY_NAME "Chalkwalk"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
@@ -9,9 +9,9 @@ juce_add_plugin(Ninjam
     # leaves hosts free to keep the keyboard for their own shortcuts and is one
     # half of why no text field could be typed into inside a DAW.
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    PRODUCT_NAME "Ninjam")
+    PRODUCT_NAME "Antiphon")
 
-juce_generate_juce_header(Ninjam)
+juce_generate_juce_header(Antiphon)
 
 # Embedded product typeface (Inter, OFL-1.1 -- see assets/fonts/OFL.txt).
 #
@@ -27,7 +27,7 @@ juce_add_binary_data(antiphon_fonts
         ${CMAKE_SOURCE_DIR}/assets/fonts/Inter-Regular.ttf
         ${CMAKE_SOURCE_DIR}/assets/fonts/Inter-Bold.ttf)
 
-target_sources(Ninjam
+target_sources(Antiphon
     PRIVATE
         PluginProcessor.cpp
         PluginEditor.cpp
@@ -38,21 +38,21 @@ target_sources(Ninjam
         RemoteUserStrip.cpp
         RemoteChannelRow.cpp
         LocalChannelStrip.cpp
-        NinjamLookAndFeel.cpp
+        AntiphonLookAndFeel.cpp
         ServerBrowserDialog.cpp
         Sha1.cpp
         VorbisCodec.cpp
 )
 
-clap_juce_extensions_plugin(TARGET Ninjam CLAP_ID "com.chalkwalk.ninjam" CLAP_FEATURES "audio-effect" "tool")
+clap_juce_extensions_plugin(TARGET Antiphon CLAP_ID "com.chalkwalk.antiphon" CLAP_FEATURES "audio-effect" "tool")
 
-target_compile_definitions(Ninjam
+target_compile_definitions(Antiphon
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
-target_link_libraries(Ninjam
+target_link_libraries(Antiphon
     PRIVATE
         antiphon_fonts
         juce::juce_audio_utils
@@ -64,4 +64,4 @@ target_link_libraries(Ninjam
         juce::juce_recommended_config_flags)
 
 # Make sure JUCE finds headers
-target_include_directories(Ninjam PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(Antiphon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

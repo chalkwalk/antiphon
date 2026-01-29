@@ -1,10 +1,10 @@
 #include "GainUtils.h"
-#include "NinjamLookAndFeel.h"
+#include "AntiphonLookAndFeel.h"
 #include "LocalChannelStrip.h"
 
 LocalChannelStrip::LocalChannelStrip(
-    NinjamAudioProcessor &p,
-    std::shared_ptr<NinjamAudioProcessor::LocalChannel> ch)
+    AntiphonAudioProcessor &p,
+    std::shared_ptr<AntiphonAudioProcessor::LocalChannel> ch)
     : audioProcessor(p), channel(std::move(ch)) {
 
   nameEditor.setText(channel->name, false);

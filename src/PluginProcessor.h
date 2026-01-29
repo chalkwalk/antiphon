@@ -10,7 +10,7 @@
 #include <memory>
 #include <vector>
 
-class NinjamAudioProcessor : public juce::AudioProcessor,
+class AntiphonAudioProcessor : public juce::AudioProcessor,
                              public NinjamClientListener {
 public:
   struct LocalChannel {
@@ -30,8 +30,8 @@ public:
     juce::AudioBuffer<float> ring;
   };
 
-  NinjamAudioProcessor();
-  ~NinjamAudioProcessor() override;
+  AntiphonAudioProcessor();
+  ~AntiphonAudioProcessor() override;
 
   // True only when this instance really is the Standalone app.
   //
@@ -176,5 +176,5 @@ private:
 
   std::atomic<bool> phaseResetPending{false};
   bool hasConnectedSinceLastAttempt{false};
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessor)
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AntiphonAudioProcessor)
 };

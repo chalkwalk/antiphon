@@ -3,7 +3,7 @@
 #include "PluginProcessor.h"
 #include "ServerBrowserDialog.h"
 
-NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
+AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
     : AudioProcessorEditor(&p), audioProcessor(p) {
   audioProcessor.ninjamClient.addListener(this);
 
@@ -210,12 +210,12 @@ NinjamAudioProcessorEditor::NinjamAudioProcessorEditor(NinjamAudioProcessor &p)
   startTimerHz(30);
 }
 
-NinjamAudioProcessorEditor::~NinjamAudioProcessorEditor() {
+AntiphonEditor::~AntiphonEditor() {
   audioProcessor.ninjamClient.removeListener(this);
   setLookAndFeel(nullptr);
 }
 
-void NinjamAudioProcessorEditor::onChatMessage(const juce::String &type,
+void AntiphonEditor::onChatMessage(const juce::String &type,
                                                const juce::String &username,
                                                const juce::String &text) {
   juce::String line;
@@ -234,7 +234,7 @@ void NinjamAudioProcessorEditor::onChatMessage(const juce::String &type,
   chatDisplay.insertTextAtCaret(line + "\n");
 }
 
-void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
+void AntiphonEditor::paint(juce::Graphics &g) {
   g.fillAll(
       getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
 
@@ -257,7 +257,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   auto row1 = header.removeFromTop(22);
   g.setFont(juce::FontOptions{}.withHeight(15.0f).withStyle("Bold"));
   g.setColour(teal);
-  g.drawFittedText("NINJAM", row1.removeFromLeft(90),
+  g.drawFittedText("ANTIPHON", row1.removeFromLeft(90),
                    juce::Justification::centredLeft, 1);
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
   g.setColour(connected ? teal : juce::Colours::grey);
@@ -392,7 +392,7 @@ void NinjamAudioProcessorEditor::paint(juce::Graphics &g) {
   g.drawFittedText("Remote Players:", labelRow, juce::Justification::left, 1);
 }
 
-void NinjamAudioProcessorEditor::resized() {
+void AntiphonEditor::resized() {
   auto area = getLocalBounds().reduced(10);
   area.removeFromTop(80); // Status bar
   area.removeFromTop(10); // Spacing below status bar
@@ -465,7 +465,7 @@ void NinjamAudioProcessorEditor::resized() {
   relayoutChannelArea();
 }
 
-void NinjamAudioProcessorEditor::openServerBrowser() {
+void AntiphonEditor::openServerBrowser() {
   if (serverBrowser) return;
 
   serverBrowser = std::make_unique<ServerBrowserDialog>();
@@ -503,7 +503,7 @@ void NinjamAudioProcessorEditor::openServerBrowser() {
   serverBrowserWindow = opts.launchAsync();
 }
 
-void NinjamAudioProcessorEditor::closeServerBrowser() {
+void AntiphonEditor::closeServerBrowser() {
   // The window owns itself once launched, and clears the SafePointer if the
   // user closes it from the title bar.
   if (auto *w = serverBrowserWindow.getComponent()) {
@@ -513,11 +513,11 @@ void NinjamAudioProcessorEditor::closeServerBrowser() {
   serverBrowser.reset();
 }
 
-void NinjamAudioProcessorEditor::mouseExit(const juce::MouseEvent &) {
+void AntiphonEditor::mouseExit(const juce::MouseEvent &) {
   repaint();
 }
 
-void NinjamAudioProcessorEditor::setChatConnectedState(bool connected) {
+void AntiphonEditor::setChatConnectedState(bool connected) {
   const juce::Colour bg   = connected ? juce::Colour(0xff0a0a0a) : juce::Colour(0xff121212);
   const juce::Colour text = connected ? juce::Colour(0xffe0e0e0) : juce::Colour(0xff1e1e1e);
 
@@ -535,16 +535,16 @@ void NinjamAudioProcessorEditor::setChatConnectedState(bool connected) {
   chatInput.repaint();
 }
 
-void NinjamAudioProcessorEditor::onConnected() {
+void AntiphonEditor::onConnected() {
   chatDisplay.clear();
   setChatConnectedState(true);
 }
 
-void NinjamAudioProcessorEditor::onDisconnected(const juce::String &) {
+void AntiphonEditor::onDisconnected(const juce::String &) {
   setChatConnectedState(false);
 }
 
-void NinjamAudioProcessorEditor::updateToolbarStates() {
+void AntiphonEditor::updateToolbarStates() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
   const int inBuses    = audioProcessor.getBusCount(true);
   const int outBuses   = audioProcessor.getBusCount(false);
@@ -560,7 +560,7 @@ void NinjamAudioProcessorEditor::updateToolbarStates() {
   removeOutBusButton.setEnabled(outBuses > 1);
 }
 
-void NinjamAudioProcessorEditor::relayoutChannelArea() {
+void AntiphonEditor::relayoutChannelArea() {
   if (cachedChannelPanelBounds.isEmpty()) return;
 
   auto bounds = cachedChannelPanelBounds;
@@ -631,7 +631,7 @@ void NinjamAudioProcessorEditor::relayoutChannelArea() {
   remoteUsersContainer.setSize(container_w, rh);
 }
 
-void NinjamAudioProcessorEditor::timerCallback() {
+void AntiphonEditor::timerCallback() {
   auto decay = [](std::atomic<float> &v) {
     float f = v.load();
     if (f > 0.0f) v.store(std::max(0.0f, f - (1.0f / 12.0f)));

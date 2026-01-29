@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Set the project name
-project(Ninjam VERSION 0.1.0)
+project(Antiphon VERSION 0.1.0)
 
 # enable_testing() must be called at the top level for ctest to work
 enable_testing()
@@ -12,12 +12,12 @@ enable_testing()
 # Each is idempotent: "git apply --reverse --check" succeeds only when the
 # patch is already in the working tree, so a second configure is a no-op and a
 # fresh clone gets it applied once.
-set(NINJAM_JUCE_PATCHES
+set(ANTIPHON_JUCE_PATCHES
     "${CMAKE_CURRENT_SOURCE_DIR}/patches/juce-linux-plugin-keyboard-focus.patch")
 
 find_package(Git QUIET)
 if(GIT_FOUND)
-    foreach(juce_patch IN LISTS NINJAM_JUCE_PATCHES)
+    foreach(juce_patch IN LISTS ANTIPHON_JUCE_PATCHES)
         if(NOT EXISTS "${juce_patch}")
             continue()
         endif()

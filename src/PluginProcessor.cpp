@@ -2,7 +2,7 @@
 #include "ChannelMix.h"
 #include "PluginEditor.h"
 
-NinjamAudioProcessor::NinjamAudioProcessor()
+AntiphonAudioProcessor::AntiphonAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
     : AudioProcessor(
           BusesProperties()
@@ -20,25 +20,25 @@ NinjamAudioProcessor::NinjamAudioProcessor()
   if (!isStandaloneApp()) metronomeEnabled = false;
 }
 
-NinjamAudioProcessor::~NinjamAudioProcessor() {
+AntiphonAudioProcessor::~AntiphonAudioProcessor() {
   ninjamClient.removeListener(this);
 }
 
-const juce::String NinjamAudioProcessor::getName() const {
+const juce::String AntiphonAudioProcessor::getName() const {
   return JucePlugin_Name;
 }
 
-bool NinjamAudioProcessor::acceptsMidi() const { return false; }
-bool NinjamAudioProcessor::producesMidi() const { return false; }
-bool NinjamAudioProcessor::isMidiEffect() const { return false; }
-double NinjamAudioProcessor::getTailLengthSeconds() const { return 0.0; }
-int NinjamAudioProcessor::getNumPrograms() { return 1; }
-int NinjamAudioProcessor::getCurrentProgram() { return 0; }
-void NinjamAudioProcessor::setCurrentProgram(int) {}
-const juce::String NinjamAudioProcessor::getProgramName(int) { return {}; }
-void NinjamAudioProcessor::changeProgramName(int, const juce::String &) {}
+bool AntiphonAudioProcessor::acceptsMidi() const { return false; }
+bool AntiphonAudioProcessor::producesMidi() const { return false; }
+bool AntiphonAudioProcessor::isMidiEffect() const { return false; }
+double AntiphonAudioProcessor::getTailLengthSeconds() const { return 0.0; }
+int AntiphonAudioProcessor::getNumPrograms() { return 1; }
+int AntiphonAudioProcessor::getCurrentProgram() { return 0; }
+void AntiphonAudioProcessor::setCurrentProgram(int) {}
+const juce::String AntiphonAudioProcessor::getProgramName(int) { return {}; }
+void AntiphonAudioProcessor::changeProgramName(int, const juce::String &) {}
 
-int NinjamAudioProcessor::addLocalChannel() {
+int AntiphonAudioProcessor::addLocalChannel() {
   juce::ScopedLock sl(localChannelMutex);
   auto ch = std::make_shared<LocalChannel>();
   int ringSize = (int)getSampleRate() * 30;
@@ -50,20 +50,20 @@ int NinjamAudioProcessor::addLocalChannel() {
   return (int)localChannels.size() - 1;
 }
 
-void NinjamAudioProcessor::removeLastLocalChannel() {
+void AntiphonAudioProcessor::removeLastLocalChannel() {
   juce::ScopedLock sl(localChannelMutex);
   if (localChannels.size() <= 1) return;
   localChannels.back()->isValid.store(false);
   localChannels.pop_back();
 }
 
-int NinjamAudioProcessor::addInputBus() {
+int AntiphonAudioProcessor::addInputBus() {
   if (!addBus(true)) return -1;
   updateHostDisplay();
   return getBusCount(true) - 1;
 }
 
-void NinjamAudioProcessor::removeLastInputBus() {
+void AntiphonAudioProcessor::removeLastInputBus() {
   if (getBusCount(true) <= 1) return;
   int removedIdx = getBusCount(true) - 1;
   {
@@ -76,13 +76,13 @@ void NinjamAudioProcessor::removeLastInputBus() {
   updateHostDisplay();
 }
 
-int NinjamAudioProcessor::addOutputBus() {
+int AntiphonAudioProcessor::addOutputBus() {
   if (!addBus(false)) return -1;
   updateHostDisplay();
   return getBusCount(false) - 1;
 }
 
-void NinjamAudioProcessor::removeLastOutputBus() {
+void AntiphonAudioProcessor::removeLastOutputBus() {
   if (getBusCount(false) <= 1) return;
   int removedIdx = getBusCount(false) - 1;
   auto users = ninjamClient.getRemoteUsers();
@@ -94,13 +94,13 @@ void NinjamAudioProcessor::removeLastOutputBus() {
   updateHostDisplay();
 }
 
-void NinjamAudioProcessor::setRemoteUserOutputBus(const juce::String &username,
+void AntiphonAudioProcessor::setRemoteUserOutputBus(const juce::String &username,
                                                   int channelIndex, int busIdx) {
   ninjamClient.setRemoteUserOutputBus(username, channelIndex, busIdx);
   savedRemoteRoutings[{username, channelIndex}] = busIdx;
 }
 
-void NinjamAudioProcessor::onUserInfoChange() {
+void AntiphonAudioProcessor::onUserInfoChange() {
   auto users = ninjamClient.getRemoteUsers();
   for (auto &[uname, user] : users) {
     for (auto &[chIdx, ch] : user.channels) {
@@ -111,7 +111,7 @@ void NinjamAudioProcessor::onUserInfoChange() {
   }
 }
 
-void NinjamAudioProcessor::prepareToPlay(double sampleRate,
+void AntiphonAudioProcessor::prepareToPlay(double sampleRate,
                                          int samplesPerBlock) {
   juce::ScopedLock sl(localChannelMutex);
   int ringSize = (int)sampleRate * 30;
@@ -140,7 +140,7 @@ void NinjamAudioProcessor::prepareToPlay(double sampleRate,
   clockEvents.reserve((size_t)juce::jmax(64, internalBpi.load() * 2 + 4));
 }
 
-void NinjamAudioProcessor::injectTestTone(int numSamples) {
+void AntiphonAudioProcessor::injectTestTone(int numSamples) {
   const double sr = getSampleRate();
   const int intervalLen = intervalClock.samplesPerInterval();
   if (sr <= 0.0 || intervalLen <= 0 || inputSnapshot.getNumSamples() < numSamples)
@@ -161,7 +161,7 @@ void NinjamAudioProcessor::injectTestTone(int numSamples) {
   testToneSample += numSamples;
 }
 
-void NinjamAudioProcessor::captureInputRange(int startSample, int count) {
+void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
   if (count <= 0)
     return;
 
@@ -211,7 +211,7 @@ void NinjamAudioProcessor::captureInputRange(int startSample, int count) {
   }
 }
 
-void NinjamAudioProcessor::renderMetronome(juce::AudioBuffer<float> &buffer,
+void AntiphonAudioProcessor::renderMetronome(juce::AudioBuffer<float> &buffer,
                                            int startSample, int count,
                                            float gain,
                                            int totalNumOutputChannels) {
@@ -227,7 +227,7 @@ void NinjamAudioProcessor::renderMetronome(juce::AudioBuffer<float> &buffer,
     buffer.addFrom(ch, startSample, metronomeScratch, 0, 0, count);
 }
 
-void NinjamAudioProcessor::releaseResources() {
+void AntiphonAudioProcessor::releaseResources() {
   juce::ScopedLock sl(localChannelMutex);
   for (auto &lc : localChannels) {
     lc->fifo.reset();
@@ -236,7 +236,7 @@ void NinjamAudioProcessor::releaseResources() {
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool NinjamAudioProcessor::isBusesLayoutSupported(
+bool AntiphonAudioProcessor::isBusesLayoutSupported(
     const BusesLayout &layouts) const {
   if (layouts.outputBuses.isEmpty()) return false;
   for (auto &ch : layouts.outputBuses)
@@ -249,7 +249,7 @@ bool NinjamAudioProcessor::isBusesLayoutSupported(
 }
 #endif
 
-void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
+void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                                         juce::MidiBuffer &) {
   juce::ScopedNoDenormals noDenormals;
   auto totalNumOutputChannels = std::min(getTotalNumOutputChannels(), buffer.getNumChannels());
@@ -480,10 +480,10 @@ void NinjamAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
 }
 
-bool NinjamAudioProcessor::hasEditor() const { return true; }
+bool AntiphonAudioProcessor::hasEditor() const { return true; }
 
-juce::AudioProcessorEditor *NinjamAudioProcessor::createEditor() {
-  return new NinjamAudioProcessorEditor(*this);
+juce::AudioProcessorEditor *AntiphonAudioProcessor::createEditor() {
+  return new AntiphonEditor(*this);
 }
 
 // XOR-based obfuscation so passwords aren't plain text in DAW project state.
@@ -515,7 +515,7 @@ static juce::String deobfuscate(const juce::String &b64) {
     return juce::String::fromUTF8(buf, len);
 }
 
-void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
+void AntiphonAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
     juce::XmlElement xml("NinjamState");
     xml.setAttribute("metronome",     metronomeEnabled.load());
     xml.setAttribute("metronomeVol",  (double)metronomeVolume.load());
@@ -551,7 +551,7 @@ void NinjamAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
     copyXmlToBinary(xml, destData);
 }
 
-void NinjamAudioProcessor::setStateInformation(const void *data,
+void AntiphonAudioProcessor::setStateInformation(const void *data,
                                                int sizeInBytes) {
     auto xml = getXmlFromBinary(data, sizeInBytes);
     if (!xml || !xml->hasTagName("NinjamState")) return;
@@ -595,7 +595,7 @@ void NinjamAudioProcessor::setStateInformation(const void *data,
     }
 }
 
-void NinjamAudioProcessor::sendChannelInfoToServer() {
+void AntiphonAudioProcessor::sendChannelInfoToServer() {
   juce::StringArray names;
   {
     juce::ScopedLock sl(localChannelMutex);
@@ -605,14 +605,14 @@ void NinjamAudioProcessor::sendChannelInfoToServer() {
   ninjamClient.updateChannelInfo(names);
 }
 
-void NinjamAudioProcessor::onConnected() {
+void AntiphonAudioProcessor::onConnected() {
   connectionStatus = "Connected";
   hasConnectedSinceLastAttempt = true;
   lastConnectFailed.store(false);
   sendChannelInfoToServer();
 }
 
-void NinjamAudioProcessor::onDisconnected(const juce::String &error) {
+void AntiphonAudioProcessor::onDisconnected(const juce::String &error) {
   if (!hasConnectedSinceLastAttempt)
     lastConnectFailed.store(true);
   hasConnectedSinceLastAttempt = false;
@@ -620,11 +620,11 @@ void NinjamAudioProcessor::onDisconnected(const juce::String &error) {
   phaseResetPending.store(true);
 }
 
-void NinjamAudioProcessor::onServerConfig(int bpm, int bpi) {
+void AntiphonAudioProcessor::onServerConfig(int bpm, int bpi) {
   internalBpm.store(bpm);
   internalBpi.store(bpi);
 }
 
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {
-  return new NinjamAudioProcessor();
+  return new AntiphonAudioProcessor();
 }

@@ -6,8 +6,8 @@
 
 class LocalChannelStrip : public juce::Component {
 public:
-  LocalChannelStrip(NinjamAudioProcessor &processor,
-                    std::shared_ptr<NinjamAudioProcessor::LocalChannel> channel);
+  LocalChannelStrip(AntiphonAudioProcessor &processor,
+                    std::shared_ptr<AntiphonAudioProcessor::LocalChannel> channel);
   ~LocalChannelStrip() override;
 
   void paint(juce::Graphics &) override;
@@ -18,8 +18,8 @@ public:
   void updateInputBusCount(int numBuses);
 
 private:
-  NinjamAudioProcessor &audioProcessor;
-  std::shared_ptr<NinjamAudioProcessor::LocalChannel> channel;
+  AntiphonAudioProcessor &audioProcessor;
+  std::shared_ptr<AntiphonAudioProcessor::LocalChannel> channel;
 
   float decayedPeakL = 0.0f;
   float decayedPeakR = 0.0f;

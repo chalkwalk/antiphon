@@ -1,6 +1,6 @@
 #include "RemoteUserStrip.h"
 
-RemoteUserStrip::RemoteUserStrip(NinjamAudioProcessor &p, const juce::String &u)
+RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p, const juce::String &u)
     : audioProcessor(p), username(u) {
 
   usernameLabel.setText(username, juce::dontSendNotification);

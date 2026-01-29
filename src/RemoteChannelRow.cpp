@@ -1,9 +1,9 @@
 #include "GainUtils.h"
-#include "NinjamLookAndFeel.h"
+#include "AntiphonLookAndFeel.h"
 #include "RemoteChannelRow.h"
 #include "PluginProcessor.h"
 
-RemoteChannelRow::RemoteChannelRow(NinjamAudioProcessor &p,
+RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
                                    juce::String uname, int chIdx)
     : audioProcessor(p), username(uname), channelIndex(chIdx) {
 

@@ -1,4 +1,4 @@
-# CLAUDE.md — Ninjam JUCE Plugin
+# CLAUDE.md -- Antiphon (Ninjam JUCE Plugin)
 
 This is the canonical reference for the project. `GEMINI.md` is the original design doc and is kept for historical context; this file supersedes it as the working map.
 
@@ -26,7 +26,7 @@ Design principles: clean modern C++ against JUCE — no NJClient wrapper, no Qt,
 - Server browser popup: live room list fetched from ninbot.com, private server entry, username/password/anonymous fields
 - State persistence: `getStateInformation`/`setStateInformation` saves host, credentials, channel layout (including `inputBusIndex` per channel), mixer positions, metronome state + volume, chat panel visibility, remote output bus routing
 - Chat: receive + display, send MSG/ADMIN/PRIVMSG, voting commands; collapsible via Chat toggle in toolbar; visibility persisted; ghosted (disabled, dimmed) when disconnected; cleared on next successful connect
-- UI: three-column elastic layout (local left | remote centre | chat right); 40/60 proportional split with 200 px floor; local left-flush, remote right-flush; vertical channel strips with rotary pan knob, vertical fader, flanking VU bars, input/output bus dropdowns; dark theme via `NinjamLookAndFeel`; tooltips on all controls; TX/Recv buttons green/red coded; phase progress bar (pauses + dims when disconnected); header background tint reflects connection state (navy/grey/amber); toolbar buttons enable/disable by connection state and bus count; debug Tx/Rx file dumps
+- UI: three-column elastic layout (local left | remote centre | chat right); 40/60 proportional split with 200 px floor; local left-flush, remote right-flush; vertical channel strips with rotary pan knob, vertical fader, flanking VU bars, input/output bus dropdowns; dark theme via `AntiphonLookAndFeel`; tooltips on all controls; TX/Recv buttons green/red coded; phase progress bar (pauses + dims when disconnected); header background tint reflects connection state (navy/grey/amber); toolbar buttons enable/disable by connection state and bus count; debug Tx/Rx file dumps
 
 What remains is captured in the work table below.
 
@@ -60,7 +60,7 @@ the submodule, and reconfigure.
 project-level flag meaning "Standalone is one of the `FORMATS`", and it is 1 in
 the shared-code target that the VST3 and CLAP link against — so it is true in
 *every* format. It once compiled the whole DAW sync flow out of the plugin.
-Use `NinjamAudioProcessor::isStandaloneApp()` (runtime `wrapperType`). The
+Use `AntiphonAudioProcessor::isStandaloneApp()` (runtime `wrapperType`). The
 `no-build-standalone-macro` ctest fails if the macro comes back.
 
 **Text entry belongs in a `juce::DialogWindow`**, not a child overlay, even with
@@ -69,8 +69,8 @@ focus normally. `ServerBrowserDialog` is launched via
 `DialogWindow::LaunchOptions::launchAsync()`.
 
 No generator flag — use whatever CMake picks (usually Ninja or Make). Targets:
-- `Ninjam_Standalone` — easiest for iteration
-- `Ninjam_VST3` — the VST3; CLAP is built from the same target via `clap_juce_extensions_plugin`
+- `Antiphon_Standalone` -- easiest for iteration
+- `Antiphon_VST3` -- the VST3; CLAP is built from the same target via `clap_juce_extensions_plugin`
 
 Automated tests:
 
@@ -227,14 +227,14 @@ All our code lives in `src/` — ~2 k lines, fits in your head.
 
 | File | Role |
 |---|---|
-| `PluginProcessor.{h,cpp}` | `juce::AudioProcessor`. Owns `NinjamClient`. Runs host sync, internal metronome (with volume), interval boundary detection (local metronome is sole authority -- `intervalBeginSignal` is drained but never acted on), per-channel local capture in `processBlock`. Phase advance gated on `isConnected()`; `phaseResetPending` atomic flag triggers audio-thread reset on disconnect. Tracks `lastConnectFailed` for header tint. Manages `vector<shared_ptr<LocalChannel>>` with `addLocalChannel`/`removeLastLocalChannel` and `addInputBus`/`removeLastInputBus`/`addOutputBus`/`removeLastOutputBus`. `LocalChannel::inputBusIndex` explicit field; `savedRemoteRoutings` map persists output bus assignments. `canAddBus`/`canRemoveBus` enabled for both. State persistence. |
+| `PluginProcessor.{h,cpp}` | `AntiphonAudioProcessor`, a `juce::AudioProcessor`. Owns `NinjamClient`. Runs host sync, internal metronome (with volume), interval boundary detection (local metronome is sole authority -- `intervalBeginSignal` is drained but never acted on), per-channel local capture in `processBlock`. Phase advance gated on `isConnected()`; `phaseResetPending` atomic flag triggers audio-thread reset on disconnect. Tracks `lastConnectFailed` for header tint. Manages `vector<shared_ptr<LocalChannel>>` with `addLocalChannel`/`removeLastLocalChannel` and `addInputBus`/`removeLastInputBus`/`addOutputBus`/`removeLastOutputBus`. `LocalChannel::inputBusIndex` explicit field; `savedRemoteRoutings` map persists output bus assignments. `canAddBus`/`canRemoveBus` enabled for both. State persistence. |
 | `PluginEditor.{h,cpp}` | Main UI. Three-column elastic layout: local strips (left, ~40% with 200 px floor), remote cards (centre, ~60%), chat (right, 320 px, collapsible). `relayoutChannelArea()` computes the 4-case proportional split and positions strips; called from `resized()` and 30 Hz `timerCallback`. Local strips left-flush, remote strips right-flush within their viewport. `updateToolbarStates()` enables/disables toolbar buttons by connection state and bus count (called every tick). Bottom toolbar: Connect/Disconnect, compact groups `Channel:[+]` `Input bus:[+][-]` `Output bus:[+][-]`, Metronome toggle + volume slider, SaveTx/SaveRx, Chat. Status bar + phase progress bar at top; header background tints navy/grey/amber by connection state; phase bar teal when connected, grey when not. Chat panel ghosted (disabled, dimmed background) when disconnected; cleared on `onConnected`. `TooltipWindow` (700 ms). |
 | `LocalChannelStrip.{h,cpp}` | Vertical 90 px-wide strip per local input channel. Top-to-bottom: name editor (22 px), pan rotary (44 px), L/R VU bars flanking a vertical fader (flex), M+S row (22 px), TX button (22 px), input bus dropdown (22 px), Mono+Remove row (22 px). `updateInputBusCount(n)` repopulates dropdown. Reads peaks from `LocalChannel` atomics. |
 | `ServerBrowserDialog.{h,cpp}` | Popup dialog. Fetches live room list from ninbot.com. Table of servers (BPM, BPI, players). Host/port/username/password/anonymous fields. |
 | `NinjamClient.{h,cpp}` | Networking + protocol + encode/decode. `juce::Thread` subclass. Socket read loop, message dispatch, remote-user state, queue-based interval playback (`ChannelStream`/`DecodedInterval`/`PendingDownload`), Tx/Rx file dumps. `ChannelStream` carries crossfade fields (`fadeOut`/`fadeOutPos`/`fadeTotal`/`fadeRemaining`) for 256-sample crossfade at swap boundaries. `RemoteUserChannel` carries `outputBusIndex`; `getDecodedAudio` routes each stream to `busIdx*2`/`busIdx*2+1` in the output buffer. Diagnostic atomics (`diagSwapsByFallback`, `diagUnderrunBlocks`, etc.) log playback health via `dumpDiagnostics()`. ~half the complexity. |
 | `RemoteUserStrip.{h,cpp}` | Card per remote user: 22 px username header, then channel rows arranged horizontally. `getPreferredWidth()` = 8 + n*90 + (n-1)*4. `updateOutputBusCount(n)` fans out to all child rows. Height is set by the remote viewport. |
 | `RemoteChannelRow.{h,cpp}` | Vertical 90 px-wide strip per remote channel. Top-to-bottom: channel name label (22 px), pan rotary (44 px), single VU bar + vertical fader (flex), M+S row (22 px), output bus dropdown (22 px), R (Recv) button (22 px). Green/red colour coding on R; tooltips on all controls. `updateOutputBusCount(n)` repopulates dropdown. |
-| `NinjamLookAndFeel.{h,cpp}` | `LookAndFeel_V4` subclass. Dark blue theme, teal accent (#00b4d8). Custom rotary, button, toggle, text editor outline. Disabled buttons get alpha * 0.5 automatically. |
+| `AntiphonLookAndFeel.{h,cpp}` | `LookAndFeel_V4` subclass. Dark blue theme, teal accent (#00b4d8). Custom rotary, button, toggle, text editor outline. Disabled buttons get alpha * 0.5 automatically. |
 | `Sha1.{h,cpp}` | Minimal first-party SHA1 (FIPS 180-1). Interface: constructor + `add(const void*, int)` + `result(void*)`. Used only for the double-hash challenge-response in `CLIENT_AUTH_USER`. Replaced WDL `sha1.{h,cpp}`. |
 | `VorbisCodec.{h,cpp}` | First-party Ogg/Vorbis encode/decode wrapping direct libogg/libvorbis APIs. `VorbisDecoder`: `decode(data,len)`, `available()`, `pcm()`, `skip(n)`, `sampleRate()`, `numChannels()`. `VorbisEncoder`: constructed with `(sampleRate, numChannels, bitrateKbps, serialNumber)`, `encode(float*,n)`, `available()`, `data()`, `advance()`. Both use pimpl to keep libogg/libvorbis types out of headers. Replaced WDL `vorbisencdec.h`. |
 | `NinjamProtocol.{h,cpp}` | Pure wire format: framing, message parsing, message building, `computeAuthHash`. No sockets, no threads, no state. All parsing goes through a bounds-checked `Reader` whose accessors fail rather than read past the payload -- `NinjamClient` owns dispatch only. Ninjam is little-endian throughout. |

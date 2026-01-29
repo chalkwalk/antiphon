@@ -2,19 +2,19 @@
 
 #include "LocalChannelStrip.h"
 #include "NinjamClient.h"
-#include "NinjamLookAndFeel.h"
+#include "AntiphonLookAndFeel.h"
 #include "PluginProcessor.h"
 #include "RemoteUserStrip.h"
 #include <JuceHeader.h>
 
 class ServerBrowserDialog;
 
-class NinjamAudioProcessorEditor : public juce::AudioProcessorEditor,
+class AntiphonEditor : public juce::AudioProcessorEditor,
                                    public juce::Timer,
                                    public NinjamClientListener {
 public:
-  NinjamAudioProcessorEditor(NinjamAudioProcessor &);
-  ~NinjamAudioProcessorEditor() override;
+  AntiphonEditor(AntiphonAudioProcessor &);
+  ~AntiphonEditor() override;
 
   void paint(juce::Graphics &) override;
   void resized() override;
@@ -28,8 +28,8 @@ public:
                      const juce::String &text) override;
 
 private:
-  NinjamAudioProcessor &audioProcessor;
-  NinjamLookAndFeel customLookAndFeel;
+  AntiphonAudioProcessor &audioProcessor;
+  AntiphonLookAndFeel customLookAndFeel;
   juce::TooltipWindow tooltipWindow{this, 700};
   int diagTickCounter = 0;
 
@@ -86,5 +86,5 @@ private:
   juce::Component remoteUsersContainer;
   juce::OwnedArray<RemoteUserStrip> remoteUserStrips;
 
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamAudioProcessorEditor)
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AntiphonEditor)
 };

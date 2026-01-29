@@ -54,9 +54,9 @@ inline void drawDbScale(juce::Graphics &g, const juce::Slider &fader,
   }
 }
 
-class NinjamLookAndFeel : public juce::LookAndFeel_V4 {
+class AntiphonLookAndFeel : public juce::LookAndFeel_V4 {
 public:
-  NinjamLookAndFeel();
+  AntiphonLookAndFeel();
 
   void drawRotarySlider(juce::Graphics &g, int x, int y, int width, int height,
                         float sliderPos, const float rotaryStartAngle,

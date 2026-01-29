@@ -1,4 +1,4 @@
-#include "NinjamLookAndFeel.h"
+#include "AntiphonLookAndFeel.h"
 
 #include <AntiphonFonts.h>
 
@@ -24,7 +24,7 @@ juce::Typeface::Ptr interBold() {
 } // namespace
 
 juce::Typeface::Ptr
-NinjamLookAndFeel::getTypefaceForFont(const juce::Font &f) {
+AntiphonLookAndFeel::getTypefaceForFont(const juce::Font &f) {
   // Substitute only for the unnamed default sans, so that a future request for
   // a monospace face gets one instead of Inter.
   if (f.getTypefaceName() == juce::Font::getDefaultSansSerifFontName())
@@ -39,13 +39,13 @@ void installProductLookAndFeel() {
   // every editor, because JUCE reads the default-look pointer long after a
   // plugin window closes. Destruction order is safe either way -- Desktop holds
   // a WeakReference, so the pointer nulls rather than dangles.
-  static NinjamLookAndFeel productLnf;
+  static AntiphonLookAndFeel productLnf;
 
   if (&juce::LookAndFeel::getDefaultLookAndFeel() != &productLnf)
     juce::LookAndFeel::setDefaultLookAndFeel(&productLnf);
 }
 
-NinjamLookAndFeel::NinjamLookAndFeel() {
+AntiphonLookAndFeel::AntiphonLookAndFeel() {
   setColour(juce::ResizableWindow::backgroundColourId,
             juce::Colour(0xff1a1a2e)); // Dark background
   setColour(juce::TextButton::buttonColourId,
@@ -67,7 +67,7 @@ NinjamLookAndFeel::NinjamLookAndFeel() {
   setColour(juce::Label::textColourId, juce::Colour(0xffe0e0e0));
 }
 
-void NinjamLookAndFeel::drawRotarySlider(juce::Graphics &g, int x, int y,
+void AntiphonLookAndFeel::drawRotarySlider(juce::Graphics &g, int x, int y,
                                          int width, int height, float sliderPos,
                                          const float rotaryStartAngle,
                                          const float rotaryEndAngle,
@@ -97,7 +97,7 @@ void NinjamLookAndFeel::drawRotarySlider(juce::Graphics &g, int x, int y,
   g.fillPath(p);
 }
 
-void NinjamLookAndFeel::drawButtonBackground(
+void AntiphonLookAndFeel::drawButtonBackground(
     juce::Graphics &g, juce::Button &button,
     const juce::Colour &backgroundColour, bool shouldDrawButtonAsHighlighted,
     bool shouldDrawButtonAsDown) {
@@ -117,7 +117,7 @@ void NinjamLookAndFeel::drawButtonBackground(
   g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
 }
 
-void NinjamLookAndFeel::drawToggleButton(juce::Graphics &g,
+void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
                                          juce::ToggleButton &button,
                                          bool shouldDrawButtonAsHighlighted,
                                          bool shouldDrawButtonAsDown) {
@@ -168,7 +168,7 @@ void NinjamLookAndFeel::drawToggleButton(juce::Graphics &g,
   }
 }
 
-void NinjamLookAndFeel::drawTextEditorOutline(juce::Graphics &g, int width,
+void AntiphonLookAndFeel::drawTextEditorOutline(juce::Graphics &g, int width,
                                               int height,
                                               juce::TextEditor &textEditor) {
   g.setColour(textEditor.findColour(juce::TextEditor::outlineColourId));
