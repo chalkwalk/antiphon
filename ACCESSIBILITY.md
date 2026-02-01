@@ -1,0 +1,109 @@
+# Accessibility in Antiphon
+
+Accessibility is a goal of this project, not a feature of it. Antiphon is
+deliberately narrow -- connect, set levels, transmit, chat, stay in time -- and
+that makes it a realistic candidate for being genuinely usable with a screen
+reader rather than nominally compatible with one.
+
+## Platform support, honestly
+
+JUCE implements accessibility on some platforms and not others. This is not
+something annotation can work around.
+
+| Platform | Screen reader | Status |
+|---|---|---|
+| macOS | VoiceOver | **Works.** JUCE has a native backend. |
+| Windows | NVDA, JAWS, Narrator | **Works.** JUCE has a UIA backend. |
+| Linux | Orca | **Does nothing.** JUCE has no AT-SPI backend. |
+
+On Linux, `JUCE_NATIVE_ACCESSIBILITY_INCLUDED` is never defined and
+`AccessibilityHandler::AccessibilityNativeImpl` is an empty stub
+(`JUCE/modules/juce_gui_basics/native/accessibility/juce_Accessibility.cpp`).
+Every `setTitle`, role and announcement in this codebase compiles and is
+discarded; Orca sees an opaque window. We build the annotations anyway, because
+the work is identical on every platform and effective on two of the three.
+
+A Linux self-voicing mode -- Antiphon speaking through `speech-dispatcher`
+itself, rather than through an accessibility bridge -- is the realistic route if
+Linux support is ever needed. It is not planned.
+
+## What is annotated
+
+- Every control that takes keyboard focus has a **name** and a **description**.
+  Single-glyph buttons are the ones that mattered most: `M`, `S`, `TX`, `R`, `+`
+  and `-` previously announced as those literal characters.
+- **Faders and pans speak their values with units** -- "-12.0 dB", "left 20",
+  "centre" -- rather than a bare number.
+- **Channel strips and remote players are focus containers** with their own
+  names, so a reader navigates player by player and announces "Instrument,
+  Mute" instead of presenting forty flat controls whose names repeat.
+- **The header is a `StatusReadout` component.** Connection state, tempo,
+  interval length and sync state are painted as graphics and would otherwise not
+  exist for a reader. It is the first thing keyboard focus lands on, because
+  "where am I and is it working" is the first question.
+
+## Announcements
+
+Discrete events are spoken: connecting and disconnecting, sync state changes,
+server tempo and BPI changes, votes, and players joining or leaving.
+
+Continuous values are deliberately **not** spoken. Meter levels and interval
+position change tens of times a second; announcing them would interrupt the
+reader constantly and make the app less usable, not more. They are available on
+demand by focusing the control.
+
+Verbosity has three settings -- **Off**, **Important only** (the default) and
+**All**. Chat traffic is only spoken at All. Repeated identical messages are
+suppressed, and a minimum gap is enforced so a burst of six joins does not
+become six interruptions.
+
+## Keyboard
+
+Everything is reachable by Tab and operable from the keyboard. Tab order is:
+session status, local channels, remote players, chat, toolbar.
+
+A few shortcuts exist for things worth doing quickly mid-performance. They use
+`Ctrl+Alt` to stay clear of what a DAW claims, and none of them is the only
+route to its action -- each control can also be tabbed to and pressed.
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Alt+C` | Focus the chat message box |
+| `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
+| `Ctrl+Alt+A` | Write an accessibility audit report to the desktop |
+
+## The audit
+
+Nobody working on this can run a screen reader against every build, and on Linux
+a reader-based check would pass vacuously while the annotations rotted. So the
+coverage is checked mechanically instead.
+
+`AccessibilityAudit` walks the component tree and reports controls that a reader
+would announce as nothing, or as the same thing as their neighbour:
+
+- **MISSING NAME** -- unnamed, or named something useless when spoken alone
+  (a bare `M` or `+`).
+- **DUPLICATE NAME** -- two controls in the same container that cannot be told
+  apart. The same name in *different* containers is fine: every strip has a
+  Mute, and the strip is the context.
+- **NO DESCRIPTION** -- reachable and named, but nothing explains what it does.
+
+`Ctrl+Alt+A` writes a report to the desktop. The rules are unit-tested headlessly
+(`test/AccessibilityAuditTests.cpp`) against a synthetic tree, so they are
+verified even though the real UI cannot be compiled into the test target.
+
+**What the audit does not tell you** is whether the result is pleasant to use.
+It cannot judge whether a description is helpful, whether the tab order feels
+sane, or whether announcements land at useful moments. That needs a real screen
+reader user, and no claim is made here that it has been verified that way.
+
+## Known gaps
+
+- Not verified with an actual screen reader by the authors.
+- The standalone's audio-device picker is JUCE's stock
+  `AudioDeviceSelectorComponent` and has not been assessed.
+- VU meters expose a value but there is no way to hear levels continuously
+  without a reader announcing them constantly. A periodic "level check" gesture
+  may be worth adding.
+- Chat history is a read-only text editor. It is navigable, but there is no
+  per-message structure a reader can jump between.

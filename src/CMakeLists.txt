@@ -39,6 +39,7 @@ target_sources(Antiphon
         RemoteChannelRow.cpp
         LocalChannelStrip.cpp
         AntiphonLookAndFeel.cpp
+        AccessibilityAudit.cpp
         ServerBrowserDialog.cpp
         Sha1.cpp
         VorbisCodec.cpp

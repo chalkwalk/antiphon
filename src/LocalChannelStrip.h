@@ -16,6 +16,8 @@ public:
   void updatePeaks();
   void setRemovable(bool removable);
   void updateInputBusCount(int numBuses);
+  // Keeps the strip's spoken identity in step with its editable name.
+  void refreshAccessibleName();
 
 private:
   AntiphonAudioProcessor &audioProcessor;

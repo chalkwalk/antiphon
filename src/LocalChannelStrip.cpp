@@ -7,17 +7,30 @@ LocalChannelStrip::LocalChannelStrip(
     std::shared_ptr<AntiphonAudioProcessor::LocalChannel> ch)
     : audioProcessor(p), channel(std::move(ch)) {
 
+  // The strip is a focus container, so a reader navigates strip by strip and
+  // announces "Instrument, Mute" rather than presenting forty flat controls
+  // whose names repeat once per channel.
+  setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
+  refreshAccessibleName();
+
+  nameEditor.setTitle("Channel name");
+  nameEditor.setDescription(
+      "The name other players see for this channel. Sent to the server.");
   nameEditor.setText(channel->name, false);
   nameEditor.setFont(juce::FontOptions{}.withHeight(13.0f));
   nameEditor.setMultiLine(false);
   nameEditor.setReturnKeyStartsNewLine(false);
   nameEditor.onTextChange = [this]() {
     channel->name = nameEditor.getText();
+    refreshAccessibleName();
     audioProcessor.sendChannelInfoToServer();
   };
   addAndMakeVisible(nameEditor);
 
   monoButton.setButtonText("Mono");
+  monoButton.setTitle("Mono");
+  monoButton.setDescription(
+      "Sum the stereo input to mono before monitoring and transmitting");
   monoButton.setTooltip("Sum stereo input to mono before encoding and monitoring");
   monoButton.setToggleState(channel->isMono.load(), juce::dontSendNotification);
   monoButton.onClick = [this]() {
@@ -31,6 +44,16 @@ LocalChannelStrip::LocalChannelStrip(
                         GainUtils::kStepDb);
   volumeSlider.setValue(GainUtils::gainToDb(channel->volume.load()),
                         juce::dontSendNotification);
+  volumeSlider.setTitle("Volume");
+  volumeSlider.setDescription(
+      "Channel volume in decibels. Applies to both your monitor mix and what "
+      "is transmitted.");
+  // Spoken as "-12.0 dB" rather than a bare number: a slider that announces
+  // "-12" leaves the unit, and therefore the meaning, to guesswork.
+  volumeSlider.textFromValueFunction = [](double v) {
+    return v <= GainUtils::kMinDb ? juce::String("minus infinity decibels")
+                                  : juce::String(v, 1) + " dB";
+  };
   volumeSlider.setTooltip(
       "Volume in dB: -inf to +6, unity at 0. Applies to both your monitor mix "
       "and what is transmitted.");
@@ -43,6 +66,13 @@ LocalChannelStrip::LocalChannelStrip(
   panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   panSlider.setRange(-1.0, 1.0, 0.01);
   panSlider.setValue((double)channel->pan.load(), juce::dontSendNotification);
+  panSlider.setTitle("Pan");
+  panSlider.setDescription("Stereo position of this channel");
+  panSlider.textFromValueFunction = [](double v) {
+    const int pct = (int)std::round(std::abs(v) * 100.0);
+    if (pct == 0) return juce::String("centre");
+    return juce::String(v < 0 ? "left " : "right ") + juce::String(pct);
+  };
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
     channel->pan.store((float)panSlider.getValue());
@@ -50,6 +80,10 @@ LocalChannelStrip::LocalChannelStrip(
   addAndMakeVisible(panSlider);
 
   muteButton.setButtonText("M");
+  muteButton.setTitle("Mute");
+  muteButton.setDescription(
+      "Silence this channel in your own monitor mix. Other players still hear "
+      "you.");
   muteButton.setTooltip("Mute: silence this channel in your monitor mix (others still hear you)");
   muteButton.setToggleState(channel->muted.load(), juce::dontSendNotification);
   muteButton.onClick = [this]() {
@@ -58,6 +92,10 @@ LocalChannelStrip::LocalChannelStrip(
   addAndMakeVisible(muteButton);
 
   soloButton.setButtonText("S");
+  soloButton.setTitle("Solo");
+  soloButton.setDescription(
+      "Hear only soloed channels in your own monitor mix. Does not affect what "
+      "other players hear.");
   soloButton.setTooltip("Solo: hear only soloed channels in your monitor mix");
   soloButton.setToggleState(channel->monitorSolo.load(), juce::dontSendNotification);
   soloButton.onClick = [this]() {
@@ -66,6 +104,9 @@ LocalChannelStrip::LocalChannelStrip(
   addAndMakeVisible(soloButton);
 
   xmitButton.setButtonText("TX");
+  xmitButton.setTitle("Transmit");
+  xmitButton.setDescription(
+      "Send this channel's audio to the other players");
   xmitButton.setTooltip("Transmit: send this channel's audio to the server");
   xmitButton.setColour(juce::TextButton::buttonOnColourId,  juce::Colour(0xff0d5c2a)); // green = live
   xmitButton.setColour(juce::TextButton::buttonColourId,    juce::Colour(0xff5a1515)); // red = silent
@@ -78,12 +119,17 @@ LocalChannelStrip::LocalChannelStrip(
   addAndMakeVisible(xmitButton);
 
   removeButton.setButtonText("X");
+  removeButton.setTitle("Remove channel");
+  removeButton.setDescription("Delete this channel strip");
+  removeButton.setTooltip("Remove this channel");
   removeButton.onClick = [this]() {
     audioProcessor.removeLastLocalChannel();
   };
   removeButton.setVisible(false);
   addAndMakeVisible(removeButton);
 
+  inputBusBox.setTitle("Input bus");
+  inputBusBox.setDescription("Which plugin input bus feeds this channel");
   inputBusBox.setTooltip("Input bus: which DAW input bus feeds this channel");
   inputBusBox.onChange = [this]() {
     int sel = inputBusBox.getSelectedId() - 1;
@@ -94,6 +140,13 @@ LocalChannelStrip::LocalChannelStrip(
 }
 
 LocalChannelStrip::~LocalChannelStrip() {}
+
+void LocalChannelStrip::refreshAccessibleName() {
+  const juce::String n =
+      channel->name.isNotEmpty() ? channel->name : juce::String("Local channel");
+  setTitle(n);
+  setDescription("Local input channel " + n);
+}
 
 void LocalChannelStrip::setRemovable(bool removable) {
   removeButton.setVisible(removable);

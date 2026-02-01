@@ -12,10 +12,15 @@ ServerBrowserDialog::ServerBrowserDialog()
   // both accept keyboard focus itself and swallow clicks, or focus and mouse
   // events leak through to the mixer behind it.
   setWantsKeyboardFocus(true);
+  setTitle("Connect to a Ninjam server");
+  setDescription("Choose a server, enter your nickname, and connect");
+  setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
   setInterceptsMouseClicks(true, true);
 
 
   closeButton.onClick = [this]() { dismiss(); };
+  closeButton.setTitle("Close");
+  closeButton.setDescription("Close this dialog");
   addAndMakeVisible(closeButton);
 
   table.getHeader().addColumn("Server",  1, 230);
@@ -27,30 +32,42 @@ ServerBrowserDialog::ServerBrowserDialog()
   table.setColour(juce::TableListBox::backgroundColourId,
                   juce::Colour(0xff111122));
   table.setOutlineThickness(1);
+  table.setTitle("Server list");
+  table.setDescription("Public servers, with their tempo and who is playing");
   addAndMakeVisible(table);
 
   hostInput.setText("ninbot.com");
   hostInput.setName("hostInput");
+  hostInput.setTitle("Server address");
+  hostInput.setDescription("Host name or IP address of the Ninjam server");
   addAndMakeVisible(hostInput);
 
   portInput.setText("2049");
   portInput.setInputRestrictions(5, "0123456789");
   portInput.setName("portInput");
+  portInput.setTitle("Port");
+  portInput.setDescription("Server port. 2049 is the usual one.");
   addAndMakeVisible(portInput);
 
   usernameInput.setTextToShowWhenEmpty("Nickname", juce::Colours::grey);
   usernameInput.setName("usernameInput");
+  usernameInput.setTitle("Nickname");
+  usernameInput.setDescription("The name other players will see");
   addAndMakeVisible(usernameInput);
 
   passwordInput.setPasswordCharacter('*');
   passwordInput.setTextToShowWhenEmpty("Password", juce::Colours::grey);
   passwordInput.setName("passwordInput");
+  passwordInput.setTitle("Password");
+  passwordInput.setDescription("Only needed when Anonymous is unticked");
   addChildComponent(passwordInput);
 
   anonymousToggle.setToggleState(true, juce::dontSendNotification);
   anonymousToggle.onClick = [this]() {
     passwordInput.setVisible(!anonymousToggle.getToggleState());
   };
+  anonymousToggle.setTitle("Anonymous");
+  anonymousToggle.setDescription("Connect without a password, where the server allows it");
   addAndMakeVisible(anonymousToggle);
 
   connectButton.onClick = [this]() {
@@ -71,13 +88,19 @@ ServerBrowserDialog::ServerBrowserDialog()
       onConnect(host, port, user, pass);
     dismiss();
   };
+  connectButton.setTitle("Connect");
+  connectButton.setDescription("Join the server with these details");
   addAndMakeVisible(connectButton);
 
   cancelButton.onClick = [this]() { dismiss(); };
+  cancelButton.setTitle("Cancel");
+  cancelButton.setDescription("Close without connecting");
   addAndMakeVisible(cancelButton);
 
   statusLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
   statusLabel.setText("Fetching server list...", juce::dontSendNotification);
+  statusLabel.setTitle("Browser status");
+  statusLabel.setDescription("Progress of the server list fetch");
   addAndMakeVisible(statusLabel);
 
   populateStaticList();

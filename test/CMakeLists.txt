@@ -26,6 +26,7 @@ target_sources(NinjamTests
         GainUtilsTests.cpp
         SyncStateTests.cpp
         ChannelMixTests.cpp
+        AccessibilityAuditTests.cpp
         FakeNinjamServer.cpp
         LoopbackTests.cpp
         AudioLoopbackTests.cpp
@@ -37,6 +38,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
         ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
+        ${CMAKE_SOURCE_DIR}/src/AccessibilityAudit.cpp
 )
 
 target_compile_definitions(NinjamTests

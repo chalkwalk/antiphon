@@ -3,6 +3,12 @@
 RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p, const juce::String &u)
     : audioProcessor(p), username(u) {
 
+  // A reader navigates player by player; the nickname is the useful identity,
+  // so the user@host form goes in the description rather than the name.
+  setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
+  setTitle(username.upToFirstOccurrenceOf("@", false, false));
+  setDescription("Remote player " + username);
+
   usernameLabel.setText(username, juce::dontSendNotification);
   usernameLabel.setFont(juce::FontOptions{}.withHeight(13.0f).withStyle("Bold"));
   addAndMakeVisible(usernameLabel);

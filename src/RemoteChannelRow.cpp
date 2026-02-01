@@ -19,6 +19,13 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   volumeSlider.setValue(
       GainUtils::gainToDb(NinjamClient::kDefaultRemoteChannelVolume),
       juce::dontSendNotification);
+  volumeSlider.textFromValueFunction = [](double v) {
+    return v <= GainUtils::kMinDb ? juce::String("minus infinity decibels")
+                                  : juce::String(v, 1) + " dB";
+  };
+  volumeSlider.setTitle("Volume");
+  volumeSlider.setDescription(
+      "Volume of this remote channel in your mix, in decibels");
   volumeSlider.setTooltip(
       "Volume in dB: -inf to +6, unity at 0. Remote channels default to "
       "-12 dB, matching the reference client.");
@@ -32,6 +39,14 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
   panSlider.setRange(-1.0, 1.0, 0.01);
   panSlider.setValue(0.0, juce::dontSendNotification);
+  panSlider.textFromValueFunction = [](double v) {
+    const int pct = (int)std::round(std::abs(v) * 100.0);
+    if (pct == 0) return juce::String("centre");
+    return juce::String(v < 0 ? "left " : "right ") + juce::String(pct);
+  };
+  panSlider.setTitle("Pan");
+  panSlider.setDescription(
+      "Stereo position of this remote channel in your mix");
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
     audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
@@ -39,6 +54,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   };
   addAndMakeVisible(panSlider);
 
+  muteButton.setTitle("Mute");
+  muteButton.setDescription(
+      "Silence this remote channel in your mix. Audio is still received.");
   muteButton.setTooltip("Mute: silence this player in your mix (audio still downloads)");
   muteButton.onClick = [this]() {
     audioProcessor.ninjamClient.setRemoteUserMute(username, channelIndex,
@@ -46,6 +64,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   };
   addAndMakeVisible(muteButton);
 
+  soloButton.setTitle("Solo");
+  soloButton.setDescription(
+      "Hear only soloed remote channels");
   soloButton.setTooltip("Solo: hear only soloed remote channels");
   soloButton.onClick = [this]() {
     audioProcessor.ninjamClient.setRemoteUserSolo(username, channelIndex,
@@ -53,6 +74,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   };
   addAndMakeVisible(soloButton);
 
+  recvButton.setTitle("Receive");
+  recvButton.setDescription(
+      "Ask the server to send this channel at all. Turning it off saves bandwidth, unlike Mute.");
   recvButton.setTooltip("Receive: download this player's audio from the server");
   recvButton.setColour(juce::TextButton::buttonOnColourId,  juce::Colour(0xff0d5c2a)); // green = receiving
   recvButton.setColour(juce::TextButton::buttonColourId,    juce::Colour(0xff5a1515)); // red = not receiving
@@ -65,6 +89,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   };
   addAndMakeVisible(recvButton);
 
+  outputBusBox.setTitle("Output bus");
+  outputBusBox.setDescription(
+      "Which plugin output bus this channel is routed to, for recording stems");
   outputBusBox.setTooltip("Output bus: which plugin output bus receives this channel");
   outputBusBox.onChange = [this]() {
     int sel = outputBusBox.getSelectedId() - 1;
@@ -77,6 +104,8 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
 
 void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
   channelNameLabel.setText(c.channelName, juce::dontSendNotification);
+  setTitle(c.channelName.isNotEmpty() ? c.channelName
+                                      : juce::String("Remote channel"));
   volumeSlider.setValue(GainUtils::gainToDb(c.volume),
                         juce::dontSendNotification);
   panSlider.setValue(c.pan, juce::dontSendNotification);

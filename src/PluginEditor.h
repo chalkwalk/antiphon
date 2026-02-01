@@ -3,6 +3,8 @@
 #include "LocalChannelStrip.h"
 #include "NinjamClient.h"
 #include "AntiphonLookAndFeel.h"
+#include "Announcer.h"
+#include "StatusReadout.h"
 #include "PluginProcessor.h"
 #include "RemoteUserStrip.h"
 #include <JuceHeader.h>
@@ -20,6 +22,7 @@ public:
   void resized() override;
   void timerCallback() override;
   void mouseExit(const juce::MouseEvent &) override;
+  bool keyPressed(const juce::KeyPress &) override;
 
   // NinjamClientListener
   void onConnected() override;
@@ -39,6 +42,14 @@ private:
   void relayoutChannelArea();
   void updateToolbarStates();
   void setChatConnectedState(bool connected);
+
+  // Speaks the header, which is otherwise only pixels. First in tab order.
+  StatusReadout statusReadout;
+  Announcer announcer;
+  void updateStatusReadout();
+  juce::String lastAnnouncedSyncState;
+  int lastAnnouncedBpm = 0, lastAnnouncedBpi = 0;
+  bool lastAnnouncedConnected = false;
 
   juce::TextButton browseButton;
   juce::TextButton disconnectButton;
