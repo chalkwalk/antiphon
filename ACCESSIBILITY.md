@@ -42,6 +42,36 @@ Linux support is ever needed. It is not planned.
   exist for a reader. It is the first thing keyboard focus lands on, because
   "where am I and is it working" is the first question.
 
+## Why connecting is a separate dialog
+
+A modal dialog is usually *better* for a screen reader than fields embedded in
+the main window, and that is why the server browser is one:
+
+- Focus is trapped inside it. Tab cycles the six fields that matter instead of
+  wandering into a mixer with forty controls.
+- It announces itself on open, with a role and a title, so the user knows a new
+  context has appeared and roughly what it wants.
+- It has a clear beginning and end, which matches the task: this is a discrete
+  thing you do once, not part of playing.
+
+Embedded connect fields would sit in the middle of a large surface with no
+boundary marking them out, and nothing to say whether they are currently
+relevant.
+
+Three things have to be true for that to hold, and all three are, but only the
+first came free:
+
+1. **Genuinely modal.** `DialogWindow::LaunchOptions::launchAsync()` calls
+   `enterModalState (true, nullptr, true)`, so input is blocked behind it and it
+   takes keyboard focus. A non-modal overlay would announce nothing and leak
+   focus to the mixer behind it.
+2. **Escape closes it** (`escapeKeyTriggersCloseButton`), so there is always a
+   way out that does not require finding a button.
+3. **Focus returns to where it came from.** JUCE does *not* do this -- there is
+   no focus restoration in `ModalComponentManager` -- so closing the dialog
+   would otherwise strand the user somewhere arbitrary. Antiphon records the
+   previously focused component and restores it.
+
 ## Announcements
 
 Discrete events are spoken: connecting and disconnecting, sync state changes,

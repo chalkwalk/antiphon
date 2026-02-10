@@ -62,6 +62,10 @@ private:
   // A desktop window has its own peer and takes focus normally.
   std::unique_ptr<ServerBrowserDialog> serverBrowser;
   juce::Component::SafePointer<juce::DialogWindow> serverBrowserWindow;
+  // JUCE does not return keyboard focus when a modal window closes, which
+  // leaves a screen reader user somewhere arbitrary after connecting. We put
+  // them back where they were.
+  juce::Component::SafePointer<juce::Component> focusBeforeDialog;
   void openServerBrowser();
   void closeServerBrowser();
 

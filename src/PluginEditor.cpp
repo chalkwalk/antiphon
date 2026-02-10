@@ -534,6 +534,7 @@ void AntiphonEditor::openServerBrowser() {
   };
   serverBrowser->onClose = [this]() { closeServerBrowser(); };
 
+  focusBeforeDialog = juce::Component::getCurrentlyFocusedComponent();
   serverBrowser->setSize(700, 460);
 
   juce::DialogWindow::LaunchOptions opts;
@@ -551,9 +552,21 @@ void AntiphonEditor::closeServerBrowser() {
   // user closes it from the title bar.
   if (auto *w = serverBrowserWindow.getComponent()) {
     serverBrowserWindow = nullptr;
+    w->exitModalState(0);
     delete w;
   }
   serverBrowser.reset();
+
+  // Put focus back where it came from, so closing the dialog does not strand a
+  // keyboard or screen reader user in an unrelated part of the window.
+  if (auto *previous = focusBeforeDialog.getComponent();
+      previous != nullptr && previous->isShowing() && previous->isEnabled())
+    previous->grabKeyboardFocus();
+  else if (browseButton.isShowing() && browseButton.isEnabled())
+    browseButton.grabKeyboardFocus();
+  else
+    statusReadout.grabKeyboardFocus();
+  focusBeforeDialog = nullptr;
 }
 
 void AntiphonEditor::mouseExit(const juce::MouseEvent &) {
