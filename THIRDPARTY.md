@@ -17,7 +17,7 @@ required -- but that constraint binds anyone who re-generates or subsets them.
 
 | Component | Path | Licence | Notes |
 |---|---|---|---|
-| **JUCE** | `JUCE/` (submodule) | AGPLv3 or commercial | Patched at configure time from `patches/`; see `CLAUDE.md`. |
+| **JUCE** | `JUCE/` (submodule) | AGPLv3 or commercial | Patched at configure time from `patches/`; see `AGENTS.md`. |
 | **libogg / libvorbis** | `modules/ogg`, `modules/vorbis` (submodules) | BSD-style (Xiph) | Ogg/Vorbis encode and decode. |
 | **clap-juce-extensions** | `modules/clap-juce-extensions` (submodule) | MIT | CLAP plugin format support. |
 | **WDL** | `utils/` | zlib-style (Cockos) | Remaining vendored headers (`heapbuf`, `queue`, `wdlstring`). `sha1` and `vorbisencdec` were replaced by first-party code and are no longer used. |

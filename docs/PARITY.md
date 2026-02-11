@@ -118,7 +118,7 @@ MSG daniel@...     Yes, I can
 ```
 
 The reply was typed into the plugin's **inline** chat field, which is the case
-the JUCE keyboard-focus patch exists for (see `CLAUDE.md`).
+the JUCE keyboard-focus patch exists for (see `AGENTS.md`).
 
 ### Audio, earlier phases
 

@@ -18,7 +18,9 @@ Or run the binary directly, optionally filtering by test-suite name:
 ```
 
 Suites: `Sha1`, `VorbisCodec`, `NinjamProtocol`, `IntervalClock`,
-`MetronomeVoice`, `LoopbackProtocol`, `AudioLoopback`, `RealServer`.
+`MetronomeVoice`, `SyncState`, `ChannelMix`, `GainUtils`,
+`AccessibilityAudit`, `ReferenceFixtures`, `LoopbackProtocol`,
+`AudioLoopback`, `RealServer`.
 
 ---
 
@@ -33,6 +35,11 @@ Pure logic, no I/O.
 | `NinjamProtocol` | Message layouts byte for byte; little-endian fields; auth hash against goldens from an independent SHA1; **every parser fed every truncation of every message**. |
 | `IntervalClock` | Interval length constant over 200 intervals; event positions independent of block size; exactly `bpi` beats per interval; no drift over an hour; tempo changes take effect at a boundary. |
 | `MetronomeVoice` | Click pitch, and that it is independent of tempo and sample rate. |
+| `SyncState` | The five-state DAW sync machine: that several transitions can land in one call, that a stop/start never re-phases without a request, that standalone runs straight to `Running`. |
+| `ChannelMix` | Mono sums and halves rather than discarding a side; pan law; that mute and solo never reach the transmitted signal. |
+| `GainUtils` | dB<->linear round-trip, the -inf floor, meter release as a rate in dB/s independent of block size. |
+| `AccessibilityAudit` | The MISSING NAME / DUPLICATE NAME / NO DESCRIPTION rules, against a synthetic tree -- the real UI cannot be compiled into this target. |
+| `ReferenceFixtures` | Our parsers and builders against wire captures taken from the reference client. |
 
 ### Running the parser tests under a sanitiser
 
@@ -189,6 +196,10 @@ It uploads exact interval-sized buffers straight to `processCapturedAudio`, so
 it proves the encode, framing and upload path and that the server accepts and
 stores our intervals. It bypasses the capture ring buffer, so it does **not**
 measure the alignment of the audio-thread capture. That is what the Test Tone
-toggle plus a real Standalone run measures -- the capture handoff works in whole
-blocks, so a non-zero impulse offset there is expected and its size is the
-number worth knowing.
+toggle plus a real Standalone run measures.
+
+Capture is split at the interval boundary, so a transmitted interval ends on the
+exact sample rather than being rounded up to a multiple of the block size -- an
+impulse offset here should be near zero and, above all, stable. The alignment
+itself has since been measured differentially against the reference client; see
+`docs/PARITY.md`, which is the durable record.

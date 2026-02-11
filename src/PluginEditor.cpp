@@ -575,7 +575,7 @@ void AntiphonEditor::mouseExit(const juce::MouseEvent &) {
 
 bool AntiphonEditor::keyPressed(const juce::KeyPress &key) {
   // Ctrl+Alt combinations, chosen to stay clear of the shortcuts a DAW claims.
-  // Documented in ACCESSIBILITY.md; every one of these is also reachable by
+  // Documented in docs/ACCESSIBILITY.md; every one of these is also reachable by
   // tabbing to the control and pressing it, so none of them is the only route.
   if (!(key.getModifiers().isCtrlDown() && key.getModifiers().isAltDown()))
     return false;
