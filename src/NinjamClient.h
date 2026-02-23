@@ -110,12 +110,20 @@ public:
 
   std::map<juce::String, RemoteUser> getRemoteUsers() const;
 
-  // Set to true on DOWNLOAD_INTERVAL_BEGIN; audio thread reads and clears it
-  // to align its swap phase to the server's interval boundary.
+  // Set to true on DOWNLOAD_INTERVAL_BEGIN. The audio thread drains it and
+  // never acts on it: the local metronome is the sole authority for interval
+  // swaps (PRINCIPLES 9). Driving swaps from this signal instead let network
+  // jitter yank the interval clock mid-interval, discarding seconds of
+  // un-played audio. Kept only so the diagnostic counters stay meaningful.
   std::atomic<bool> intervalBeginSignal{false};
 
   // Diagnostics for the playback path. All counters are sticky totals; the
-  // dumper logs deltas. See plan: diagnose mid-interval stop/restart.
+  // dumper logs deltas.
+  //
+  // diagSwapsBySignal is permanently 0 -- it counted the signal-driven swaps
+  // removed above, and is retained so a non-zero reading would flag their
+  // return. Every swap is therefore counted by diagSwapsByFallback, which is
+  // no longer a fallback but the only path.
   std::atomic<int> diagSwapsBySignal{0};
   std::atomic<int> diagSwapsByFallback{0};
   std::atomic<int> diagSwapsBeforeConsumed{0};
