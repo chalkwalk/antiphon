@@ -89,9 +89,15 @@ one of them is a thing we therefore do not write.
 **Consequence.** We route; we do not mix. Remote players get an output bus each
 so the DAW records them as stems. Local channels take an input bus each so the
 DAW's routing decides what we transmit. We add no effects, no recorder, no file
-management, no transport of our own. The Standalone build exists so a change can
-be iterated on in seconds without launching a DAW -- it is a development
-convenience and a fallback for players without a host, not the product.
+management, no transport of our own.
+
+The **Standalone build is a supported secondary use case** -- an interface, an
+instrument, and a jam, with no DAW involved -- and it is held to the same
+standard as the plugin: it must start, say what went wrong when it cannot, and
+recover. What it must never do is grow the DAW back inside itself. Its shape is
+fixed at one input bus and one output bus by JUCE's standalone host, so stem
+routing and multi-channel transmit are plugin-side features by construction
+(`NON-GOALS.md` fence #2, `DESIGN.md` §16).
 
 The corollary is a hard limit on surface area: a feature request that amounts to
 "add a thing my DAW already has" is answered by routing, not by building it.

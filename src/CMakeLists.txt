@@ -30,6 +30,7 @@ juce_add_binary_data(antiphon_fonts
 target_sources(Antiphon
     PRIVATE
         PluginProcessor.cpp
+        StandaloneApp.cpp
         PluginEditor.cpp
         NinjamClient.cpp
         NinjamProtocol.cpp
@@ -49,6 +50,9 @@ clap_juce_extensions_plugin(TARGET Antiphon CLAP_ID "com.chalkwalk.antiphon" CLA
 
 target_compile_definitions(Antiphon
     PUBLIC
+        # We supply our own JUCEApplication (src/StandaloneApp.cpp) so the window
+        # exists before the audio device is opened. See DESIGN.md section 16.
+        JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)

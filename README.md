@@ -13,6 +13,12 @@ Every other NINJAM client is a standalone application that owns your sound card.
 Antiphon is the plugin, so the jam happens in the session you were already
 working in -- with your own effects, your own monitoring, and your own recorder.
 
+It also runs **standalone**, straight into an audio interface, if you would
+rather not open a DAW at all. That is a supported way to use it, with one
+limitation worth knowing up front: standalone gives you a single input and a
+single output, so the multi-channel transmit and per-player stem recording below
+are plugin-only features.
+
 ---
 
 ## Table of contents
@@ -37,7 +43,7 @@ working in -- with your own effects, your own monitoring, and your own recorder.
 |---|---|
 | **Works** | Connecting, transmitting, receiving, multi-channel, stem routing, chat, voting, the metronome, DAW tempo sync |
 | **Verified** | Interoperability with the official NINJAM reference client, measured -- interval grid, transmit alignment, audio in both directions, chat. See [`docs/PARITY.md`](docs/PARITY.md) |
-| **Tested on** | Linux, CLAP format, one DAW |
+| **Tested on** | Linux, CLAP format, one DAW, plus the standalone |
 | **Not yet** | Windows and macOS builds, packaged installers, VST3 testing, a release |
 
 If you are on Linux and comfortable with CMake, it works today. If you are
@@ -227,8 +233,13 @@ your DAW claims, and none of them is the only way to reach its action.
 
 ### 1. Your first jam (standalone)
 
-1. Launch the Standalone. Set your audio device in its settings if it did not
-   pick a sensible one.
+No DAW required -- an interface, an instrument, and a room.
+
+1. Launch the Standalone. The window appears immediately and then opens your
+   audio device in the background. If the device cannot be opened -- most often
+   because something else already has it -- Antiphon says so and shows you a
+   device picker instead of failing silently. Pick one that works and press
+   **Use this device**; it is remembered for next time.
 2. **Connect...** -> pick a room with people in it -> username -> Connect.
 3. The header goes navy, the tempo appears, the phase bar starts moving.
 4. Play something. Watch your VU meter -- if it is not moving, your input is not
@@ -382,6 +393,19 @@ produced no data to send. Both look identical from here.
 
 **The first interval was silent**
 Expected. Nothing had arrived yet.
+
+**The standalone says the audio device did not respond**
+
+Something else is holding it -- a DAW, another audio application, or a sound
+server in a bad state. Antiphon shows a device picker; choose a different output
+and input and press **Use this device**. Your choice is saved, so the next launch
+goes straight to it. Run it from a terminal to see the startup log: every step is
+reported on stderr with an `[antiphon]` prefix.
+
+**The standalone only offers me one input**
+
+That is JUCE's standalone host, not a bug: one input bus and one output bus.
+Multi-channel transmit and stem recording need the plugin in a DAW.
 
 **Typing in a text field does nothing (Linux, in a DAW)**
 This should be fixed -- it was a JUCE focus bug on Linux, patched in this repo.

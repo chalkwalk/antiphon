@@ -154,6 +154,26 @@ against us live at 48 kHz, in one host, on one platform, in one format.
 
 ## User experience
 
+### Standalone as a first-class use case
+
+The standalone was promoted from a development convenience to a supported
+secondary use case (`PRINCIPLES §2`, `DESIGN.md` §16). Startup now shows the
+window before touching a device, opens it under a budget on a worker thread, and
+offers a device picker when that fails -- but the rest of the standalone story
+has not had the same attention.
+
+- [x] Window before device; failures reported rather than swallowed.
+- [x] Remember the working device in `audioSetup`.
+- [ ] Asynchronous device *picking*. `AudioDeviceSelectorComponent` opens devices
+      synchronously on the message thread, so choosing a wedging device still
+      freezes the window (`DESIGN.md` §16.3).
+- [ ] Assess the picker with a screen reader -- it is JUCE stock and was already
+      a known gap in `docs/ACCESSIBILITY.md`.
+- [ ] Decide what the standalone does about the one-bus limit: today
+      `disableNonMainBuses()` silently drops the extra buses, so a user who adds
+      a channel in standalone gets no way to feed it.
+
+
 ### Screen-reader verification
 
 `docs/ACCESSIBILITY.md` is explicit that no claim is made about verification with

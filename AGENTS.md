@@ -56,6 +56,7 @@ src/
   CMakeLists.txt            # juce_add_plugin(Antiphon), binary data, CLAP
   PluginProcessor.{h,cpp}   # AntiphonAudioProcessor -- JUCE entry, owns NinjamClient
   PluginEditor.{h,cpp}      # AntiphonEditor -- three-column elastic layout
+  StandaloneApp.cpp         # our JUCEApplication: window first, then the device
   NinjamClient.{h,cpp}      # networking, dispatch, remote state, playback queue
   NinjamProtocol.{h,cpp}    # pure wire format: framing, parse, build, auth hash
   VorbisCodec.{h,cpp}       # first-party Ogg/Vorbis, pimpl over libogg/libvorbis
@@ -64,6 +65,7 @@ src/
   IntervalClock.{h,cpp}     # sample-exact beat/interval grid; njclient.cpp:806
   MetronomeVoice.{h,cpp}    # one-shot click, 880/660/440 Hz
   SyncState.h               # 5-state DAW sync machine (transport start, not timeline)
+  AudioDeviceStartup.h      # 4-state standalone device-open policy, with a budget
   ChannelMix.h              # mono/pan/gain: one home for three rules that drifted
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
   IntervalProbe.h           # shared test signal: plugin Test Tone + tests + refclient
@@ -176,6 +178,7 @@ reading past a buffer. Assume your change has the same failure mode.
 | Beat/interval timing | `test/IntervalClockTests.cpp` | Sweep bpm x bpi x sample rate x block size. A bug that only shows at 44.1 kHz or block size 61 is the normal case, not the exotic one. |
 | Click synthesis | `test/MetronomeVoiceTests.cpp` | Assert measured pitch, never the formula. |
 | DAW sync transitions | `test/SyncStateTests.cpp` | `SyncState` is pure; drive it directly. |
+| Standalone audio-device startup | `test/AudioDeviceStartupTests.cpp` | `AudioDeviceStartup` is pure. `StandaloneApp.cpp` around it cannot be compiled into the test target -- it needs the `JucePlugin_*` defines, same as `PluginProcessor`. |
 | Mono/pan/gain rules | `test/ChannelMixTests.cpp` | |
 | dB scales, meter ballistics | `test/GainUtilsTests.cpp` | |
 | Encode/decode | `test/VorbisCodecTests.cpp` | Always test at 44.1 **and** 48 kHz. |
@@ -288,6 +291,10 @@ Learned the hard way; each of these cost real time.
   *every* format. It once compiled the whole DAW sync flow out of the plugin. Use
   `AntiphonAudioProcessor::isStandaloneApp()` (runtime `wrapperType`). The
   `no-build-standalone-macro` ctest fails if the macro comes back.
+- **Never open an audio device before the window exists.** JUCE's stock
+  standalone does exactly that and a blocking backend leaves no application at
+  all. `src/StandaloneApp.cpp` replaces it; see `DESIGN.md` §16 before changing
+  standalone startup.
 - **Text entry belongs in a `juce::DialogWindow`,** not a child overlay, even
   with the focus patch: a dialog is a real top-level window with its own peer and
   takes focus normally. See `DESIGN.md` §10.8.

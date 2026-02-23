@@ -38,7 +38,7 @@ same desire that fits.
 | # | Non-goal | Prompted by | Rejected by | What we offer instead |
 |---|---|---|---|---|
 | 1 | **Video** | Jamtaba, the only client with it | §2, §6, §10 | `JTBv` intervals are filtered on fourCC and ignored, so a Jamtaba user in the room costs us nothing. Their video simply does not appear. See "Notes on the close calls". |
-| 2 | **Being a standalone host or DAW** | Jamtaba and the original Ninjam client are both standalone apps that own an audio device | §2 | The Standalone build exists, and works, but it is a development convenience and a fallback -- not the product. The plugin is the product, and the host is the app. |
+| 2 | **Being a plugin host or a DAW** | Jamtaba and the original Ninjam client grew mixers, recorders and effect racks around the jam | §2 | The Standalone build is a **supported secondary use case** -- one input, one output, straight into an audio interface. What it does not do is grow a DAW inside itself: no plugin hosting, no recorder, no effects, no arrangement. When you want those, run the plugin in the host that already has them. |
 | 3 | **Replacing the DAW's mixer or recorder** | Every standalone client ships its own mixer, meters, recorder and effects | §2 | Per-channel **output bus routing**: each remote channel goes to a stereo bus of your choosing, so the DAW records the jam as stems and processes them with plugins you already own. Per-channel **input bus routing** does the same on the way in. |
 | 4 | **Hosting a Ninjam server** | `ninjamsrv` is in `references/`, and "why not both" is a natural question | §2 | The **server browser** (live room list from ninbot.com) and a private-server host/port field. Running a server is a separate job with a separate operational story; `scripts/testserver.sh` drives one for testing and that is the extent of it. |
 | 5 | **Wrapping `NJClient`** | The obvious shortcut -- a decade of proven correctness, available as a library | §6 | First-party protocol, SHA1 and Ogg/Vorbis layers, **differentially tested against `NJClient`** (`docs/PARITY.md`). We get the correctness by measurement rather than by inheritance, and we do not get WDL, a GPLv2 dependency in the audio path, or an architecture built around owning an audio device. |
@@ -65,12 +65,23 @@ dependency, against §6, in service of a feature exactly one other client
 implements. If Ninjam video ever becomes something people expect, the note in
 DESIGN is where a future attempt starts.
 
-**Standalone (#2) is supported, not featured.** The distinction matters because
-it decides arguments. Standalone gets the *same* code, and it is how the audio
-path is iterated on -- but when standalone ergonomics and plugin ergonomics
-conflict, the plugin wins. The one place this is visible in the design is sync:
-standalone has no transport to lock to, so `SyncState` runs it straight to
-`Running` on connect, and the Sync button is a plugin concept.
+**Standalone is a real use case, within its shape (#2).** Plug a guitar into an
+interface, open Antiphon, jam -- no DAW required. That is a legitimate way to use
+this and is supported as such: startup failures are handled, the device is
+chosen and remembered, and the surface is the same one the plugin shows.
+
+Its shape is set by what JUCE's standalone host offers, which is **one input bus
+and one output bus**. So the per-remote-player stem routing that motivates the
+plugin has nowhere to go there, and `disableNonMainBuses()` turns the extra buses
+off. That is a real limitation, stated rather than papered over: multi-channel
+transmit and stem recording are reasons to reach for the plugin.
+
+The other visible difference is sync. Standalone has no transport to lock to, so
+`SyncState` runs straight to `Running` on connect and the Sync button is a plugin
+concept (`DESIGN.md` §5).
+
+Where the two genuinely conflict, the plugin still wins -- but "the standalone
+does not matter" is no longer an argument.
 
 **"The DAW does it" is not a licence to route badly (#3).** Refusing to build a
 mixer is not refusing to build the routing that makes the DAW's mixer usable.

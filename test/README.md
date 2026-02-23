@@ -18,7 +18,7 @@ Or run the binary directly, optionally filtering by test-suite name:
 ```
 
 Suites: `Sha1`, `VorbisCodec`, `NinjamProtocol`, `IntervalClock`,
-`MetronomeVoice`, `SyncState`, `ChannelMix`, `GainUtils`,
+`MetronomeVoice`, `SyncState`, `AudioDeviceStartup`, `ChannelMix`, `GainUtils`,
 `AccessibilityAudit`, `ReferenceFixtures`, `LoopbackProtocol`,
 `AudioLoopback`, `RealServer`.
 
@@ -35,6 +35,7 @@ Pure logic, no I/O.
 | `NinjamProtocol` | Message layouts byte for byte; little-endian fields; auth hash against goldens from an independent SHA1; **every parser fed every truncation of every message**. |
 | `IntervalClock` | Interval length constant over 200 intervals; event positions independent of block size; exactly `bpi` beats per interval; no drift over an hour; tempo changes take effect at a boundary. |
 | `MetronomeVoice` | Click pitch, and that it is independent of tempo and sample rate. |
+| `AudioDeviceStartup` | The standalone device-open policy: that a finished probe beats the clock, that the budget expiring is a timeout, and that a wedged probe returning late cannot resurrect startup. |
 | `SyncState` | The five-state DAW sync machine: that several transitions can land in one call, that a stop/start never re-phases without a request, that standalone runs straight to `Running`. |
 | `ChannelMix` | Mono sums and halves rather than discarding a side; pan law; that mute and solo never reach the transmitted signal. |
 | `GainUtils` | dB<->linear round-trip, the -inf floor, meter release as a rate in dB/s independent of block size. |

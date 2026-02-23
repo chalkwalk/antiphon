@@ -41,6 +41,12 @@ The client is called Antiphon because the design is the name: an antiphon is a
 response sung to the phrase that just finished, which is exactly the musical
 form Ninjam's interval delay produces (`PRINCIPLES §1`).
 
+The **Standalone build is a supported secondary use case**: an interface, an
+instrument and a jam, with no DAW involved. It runs the same code and the same
+surface, within one hard limit -- JUCE's standalone host offers a single input
+and output bus, so stem routing and multi-channel transmit belong to the plugin
+(§16, `NON-GOALS.md` fence #2).
+
 **Non-goals** are catalogued in `NON-GOALS.md` and are load-bearing for
 understanding the shape of this file: no video, no server, no mixer, no
 timeline integration, no wrapped `NJClient`.
@@ -568,3 +574,77 @@ specifics. Nothing here is linked into the product.
 | `ninjam-next-plugin/` | Modern JUCE VST3/AU wrapping `NJClient`. Useful for `AudioPlayHead` phase sync patterns. |
 | `JamTaba/` | Rich UI reference; the only client with video (§14). Cautionary tale on Qt-plus-plugin complexity. |
 | `libninjam/`, `JamWide/` | Additional implementations, lower priority. |
+
+---
+
+## 16. The standalone application
+
+The Standalone build is a supported secondary use case (`PRINCIPLES §2`), not a
+development convenience: an interface, an instrument, a jam, no DAW. It is
+shaped by what JUCE's standalone host offers -- **one input bus and one output
+bus** -- so `disableNonMainBuses()` turns off the extra buses that exist for stem
+routing. Multi-channel transmit and stem recording are plugin-side by
+construction.
+
+`src/StandaloneApp.cpp` replaces JUCE's stock `StandaloneFilterApp`, enabled by
+`JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1`. It exists because of one specific
+defect in the stock one.
+
+### 16.1 Why we do not use JUCE's standalone window
+
+`StandaloneFilterWindow` builds its `StandalonePluginHolder` **as an argument to
+its own delegating constructor**. The holder's constructor runs `init()` ->
+`setupAudioDevices()` -> `deviceManager.initialise()`, so the audio device is
+opened to completion *before any window exists*. Two consequences, both real:
+
+- **A backend that blocks leaves no application.** No window, no error, no route
+  to the device picker -- the process simply sits at the command line. Observed
+  directly: an ALSA-to-PipeWire open against a host running two competing
+  pipewire daemons deadlocks in a futex on the message thread, having spawned
+  its worker threads but never opened a PCM device or connected to the X server.
+- **A backend that fails cleanly is silent.** `reloadAudioDeviceState` discards
+  the `String` error that `deviceManager.initialise()` returns, so the app comes
+  up with no audio and no explanation.
+
+### 16.2 What we do instead
+
+**The window goes up first**, with the editor in it, before anything touches an
+audio device. The device is then opened on a worker thread (`DeviceOpenProbe`)
+under a budget, and a 50 ms timer on the message thread drives
+`AudioDeviceStartup` -- a pure, JUCE-free state machine
+(`Opening -> Ready | Failed | TimedOut`) tested without hardware in the loop.
+
+| Outcome | What the user gets |
+|---|---|
+| `Ready` | Audio starts; the working device is written to `audioSetup` so the next launch reuses it |
+| `Failed` | The backend's own error, plus a device picker |
+| `TimedOut` | "The audio device did not respond..." plus a device picker |
+
+Startup progress is written to **stderr**, not `juce::Logger` -- with no logger
+installed `writeToLog` is a no-op, and "why is there no audio" is exactly the
+question someone runs this from a terminal to answer.
+
+**On timeout the probe thread and its `AudioDeviceManager` are deliberately
+leaked.** The premise of the timeout is that the backend may never return, so
+joining the thread would block for exactly as long as the bug being worked
+around, and destroying the manager would try to close a device that never
+opened. A leaked thread and a usable application beat a clean shutdown of a dead
+one. A fresh manager backs the picker.
+
+**Remembering the choice is what makes the fix stick.** Once a chosen device is
+in `audioSetup`, subsequent launches ask for it by name rather than falling
+through the default path that wedged.
+
+Note that `AudioDeviceManager::createStateXml()` returns null when the setup
+still matches the default, so `audioSetup` stays empty on a machine where the
+default device simply works -- there is nothing to remember, and the next launch
+takes the same default. The entry appears precisely in the case that matters:
+after the user has picked something else in the recovery view.
+
+### 16.3 Known limit
+
+`AudioDeviceSelectorComponent` opens devices synchronously on the message
+thread. Picking a device that wedges will therefore freeze the window, exactly
+as the old startup did -- the difference is that this is now a deliberate user
+action with a visible cause, rather than the app failing to start at all.
+Fixing it properly means an asynchronous device picker, which is not built.
