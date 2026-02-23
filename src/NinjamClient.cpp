@@ -645,20 +645,19 @@ void NinjamClient::swapIntervalBuffers() {
 }
 
 void NinjamClient::dumpDiagnostics() {
-  int sigSwaps = diagSwapsBySignal.exchange(0);
-  int fbSwaps  = diagSwapsByFallback.exchange(0);
+  int swaps = diagSwaps.exchange(0);
   int earlySwaps = diagSwapsBeforeConsumed.exchange(0);
   int dropped = diagSamplesDroppedOnSwap.exchange(0);
   int underruns = diagUnderrunBlocks.exchange(0);
   int lastSamples = diagLastIntervalSamples.load();
   int lastExpected = diagLastIntervalExpected.load();
-  if (sigSwaps == 0 && fbSwaps == 0 && earlySwaps == 0 && underruns == 0)
+  if (swaps == 0 && earlySwaps == 0 && underruns == 0)
     return;
   juce::Logger::writeToLog(
       juce::String::formatted(
-          "[diag] swaps sig=%d fb=%d early=%d droppedSmp=%d underrunBlocks=%d "
+          "[diag] swaps=%d early=%d droppedSmp=%d underrunBlocks=%d "
           "lastInterval=%d/%d",
-          sigSwaps, fbSwaps, earlySwaps, dropped, underruns,
+          swaps, earlySwaps, dropped, underruns,
           lastSamples, lastExpected));
 }
 

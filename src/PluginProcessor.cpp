@@ -464,7 +464,7 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         if (seg.closesInterval) {
           fireCaptureLambdas();
           ninjamClient.swapIntervalBuffers();
-          ninjamClient.diagSwapsByFallback.fetch_add(1);
+          ninjamClient.diagSwaps.fetch_add(1);
           ninjamClient.intervalBeginSignal.store(false);
         }
       }

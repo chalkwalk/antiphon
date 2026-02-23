@@ -119,13 +119,7 @@ public:
 
   // Diagnostics for the playback path. All counters are sticky totals; the
   // dumper logs deltas.
-  //
-  // diagSwapsBySignal is permanently 0 -- it counted the signal-driven swaps
-  // removed above, and is retained so a non-zero reading would flag their
-  // return. Every swap is therefore counted by diagSwapsByFallback, which is
-  // no longer a fallback but the only path.
-  std::atomic<int> diagSwapsBySignal{0};
-  std::atomic<int> diagSwapsByFallback{0};
+  std::atomic<int> diagSwaps{0};
   std::atomic<int> diagSwapsBeforeConsumed{0};
   std::atomic<int> diagUnderrunBlocks{0};
   std::atomic<int> diagSamplesDroppedOnSwap{0};
