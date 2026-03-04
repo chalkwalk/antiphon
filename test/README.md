@@ -18,7 +18,8 @@ Or run the binary directly, optionally filtering by test-suite name:
 ```
 
 Suites: `Sha1`, `VorbisCodec`, `NinjamProtocol`, `IntervalClock`,
-`MetronomeVoice`, `SyncState`, `AudioDeviceStartup`, `ChannelMix`, `GainUtils`,
+`MetronomeVoice`, `SyncState`, `AudioDeviceStartup`, `Shortcuts`, `ChannelMix`,
+`GainUtils`,
 `AccessibilityAudit`, `ReferenceFixtures`, `LoopbackProtocol`,
 `AudioLoopback`, `RealServer`.
 

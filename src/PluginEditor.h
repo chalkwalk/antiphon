@@ -4,6 +4,7 @@
 #include "NinjamClient.h"
 #include "AntiphonLookAndFeel.h"
 #include "Announcer.h"
+#include "Shortcuts.h"
 #include "StatusReadout.h"
 #include "PluginProcessor.h"
 #include "RemoteUserStrip.h"

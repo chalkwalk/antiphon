@@ -26,6 +26,7 @@ target_sources(NinjamTests
         GainUtilsTests.cpp
         SyncStateTests.cpp
         AudioDeviceStartupTests.cpp
+        ShortcutsTests.cpp
         ChannelMixTests.cpp
         AccessibilityAuditTests.cpp
         FakeNinjamServer.cpp

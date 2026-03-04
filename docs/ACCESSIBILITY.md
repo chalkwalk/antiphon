@@ -72,6 +72,12 @@ first came free:
    would otherwise strand the user somewhere arbitrary. Antiphon records the
    previously focused component and restores it.
 
+There are **four** ways out of the dialog -- Connect, Cancel, the X drawn in the
+UI, and the window manager's own close button -- and all four must land in the
+same place. They now share one teardown, attached as a modal callback, so focus
+restoration happens whichever route the user takes. Before that, closing from
+the title bar skipped our code entirely and left the dialog unable to reopen.
+
 ## Announcements
 
 Discrete events are spoken: connecting and disconnecting, sync state changes,
@@ -101,6 +107,18 @@ route to its action -- each control can also be tabbed to and pressed.
 | `Ctrl+Alt+C` | Focus the chat message box |
 | `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
 | `Ctrl+Alt+A` | Write an accessibility audit report to the desktop |
+
+The shortcuts match the key **code**, not the text character. With Ctrl held,
+X11 hands JUCE a control character -- Ctrl+Alt+A arrives with a text character
+of `0x01`, not `'A'` -- so an earlier version compared against `'A'` and none of
+these ever fired, silently. `src/Shortcuts.h` owns the mapping and is
+unit-tested, because a shortcut that does nothing looks exactly like a shortcut
+that is not pressed.
+
+`Ctrl+Alt+A` now names the file it wrote in the status readout and in the
+announcement, and says so when the write fails. It is the one action with no
+other visible effect, so "it worked" and "nothing happened" were
+indistinguishable.
 
 ## The audit
 

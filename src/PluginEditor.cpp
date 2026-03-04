@@ -545,15 +545,37 @@ void AntiphonEditor::openServerBrowser() {
   opts.useNativeTitleBar = true;
   opts.resizable = false;
   serverBrowserWindow = opts.launchAsync();
+
+  // There are four ways out of this dialog -- Connect, Cancel, the X drawn in
+  // the UI, and the window manager's own close button -- and only the first
+  // three ran our code. Closing from the title bar left `serverBrowser` set, so
+  // openServerBrowser()'s early return meant the dialog could never be opened
+  // again for the life of the editor. The modal callback fires for all four.
+  if (auto *w = serverBrowserWindow.getComponent())
+    juce::ModalComponentManager::getInstance()->attachCallback(
+        w, juce::ModalCallbackFunction::create(
+               [safeThis = juce::Component::SafePointer<AntiphonEditor>(this)](
+                   int) {
+                 if (safeThis != nullptr)
+                   safeThis->closeServerBrowser();
+               }));
 }
 
 void AntiphonEditor::closeServerBrowser() {
-  // The window owns itself once launched, and clears the SafePointer if the
-  // user closes it from the title bar.
+  // Idempotent: the modal callback below fires for every route out of the
+  // dialog, including the ones that already came through here.
+  if (serverBrowser == nullptr && serverBrowserWindow == nullptr)
+    return;
+
+  // Do NOT delete the window. launchAsync() enters the modal state with
+  // deleteWhenDismissed set (juce_DialogWindow.cpp:128), so JUCE deletes it
+  // itself when ModalComponentManager::handleAsyncUpdate runs. The manager
+  // holds a SafePointer and so tolerated the manual delete that used to be
+  // here, but deleting a component while it is still being torn off the modal
+  // stack is not something to rely on. One owner, one deletion.
   if (auto *w = serverBrowserWindow.getComponent()) {
     serverBrowserWindow = nullptr;
     w->exitModalState(0);
-    delete w;
   }
   serverBrowser.reset();
 
@@ -577,12 +599,16 @@ bool AntiphonEditor::keyPressed(const juce::KeyPress &key) {
   // Ctrl+Alt combinations, chosen to stay clear of the shortcuts a DAW claims.
   // Documented in docs/ACCESSIBILITY.md; every one of these is also reachable by
   // tabbing to the control and pressing it, so none of them is the only route.
-  if (!(key.getModifiers().isCtrlDown() && key.getModifiers().isAltDown()))
+  // Match the key CODE, never the text character: with Ctrl held, X11 hands
+  // JUCE a control character, so Ctrl+Alt+A arrives as 0x01 and comparing
+  // against 'A' silently never fires. See Shortcuts.h.
+  const auto action = Shortcuts::match(key.getKeyCode(),
+                                       key.getModifiers().isCtrlDown(),
+                                       key.getModifiers().isAltDown());
+  if (action == Shortcuts::Action::None)
     return false;
 
-  const auto c = key.getTextCharacter();
-
-  if (c == 'c' || c == 'C') {
+  if (action == Shortcuts::Action::FocusChat) {
     if (chatInput.isEnabled() && chatInput.isShowing()) {
       chatInput.grabKeyboardFocus();
       announcer.say("Chat message box", true);
@@ -592,7 +618,7 @@ bool AntiphonEditor::keyPressed(const juce::KeyPress &key) {
     return true;
   }
 
-  if (c == 's' || c == 'S') {
+  if (action == Shortcuts::Action::ArmSync) {
     if (syncButton.isEnabled()) {
       audioProcessor.requestSync();
       announcer.say("Sync armed. Start the DAW transport to join.", true);
@@ -602,14 +628,22 @@ bool AntiphonEditor::keyPressed(const juce::KeyPress &key) {
     return true;
   }
 
-  if (c == 'a' || c == 'A') {
+  if (action == Shortcuts::Action::WriteAudit) {
     // The audit this project relies on instead of a screen reader nobody here
     // can run. Writes beside the other debug dumps.
     const auto report = AccessibilityAudit::auditReport(*this);
     auto f = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
                  .getChildFile("antiphon-accessibility-audit.txt");
-    f.replaceWithText(report);
-    announcer.say("Accessibility audit written to the desktop", true);
+    const bool ok = f.replaceWithText(report);
+    // Name the file and admit failure: this shortcut has no other visible
+    // effect, so "nothing happened" and "it worked" looked identical.
+    announcer.say(ok ? "Accessibility audit written to " + f.getFullPathName()
+                     : "Could not write the accessibility audit to " +
+                           f.getFullPathName(),
+                  true);
+    statusReadout.setStatus(ok ? "Accessibility audit written to " +
+                                    f.getFullPathName()
+                               : "Could not write the accessibility audit");
     return true;
   }
 

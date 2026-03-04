@@ -115,8 +115,15 @@ ServerBrowserDialog::~ServerBrowserDialog() {
 }
 
 void ServerBrowserDialog::dismiss() {
+  // Never close from inside a button's own click callback. Every caller here is
+  // Button::internalClickCallback, which goes on touching the button after we
+  // return -- and closing destroys this component, and the button with it.
+  // Unwinding first is what turns a use-after-free into an ordinary close.
+  //
+  // The callback is copied rather than captured through `this` for the same
+  // reason: by the time the lambda runs, this object may be gone.
   if (onClose)
-    onClose();
+    juce::MessageManager::callAsync([cb = onClose] { cb(); });
 }
 
 void ServerBrowserDialog::populateStaticList() {

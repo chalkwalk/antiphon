@@ -65,6 +65,7 @@ src/
   IntervalClock.{h,cpp}     # sample-exact beat/interval grid; njclient.cpp:806
   MetronomeVoice.{h,cpp}    # one-shot click, 880/660/440 Hz
   SyncState.h               # 5-state DAW sync machine (transport start, not timeline)
+  Shortcuts.h               # Ctrl+Alt shortcut mapping; matches key code, not text
   AudioDeviceStartup.h      # 4-state standalone device-open policy, with a budget
   ChannelMix.h              # mono/pan/gain: one home for three rules that drifted
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
