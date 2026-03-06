@@ -253,6 +253,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
 
 AntiphonEditor::~AntiphonEditor() {
   audioProcessor.ninjamClient.removeListener(this);
+  if (auto *host = keyListenerHost.getComponent())
+    host->removeKeyListener(this);
   setLookAndFeel(nullptr);
 }
 
@@ -595,7 +597,35 @@ void AntiphonEditor::mouseExit(const juce::MouseEvent &) {
   repaint();
 }
 
+// A shortcut must not depend on which of our descendants happens to hold focus.
+// JUCE delivers a key press to the focused component and then bubbles it to its
+// PARENTS -- so when focus sits on an ancestor (the standalone's DocumentWindow,
+// or a host window in a DAW) the editor is never asked at all, and the shortcut
+// silently does nothing. Registering as a KeyListener on the top-level window
+// covers that direction; keyPressed covers focus inside the editor.
+void AntiphonEditor::parentHierarchyChanged() {
+  auto *top = getTopLevelComponent();
+  if (top == keyListenerHost.getComponent())
+    return;
+  if (auto *old = keyListenerHost.getComponent())
+    old->removeKeyListener(this);
+  keyListenerHost = nullptr;
+  if (top != nullptr && top != this) {
+    top->addKeyListener(this);
+    keyListenerHost = top;
+  }
+}
+
+bool AntiphonEditor::keyPressed(const juce::KeyPress &key,
+                                juce::Component *) {
+  return handleShortcut(key);
+}
+
 bool AntiphonEditor::keyPressed(const juce::KeyPress &key) {
+  return handleShortcut(key);
+}
+
+bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   // Ctrl+Alt combinations, chosen to stay clear of the shortcuts a DAW claims.
   // Documented in docs/ACCESSIBILITY.md; every one of these is also reachable by
   // tabbing to the control and pressing it, so none of them is the only route.

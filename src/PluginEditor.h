@@ -14,6 +14,7 @@ class ServerBrowserDialog;
 
 class AntiphonEditor : public juce::AudioProcessorEditor,
                                    public juce::Timer,
+                                   public juce::KeyListener,
                                    public NinjamClientListener {
 public:
   AntiphonEditor(AntiphonAudioProcessor &);
@@ -24,6 +25,10 @@ public:
   void timerCallback() override;
   void mouseExit(const juce::MouseEvent &) override;
   bool keyPressed(const juce::KeyPress &) override;
+  // KeyListener: the same handler, reached when focus sits on an ancestor
+  // rather than inside the editor. See handleShortcut().
+  bool keyPressed(const juce::KeyPress &, juce::Component *) override;
+  void parentHierarchyChanged() override;
 
   // NinjamClientListener
   void onConnected() override;
@@ -48,6 +53,10 @@ private:
   StatusReadout statusReadout;
   Announcer announcer;
   void updateStatusReadout();
+  // Both key routes funnel here, so a shortcut cannot work on one and not the
+  // other.
+  bool handleShortcut(const juce::KeyPress &);
+  juce::Component::SafePointer<juce::Component> keyListenerHost;
   juce::String lastAnnouncedSyncState;
   int lastAnnouncedBpm = 0, lastAnnouncedBpi = 0;
   bool lastAnnouncedConnected = false;

@@ -140,6 +140,15 @@ public:
     setContentOwned(processor->createEditorIfNeeded(), true);
     setBoundsFromSettings();
     setVisible(true);
+
+    // Put focus inside the editor rather than leaving it on this window. A
+    // DocumentWindow takes focus itself, and JUCE bubbles key presses to a
+    // focused component's PARENTS -- so with focus sitting here, the editor
+    // below is never asked and its shortcuts silently do nothing. It also puts
+    // the caret where docs/ACCESSIBILITY.md says startup focus lands.
+    if (auto *editor = getContentComponent())
+      editor->grabKeyboardFocus();
+
     report("window is up; opening the audio device in the background");
 
     beginOpeningDevice();
