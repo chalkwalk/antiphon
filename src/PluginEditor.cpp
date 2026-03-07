@@ -22,6 +22,11 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   // Without this the editor never accepts keyboard focus, so a host that only
   // forwards key events to a focused plugin view leaves every text field dead.
   setWantsKeyboardFocus(true);
+  // The root the reader lands on before anything inside it. Anonymous until
+  // the audit named it.
+  setTitle("Antiphon");
+  setDescription("Ninjam client. Session status, local channels, remote "
+                 "players, chat.");
   setResizable(true, true);
   setResizeLimits(900, 600, 2400, 1600);
   setSize(1100, 700);
@@ -193,6 +198,9 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   addAndMakeVisible(chatToggle);
 
   localChannelsViewport.setViewedComponent(&localChannelsContainer, false);
+  localChannelsViewport.setTitle("Local channels");
+  localChannelsViewport.setDescription(
+      "Scrollable list of the channels you transmit");
   addAndMakeVisible(localChannelsViewport);
 
   chatDisplay.setMultiLine(true);
@@ -242,6 +250,9 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   addAndMakeVisible(chatInput);
 
   remoteUsersViewport.setViewedComponent(&remoteUsersContainer, false);
+  remoteUsersViewport.setTitle("Remote players");
+  remoteUsersViewport.setDescription(
+      "Scrollable list of the other players in the room");
   addAndMakeVisible(remoteUsersViewport);
 
   for (const auto &msg : audioProcessor.ninjamClient.getChatLog())
