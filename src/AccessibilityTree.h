@@ -50,4 +50,22 @@ inline juce::String auditReport(const juce::Component &c) {
   return format(run(buildAuditTree(c)));
 }
 
+// Audit several roots as one report.
+//
+// A window is a root of its own. The connect dialog is a real top-level window
+// with its own peer -- which is exactly why text entry works in it (DESIGN.md
+// section 10.8) -- so walking the editor never reaches it, and every control in
+// it went unaudited. Anything reachable but rooted elsewhere has to be passed
+// in explicitly.
+inline juce::String
+auditReport(const std::vector<const juce::Component *> &roots) {
+  std::vector<Finding> all;
+  for (const auto *c : roots) {
+    if (c == nullptr) continue;
+    auto found = run(buildAuditTree(*c));
+    all.insert(all.end(), found.begin(), found.end());
+  }
+  return format(all);
+}
+
 } // namespace AccessibilityAudit

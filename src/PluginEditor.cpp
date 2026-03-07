@@ -559,6 +559,12 @@ void AntiphonEditor::openServerBrowser() {
   opts.resizable = false;
   serverBrowserWindow = opts.launchAsync();
 
+  // The dialog is modal and is its own top-level window, so while it is up the
+  // editor sees no keys at all -- including the audit shortcut, which is the
+  // one moment you most want it.
+  if (auto *w = serverBrowserWindow.getComponent())
+    w->addKeyListener(this);
+
   // There are four ways out of this dialog -- Connect, Cancel, the X drawn in
   // the UI, and the window manager's own close button -- and only the first
   // three ran our code. Closing from the title bar left `serverBrowser` set, so
@@ -588,6 +594,7 @@ void AntiphonEditor::closeServerBrowser() {
   // stack is not something to rely on. One owner, one deletion.
   if (auto *w = serverBrowserWindow.getComponent()) {
     serverBrowserWindow = nullptr;
+    w->removeKeyListener(this);
     w->exitModalState(0);
   }
   serverBrowser.reset();
@@ -672,7 +679,13 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   if (action == Shortcuts::Action::WriteAudit) {
     // The audit this project relies on instead of a screen reader nobody here
     // can run. Writes beside the other debug dumps.
-    const auto report = AccessibilityAudit::auditReport(*this);
+    // Audit every root we own, not just this one. The connect dialog is a
+    // separate top-level window, so walking the editor never reached it and
+    // none of its controls had ever been checked.
+    std::vector<const juce::Component *> roots{getTopLevelComponent()};
+    if (serverBrowser != nullptr)
+      roots.push_back(serverBrowser.get());
+    const auto report = AccessibilityAudit::auditReport(roots);
     auto f = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
                  .getChildFile("antiphon-accessibility-audit.txt");
     const bool ok = f.replaceWithText(report);
