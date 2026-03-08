@@ -22,6 +22,10 @@ struct Node {
   juce::String name;        // accessible title -- what gets announced
   juce::String description; // longer explanation, if any
   juce::String kind;        // component class name, to locate it in source
+  // Component::getName(), which is NOT the accessible name. Only used to say
+  // *which* one when there is no accessible name -- "juce::TextEditor" is no
+  // help in a dialog holding four of them.
+  juce::String locator;
   bool focusable = false;   // reachable by keyboard, so a reader will land here
   bool ignored = false;     // explicitly hidden from the accessibility tree
   std::vector<Node> children;
@@ -49,8 +53,25 @@ inline bool isUninformativeName(const juce::String &name) {
   return trimmed == "..." || trimmed == "Connect...";
 }
 
+// What the audit actually looked at.
+//
+// A report saying "no issues found" cannot be told apart from a report that
+// examined nothing -- and the connect dialog spent its whole life outside the
+// tree without that being visible. Coverage travels with the verdict, so the
+// number can be checked rather than trusted (PRINCIPLES section 5).
+struct Coverage {
+  int roots = 0;
+  int nodes = 0;      // every component walked
+  int focusable = 0;  // the ones a reader can actually land on
+  int ignored = 0;    // explicitly hidden from the accessibility tree
+};
+
+// Accumulates into `out`, so several roots sum into one figure.
+void measure(const Node &root, Coverage &out);
+
 std::vector<Finding> run(const Node &root);
 juce::String format(const std::vector<Finding> &findings);
+juce::String format(const std::vector<Finding> &findings, const Coverage &);
 juce::String describe(Issue issue);
 
 } // namespace AccessibilityAudit

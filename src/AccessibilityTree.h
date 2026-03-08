@@ -31,6 +31,7 @@ inline Node buildAuditTree(const juce::Component &c) {
   n.name = c.getTitle();
   n.description = c.getDescription();
   n.kind = classNameOf(c);
+  n.locator = c.getName();
   // A reader lands on anything that takes keyboard focus. Invisible and
   // disabled components are not reachable, so holding them to the same standard
   // would only produce noise -- the server browser's password field is hidden
@@ -60,12 +61,16 @@ inline juce::String auditReport(const juce::Component &c) {
 inline juce::String
 auditReport(const std::vector<const juce::Component *> &roots) {
   std::vector<Finding> all;
+  Coverage cov;
   for (const auto *c : roots) {
     if (c == nullptr) continue;
-    auto found = run(buildAuditTree(*c));
+    const auto tree = buildAuditTree(*c);
+    ++cov.roots;
+    measure(tree, cov);
+    auto found = run(tree);
     all.insert(all.end(), found.begin(), found.end());
   }
-  return format(all);
+  return format(all, cov);
 }
 
 } // namespace AccessibilityAudit

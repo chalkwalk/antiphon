@@ -6,8 +6,13 @@ namespace AccessibilityAudit {
 
 namespace {
 
+juce::String describeNode(const Node &n) {
+  if (n.name.isNotEmpty()) return n.name;
+  return n.locator.isNotEmpty() ? n.kind + " '" + n.locator + "'" : n.kind;
+}
+
 juce::String join(const juce::String &path, const Node &n) {
-  const juce::String label = n.name.isNotEmpty() ? n.name : n.kind;
+  const juce::String label = describeNode(n);
   return path.isEmpty() ? label : path + " / " + label;
 }
 
@@ -28,7 +33,8 @@ void walk(const Node &node, const juce::String &path,
     if (child.focusable) {
       if (isUninformativeName(child.name)) {
         out.push_back({Issue::MissingName,
-                       path.isEmpty() ? child.kind : path + " / " + child.kind,
+                       path.isEmpty() ? describeNode(child)
+                                      : path + " / " + describeNode(child),
                        child.name.isEmpty()
                            ? juce::String("no accessible name")
                            : "name \"" + child.name +
@@ -55,7 +61,7 @@ std::vector<Finding> run(const Node &root) {
   std::vector<Finding> out;
   // The root itself is checked too, so a nameless top-level editor is caught.
   if (root.focusable && !root.ignored && isUninformativeName(root.name))
-    out.push_back({Issue::MissingName, root.kind, "no accessible name"});
+    out.push_back({Issue::MissingName, describeNode(root), "no accessible name"});
   walk(root, join({}, root), out);
   return out;
 }
@@ -70,6 +76,23 @@ juce::String describe(Issue issue) {
     return "NO DESCRIPTION";
   }
   return "UNKNOWN";
+}
+
+void measure(const Node &root, Coverage &out) {
+  ++out.nodes;
+  if (root.focusable) ++out.focusable;
+  if (root.ignored) ++out.ignored;
+  for (const auto &child : root.children)
+    measure(child, out);
+}
+
+juce::String format(const std::vector<Finding> &findings,
+                    const Coverage &cov) {
+  juce::String s = format(findings);
+  s << "\nExamined " << cov.roots << " root(s), " << cov.nodes
+    << " component(s), " << cov.focusable << " reachable by keyboard, "
+    << cov.ignored << " hidden from the reader.\n";
+  return s;
 }
 
 juce::String format(const std::vector<Finding> &findings) {

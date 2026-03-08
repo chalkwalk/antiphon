@@ -29,6 +29,96 @@ public:
       : juce::UnitTest("AccessibilityAudit", "AccessibilityAudit") {}
 
   void runTest() override {
+    beginTest("an unnamed control says which one it is");
+    {
+      // The whole difficulty with MISSING NAME is that the thing with no name
+      // is the thing you then have to find. "juce::TextEditor" is no help in a
+      // dialog holding four of them, so the component's own name is used as a
+      // locator -- it is not an accessible name, only a signpost to the source.
+      AccessibilityAudit::Node root;
+      root.kind = "ServerBrowserDialog";
+      root.name = "Connect to a Ninjam server";
+
+      AccessibilityAudit::Node field;
+      field.kind = "juce::TextEditor";
+      field.locator = "hostInput";
+      field.focusable = true;
+      root.children.push_back(field);
+
+      const auto findings = AccessibilityAudit::run(root);
+      expectEquals((int)findings.size(), 1);
+      expect(findings[0].path.contains("hostInput"),
+             "the report must name which control is unnamed");
+      expect(findings[0].path.contains("Connect to a Ninjam server"),
+             "and which root it lives under");
+    }
+
+    beginTest("a locator never stands in for an accessible name");
+    {
+      // A component name is invisible to a screen reader. Having one must not
+      // make a control look annotated.
+      AccessibilityAudit::Node root;
+      root.kind = "Panel";
+      root.name = "Panel";
+
+      AccessibilityAudit::Node field;
+      field.kind = "juce::TextEditor";
+      field.locator = "hostInput";
+      field.description = "Host name";
+      field.focusable = true;
+      root.children.push_back(field);
+
+      const auto findings = AccessibilityAudit::run(root);
+      expectEquals((int)findings.size(), 1, "still unnamed as far as a reader is concerned");
+      expect(findings[0].issue == AccessibilityAudit::Issue::MissingName);
+    }
+
+    beginTest("coverage counts what was examined");
+    {
+      // A verdict of "no issues" is indistinguishable from having examined
+      // nothing, which is how the connect dialog stayed outside the tree
+      // unnoticed. The counts are what make the verdict checkable.
+      AccessibilityAudit::Node root;
+      root.kind = "Editor";
+      root.focusable = true;
+
+      AccessibilityAudit::Node named;
+      named.kind = "TextButton";
+      named.name = "Connect";
+      named.description = "Join the server";
+      named.focusable = true;
+
+      AccessibilityAudit::Node hidden;
+      hidden.kind = "Decoration";
+      hidden.ignored = true;
+
+      root.children.push_back(named);
+      root.children.push_back(hidden);
+
+      AccessibilityAudit::Coverage cov;
+      AccessibilityAudit::measure(root, cov);
+      expectEquals(cov.nodes, 3, "root plus both children");
+      expectEquals(cov.focusable, 2, "root and the button");
+      expectEquals(cov.ignored, 1);
+
+      // Accumulates, so several roots sum into one figure.
+      AccessibilityAudit::measure(root, cov);
+      expectEquals(cov.nodes, 6, "a second root adds to the same total");
+    }
+
+    beginTest("the report states its coverage");
+    {
+      AccessibilityAudit::Coverage cov;
+      cov.roots = 2;
+      cov.nodes = 41;
+      cov.focusable = 17;
+      const auto text = AccessibilityAudit::format({}, cov);
+      expect(text.contains("no issues found"));
+      expect(text.contains("2 root(s)"), "the verdict must carry its scope");
+      expect(text.contains("41 component(s)"));
+      expect(text.contains("17 reachable"));
+    }
+
     beginTest("a fully annotated tree reports nothing");
     {
       Node root;
