@@ -85,6 +85,7 @@ test/
   CMakeLists.txt            # re-lists production sources -- see below
   README.md                 # the operational testing guide
   FakeNinjamServer.{h,cpp}  # in-process loopback server
+  AuditMain.cpp             # AntiphonAudit: accessibility gate over the real UI
   refclient/                # differential rig; TEMPORARY, excised before release
   fixtures/                 # golden wire captures, testserver.cfg
 scripts/
@@ -112,6 +113,9 @@ cmake --build build -j $(nproc)
 ctest --test-dir build --output-on-failure
 # Or run the binary directly, filtering by suite name
 ./build/test/NinjamTests_artefacts/NinjamTests IntervalClock
+# Accessibility gate over the real component tree; exit code is the finding
+# count, and the report goes to stdout. Runs headless, no display needed.
+./build/test/AntiphonAudit_artefacts/AntiphonAudit
 ```
 
 Targets: `Antiphon_Standalone` (easiest for iteration), `Antiphon_VST3`. CLAP is
@@ -186,6 +190,7 @@ reading past a buffer. Assume your change has the same failure mode.
 | Anything crossing the socket | `test/LoopbackTests.cpp` | `FakeNinjamServer` needs no production changes -- point the client at `127.0.0.1`. |
 | Mixing, routing, playback delay | `test/AudioLoopbackTests.cpp` | Drives the real path end to end. |
 | Accessibility naming rules | `test/AccessibilityAuditTests.cpp` | Synthetic node tree; the real UI cannot be compiled into the test target. |
+| A new control, or a new UI state | `test/AuditMain.cpp` | The `AntiphonAudit` target links the plugin's own library and audits the **real** editor across four states. Add a state when you add a surface -- an unaudited state is how the connect dialog stayed unchecked for its whole life. |
 | Server-visible behaviour | `test/RealServerTests.cpp` | Opt-in via `NINJAM_TEST_SERVER`; keep the default suite hermetic. |
 
 ### Rules that are easy to get wrong

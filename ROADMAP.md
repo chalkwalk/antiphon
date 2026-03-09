@@ -174,6 +174,24 @@ has not had the same attention.
       a channel in standalone gets no way to feed it.
 
 
+### Accessibility regression gate  *[shipped]*
+
+The audit rules were unit-tested, but the tree that ships is the one that rots.
+`AntiphonAudit` links the plugin's own library, drives the real editor through
+four states, and exits with the finding count, so ctest fails the build when a
+control arrives unnamed.
+
+- [x] Console target linking the plugin library, running headless.
+- [x] Four states: default, extra channels and buses, connect dialog, and a
+      connected session driven by `FakeNinjamServer`.
+- [x] Reports state their own coverage, and a state that examines exactly what
+      the previous one did is a failure -- a state never reached passes
+      vacuously.
+- [x] Registered as `ctest -R accessibility-audit`.
+- [ ] Audit the standalone's audio-trouble view, which lives in its own window.
+- [ ] Audit JUCE's stock device picker, or record it as permanently out of
+      scope.
+
 ### Screen-reader verification
 
 `docs/ACCESSIBILITY.md` is explicit that no claim is made about verification with

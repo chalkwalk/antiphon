@@ -85,3 +85,47 @@ add_test(NAME no-build-standalone-macro
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/refclient/CMakeLists.txt)
   add_subdirectory(refclient)
 endif()
+
+# ---------------------------------------------------------------------------
+# Accessibility audit over the real component tree.
+#
+# NinjamTests cannot hold the UI: PluginProcessor and the editor need the
+# JucePlugin_* defines that only juce_add_plugin supplies, and linking
+# juce_gui_basics there would break the headless run. So this is a separate
+# console app that links the plugin's own shared-code library and drives the
+# genuine editor. Exit code is the finding count.
+# ---------------------------------------------------------------------------
+
+juce_add_console_app(AntiphonAudit
+    COMPANY_NAME "Chalkwalk"
+    PRODUCT_NAME "AntiphonAudit")
+
+target_sources(AntiphonAudit PRIVATE AuditMain.cpp FakeNinjamServer.cpp)
+
+# Reuse the plugin's generated JuceHeader.h and its JucePlugin_* defines rather
+# than generating a second, subtly different set.
+target_include_directories(AntiphonAudit
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_BINARY_DIR}/src/Antiphon_artefacts/JuceLibraryCode)
+
+# Same as the plugin: without these juce_gui_extra pulls in GTK for a web
+# browser this app has no use for.
+target_compile_definitions(AntiphonAudit
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+
+target_link_libraries(AntiphonAudit
+    PRIVATE
+        Antiphon
+        antiphon_fonts
+        juce::juce_audio_utils
+        ogg vorbis vorbisenc
+    PUBLIC
+        juce::juce_recommended_config_flags)
+
+# Fails the build when a control arrives without a name a reader can announce.
+# The exit code is the finding count; the report goes to stdout.
+add_test(NAME accessibility-audit COMMAND AntiphonAudit)

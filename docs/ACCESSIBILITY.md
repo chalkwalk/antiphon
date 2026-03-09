@@ -136,9 +136,18 @@ would announce as nothing, or as the same thing as their neighbour:
   Mute, and the strip is the context.
 - **NO DESCRIPTION** -- reachable and named, but nothing explains what it does.
 
-`Ctrl+Alt+A` writes a report to the desktop. The rules are unit-tested headlessly
-(`test/AccessibilityAuditTests.cpp`) against a synthetic tree, so they are
-verified even though the real UI cannot be compiled into the test target.
+`Ctrl+Alt+A` writes a report to the desktop, covering the editor and the connect
+dialog when it is open. The report states what it examined -- roots, components,
+how many are reachable by keyboard -- because a verdict of "no issues found"
+cannot otherwise be told apart from having examined nothing, which is the state
+the dialog was in.
+
+Two layers check it. The rules are unit-tested headlessly
+(`test/AccessibilityAuditTests.cpp`) against a synthetic tree. The **real
+component tree** is checked by the `AntiphonAudit` target, which links the
+plugin's own library, drives the genuine editor through four states, and exits
+with the finding count -- so `ctest` fails the build when a control arrives
+without a name. See `test/README.md`.
 
 **What the audit does not tell you** is whether the result is pleasant to use.
 It cannot judge whether a description is helpful, whether the tab order feels

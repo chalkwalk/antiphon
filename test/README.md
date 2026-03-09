@@ -79,6 +79,34 @@ one-interval delay, mixer controls, and output-bus routing.
 Assertions are statistical (RMS, zero-crossing rate), never sample-by-sample:
 Vorbis is lossy and has codec delay.
 
+## The accessibility gate
+
+`AntiphonAudit` is a separate console app, because `NinjamTests` cannot hold the
+UI: `PluginProcessor` and the editor need the `JucePlugin_*` defines that only
+`juce_add_plugin` supplies, and linking `juce_gui_basics` there would break the
+headless run. So it links the plugin's own library and drives the genuine
+editor. It needs no display.
+
+```
+./build/test/AntiphonAudit_artefacts/AntiphonAudit   # exit code = findings
+ctest --test-dir build -R accessibility-audit
+```
+
+Four states, because rules alone are not enough -- the tree that ships is the one
+that rots, and a surface nobody audits is a surface nobody checks:
+
+| State | Why |
+|---|---|
+| default | The editor as it opens |
+| two channels, extra buses | `DUPLICATE NAME` is container-scoped, so it has nothing to say until there are two strips |
+| connect dialog | Its own top-level window, so walking the editor never reaches it. It went unaudited for its whole life |
+| two remote players, three channels | Remote strips do not exist until somebody joins; driven by `FakeNinjamServer` |
+
+**Add a state when you add a surface.** The audit also fails if a state examines
+exactly what the previous one did -- a state that was never reached reports a
+clean verdict that means nothing, and that is not hypothetical: "two channels"
+silently audited the default tree until the message loop was pumped.
+
 ## Layer 3 -- real server
 
 ### Start a server
