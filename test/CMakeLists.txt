@@ -100,7 +100,8 @@ juce_add_console_app(AntiphonAudit
     COMPANY_NAME "Chalkwalk"
     PRODUCT_NAME "AntiphonAudit")
 
-target_sources(AntiphonAudit PRIVATE AuditMain.cpp FakeNinjamServer.cpp)
+target_sources(AntiphonAudit PRIVATE AuditMain.cpp FakeNinjamServer.cpp
+                                 AccessibleNamingTests.cpp)
 
 # Reuse the plugin's generated JuceHeader.h and its JucePlugin_* defines rather
 # than generating a second, subtly different set.
@@ -129,3 +130,6 @@ target_link_libraries(AntiphonAudit
 # Fails the build when a control arrives without a name a reader can announce.
 # The exit code is the finding count; the report goes to stdout.
 add_test(NAME accessibility-audit COMMAND AntiphonAudit)
+# It builds a device picker, which enumerates audio devices. Enumerating is not
+# opening, so it should not wedge -- but a build gate must fail rather than hang.
+set_tests_properties(accessibility-audit PROPERTIES TIMEOUT 120)

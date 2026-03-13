@@ -145,7 +145,7 @@ the dialog was in.
 Two layers check it. The rules are unit-tested headlessly
 (`test/AccessibilityAuditTests.cpp`) against a synthetic tree. The **real
 component tree** is checked by the `AntiphonAudit` target, which links the
-plugin's own library, drives the genuine editor through four states, and exits
+plugin's own library, drives the genuine editor through five states, and exits
 with the finding count -- so `ctest` fails the build when a control arrives
 without a name. See `test/README.md`.
 
@@ -157,8 +157,14 @@ reader user, and no claim is made here that it has been verified that way.
 ## Known gaps
 
 - Not verified with an actual screen reader by the authors.
-- The standalone's audio-device picker is JUCE's stock
-  `AudioDeviceSelectorComponent` and has not been assessed.
+- JUCE's stock `AudioDeviceSelectorComponent`, which the standalone's recovery
+  screen embeds, labels its Output and Input dropdowns for sighted users only:
+  the labels are attached with `Label::attachToComponent` and no accessible
+  title is set. The audit found this. `AccessibleNaming::adoptLabelNames` makes
+  a control adopt the label already attached to it, so the dropdowns now
+  announce "Output" and "Input". The rest of that panel -- sample rate, buffer
+  size, channel lists -- is only reached when a device is open, and has not been
+  assessed.
 - VU meters expose a value but there is no way to hear levels continuously
   without a reader announcing them constantly. A periodic "level check" gesture
   may be worth adding.

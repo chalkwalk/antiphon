@@ -92,7 +92,7 @@ editor. It needs no display.
 ctest --test-dir build -R accessibility-audit
 ```
 
-Four states, because rules alone are not enough -- the tree that ships is the one
+Five states, because rules alone are not enough -- the tree that ships is the one
 that rots, and a surface nobody audits is a surface nobody checks:
 
 | State | Why |
@@ -100,7 +100,12 @@ that rots, and a surface nobody audits is a surface nobody checks:
 | default | The editor as it opens |
 | two channels, extra buses | `DUPLICATE NAME` is container-scoped, so it has nothing to say until there are two strips |
 | connect dialog | Its own top-level window, so walking the editor never reaches it. It went unaudited for its whole life |
+| audio device trouble view | The standalone's recovery screen, in its own window. Found two unnamed dropdowns inside JUCE's own device picker |
 | two remote players, three channels | Remote strips do not exist until somebody joins; driven by `FakeNinjamServer` |
+
+`AccessibleNaming`'s unit tests ride along in this binary rather than in
+`NinjamTests`, because they need `juce_gui_basics`, which the headless suite
+deliberately does not link. A failure there fails the same gate.
 
 **Add a state when you add a surface.** The audit also fails if a state examines
 exactly what the previous one did -- a state that was never reached reports a

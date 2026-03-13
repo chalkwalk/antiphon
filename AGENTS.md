@@ -77,6 +77,8 @@ src/
   ServerBrowserDialog.{h,cpp} # DialogWindow: ninbot.com room list + connect fields
   AntiphonLookAndFeel.{h,cpp} # dark theme, teal #00b4d8
   StatusReadout.h           # header info for a screen reader; first in tab order
+  AudioTroubleView.h        # standalone: what shows when no device would open
+  AccessibleNaming.h        # a control adopts the label attached to it
   # --- accessibility ---
   Announcer.h               # discrete-event speech, verbosity, rate limiting
   AccessibilityAudit.{h,cpp}# name/description coverage rules (JUCE-free, testable)
@@ -190,7 +192,7 @@ reading past a buffer. Assume your change has the same failure mode.
 | Anything crossing the socket | `test/LoopbackTests.cpp` | `FakeNinjamServer` needs no production changes -- point the client at `127.0.0.1`. |
 | Mixing, routing, playback delay | `test/AudioLoopbackTests.cpp` | Drives the real path end to end. |
 | Accessibility naming rules | `test/AccessibilityAuditTests.cpp` | Synthetic node tree; the real UI cannot be compiled into the test target. |
-| A new control, or a new UI state | `test/AuditMain.cpp` | The `AntiphonAudit` target links the plugin's own library and audits the **real** editor across four states. Add a state when you add a surface -- an unaudited state is how the connect dialog stayed unchecked for its whole life. |
+| A new control, or a new UI state | `test/AuditMain.cpp` | The `AntiphonAudit` target links the plugin's own library and audits the **real** editor across five states. Add a state when you add a surface -- an unaudited state is how the connect dialog stayed unchecked for its whole life. |
 | Server-visible behaviour | `test/RealServerTests.cpp` | Opt-in via `NINJAM_TEST_SERVER`; keep the default suite hermetic. |
 
 ### Rules that are easy to get wrong

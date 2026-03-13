@@ -17,6 +17,8 @@
 #include <JuceHeader.h>
 
 #include "AccessibilityTree.h"
+#include "AudioDeviceStartup.h"
+#include "AudioTroubleView.h"
 #include "FakeNinjamServer.h"
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
@@ -74,6 +76,23 @@ StateResult auditState(const juce::String &name,
 int main() {
   juce::ScopedJuceInitialiser_GUI juceInit;
 
+  // AccessibleNaming needs juce_gui_basics, which NinjamTests deliberately does
+  // not link so it can run headless. This target already links it, so its unit
+  // tests ride along here rather than going uncovered.
+  {
+    juce::UnitTestRunner runner;
+    runner.setAssertOnFailure(false);
+    runner.runTestsInCategory("AccessibleNaming");
+    int failures = 0;
+    for (int i = 0; i < runner.getNumResults(); ++i)
+      failures += runner.getResult(i)->failures;
+    if (failures > 0) {
+      std::fprintf(stderr, "audit: %d AccessibleNaming unit-test failure(s)\n",
+                   failures);
+      return failures;
+    }
+  }
+
   AntiphonAudioProcessor processor;
   processor.setRateAndBufferSizeDetails(48000, 512);
 
@@ -114,6 +133,23 @@ int main() {
     browser.anonymousToggle.setToggleState(false, juce::sendNotification);
     settle(browser);
     results.push_back(auditState("connect dialog", {editor, &browser}));
+  }
+
+  // The screen a user only meets when something has already gone wrong, which
+  // makes it the last one that should go unchecked -- and it lives in the
+  // standalone's window, so no amount of walking the editor reaches it.
+  //
+  // Enumerating device types is not opening one: the wedge this whole view
+  // exists for happens on open, which nothing here does.
+  {
+    juce::AudioDeviceManager dm;
+    AudioTroubleView trouble(
+        dm, 2, 2,
+        AudioDeviceStartup::describe(AudioDeviceStartup::State::TimedOut),
+        [] {});
+    trouble.setSize(560, 420);
+    settle(trouble);
+    results.push_back(auditState("audio device trouble view", {&trouble}));
   }
 
   // A state that examines exactly what the previous one did has not been

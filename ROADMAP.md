@@ -188,9 +188,11 @@ control arrives unnamed.
       the previous one did is a failure -- a state never reached passes
       vacuously.
 - [x] Registered as `ctest -R accessibility-audit`.
-- [ ] Audit the standalone's audio-trouble view, which lives in its own window.
-- [ ] Audit JUCE's stock device picker, or record it as permanently out of
-      scope.
+- [x] Audit the standalone's audio-trouble view, which lives in its own window.
+- [x] JUCE's stock device picker: audited rather than waived. Its Output and
+      Input dropdowns were unnamed, and now adopt their attached labels.
+- [ ] The rest of the device panel -- sample rate, buffer size, channel lists --
+      only appears once a device is open, so the audit never reaches it.
 
 ### Screen-reader verification
 
