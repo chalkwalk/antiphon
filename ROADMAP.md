@@ -71,9 +71,28 @@ that appears as an unreproducible dropout in someone else's DAW.
       atomic `writePos` -- so the lock is protecting the *container*, not the
       audio. Replace with a structure the audio thread can traverse without
       blocking.
-- [ ] `setSaveTx` / `setSaveRx` are called from `processBlock` on **every block**
+      - [x] **The dangerous half is gone.** The network thread used to hold this
+            lock across the whole Vorbis decode and resample of a WRITE chunk --
+            milliseconds -- while the audio thread blocked on it every block.
+            The lock now covers the map lookup only. Safe because
+            `guidToInterval` is mutated solely by the network thread and the
+            audio thread never reads it.
+      - [x] Removed the data race that narrowing exposed: the decode called
+            `AudioBuffer::getWritePointer`, which writes `isClear`, while the
+            audio thread's `addFrom` read it. The lock had been hiding it.
+            Write pointers are now taken once before the interval is shared.
+            Confirmed with TSan: the warning disappeared, and the only races
+            left are the known shutdown one below.
+      - [ ] The audio thread still takes the lock to traverse `channelStreams`
+            and `remoteUsers`. Worst-case wait is now bounded and short, but a
+            lock on the audio thread is still a lock. Needs an audio-thread-owned
+            structure fed by a command queue, with deferred destruction so the
+            audio thread never frees a buffer.
+- [x] `setSaveTx` / `setSaveRx` are called from `processBlock` on **every block**
       and do file I/O on the toggling call. Move the toggle handling off the
       audio thread entirely; the audio thread should only ever see a flag.
+      Now applied from the message thread when the toggle changes
+      (`applyDebugCaptureSettings`); `processBlock` no longer mentions them.
 - [ ] Re-audit the rest of `processBlock` for the same class of problem once
       those two are gone, and record the result so the list stays authoritative.
 

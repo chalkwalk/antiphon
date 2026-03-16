@@ -475,9 +475,15 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   if (ninjamClient.isConnected())
     ninjamClient.getDecodedAudio(buffer);
 
-  ninjamClient.setSaveTx(saveTxEnabled);
-  ninjamClient.setSaveRx(saveRxEnabled);
+}
 
+void AntiphonAudioProcessor::applyDebugCaptureSettings() {
+  // Opens or closes the dump files, so it takes a lock and touches the disk.
+  // Called from the message thread only -- it used to run from processBlock on
+  // every block, which put file I/O on the audio thread for the one block where
+  // a toggle changed (PRINCIPLES section 7).
+  ninjamClient.setSaveTx(saveTxEnabled.load());
+  ninjamClient.setSaveRx(saveRxEnabled.load());
 }
 
 bool AntiphonAudioProcessor::hasEditor() const { return true; }

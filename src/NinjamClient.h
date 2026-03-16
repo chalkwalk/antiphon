@@ -139,6 +139,24 @@ private:
     juce::AudioBuffer<float> buffer;
     std::atomic<int> writePos{0};
     std::atomic<bool> finalReceived{false};
+
+    // Channel write pointers, taken once before the interval is shared with the
+    // audio thread.
+    //
+    // AudioBuffer::getWritePointer sets the buffer's `isClear` flag, and
+    // AudioBuffer::addFrom on the audio thread reads it. Calling
+    // getWritePointer from the network thread during decode is therefore a data
+    // race on that flag -- confirmed by TSan -- even though the decoded samples
+    // themselves are published safely by writePos. Taking the pointers up front
+    // leaves isClear false for the buffer's whole life and nobody writes it
+    // again.
+    std::array<float *, 2> channelWritePtr{{nullptr, nullptr}};
+
+    // Call after setSize()/clear() and before sharing.
+    void publishWritePointers() {
+      for (int ch = 0; ch < juce::jmin(2, buffer.getNumChannels()); ++ch)
+        channelWritePtr[(size_t)ch] = buffer.getWritePointer(ch);
+    }
   };
 
   // Per-(user, channel) playback stream.  The audio thread reads from current;

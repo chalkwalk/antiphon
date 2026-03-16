@@ -90,6 +90,9 @@ public:
   void setRemoteUserOutputBus(const juce::String &username, int channelIndex,
                               int busIdx);
   void sendChannelInfoToServer();
+  // Message thread only: opens or closes the debug dump files to match the
+  // saveTx/saveRx flags.
+  void applyDebugCaptureSettings();
 
   NinjamClient ninjamClient;
   juce::String connectionStatus = "Disconnected";

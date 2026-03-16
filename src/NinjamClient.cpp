@@ -323,6 +323,8 @@ bool NinjamClient::handleMessage(juce::uint8 type,
         sampleRate * 60.0 / std::max(1, serverBpm) * serverBpi * 1.5f);
     interval->buffer.setSize(2, bufferSamples);
     interval->buffer.clear();
+    // Before the interval is shared with the audio thread; see DecodedInterval.
+    interval->publishWritePointers();
 
     PendingDownload pd;
     pd.target = interval;
@@ -355,10 +357,30 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       const juce::String &guid = write.guidHex;
       const juce::uint8 flags = write.isFinal ? 1 : 0;
 
-      juce::ScopedLock sl(downloadMutex);
-      auto it = guidToInterval.find(guid);
-      if (it != guidToInterval.end()) {
-        auto &pd = it->second;
+      // The lock covers the map lookup and nothing more.
+      //
+      // It used to be held across the whole Vorbis decode and resample below,
+      // which can run for milliseconds -- and getDecodedAudio blocks on this
+      // same lock every single block. That is a priority inversion on the audio
+      // thread, and exactly the shape of an unreproducible dropout in someone
+      // else's DAW (PRINCIPLES section 7).
+      //
+      // Decoding outside the lock is safe because guidToInterval is mutated
+      // only by this thread (inserted on 0x04, erased below, cleared on
+      // disconnect in run()), so the entry cannot vanish underneath us, and the
+      // audio thread never looks at this map at all. The decoded samples are
+      // published to the audio thread the way they always were: by the atomic
+      // writePos, after the samples are in the buffer.
+      PendingDownload *pdPtr = nullptr;
+      {
+        juce::ScopedLock sl(downloadMutex);
+        auto found = guidToInterval.find(guid);
+        if (found != guidToInterval.end())
+          pdPtr = &found->second;
+      }
+
+      if (pdPtr != nullptr) {
+        auto &pd = *pdPtr;
         auto &interval = *pd.target;
 
         int oggDataSize = write.audioSize;
@@ -391,14 +413,17 @@ bool NinjamClient::handleMessage(juce::uint8 type,
               if (toCopy > 0) {
                 if (!needsResample) {
                   for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
-                    float *writePtr =
-                        interval.buffer.getWritePointer(ch, writePos);
+                    float *writePtr = interval.channelWritePtr[(size_t)ch];
+                    if (writePtr == nullptr) continue;
+                    writePtr += writePos;
                     for (int s = 0; s < toCopy; ++s)
                       writePtr[s] = decodedBlock[s * out_nch + ch];
                   }
-                  if (out_nch == 1 && interval.buffer.getNumChannels() == 2) {
-                    memcpy(interval.buffer.getWritePointer(1, writePos),
-                           interval.buffer.getReadPointer(0, writePos),
+                  if (out_nch == 1 && interval.buffer.getNumChannels() == 2 &&
+                      interval.channelWritePtr[0] != nullptr &&
+                      interval.channelWritePtr[1] != nullptr) {
+                    memcpy(interval.channelWritePtr[1] + writePos,
+                           interval.channelWritePtr[0] + writePos,
                            (size_t)toCopy * sizeof(float));
                   }
                   interval.writePos.fetch_add(toCopy);
@@ -414,12 +439,15 @@ bool NinjamClient::handleMessage(juce::uint8 type,
                           (ch == 0) ? pd.resamplerL : pd.resamplerR;
                       interp.process(speedRatio, srcBuf.getData(),
                                      dstBuf.getData(), numOut);
-                      memcpy(interval.buffer.getWritePointer(ch, writePos),
-                             dstBuf.getData(), (size_t)numOut * sizeof(float));
+                      if (auto *dst = interval.channelWritePtr[(size_t)ch])
+                        memcpy(dst + writePos, dstBuf.getData(),
+                               (size_t)numOut * sizeof(float));
                     }
-                    if (out_nch == 1 && interval.buffer.getNumChannels() == 2) {
-                      memcpy(interval.buffer.getWritePointer(1, writePos),
-                             interval.buffer.getReadPointer(0, writePos),
+                    if (out_nch == 1 && interval.buffer.getNumChannels() == 2 &&
+                        interval.channelWritePtr[0] != nullptr &&
+                        interval.channelWritePtr[1] != nullptr) {
+                      memcpy(interval.channelWritePtr[1] + writePos,
+                             interval.channelWritePtr[0] + writePos,
                              (size_t)numOut * sizeof(float));
                     }
                     interval.writePos.fetch_add(numOut);
@@ -446,7 +474,10 @@ bool NinjamClient::handleMessage(juce::uint8 type,
           if (bpm > 0 && bpi > 0)
             diagLastIntervalExpected.store(
                 (int)(sampleRate * 60.0 / bpm * bpi));
-          guidToInterval.erase(it);
+          {
+            juce::ScopedLock sl(downloadMutex);
+            guidToInterval.erase(guid);
+          }
         }
       }
     }

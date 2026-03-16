@@ -63,6 +63,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
                               juce::dontSendNotification);
   saveTxToggle.onClick = [this]() {
     audioProcessor.saveTxEnabled = saveTxToggle.getToggleState();
+    audioProcessor.applyDebugCaptureSettings();
   };
   saveTxToggle.setRepaintsOnMouseActivity(true);
   saveTxToggle.setTitle("Save transmitted audio");
@@ -74,6 +75,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
                               juce::dontSendNotification);
   saveRxToggle.onClick = [this]() {
     audioProcessor.saveRxEnabled = saveRxToggle.getToggleState();
+    audioProcessor.applyDebugCaptureSettings();
   };
   saveRxToggle.setRepaintsOnMouseActivity(true);
   saveRxToggle.setTitle("Save received audio");
