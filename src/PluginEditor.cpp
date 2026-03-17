@@ -452,7 +452,11 @@ void AntiphonEditor::resized() {
   auto area = getLocalBounds().reduced(10);
   // Covers the painted header exactly, so the spoken status and the drawn one
   // describe the same region of the window.
-  statusReadout.setBounds(area.removeFromTop(80));
+  const auto header = area.removeFromTop(80);
+  statusReadout.setBounds(header);
+  // What the 30 Hz tick repaints: the header band plus the section-label row
+  // just below it, both of which paint() draws.
+  headerRepaintArea = getLocalBounds().withHeight(header.getBottom() + 32);
   area.removeFromTop(10); // Spacing below status bar
 
   // Bottom toolbar
@@ -520,6 +524,7 @@ void AntiphonEditor::resized() {
 
   // Elastic local/remote split
   cachedChannelPanelBounds = area;
+  lastLayoutKey = -1; // the window moved; the tick must not skip the relayout
   relayoutChannelArea();
 }
 
@@ -820,7 +825,7 @@ void AntiphonEditor::relayoutChannelArea() {
   remoteUsersContainer.setSize(container_w, rh);
 }
 
-void AntiphonEditor::updateStatusReadout() {
+bool AntiphonEditor::updateStatusReadout() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
   const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
   const int bpm = audioProcessor.internalBpm.load();
@@ -840,6 +845,7 @@ void AntiphonEditor::updateStatusReadout() {
               ? juce::String("Running.")
               : juce::String(SyncState::describe(sync)) + ".");
   }
+  const bool statusChanged = s != statusReadout.getStatus();
   statusReadout.setStatus(s);
 
   // Announce only the transitions, never the steady state -- this runs 30 times
@@ -864,10 +870,11 @@ void AntiphonEditor::updateStatusReadout() {
       announcer.say(syncText, true);
     }
   }
+  return statusChanged;
 }
 
 void AntiphonEditor::timerCallback() {
-  updateStatusReadout();
+  const bool statusChanged = updateStatusReadout();
 
   auto decay = [](std::atomic<float> &v) {
     float f = v.load();
@@ -882,7 +889,19 @@ void AntiphonEditor::timerCallback() {
   }
 
   updateToolbarStates();
-  repaint();
+  // Only the header animates -- status text, phase bar, beat flashes. The
+  // channel strips repaint their own meters, so repainting the whole editor
+  // here redrew every static label, every dB scale and the whole background
+  // 30 times a second. Profiling an idle, disconnected instance put
+  // paintEntireComponent at 66% of all CPU and drawFittedText at 25%.
+  // ...and only while there is something to animate. Disconnected, the phase
+  // bar is frozen and the text is fixed, so an idle window should cost nothing.
+  const bool headerMoving =
+      audioProcessor.ninjamClient.isConnected() ||
+      audioProcessor.intervalFlashIntensity.load() > 0.0f ||
+      audioProcessor.beatFlashIntensity.load() > 0.0f;
+  if (headerMoving || statusChanged)
+    repaint(headerRepaintArea);
 
   // Sync local channel strips to the processor's localChannels vector
   {
@@ -955,5 +974,13 @@ void AntiphonEditor::timerCallback() {
     remoteUserStrips.clear();
   }
 
-  relayoutChannelArea();
+  // Laying out is cheap on its own, but every setBounds it performs marks a
+  // component dirty and buys another repaint. Only do it when the set of strips
+  // has actually changed; resized() handles the window moving.
+  const int layoutKey =
+      localChannelStrips.size() * 1000 + remoteUserStrips.size();
+  if (layoutKey != lastLayoutKey) {
+    lastLayoutKey = layoutKey;
+    relayoutChannelArea();
+  }
 }

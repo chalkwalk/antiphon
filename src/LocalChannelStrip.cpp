@@ -178,7 +178,14 @@ void LocalChannelStrip::updatePeaks() {
       GainUtils::decayMeterPeak(decayedPeakL, channel->peakL.load(), elapsed);
   decayedPeakR =
       GainUtils::decayMeterPeak(decayedPeakR, channel->peakR.load(), elapsed);
-  repaint();
+  // Only the meter gutter moves. Repainting the whole strip redrew the dB
+  // scale -- seven pieces of text per strip -- 30 times a second, for a bar a
+  // few pixels wide.
+  const auto meters = vuLArea.getUnion(vuRArea);
+  if (!meters.isEmpty())
+    repaint(meters);
+  else
+    repaint();
 }
 
 void LocalChannelStrip::paint(juce::Graphics &g) {

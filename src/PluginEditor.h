@@ -44,6 +44,9 @@ private:
 
   // Elastic channel-panel layout state
   juce::Rectangle<int> cachedChannelPanelBounds;
+  // The band the 30 Hz tick actually needs to redraw.
+  juce::Rectangle<int> headerRepaintArea;
+  int lastLayoutKey = -1;
   int channelAreaLocalW = 320; // stored for paint() label alignment
   void relayoutChannelArea();
   void updateToolbarStates();
@@ -52,7 +55,8 @@ private:
   // Speaks the header, which is otherwise only pixels. First in tab order.
   StatusReadout statusReadout;
   Announcer announcer;
-  void updateStatusReadout();
+  // Returns true when the spoken/painted status actually changed.
+  bool updateStatusReadout();
   // Both key routes funnel here, so a shortcut cannot work on one and not the
   // other.
   bool handleShortcut(const juce::KeyPress &);

@@ -96,6 +96,31 @@ that appears as an unreproducible dropout in someone else's DAW.
 - [ ] Re-audit the rest of `processBlock` for the same class of problem once
       those two are gone, and record the result so the list stays authoritative.
 
+### Idle CPU
+
+Profiled with `gprofng` on an idle, disconnected standalone (30 s, Xvfb, so pure
+software rendering as on any Linux X11 build). CPU fell from **16.5 s to 4.2 s**
+over the same window -- roughly 55% of a core down to 14% -- and painting fell
+from 66% of all CPU to 19%.
+
+Three causes, all the same shape: redrawing things that had not changed.
+
+- [x] The 30 Hz tick called `repaint()` on the whole editor. Only the header
+      animates; the strips already repaint their own meters. Now repaints the
+      header band only.
+- [x] The tick called `relayoutChannelArea()` every frame, and every `setBounds`
+      it performed dirtied a component and bought another repaint. Now only when
+      the set of strips changes; `resized()` still always relayouts.
+- [x] Meter updates repainted the whole strip, redrawing the static dB scale --
+      seven pieces of text per strip -- for a bar a few pixels wide. Now repaints
+      the meter gutter only.
+- [x] The header repainted even when nothing moved. Disconnected, the phase bar
+      is frozen and the text fixed, so the tick now repaints only when connected,
+      a flash is decaying, or the status text changed.
+- [ ] Still 19% in paint at idle. Worth re-profiling **connected**, where the
+      phase bar animates continuously and the meters actually move -- the idle
+      case is now the easy one.
+
 ### Underrun tail
 
 When a decoded interval runs short, `getDecodedAudio` leaves the remainder of the
