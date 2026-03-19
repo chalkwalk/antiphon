@@ -34,6 +34,8 @@ private:
   double lastPeakUpdateMs = 0.0;
   juce::Rectangle<int> scaleArea;
   juce::Rectangle<int> vuArea;
+  // What the meter currently shows; see LocalChannelStrip.
+  float shownFraction = -1.0f;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(RemoteChannelRow)
 };

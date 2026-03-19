@@ -178,9 +178,18 @@ void LocalChannelStrip::updatePeaks() {
       GainUtils::decayMeterPeak(decayedPeakL, channel->peakL.load(), elapsed);
   decayedPeakR =
       GainUtils::decayMeterPeak(decayedPeakR, channel->peakR.load(), elapsed);
-  // Only the meter gutter moves. Repainting the whole strip redrew the dB
-  // scale -- seven pieces of text per strip -- 30 times a second, for a bar a
-  // few pixels wide.
+  // Only the meter gutter moves, and only when it has moved far enough to
+  // redraw to different pixels. Repainting the whole strip redrew the dB scale
+  // -- seven pieces of text per strip -- 30 times a second, for a bar a few
+  // pixels wide.
+  const float fL = GainUtils::meterFraction(decayedPeakL);
+  const float fR = GainUtils::meterFraction(decayedPeakR);
+  if (!GainUtils::meterNeedsRepaint(shownFractionL, fL) &&
+      !GainUtils::meterNeedsRepaint(shownFractionR, fR))
+    return;
+  shownFractionL = fL;
+  shownFractionR = fR;
+
   const auto meters = vuLArea.getUnion(vuRArea);
   if (!meters.isEmpty())
     repaint(meters);

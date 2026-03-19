@@ -30,6 +30,8 @@ private:
   double lastPeakUpdateMs = 0.0;
   juce::Rectangle<int> scaleArea;
   juce::Rectangle<int> vuLArea, vuRArea;
+  // What the meter currently shows, so a change too small to see costs nothing.
+  float shownFractionL = -1.0f, shownFractionR = -1.0f;
 
   juce::TextEditor nameEditor;
   juce::ToggleButton monoButton;

@@ -63,6 +63,19 @@ inline double peakToDb(float peak) {
 }
 
 // Fraction of the meter to fill, 0 at kMeterMinDb and 1 at kMeterMaxDb.
+// Smallest change in a meter's drawn length worth a repaint, as a fraction of
+// the bar. Below this the bar would redraw to the same pixels: on a 200 px
+// meter, 2% is 4 px.
+constexpr float kMeterRepaintThreshold = 0.02f;
+
+// True when a meter has moved enough to be worth redrawing. Reaching silence
+// always counts, so a decaying bar settles at zero instead of stopping a
+// couple of percent short of it.
+inline bool meterNeedsRepaint(float shown, float next) {
+  if (next <= 0.0f) return shown > 0.0f;
+  return std::abs(next - shown) >= kMeterRepaintThreshold;
+}
+
 inline float meterFraction(float peak) {
   const double db = peakToDb(peak);
   return (float)juce::jlimit(

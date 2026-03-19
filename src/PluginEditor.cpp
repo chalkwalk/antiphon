@@ -894,13 +894,15 @@ void AntiphonEditor::timerCallback() {
   // here redrew every static label, every dB scale and the whole background
   // 30 times a second. Profiling an idle, disconnected instance put
   // paintEntireComponent at 66% of all CPU and drawFittedText at 25%.
-  // ...and only while there is something to animate. Disconnected, the phase
-  // bar is frozen and the text is fixed, so an idle window should cost nothing.
-  const bool headerMoving =
-      audioProcessor.ninjamClient.isConnected() ||
-      audioProcessor.intervalFlashIntensity.load() > 0.0f ||
-      audioProcessor.beatFlashIntensity.load() > 0.0f;
-  if (headerMoving || statusChanged)
+  // ...and only when the bar has stepped. The beat flashes are sampled at the
+  // same moments rather than driving repaints of their own: they decay over
+  // ~0.4 s while beats arrive every 0.44-0.6 s, so letting them force a repaint
+  // would keep the header redrawing most of the time and undo the saving.
+  const int phaseStep =
+      (int)(audioProcessor.publishedPhaseBeats.load() * kPhaseStepsPerBeat);
+  const bool phaseMoved = phaseStep != lastPhaseStep;
+  lastPhaseStep = phaseStep;
+  if (phaseMoved || statusChanged)
     repaint(headerRepaintArea);
 
   // Sync local channel strips to the processor's localChannels vector

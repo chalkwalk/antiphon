@@ -10,6 +10,30 @@ public:
   GainUtilsTests() : juce::UnitTest("GainUtils", "GainUtils") {}
 
   void runTest() override {
+    beginTest("a meter only redraws when it would land on different pixels");
+    {
+      // 2% of the bar. On a 200 px meter that is 4 px; below it the repaint
+      // would produce an identical image, which at 30 Hz across every strip is
+      // most of what the UI was doing.
+      expect(!GainUtils::meterNeedsRepaint(0.50f, 0.505f), "0.5% is invisible");
+      expect(!GainUtils::meterNeedsRepaint(0.50f, 0.51f), "1% is invisible");
+      expect(GainUtils::meterNeedsRepaint(0.50f, 0.53f), "3% shows");
+      expect(GainUtils::meterNeedsRepaint(0.50f, 0.40f), "falling shows");
+
+      // Silence is special: without this a decaying bar stops just short of
+      // empty and sits there, because the last step is below the threshold.
+      expect(GainUtils::meterNeedsRepaint(0.01f, 0.0f),
+             "reaching silence always redraws");
+      expect(!GainUtils::meterNeedsRepaint(0.0f, 0.0f),
+             "staying silent does not");
+
+      // The initial sentinel must draw, or a strip starts blank until the
+      // signal happens to jump 2%.
+      expect(GainUtils::meterNeedsRepaint(-1.0f, 0.0f) ||
+                 GainUtils::meterNeedsRepaint(-1.0f, 0.001f),
+             "the first update always draws");
+    }
+
     beginTest("landmark conversions");
     expectWithinAbsoluteError(GainUtils::gainToDb(1.0f), 0.0, 0.01);
     expectWithinAbsoluteError((double)GainUtils::dbToGain(0.0), 1.0, 1.0e-6);

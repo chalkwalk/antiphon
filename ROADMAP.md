@@ -117,9 +117,21 @@ Three causes, all the same shape: redrawing things that had not changed.
 - [x] The header repainted even when nothing moved. Disconnected, the phase bar
       is frozen and the text fixed, so the tick now repaints only when connected,
       a flash is decaying, or the status text changed.
-- [ ] Still 19% in paint at idle. Worth re-profiling **connected**, where the
-      phase bar animates continuously and the meters actually move -- the idle
-      case is now the easy one.
+- [x] Meters repaint only when the drawn bar would land on different pixels
+      (2% of its length; reaching silence always redraws, or a decaying bar
+      settles short of empty). Tested in `GainUtilsTests`.
+- [x] The phase bar steps in **sixteenth notes** rather than every frame --
+      6.7-9.1 repaints/s against 30, and what other clients do. Beat flashes are
+      sampled at those steps rather than driving repaints of their own, since
+      they decay over ~0.4 s while beats arrive every 0.44-0.6 s and would
+      otherwise keep the header redrawing most of the time.
+- [ ] **Re-profile connected.** Every measurement so far is of an idle,
+      disconnected window, where the phase bar is frozen and no meter moves --
+      so the two changes above are largely unexercised by the 3.95 s figure.
+      Connected is the case that matters and the one still unmeasured.
+- [ ] Chat needed no work: its repaints are already event-driven, in
+      `setChatConnectedState`, and a TextEditor redraws only when its content
+      changes. Recorded so nobody re-investigates it.
 
 ### Underrun tail
 

@@ -135,7 +135,13 @@ void RemoteChannelRow::updatePeak(float peak) {
   lastPeakUpdateMs = now;
 
   decayedPeak = GainUtils::decayMeterPeak(decayedPeak, peak, elapsed);
-  // As in LocalChannelStrip: the scale beside the meter is static.
+  // As in LocalChannelStrip: the scale beside the meter is static, and a change
+  // too small to see is not worth a repaint.
+  const float f = GainUtils::meterFraction(decayedPeak);
+  if (!GainUtils::meterNeedsRepaint(shownFraction, f))
+    return;
+  shownFraction = f;
+
   if (!vuArea.isEmpty())
     repaint(vuArea);
   else

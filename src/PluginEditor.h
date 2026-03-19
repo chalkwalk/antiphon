@@ -47,6 +47,26 @@ private:
   // The band the 30 Hz tick actually needs to redraw.
   juce::Rectangle<int> headerRepaintArea;
   int lastLayoutKey = -1;
+
+  // How finely the phase bar steps, in divisions of a beat.
+  //
+  // Named in note values to avoid the ambiguity that "1/16th beat" invites: at
+  // 137 BPM a beat is a quarter note, so a sixteenth note is four per beat --
+  // 9.1 per second -- not one sixteenth of a beat, which would be 36.5 and
+  // worse than the 30 Hz timer it replaces.
+  //
+  // The bar moves 3.5-4.8 px per tick at 30 Hz, so "repaint only when it moves"
+  // saves nothing; it always did move. Saving means stepping it deliberately,
+  // as other clients do. Per second, at 100-137 BPM:
+  //
+  //   1  quarter notes  (once a beat)   1.7-2.3   62.5 px/step
+  //   4  sixteenths     (ours)          6.7-9.1   15.6 px/step
+  //   8  thirty-seconds               13.3-18.3    7.8 px/step
+  //
+  // Sixteenths are four times cheaper than the timer and still step finely
+  // enough to read as motion rather than as a jump.
+  static constexpr int kPhaseStepsPerBeat = 4;
+  int lastPhaseStep = -1;
   int channelAreaLocalW = 320; // stored for paint() label alignment
   void relayoutChannelArea();
   void updateToolbarStates();
