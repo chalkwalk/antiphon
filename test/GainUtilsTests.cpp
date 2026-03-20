@@ -20,12 +20,23 @@ public:
       expect(GainUtils::meterNeedsRepaint(0.50f, 0.53f), "3% shows");
       expect(GainUtils::meterNeedsRepaint(0.50f, 0.40f), "falling shows");
 
-      // Silence is special: without this a decaying bar stops just short of
-      // empty and sits there, because the last step is below the threshold.
+      // Silence is the one exception, and only the final sub-threshold step of
+      // a decay can reach it -- any larger fall already passed the gate.
       expect(GainUtils::meterNeedsRepaint(0.01f, 0.0f),
-             "reaching silence always redraws");
+             "the last step to silence redraws even though it is under 2%");
       expect(!GainUtils::meterNeedsRepaint(0.0f, 0.0f),
              "staying silent does not");
+
+      // The exception must not become a general "silence always redraws" rule
+      // applied at any magnitude: a big fall to zero is the ordinary gate
+      // doing its job, not the exception.
+      expect(GainUtils::meterNeedsRepaint(0.80f, 0.0f),
+             "a large fall to silence redraws via the normal threshold");
+
+      // And it is strictly one-directional: rising off zero by less than the
+      // threshold is still invisible, so it is still gated.
+      expect(!GainUtils::meterNeedsRepaint(0.0f, 0.005f),
+             "a sub-threshold rise from silence stays gated");
 
       // The initial sentinel must draw, or a strip starts blank until the
       // signal happens to jump 2%.

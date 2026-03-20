@@ -68,12 +68,17 @@ inline double peakToDb(float peak) {
 // meter, 2% is 4 px.
 constexpr float kMeterRepaintThreshold = 0.02f;
 
-// True when a meter has moved enough to be worth redrawing. Reaching silence
-// always counts, so a decaying bar settles at zero instead of stopping a
-// couple of percent short of it.
+// True when a meter has moved enough to be worth redrawing.
 inline bool meterNeedsRepaint(float shown, float next) {
-  if (next <= 0.0f) return shown > 0.0f;
-  return std::abs(next - shown) >= kMeterRepaintThreshold;
+  if (std::abs(next - shown) >= kMeterRepaintThreshold)
+    return true;
+
+  // The one exception, and only the last step of a decay reaches it: a fall
+  // from under the threshold to silence. Any larger fall already passed the
+  // gate above, so this rescues nothing else -- without it a bar that decays to
+  // zero parks a pixel or two above empty and stays there, because its final
+  // step is too small to qualify.
+  return next <= 0.0f && shown > 0.0f;
 }
 
 inline float meterFraction(float peak) {
