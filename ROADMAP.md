@@ -125,10 +125,26 @@ Three causes, all the same shape: redrawing things that had not changed.
       sampled at those steps rather than driving repaints of their own, since
       they decay over ~0.4 s while beats arrive every 0.44-0.6 s and would
       otherwise keep the header redrawing most of the time.
-- [ ] **Re-profile connected.** Every measurement so far is of an idle,
-      disconnected window, where the phase bar is frozen and no meter moves --
-      so the two changes above are largely unexercised by the 3.95 s figure.
-      Connected is the case that matters and the one still unmeasured.
+- [x] **Re-profiled connected**, against a local `ninjamsrv` with three
+      reference clients transmitting tones of varying amplitude and chatting, so
+      three meters move, sixteen chat messages land and the phase bar animates.
+      Driven through the real UI with `xdotool` rather than adding a connect
+      flag to the binary; `gprofng -y SIGUSR1` starts paused so only the
+      connected period is recorded.
+
+      **4.36 s CPU over 40 s -- about 11% of a core under real load**, against
+      55% for an idle window before any of this. Audio and networking are
+      negligible: `getDecodedAudio` is 1.4%.
+- [ ] Painting is still effectively all of it: `paintWithinParentContext` 57.6%
+      inclusive, `AntiphonEditor::paint` 21.6%. Within that, a surprise worth
+      chasing before anything exotic: **~20% of all CPU is comparing fonts** --
+      `GraphicsFontHelpers::compareFont` 10.1% plus
+      `Font::SharedFontInternal::operator<` 9.6%. That is the key lookup for
+      JUCE's `drawFittedText` glyph cache, and our paint code builds
+      `FontOptions{}.withHeight(...)` inline on every call, so every frame
+      re-compares freshly constructed Font objects. Hoisting the handful of
+      fonts we use to constants should remove most of it, and is far cheaper
+      than an OpenGL context.
 - [ ] Chat needed no work: its repaints are already event-driven, in
       `setChatConnectedState`, and a TextEditor redraws only when its content
       changes. Recorded so nobody re-investigates it.
