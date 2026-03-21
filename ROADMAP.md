@@ -135,16 +135,29 @@ Three causes, all the same shape: redrawing things that had not changed.
       **4.36 s CPU over 40 s -- about 11% of a core under real load**, against
       55% for an idle window before any of this. Audio and networking are
       negligible: `getDecodedAudio` is 1.4%.
-- [ ] Painting is still effectively all of it: `paintWithinParentContext` 57.6%
-      inclusive, `AntiphonEditor::paint` 21.6%. Within that, a surprise worth
-      chasing before anything exotic: **~20% of all CPU is comparing fonts** --
-      `GraphicsFontHelpers::compareFont` 10.1% plus
-      `Font::SharedFontInternal::operator<` 9.6%. That is the key lookup for
-      JUCE's `drawFittedText` glyph cache, and our paint code builds
-      `FontOptions{}.withHeight(...)` inline on every call, so every frame
-      re-compares freshly constructed Font objects. Hoisting the handful of
-      fonts we use to constants should remove most of it, and is far cheaper
-      than an OpenGL context.
+- [x] Chased the font-comparison cost (~20% of CPU: `compareFont` plus
+      `Font::SharedFontInternal::operator<`). **Two plausible fixes were tried
+      and both were wrong**; recorded so nobody spends the afternoon again.
+
+      - *Hoisting inline `FontOptions{}.withHeight(...)` to constants.* No help:
+        `Font::compare` is `*a.font < *b.font`, which bottoms out in
+        `options < other.options`, a full FontOptions content comparison. There
+        is **no pointer-equality fast path**, so reusing one Font object costs
+        exactly the same. Hoisting saves construction, not comparison.
+      - *Skipping text that falls outside the clip region.* Measured no change
+        at all (4.363 s -> 4.383 s, noise). The callers view shows the cost is
+        `RenderingHelpers::GlyphCache::Key::operator<` -- the **per-glyph raster
+        cache**, paid only for glyphs genuinely being drawn. Clipped-out text
+        never paid it. The guard was reverted rather than kept unmeasured.
+
+      What remains is the cost of rasterising glyphs that really are being
+      redrawn. Reducing it means drawing less text, not drawing it more
+      cleverly -- fewer dB scales (one per column instead of per strip) is the
+      obvious candidate, and is a layout change, not an optimisation.
+- [ ] Decide whether 11% of a core under load is worth more work at all. It is
+      not obviously too much for a live audio client with three remote players,
+      and the cheap wins are gone: everything left is a real change to what the
+      UI draws.
 - [ ] Chat needed no work: its repaints are already event-driven, in
       `setChatConnectedState`, and a TextEditor redraws only when its content
       changes. Recorded so nobody re-investigates it.
