@@ -413,3 +413,49 @@ Presumed an onset-detection artifact near a seam. The sample-exact capture commi
 This entry is kept rather than deleted because it is the clearest instance of
 `PRINCIPLES §5`: three "failures" in this project have been measurement error,
 and this is the one that got as far as a fix.
+
+### Idle CPU
+
+An idle, disconnected window burned about 55% of a core. Profiled with
+`gprofng` (perf is unavailable: `perf_event_paranoid=4` and sudo needs a
+password), which put `paintEntireComponent` at 66% of all CPU and
+`drawFittedText` at 25% -- none of it audio or networking.
+
+Four causes, all the same shape: redrawing what had not changed. The 30 Hz tick
+repainted the whole editor though only the header animates; it relaid out the
+channel area every frame, each `setBounds` dirtying a component and buying
+another repaint; meter updates repainted the entire strip, redrawing the static
+dB scale for a bar a few pixels wide; and the header repainted while frozen.
+Meters now redraw only when the bar would land on different pixels (2% of its
+length, with the last step to silence exempt or a decaying bar parks just above
+empty), and the phase bar steps in **sixteenth notes** -- 6.7-9.1 repaints/s
+against 30, and what other clients do. Idle fell to ~13% of a core.
+
+Then measured the case idle profiling could not reach: a local `ninjamsrv` with
+three reference clients transmitting tones of varying amplitude and chatting,
+driven through the real UI with `xdotool` (rather than adding a connect flag to
+the shipped binary) and recorded with `gprofng -y SIGUSR1` so only the connected
+period counted. **4.36 s CPU over 40 s -- about 11% of a core** with three
+moving meters, sixteen chat messages and an animating phase bar.
+`getDecodedAudio` is 1.4%.
+
+Two further font optimisations were tried and **both were rejected by
+measurement**, recorded because they look obviously right:
+
+- Hoisting inline `FontOptions{}.withHeight(...)` to constants. `Font::compare`
+  bottoms out in a full FontOptions content comparison with no pointer-equality
+  fast path, so reusing one Font costs the same. Saves construction, not
+  comparison.
+- Skipping text outside the clip region. No measurable change (4.363 s ->
+  4.383 s). The cost is `GlyphCache::Key::operator<`, the per-glyph raster
+  cache, paid only for glyphs actually drawn -- clipped text never paid it. The
+  guard was reverted rather than kept unmeasured.
+
+**Decision: 11% under load is acceptable and the area is closed.** The cheap
+wins are spent; what remains is the cost of rasterising glyphs that really are
+redrawn, and reducing it means drawing less text (one dB scale per column
+rather than per strip), which is a layout change rather than an optimisation.
+OpenGL was considered and not pursued: JUCE 8 already uses Direct2D on Windows
+and CoreGraphics on macOS, so it would accelerate Linux alone, add a third
+render path, and carry the usual host-context risks in a plugin -- and it would
+have masked the real defect rather than removed it.
