@@ -29,6 +29,7 @@ target_sources(NinjamTests
         ShortcutsTests.cpp
         ChannelMixTests.cpp
         AccessibilityAuditTests.cpp
+        SpscRingTests.cpp
         FakeNinjamServer.cpp
         LoopbackTests.cpp
         AudioLoopbackTests.cpp
