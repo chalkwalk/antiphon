@@ -85,9 +85,36 @@ that appears as an unreproducible dropout in someone else's DAW.
             left are the known shutdown one below.
       - [ ] The audio thread still takes the lock to traverse `channelStreams`
             and `remoteUsers`. Worst-case wait is now bounded and short, but a
-            lock on the audio thread is still a lock. Needs an audio-thread-owned
-            structure fed by a command queue, with deferred destruction so the
-            audio thread never frees a buffer.
+            lock on the audio thread is still a lock.
+
+            **Design settled, and the primitive is built.** `SpscRing` (in
+            `src/SpscRing.h`, unit-tested and clean under TSan with a real
+            producer/consumer pair moving 20 000 pointers) carries ownership in
+            a circle without either side waiting:
+
+              ready:   network -> audio   "here is a decoded interval"
+              retired: audio -> network   "done with this one, free it"
+
+            The retire direction is the load-bearing half: the audio thread must
+            never drop the last reference to a `DecodedInterval`, because that
+            frees a multi-megabyte buffer inside the callback. It holds raw
+            pointers deliberately -- a `shared_ptr` copy touches an atomic
+            refcount and its destructor can free -- with ownership staying in
+            the producer's container while a pointer is in flight.
+
+            Remaining, and the risky part:
+            - [ ] Replace `channelStreams` with a fixed-capacity slot array the
+                  audio thread walks without locking, each slot claimed and
+                  released by an atomic flag.
+            - [ ] Split each stream's state by owner: playback cursors
+                  (`current`, `readPos`, the fade fields) become audio-thread
+                  only; mix parameters (volume, pan, mute, solo, output bus)
+                  become atomics the UI writes and the audio thread reads.
+                  `remoteUsers` stays as it is for the UI, which is not
+                  real-time.
+            - [ ] Drain the retire ring from the network thread, and confirm
+                  under TSan that `getDecodedAudio` and `swapIntervalBuffers`
+                  no longer touch `downloadMutex`.
 - [x] `setSaveTx` / `setSaveRx` are called from `processBlock` on **every block**
       and do file I/O on the toggling call. Move the toggle handling off the
       audio thread entirely; the audio thread should only ever see a flag.
