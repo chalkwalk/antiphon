@@ -1,8 +1,10 @@
 #pragma once
+#include "SpscRing.h"
 #include "VorbisCodec.h"
 #include <JuceHeader.h>
-#include <deque>
+#include <array>
 #include <memory>
+#include <vector>
 
 class NinjamClientListener {
 public:
@@ -159,36 +161,102 @@ private:
     }
   };
 
-  // Per-(user, channel) playback stream.  The audio thread reads from current;
-  // queue holds upcoming intervals in arrival order.
-  // fadeOut holds the previous interval's buffer for a short crossfade across
-  // the swap boundary, masking the discontinuity from un-played tail samples.
-  struct ChannelStream {
-    juce::String username;
-    int channelIndex = 0;
-    std::deque<std::shared_ptr<DecodedInterval>> queue;
-    std::shared_ptr<DecodedInterval> current;
+  // One remote channel's playback slot.
+  //
+  // Fixed in number and never created or destroyed while the client lives, so
+  // the audio thread walks the whole array without a lock and can never observe
+  // a half-built or freed entry. That is the entire point: the mix used to walk
+  // a std::map under downloadMutex, which the network thread also held, so
+  // every block was one decode away from a priority inversion (PRINCIPLES 7).
+  //
+  // Every field below is owned by exactly one thread. The ownership is the
+  // design, so it is spelled out field by field -- if you add one, say who
+  // writes it.
+  struct StreamSlot {
+    // Free -> Live -> Draining -> Free. The network thread makes the first two
+    // transitions, the audio thread the third: only the audio thread knows when
+    // it has let go of the interval pointers. Read with acquire, so a Live
+    // slot's parameters are visible as soon as its state is.
+    enum State { kFree = 0, kLive = 1, kDraining = 2 };
+    std::atomic<int> state{kFree};
+
+    // UI writes, audio thread reads.
+    std::atomic<float> volume{kDefaultRemoteChannelVolume};
+    std::atomic<float> pan{0.0f};
+    std::atomic<bool> muted{false};
+    std::atomic<bool> soloed{false};
+    std::atomic<int> outputBus{0};
+    // Audio thread writes, UI reads. Was a plain float in the shared map, and
+    // was therefore a race in every build that ever ran.
+    std::atomic<float> peakLevel{0.0f};
+
+    // Ownership travels in a circle and never comes to rest on the audio
+    // thread: the network thread pushes a decoded interval to `ready`, the
+    // audio thread pops it, plays it, and pushes it to `retired` for the
+    // network thread to destroy. Freeing an interval means freeing a
+    // multi-megabyte AudioBuffer, which must never happen inside the callback.
+    //
+    // `retired` is sized above ready.capacity() + 2 -- the most the audio thread
+    // can ever hold at once being `current` and `fadeOut` -- so handing one back
+    // cannot fail, and the audio thread is never left holding a pointer it has
+    // no way to return.
+    SpscRing<DecodedInterval, 8> ready;
+    SpscRing<DecodedInterval, 24> retired;
+
+    // Audio thread only. `fadeOut` keeps the previous interval alive for a short
+    // crossfade across the swap boundary, masking the discontinuity left by
+    // un-played tail samples.
+    DecodedInterval *current = nullptr;
     int readPos = 0;
-    std::shared_ptr<DecodedInterval> fadeOut;
+    DecodedInterval *fadeOut = nullptr;
     int fadeOutPos = 0;
     int fadeTotal = 0;
     int fadeRemaining = 0;
+
+    // Network thread only. The audio thread must never touch `username`:
+    // copying a juce::String touches a refcount, and comparing one can read
+    // memory the network thread is rewriting.
+    juce::String username;
+    int channelIndex = 0;
+    std::vector<std::unique_ptr<DecodedInterval>> owned;
   };
 
+  // Well past any real session: sixteen players with four channels each.
+  // Running out drops the channel and says so, rather than growing an array the
+  // audio thread is walking.
+  static constexpr int kMaxStreams = 64;
+  std::array<StreamSlot, (std::size_t)kMaxStreams> streamSlots;
+
+  int acquireStreamSlot(const juce::String &username, int channelIndex);
+  void releaseStreamSlot(const juce::String &username, int channelIndex);
+  void drainRetired(StreamSlot &slot);
+  void drainAllRetired();
+  // Audio thread: hand every interval back and mark the slot reusable.
+  void releaseSlotOnAudioThread(StreamSlot &slot);
+
   // Routes DOWNLOAD_INTERVAL_WRITE chunks to the correct DecodedInterval.
-  // Erased when the final chunk arrives (flags & 1).
+  // Erased when the final chunk arrives (flags & 1). `target` is borrowed --
+  // the slot's `owned` list holds the interval.
   struct PendingDownload {
-    std::shared_ptr<DecodedInterval> target;
+    DecodedInterval *target = nullptr;
+    int slotIndex = -1;
     std::unique_ptr<VorbisDecoder> decoder;
     juce::LagrangeInterpolator resamplerL, resamplerR;
     juce::String username;
     int channelIndex = 0;
   };
 
-  juce::CriticalSection downloadMutex;
+  // Network thread only, start to finish: inserted on 0x04, erased on the final
+  // 0x05 chunk, cleared on disconnect. The audio thread never looks at it, so it
+  // needs no lock.
   std::map<juce::String, PendingDownload> guidToInterval;
-  std::map<std::pair<juce::String, int>, ChannelStream> channelStreams;
+
+  // The UI's view of the room, and the map from a channel to its slot. Shared
+  // between the network thread and the message thread; the audio thread never
+  // takes this lock, which is the whole reason it can be a lock at all.
+  juce::CriticalSection usersMutex;
   std::map<juce::String, RemoteUser> remoteUsers;
+  std::map<std::pair<juce::String, int>, int> slotIndexByKey;
 
   juce::CriticalSection chatMutex;
   juce::Array<ChatMessage> chatLog;
@@ -201,6 +269,10 @@ private:
   int currentPort = 2049;
   juce::String currentUsername;
   juce::String currentPassword;
+
+  template <typename ApplyToChannel, typename ApplyToSlot>
+  void updateChannelParam(const juce::String &username, int channelIndex,
+                          ApplyToChannel toChannel, ApplyToSlot toSlot);
 
   bool handleMessage(juce::uint8 type, const juce::MemoryBlock &payload);
   void sendAuthRequest(const juce::uint8 challenge[8]);

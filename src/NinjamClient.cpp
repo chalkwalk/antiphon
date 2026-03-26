@@ -199,10 +199,19 @@ void NinjamClient::run() {
   // Drop all per-session state. Without this a reconnect shows the previous
   // session's users, and their orphaned channel streams keep being swapped
   // every interval, silently, forever.
+  //
+  // The slots are marked draining rather than freed here. The audio thread may
+  // be inside the mix holding pointers into them, and this thread has no way to
+  // know; it hands them back on its next pass and the memory is reclaimed when
+  // the slot is next claimed. If the audio thread never runs again, the
+  // destructor gets it.
+  guidToInterval.clear();
+  for (auto &slot : streamSlots)
+    if (slot.state.load(std::memory_order_acquire) != StreamSlot::kFree)
+      slot.state.store(StreamSlot::kDraining, std::memory_order_release);
   {
-    juce::ScopedLock sl(downloadMutex);
-    guidToInterval.clear();
-    channelStreams.clear();
+    juce::ScopedLock sl(usersMutex);
+    slotIndexByKey.clear();
     remoteUsers.clear();
   }
 
@@ -262,8 +271,9 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     const bool wellFormed = NinjamProtocol::parseUserInfo(payload, entries);
 
     bool changed = false;
+    std::vector<std::pair<juce::String, int>> departed;
     {
-      juce::ScopedLock sl(downloadMutex);
+      juce::ScopedLock sl(usersMutex);
       for (const auto &e : entries) {
         if (e.active) {
           if (remoteUsers.find(e.username) == remoteUsers.end())
@@ -285,14 +295,19 @@ bool NinjamClient::handleMessage(juce::uint8 type,
           auto it = remoteUsers.find(e.username);
           if (it != remoteUsers.end()) {
             auto &user = it->second;
-            if (user.channels.erase(e.channelIndex) > 0)
+            if (user.channels.erase(e.channelIndex) > 0) {
               changed = true;
+              departed.emplace_back(e.username, e.channelIndex);
+            }
             if (user.channels.empty())
               remoteUsers.erase(it);
           }
         }
       }
     }
+
+    for (const auto &d : departed)
+      releaseStreamSlot(d.first, d.second);
 
     sendUserMask();
 
@@ -317,7 +332,20 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     if (!begin.isOggAudio())
       return true;
 
-    auto interval = std::make_shared<DecodedInterval>();
+    const int slotIndex = acquireStreamSlot(begin.username, begin.channelIndex);
+    if (slotIndex < 0) {
+      juce::Logger::writeToLog("[rx] no free stream slot for " +
+                               begin.username + " channel " +
+                               juce::String(begin.channelIndex));
+      return true;
+    }
+    auto &slot = streamSlots[(std::size_t)slotIndex];
+
+    // Reclaim whatever the audio thread has finished with before allocating
+    // another few megabytes.
+    drainRetired(slot);
+
+    auto interval = std::make_unique<DecodedInterval>();
     interval->guid = begin.guidHex;
     int bufferSamples = static_cast<int>(
         sampleRate * 60.0 / std::max(1, serverBpm) * serverBpi * 1.5f);
@@ -326,20 +354,23 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     // Before the interval is shared with the audio thread; see DecodedInterval.
     interval->publishWritePointers();
 
+    DecodedInterval *raw = interval.get();
+    slot.owned.push_back(std::move(interval));
+    if (!slot.ready.push(raw)) {
+      // The audio thread is not keeping up, or is not running. Drop the
+      // interval whole rather than block: it was never made visible, so undoing
+      // the ownership is just a pop.
+      slot.owned.pop_back();
+      return true;
+    }
+
     PendingDownload pd;
-    pd.target = interval;
+    pd.target = raw;
+    pd.slotIndex = slotIndex;
     pd.username = begin.username;
     pd.channelIndex = begin.channelIndex;
     pd.decoder = std::make_unique<VorbisDecoder>();
-
-    juce::ScopedLock sl(downloadMutex);
     guidToInterval[begin.guidHex] = std::move(pd);
-
-    auto key = std::make_pair(begin.username, begin.channelIndex);
-    auto &stream = channelStreams[key];
-    stream.username = begin.username;
-    stream.channelIndex = begin.channelIndex;
-    stream.queue.push_back(interval);
 
     // Signal the audio thread that a new server interval has started.
     // compare_exchange prevents re-signalling if the audio thread hasn't
@@ -357,27 +388,14 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       const juce::String &guid = write.guidHex;
       const juce::uint8 flags = write.isFinal ? 1 : 0;
 
-      // The lock covers the map lookup and nothing more.
-      //
-      // It used to be held across the whole Vorbis decode and resample below,
-      // which can run for milliseconds -- and getDecodedAudio blocks on this
-      // same lock every single block. That is a priority inversion on the audio
-      // thread, and exactly the shape of an unreproducible dropout in someone
-      // else's DAW (PRINCIPLES section 7).
-      //
-      // Decoding outside the lock is safe because guidToInterval is mutated
-      // only by this thread (inserted on 0x04, erased below, cleared on
-      // disconnect in run()), so the entry cannot vanish underneath us, and the
-      // audio thread never looks at this map at all. The decoded samples are
-      // published to the audio thread the way they always were: by the atomic
-      // writePos, after the samples are in the buffer.
+      // No lock at all: guidToInterval is touched only by this thread, and the
+      // audio thread never looks at it. The decoded samples reach the audio
+      // thread the way they always have, by the atomic writePos, published
+      // after the samples are in the buffer.
       PendingDownload *pdPtr = nullptr;
-      {
-        juce::ScopedLock sl(downloadMutex);
-        auto found = guidToInterval.find(guid);
-        if (found != guidToInterval.end())
-          pdPtr = &found->second;
-      }
+      auto found = guidToInterval.find(guid);
+      if (found != guidToInterval.end())
+        pdPtr = &found->second;
 
       if (pdPtr != nullptr) {
         auto &pd = *pdPtr;
@@ -474,10 +492,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
           if (bpm > 0 && bpi > 0)
             diagLastIntervalExpected.store(
                 (int)(sampleRate * 60.0 / bpm * bpi));
-          {
-            juce::ScopedLock sl(downloadMutex);
-            guidToInterval.erase(guid);
-          }
+          guidToInterval.erase(guid);
         }
       }
     }
@@ -649,28 +664,152 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
   }
 }
 
+int NinjamClient::acquireStreamSlot(const juce::String &username,
+                                    int channelIndex) {
+  const auto key = std::make_pair(username, channelIndex);
+
+  // Whatever the UI has already set for this channel. The channel strip exists
+  // as soon as USER_INFO_CHANGE names the channel, which is before the first
+  // interval arrives, so a fader moved in that window would otherwise be lost
+  // the moment the slot was claimed.
+  RemoteUserChannel seed;
+  {
+    juce::ScopedLock sl(usersMutex);
+    auto existing = slotIndexByKey.find(key);
+    if (existing != slotIndexByKey.end())
+      return existing->second;
+
+    auto uit = remoteUsers.find(username);
+    if (uit != remoteUsers.end()) {
+      auto cit = uit->second.channels.find(channelIndex);
+      if (cit != uit->second.channels.end())
+        seed = cit->second;
+    }
+  }
+
+  for (int i = 0; i < kMaxStreams; ++i) {
+    auto &slot = streamSlots[(std::size_t)i];
+    if (slot.state.load(std::memory_order_acquire) != StreamSlot::kFree)
+      continue;
+
+    // kFree is published by the audio thread only after it has handed back
+    // every interval it held, so freeing them here cannot pull the buffer out
+    // from under a mix in progress.
+    drainRetired(slot);
+    slot.owned.clear();
+
+    slot.username = username;
+    slot.channelIndex = channelIndex;
+    slot.volume.store(seed.volume, std::memory_order_relaxed);
+    slot.pan.store(seed.pan, std::memory_order_relaxed);
+    slot.muted.store(seed.isMuted, std::memory_order_relaxed);
+    slot.soloed.store(seed.isSoloed, std::memory_order_relaxed);
+    slot.outputBus.store(seed.outputBusIndex, std::memory_order_relaxed);
+    slot.peakLevel.store(0.0f, std::memory_order_relaxed);
+    // Everything above must be visible to the audio thread before it sees the
+    // slot go live.
+    slot.state.store(StreamSlot::kLive, std::memory_order_release);
+
+    {
+      juce::ScopedLock sl(usersMutex);
+      slotIndexByKey[key] = i;
+    }
+    return i;
+  }
+
+  return -1;
+}
+
+void NinjamClient::releaseStreamSlot(const juce::String &username,
+                                     int channelIndex) {
+  juce::ScopedLock sl(usersMutex);
+  auto it = slotIndexByKey.find(std::make_pair(username, channelIndex));
+  if (it == slotIndexByKey.end())
+    return;
+
+  // Only marked. The audio thread may be mid-block holding pointers into this
+  // slot; it is the one that completes the transition to kFree, and the memory
+  // is reclaimed when the slot is next claimed.
+  streamSlots[(std::size_t)it->second].state.store(StreamSlot::kDraining,
+                                                   std::memory_order_release);
+  slotIndexByKey.erase(it);
+}
+
+void NinjamClient::drainRetired(StreamSlot &slot) {
+  while (DecodedInterval *iv = slot.retired.pop()) {
+    for (auto it = slot.owned.begin(); it != slot.owned.end(); ++it) {
+      if (it->get() == iv) {
+        slot.owned.erase(it);
+        break;
+      }
+    }
+  }
+}
+
+void NinjamClient::drainAllRetired() {
+  for (auto &slot : streamSlots)
+    drainRetired(slot);
+}
+
+void NinjamClient::releaseSlotOnAudioThread(StreamSlot &slot) {
+  // Sized so none of these pushes can fail; see StreamSlot.
+  if (slot.fadeOut != nullptr) {
+    slot.retired.push(slot.fadeOut);
+    slot.fadeOut = nullptr;
+  }
+  if (slot.current != nullptr) {
+    slot.retired.push(slot.current);
+    slot.current = nullptr;
+  }
+  while (DecodedInterval *iv = slot.ready.pop())
+    slot.retired.push(iv);
+
+  slot.readPos = 0;
+  slot.fadeOutPos = 0;
+  slot.fadeTotal = 0;
+  slot.fadeRemaining = 0;
+  // Publishes the hand-back: the next claimer may free everything above.
+  slot.state.store(StreamSlot::kFree, std::memory_order_release);
+}
+
 void NinjamClient::swapIntervalBuffers() {
   constexpr int kFadeSamples = 256;
-  juce::ScopedLock sl(downloadMutex);
-  for (auto &[key, stream] : channelStreams) {
-    if (stream.current) {
-      int unplayed = stream.current->writePos.load() - stream.readPos;
+  for (auto &slot : streamSlots) {
+    const int st = slot.state.load(std::memory_order_acquire);
+    if (st == StreamSlot::kFree)
+      continue;
+    if (st == StreamSlot::kDraining) {
+      releaseSlotOnAudioThread(slot);
+      continue;
+    }
+
+    // A swap arriving mid-fade ends the fade; whatever it was reading is
+    // finished with.
+    if (slot.fadeOut != nullptr) {
+      slot.retired.push(slot.fadeOut);
+      slot.fadeOut = nullptr;
+      slot.fadeRemaining = 0;
+    }
+
+    if (slot.current != nullptr) {
+      const int unplayed = slot.current->writePos.load() - slot.readPos;
       if (unplayed > 0) {
         diagSwapsBeforeConsumed.fetch_add(1);
         diagSamplesDroppedOnSwap.fetch_add(unplayed);
-        int fadeLen = std::min(unplayed, kFadeSamples);
-        stream.fadeOut = stream.current;
-        stream.fadeOutPos = stream.readPos;
-        stream.fadeTotal = fadeLen;
-        stream.fadeRemaining = fadeLen;
+        const int fadeLen = std::min(unplayed, kFadeSamples);
+        slot.fadeOut = slot.current;
+        slot.fadeOutPos = slot.readPos;
+        slot.fadeTotal = fadeLen;
+        slot.fadeRemaining = fadeLen;
+      } else {
+        slot.retired.push(slot.current);
       }
+      slot.current = nullptr;
     }
-    if (!stream.queue.empty()) {
-      stream.current = stream.queue.front();
-      stream.queue.pop_front();
-      stream.readPos = 0;
-    } else {
-      stream.current = nullptr;
+
+    if (DecodedInterval *next = slot.ready.pop()) {
+      slot.current = next;
+      slot.readPos = 0;
     }
   }
 }
@@ -694,86 +833,106 @@ void NinjamClient::dumpDiagnostics() {
 
 std::map<juce::String, NinjamClient::RemoteUser>
 NinjamClient::getRemoteUsers() const {
-  juce::ScopedLock sl(
-      downloadMutex); // Actually juce CriticalSection is mutable, wait! It's
-                      // not const in NinjamClient.h
-  // The getter should copy it safely or return a copy. Let's assume
-  // downloadMutex is mutable if const, or we just drop const.
-  return remoteUsers;
+  std::map<juce::String, RemoteUser> copy;
+  {
+    juce::ScopedLock sl(usersMutex);
+    copy = remoteUsers;
+    // Meter levels live in the slots, where the audio thread can publish them
+    // without touching this map. Folded in here so the UI still sees one
+    // coherent picture of a channel.
+    for (const auto &[key, index] : slotIndexByKey) {
+      auto uit = copy.find(key.first);
+      if (uit == copy.end())
+        continue;
+      auto cit = uit->second.channels.find(key.second);
+      if (cit == uit->second.channels.end())
+        continue;
+      cit->second.peakLevel = streamSlots[(std::size_t)index].peakLevel.load(
+          std::memory_order_relaxed);
+    }
+  }
+  return copy;
+}
+
+// Applies a change to both the UI's picture of the channel and, if the channel
+// is playing, the atomic the audio thread actually reads. Callers hold
+// usersMutex; the audio thread never does.
+template <typename ApplyToChannel, typename ApplyToSlot>
+void NinjamClient::updateChannelParam(const juce::String &username,
+                                      int channelIndex, ApplyToChannel toChannel,
+                                      ApplyToSlot toSlot) {
+  juce::ScopedLock sl(usersMutex);
+  auto uit = remoteUsers.find(username);
+  if (uit != remoteUsers.end()) {
+    auto cit = uit->second.channels.find(channelIndex);
+    if (cit != uit->second.channels.end())
+      toChannel(cit->second);
+  }
+  auto sit = slotIndexByKey.find(std::make_pair(username, channelIndex));
+  if (sit != slotIndexByKey.end())
+    toSlot(streamSlots[(std::size_t)sit->second]);
 }
 
 void NinjamClient::setRemoteUserVolume(const juce::String &username,
                                        int channelIndex, float volume) {
-  juce::ScopedLock sl(downloadMutex);
-  if (remoteUsers.find(username) != remoteUsers.end()) {
-    auto &user = remoteUsers[username];
-    if (user.channels.find(channelIndex) != user.channels.end()) {
-      user.channels[channelIndex].volume = volume;
-    }
-  }
+  updateChannelParam(
+      username, channelIndex,
+      [volume](RemoteUserChannel &c) { c.volume = volume; },
+      [volume](StreamSlot &s) {
+        s.volume.store(volume, std::memory_order_relaxed);
+      });
 }
 
 void NinjamClient::setRemoteUserPan(const juce::String &username,
                                     int channelIndex, float pan) {
-  juce::ScopedLock sl(downloadMutex);
-  if (remoteUsers.find(username) != remoteUsers.end()) {
-    auto &user = remoteUsers[username];
-    if (user.channels.find(channelIndex) != user.channels.end()) {
-      user.channels[channelIndex].pan = pan;
-    }
-  }
+  updateChannelParam(
+      username, channelIndex, [pan](RemoteUserChannel &c) { c.pan = pan; },
+      [pan](StreamSlot &s) { s.pan.store(pan, std::memory_order_relaxed); });
 }
 
 void NinjamClient::setRemoteUserMute(const juce::String &username,
                                      int channelIndex, bool mute) {
-  juce::ScopedLock sl(downloadMutex);
-  if (remoteUsers.find(username) != remoteUsers.end()) {
-    auto &user = remoteUsers[username];
-    if (user.channels.find(channelIndex) != user.channels.end()) {
-      user.channels[channelIndex].isMuted = mute;
-    }
-  }
+  updateChannelParam(
+      username, channelIndex, [mute](RemoteUserChannel &c) { c.isMuted = mute; },
+      [mute](StreamSlot &s) {
+        s.muted.store(mute, std::memory_order_relaxed);
+      });
 }
 
 void NinjamClient::setRemoteUserSolo(const juce::String &username,
                                      int channelIndex, bool solo) {
-  juce::ScopedLock sl(downloadMutex);
-  if (remoteUsers.find(username) != remoteUsers.end()) {
-    auto &user = remoteUsers[username];
-    if (user.channels.find(channelIndex) != user.channels.end()) {
-      user.channels[channelIndex].isSoloed = solo;
-    }
-  }
+  updateChannelParam(
+      username, channelIndex, [solo](RemoteUserChannel &c) { c.isSoloed = solo; },
+      [solo](StreamSlot &s) {
+        s.soloed.store(solo, std::memory_order_relaxed);
+      });
 }
 
 void NinjamClient::setRemoteUserRecv(const juce::String &username,
                                      int channelIndex, bool recv) {
-  {
-    juce::ScopedLock sl(downloadMutex);
-    if (remoteUsers.find(username) != remoteUsers.end()) {
-      auto &user = remoteUsers[username];
-      if (user.channels.find(channelIndex) != user.channels.end()) {
-        user.channels[channelIndex].recvEnabled = recv;
-      }
-    }
-  }
+  // recvEnabled drives the server-side mask only; the audio thread never reads
+  // it, so there is no slot atomic to match.
+  updateChannelParam(
+      username, channelIndex,
+      [recv](RemoteUserChannel &c) { c.recvEnabled = recv; },
+      [](StreamSlot &) {});
   sendUserMask();
 }
 
 void NinjamClient::setRemoteUserOutputBus(const juce::String &username,
                                           int channelIndex, int busIdx) {
-  juce::ScopedLock sl(downloadMutex);
-  if (remoteUsers.find(username) != remoteUsers.end()) {
-    auto &user = remoteUsers[username];
-    if (user.channels.find(channelIndex) != user.channels.end())
-      user.channels[channelIndex].outputBusIndex = busIdx;
-  }
+  updateChannelParam(
+      username, channelIndex,
+      [busIdx](RemoteUserChannel &c) { c.outputBusIndex = busIdx; },
+      [busIdx](StreamSlot &s) {
+        s.outputBus.store(busIdx, std::memory_order_relaxed);
+      });
 }
 
 void NinjamClient::sendUserMask() {
   std::vector<std::pair<juce::String, juce::uint32>> masks;
   {
-    juce::ScopedLock sl(downloadMutex);
+    juce::ScopedLock sl(usersMutex);
     for (auto &[uname, user] : remoteUsers) {
       juce::uint32 mask = 0;
       for (auto &[chIdx, ch] : user.channels)
@@ -790,37 +949,33 @@ void NinjamClient::sendUserMask() {
 }
 
 void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
-  juce::ScopedLock sl(downloadMutex);
+  // No lock, no allocation, no map traversal: a walk over a fixed array whose
+  // entries are never created or destroyed (PRINCIPLES section 7).
   int numSamples = buffer.getNumSamples();
   int dstChannels = buffer.getNumChannels();
 
   bool anySolo = false;
-  for (const auto &u : remoteUsers)
-    for (const auto &c : u.second.channels)
-      if (c.second.isSoloed)
-        anySolo = true;
+  for (auto &slot : streamSlots)
+    if (slot.state.load(std::memory_order_acquire) == StreamSlot::kLive &&
+        slot.soloed.load(std::memory_order_relaxed))
+      anySolo = true;
 
-  for (auto &[key, stream] : channelStreams) {
-    if (!stream.current && !stream.fadeOut)
+  for (auto &slot : streamSlots) {
+    const int slotState = slot.state.load(std::memory_order_acquire);
+    if (slotState == StreamSlot::kFree)
+      continue;
+    if (slotState == StreamSlot::kDraining) {
+      releaseSlotOnAudioThread(slot);
+      continue;
+    }
+    if (slot.current == nullptr && slot.fadeOut == nullptr)
       continue;
 
-    float vol = 0.5f;
-    float pan = 0.0f;
-    bool isMuted = false;
-    bool isSoloed = false;
-
-    int outBusIdx = 0;
-    auto uit = remoteUsers.find(stream.username);
-    if (uit != remoteUsers.end()) {
-      auto cit = uit->second.channels.find(stream.channelIndex);
-      if (cit != uit->second.channels.end()) {
-        vol = cit->second.volume;
-        pan = cit->second.pan;
-        isMuted = cit->second.isMuted;
-        isSoloed = cit->second.isSoloed;
-        outBusIdx = cit->second.outputBusIndex;
-      }
-    }
+    const float vol = slot.volume.load(std::memory_order_relaxed);
+    const float pan = slot.pan.load(std::memory_order_relaxed);
+    const bool isSoloed = slot.soloed.load(std::memory_order_relaxed);
+    const int outBusIdx = slot.outputBus.load(std::memory_order_relaxed);
+    bool isMuted = slot.muted.load(std::memory_order_relaxed);
 
     if (anySolo && !isSoloed)
       isMuted = true;
@@ -833,65 +988,66 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     // Crossfade region: mix the old interval's tail (fade-out) with the new
     // interval's head (fade-in) for the first fadeCopy samples of this block.
     int fadeCopy = 0;
-    if (stream.fadeOut && stream.fadeRemaining > 0) {
-      fadeCopy = std::min(numSamples, stream.fadeRemaining);
-      int elapsed = stream.fadeTotal - stream.fadeRemaining;
+    if (slot.fadeOut && slot.fadeRemaining > 0) {
+      fadeCopy = std::min(numSamples, slot.fadeRemaining);
+      int elapsed = slot.fadeTotal - slot.fadeRemaining;
 
       if (!isMuted) {
-        int oldChannels = stream.fadeOut->buffer.getNumChannels();
+        int oldChannels = slot.fadeOut->buffer.getNumChannels();
         for (int ch = 0; ch < std::min(oldChannels, 2); ++ch) {
           int dstCh = busIdx * 2 + ch;
           if (dstCh >= dstChannels) continue;
           float chGain = (ch == 0) ? lGain : rGain;
           const float *src =
-              stream.fadeOut->buffer.getReadPointer(ch, stream.fadeOutPos);
+              slot.fadeOut->buffer.getReadPointer(ch, slot.fadeOutPos);
           float *dst = buffer.getWritePointer(dstCh);
           for (int s = 0; s < fadeCopy; ++s) {
-            float g = (float)(stream.fadeRemaining - s) / stream.fadeTotal;
+            float g = (float)(slot.fadeRemaining - s) / slot.fadeTotal;
             dst[s] += src[s] * chGain * g;
           }
         }
 
-        if (stream.current) {
-          int newAvail = stream.current->writePos.load() - stream.readPos;
+        if (slot.current) {
+          int newAvail = slot.current->writePos.load() - slot.readPos;
           int newFadeCopy = std::min(fadeCopy, newAvail);
           if (newFadeCopy > 0) {
-            int newChannels = stream.current->buffer.getNumChannels();
+            int newChannels = slot.current->buffer.getNumChannels();
             for (int ch = 0; ch < std::min(newChannels, 2); ++ch) {
               int dstCh = busIdx * 2 + ch;
               if (dstCh >= dstChannels) continue;
               float chGain = (ch == 0) ? lGain : rGain;
               const float *src =
-                  stream.current->buffer.getReadPointer(ch, stream.readPos);
+                  slot.current->buffer.getReadPointer(ch, slot.readPos);
               float *dst = buffer.getWritePointer(dstCh);
               for (int s = 0; s < newFadeCopy; ++s) {
-                float g = (float)(elapsed + s) / stream.fadeTotal;
+                float g = (float)(elapsed + s) / slot.fadeTotal;
                 dst[s] += src[s] * chGain * g;
               }
             }
-            stream.readPos += newFadeCopy;
+            slot.readPos += newFadeCopy;
           }
         }
-      } else if (stream.current) {
+      } else if (slot.current) {
         // Still advance readPos in muted streams so timing stays consistent.
-        int newAvail = stream.current->writePos.load() - stream.readPos;
-        stream.readPos += std::min(fadeCopy, newAvail);
+        int newAvail = slot.current->writePos.load() - slot.readPos;
+        slot.readPos += std::min(fadeCopy, newAvail);
       }
 
-      stream.fadeOutPos += fadeCopy;
-      stream.fadeRemaining -= fadeCopy;
-      if (stream.fadeRemaining <= 0) {
-        stream.fadeOut.reset();
-        stream.fadeRemaining = 0;
+      slot.fadeOutPos += fadeCopy;
+      slot.fadeRemaining -= fadeCopy;
+      if (slot.fadeRemaining <= 0) {
+        slot.retired.push(slot.fadeOut);
+        slot.fadeOut = nullptr;
+        slot.fadeRemaining = 0;
       }
     }
 
     // Post-fade region: normal mix from current at full gain.
-    if (!stream.current)
+    if (!slot.current)
       continue;
 
-    auto &iv = *stream.current;
-    int avail = iv.writePos.load() - stream.readPos;
+    auto &iv = *slot.current;
+    int avail = iv.writePos.load() - slot.readPos;
     int remainingSamples = numSamples - fadeCopy;
     if (remainingSamples <= 0)
       continue;
@@ -902,34 +1058,30 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     }
 
     int toCopy = std::min(remainingSamples, avail);
-    int srcChannels = stream.current->buffer.getNumChannels();
+    int srcChannels = slot.current->buffer.getNumChannels();
 
     float peak = 0.0f;
     for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
       float chGain = (ch == 0) ? lGain : rGain;
       const float *src =
-          stream.current->buffer.getReadPointer(ch, stream.readPos);
+          slot.current->buffer.getReadPointer(ch, slot.readPos);
       for (int s = 0; s < toCopy; ++s)
         peak = std::max(peak, std::abs(src[s]) * chGain);
     }
-    if (uit != remoteUsers.end()) {
-      auto cit = uit->second.channels.find(stream.channelIndex);
-      if (cit != uit->second.channels.end())
-        cit->second.peakLevel = peak;
-    }
+    slot.peakLevel.store(peak, std::memory_order_relaxed);
 
     if (!isMuted) {
       for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
         int dstCh = busIdx * 2 + ch;
         if (dstCh < dstChannels) {
           float gain = (ch == 0) ? lGain : rGain;
-          buffer.addFrom(dstCh, fadeCopy, stream.current->buffer, ch,
-                         stream.readPos, toCopy, gain);
+          buffer.addFrom(dstCh, fadeCopy, slot.current->buffer, ch,
+                         slot.readPos, toCopy, gain);
         }
       }
     }
 
-    stream.readPos += toCopy;
+    slot.readPos += toCopy;
   }
 
   {

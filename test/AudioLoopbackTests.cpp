@@ -293,6 +293,83 @@ public:
       expect(std::fabs(f1 - 880.0) / 880.0 < 0.03,
              "channel 1 measured " + juce::String(f1, 1) + " Hz");
     }
+
+    beginTest("slots are recycled, so a channel can rejoin indefinitely");
+    {
+      // Playback slots are a fixed array, claimed by the network thread and
+      // released by the audio thread once it has handed its intervals back.
+      //
+      // Cycling more times than there are slots is the point: a single
+      // leave-and-rejoin would pass even if nothing were ever reclaimed,
+      // because it would simply take the next free slot. Going round more than
+      // kMaxStreams times means the run can only finish if released slots come
+      // back into use.
+      constexpr int kCycles = 80; // > kMaxStreams (64)
+
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+
+      auto pcm = makeSineBuffer(s.intervalSamples, 440.0, 48000.0, 0.5f);
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+      expect(s.sendInterval(pcm));
+      expect(analyse(s.render(s.intervalSamples), 0, 48000.0).rms > 0.05,
+             "no audio before any cycling");
+
+      for (int i = 0; i < kCycles; ++i) {
+        s.server.sendUserInfo("peer", 0, "gtr", false);
+        expect(waitUntil([&] {
+                 return s.client.getRemoteUsers().count("peer") == 0;
+               }),
+               "channel never left on cycle " + juce::String(i));
+
+        // A slot only becomes reusable once the audio thread has walked it and
+        // pushed its intervals to the retire ring, so a render has to happen
+        // between the departure and the next claim.
+        s.render(512);
+
+        s.server.sendUserInfo("peer", 0, "gtr");
+        expect(waitUntil([&] {
+                 auto u = s.client.getRemoteUsers();
+                 return u.count("peer") && u["peer"].channels.count(0);
+               }),
+               "channel never returned on cycle " + juce::String(i));
+
+        s.client.setRemoteUserVolume("peer", 0, 1.0f);
+        expect(s.sendInterval(pcm), "upload stalled on cycle " +
+                                        juce::String(i));
+        s.render(512);
+      }
+
+      expect(s.sendInterval(pcm));
+      const auto again = analyse(s.render(s.intervalSamples), 0, 48000.0);
+      expect(again.rms > 0.05, "silent after " + juce::String(kCycles) +
+                                   " cycles, rms " + juce::String(again.rms, 4));
+      expect(std::fabs(again.freq - 440.0) / 440.0 < 0.03,
+             "measured " + juce::String(again.freq, 1) + " Hz after cycling");
+    }
+
+    beginTest("meter level reaches the UI from the audio thread");
+    {
+      // The peak used to be a plain float written by the audio thread into the
+      // map the UI read -- a race in every build that ever shipped. It now
+      // crosses as an atomic on the slot, so it is worth asserting it still
+      // arrives at all.
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+
+      expect(s.client.getRemoteUsers()["peer"].channels[0].peakLevel == 0.0f,
+             "a channel that has played nothing must read zero");
+
+      auto pcm = makeSineBuffer(s.intervalSamples, 440.0, 48000.0, 0.5f);
+      expect(s.sendInterval(pcm));
+      s.render(s.intervalSamples);
+
+      const float peak =
+          s.client.getRemoteUsers()["peer"].channels[0].peakLevel;
+      expect(peak > 0.1f && peak <= 1.0f,
+             "meter read " + juce::String(peak, 4) + " for a 0.5 amplitude tone");
+    }
   }
 
   void checkRoundTrip(double sr) {

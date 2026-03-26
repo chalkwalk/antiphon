@@ -85,7 +85,7 @@ else hears them. See `docs/PARITY.md` for the measurement.
 Swapping from one decoded interval to the next produces a discontinuity whenever
 the outgoing interval had un-played tail samples -- which is normal, since the
 sender's interval and ours are the same length but the decoder's output is not
-sample-aligned to it. `ChannelStream` therefore keeps the outgoing interval in
+sample-aligned to it. The playback slot therefore keeps the outgoing interval in
 `fadeOut` and crossfades 256 samples across the boundary.
 
 ---
@@ -102,10 +102,12 @@ far were in this table's blind spots, so it is worth knowing cold.
 | **Message thread** | `onConnected`, `onServerConfig`, `onChatMessage`, and `processCapturedAudio` -- encoding is deliberately *off* the audio thread. |
 | **UI timer** (30 Hz) | `timerCallback`: syncs remote player strips against `getRemoteUsers()`, relayouts the elastic channel area, updates toolbar enable states and the status readout, repaints. |
 
-**Locks** (`juce::CriticalSection`): `downloadMutex` covers `guidToInterval`,
-`channelStreams` and `remoteUsers`; `writeMutex` serialises whole frames onto the
-socket; plus `chatMutex`, `channelInfoMutex`, `localChannelMutex`, `txFileMutex`,
-`rxFileMutex`.
+**Locks** (`juce::CriticalSection`): `usersMutex` covers `remoteUsers` and the
+channel-to-slot map, and is shared by the network and message threads only;
+`writeMutex` serialises whole frames onto the socket; plus `chatMutex`,
+`channelInfoMutex`, `localChannelMutex`, `txFileMutex`, `rxFileMutex`.
+**The audio thread takes none of them.** `guidToInterval` needs no lock at all:
+it is touched only by the network thread.
 
 **Two hazards, both already bitten, both now structurally handled:**
 
@@ -118,9 +120,37 @@ socket; plus `chatMutex`, `channelInfoMutex`, `localChannelMutex`, `txFileMutex`
   destructor clears first. This is airtight only because the destructor runs on
   the message thread; if that ever changes, this needs rethinking.
 
-The RX path is otherwise lock-light by design: the network thread decodes into a
-`DecodedInterval` and publishes progress by incrementing an atomic `writePos`;
-the audio thread reads `[readPos, writePos.load())` without taking a lock.
+**The RX path takes no lock on the audio thread.** Remote channels live in
+`streamSlots`, a fixed array of 64 slots created once with the client and never
+destroyed, so the audio thread walks all of them without blocking and can never
+observe a half-built or freed entry. Within a slot every field has exactly one
+owning thread: playback cursors are audio-thread only, mix parameters are
+atomics the UI writes and the audio thread reads, and `peakLevel` is an atomic
+going the other way. The audio thread never touches a `juce::String` -- copying
+one touches a refcount.
+
+Decoded intervals move between the threads through two `SpscRing`s per slot
+(`src/SpscRing.h`), which carry ownership in a circle so that freeing never
+lands on the audio thread:
+
+    ready:   network -> audio    "here is a decoded interval"
+    retired: audio   -> network  "done with this one, free it"
+
+The retire direction is the load-bearing half: dropping the last reference to a
+`DecodedInterval` frees a multi-megabyte `AudioBuffer`, which must never happen
+inside the callback. `retired` is sized above `ready.capacity() + 2` -- the most
+the audio thread can hold at once, being `current` and `fadeOut` -- so handing an
+interval back cannot fail. Progress within an interval is published as it always
+was, by the atomic `writePos`, with the audio thread reading
+`[readPos, writePos.load())`.
+
+A slot's life is Free -> Live -> Draining -> Free. The network thread claims a
+free slot and marks a departed one draining; only the audio thread publishes
+`kFree`, because only it knows when it has let go of the pointers. Disconnect
+therefore marks slots draining rather than freeing them: the audio thread may be
+mid-block inside one, and the memory is reclaimed when the slot is next claimed.
+Running out of slots drops the channel and logs it, rather than growing an array
+the audio thread is walking.
 
 ---
 
@@ -239,19 +269,21 @@ handoff*.
 
 ## 7. Remote playback, mixing and routing
 
-Each `(username, channelIndex)` pair has a `ChannelStream` holding a
-`deque<shared_ptr<DecodedInterval>>`.
+Each `(username, channelIndex)` pair holds one of the fixed `streamSlots`
+described in section 3, claimed on its first `DOWNLOAD_INTERVAL_BEGIN`.
 
-- The network thread decodes `DOWNLOAD_INTERVAL_WRITE` chunks into the matching
-  `DecodedInterval`, found by GUID in `guidToInterval`, and publishes progress by
-  incrementing an atomic `writePos`.
-- `PendingDownload` holds the decoder and is erased when `flags & 1` arrives,
-  marking `finalReceived`.
-- At each metronome interval boundary, `swapIntervalBuffers()` pops the queue
-  front into `current`. **This is what realises the one-interval playback
-  delay.**
-- The audio thread reads `[readPos, writePos.load())` from `stream.current` in
-  `getDecodedAudio`.
+- The network thread allocates a `DecodedInterval`, keeps ownership of it in the
+  slot's `owned` list, and publishes the pointer through the slot's `ready` ring.
+- It decodes `DOWNLOAD_INTERVAL_WRITE` chunks into that interval, found by GUID
+  in `guidToInterval`, and publishes progress by incrementing an atomic
+  `writePos`.
+- `PendingDownload` holds the decoder and borrows the interval; it is erased when
+  `flags & 1` arrives, marking `finalReceived`.
+- At each metronome interval boundary, `swapIntervalBuffers()` pops `ready` into
+  `current`. **This is what realises the one-interval playback delay.**
+- The audio thread reads `[readPos, writePos.load())` from `slot.current` in
+  `getDecodedAudio`, and pushes each finished interval to `retired` for the
+  network thread to destroy.
 
 **Sample-rate conversion.** A remote client may be running at a different sample
 rate from us. `PendingDownload` carries a `juce::LagrangeInterpolator` per

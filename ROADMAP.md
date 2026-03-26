@@ -66,7 +66,7 @@ Two paths violate `PRINCIPLES §7` (the audio thread does not allocate, lock,
 block or log). Both are known, both are small, and both are the kind of defect
 that appears as an unreproducible dropout in someone else's DAW.
 
-- [ ] `getDecodedAudio` takes `downloadMutex` on the audio thread. The RX path is
+- [x] `getDecodedAudio` takes `downloadMutex` on the audio thread. The RX path is
       otherwise lock-light -- the network thread publishes progress with an
       atomic `writePos` -- so the lock is protecting the *container*, not the
       audio. Replace with a structure the audio thread can traverse without
@@ -83,38 +83,45 @@ that appears as an unreproducible dropout in someone else's DAW.
             Write pointers are now taken once before the interval is shared.
             Confirmed with TSan: the warning disappeared, and the only races
             left are the known shutdown one below.
-      - [ ] The audio thread still takes the lock to traverse `channelStreams`
-            and `remoteUsers`. Worst-case wait is now bounded and short, but a
-            lock on the audio thread is still a lock.
+      - [x] **The lock is gone.** `channelStreams` (a `std::map` walked under
+            the lock) is now `streamSlots`, a fixed array of 64 slots that are
+            never created or destroyed while the client lives, so the audio
+            thread walks all of them without blocking and can never see a
+            half-built or freed entry.
 
-            **Design settled, and the primitive is built.** `SpscRing` (in
-            `src/SpscRing.h`, unit-tested and clean under TSan with a real
-            producer/consumer pair moving 20 000 pointers) carries ownership in
-            a circle without either side waiting:
+            `SpscRing` (`src/SpscRing.h`) carries ownership in a circle so that
+            freeing never lands on the audio thread:
 
               ready:   network -> audio   "here is a decoded interval"
               retired: audio -> network   "done with this one, free it"
 
-            The retire direction is the load-bearing half: the audio thread must
-            never drop the last reference to a `DecodedInterval`, because that
-            frees a multi-megabyte buffer inside the callback. It holds raw
-            pointers deliberately -- a `shared_ptr` copy touches an atomic
-            refcount and its destructor can free -- with ownership staying in
-            the producer's container while a pointer is in flight.
+            The retire direction is the load-bearing half -- dropping the last
+            reference to a `DecodedInterval` frees a multi-megabyte buffer, and
+            that must not happen inside the callback. `retired` is sized above
+            `ready.capacity() + 2` (the most the audio thread can hold, being
+            `current` and `fadeOut`), so handing an interval back can never
+            fail and the audio thread is never stuck holding one.
 
-            Remaining, and the risky part:
-            - [ ] Replace `channelStreams` with a fixed-capacity slot array the
-                  audio thread walks without locking, each slot claimed and
-                  released by an atomic flag.
-            - [ ] Split each stream's state by owner: playback cursors
-                  (`current`, `readPos`, the fade fields) become audio-thread
-                  only; mix parameters (volume, pan, mute, solo, output bus)
-                  become atomics the UI writes and the audio thread reads.
-                  `remoteUsers` stays as it is for the UI, which is not
-                  real-time.
-            - [ ] Drain the retire ring from the network thread, and confirm
-                  under TSan that `getDecodedAudio` and `swapIntervalBuffers`
-                  no longer touch `downloadMutex`.
+            State is split by owner. Playback cursors are audio-thread only;
+            volume, pan, mute, solo and output bus are atomics the UI writes and
+            the audio thread reads; `peakLevel` is an atomic the audio thread
+            writes and the UI reads -- it had been a plain float shared between
+            them, a race in every build that ever ran. `remoteUsers` stays a
+            locked map for the UI, under `usersMutex`, which the audio thread
+            never takes. The audio thread never touches a `juce::String`.
+
+            Slot lifecycle is Free -> Live -> Draining -> Free. The network
+            thread claims and marks draining; only the audio thread publishes
+            kFree, because only it knows when it has let go. On disconnect the
+            slots are marked draining rather than freed, since the audio thread
+            may be mid-block inside them.
+
+            Verified: full suite green, and TSan reports zero races in the RX
+            path over 81 864 assertions -- the only warnings left are the known
+            shutdown race below. `AudioLoopbackTests` cycles a channel out and
+            back 80 times, more than there are slots, so it fails unless
+            released slots are genuinely reclaimed; confirmed by breaking the
+            hand-back and watching it go red.
 - [x] `setSaveTx` / `setSaveRx` are called from `processBlock` on **every block**
       and do file I/O on the toggling call. Move the toggle handling off the
       audio thread entirely; the audio thread should only ever see a flag.
