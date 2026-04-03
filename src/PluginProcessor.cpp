@@ -17,6 +17,11 @@ AntiphonAudioProcessor::AntiphonAudioProcessor()
 {
   ninjamClient.addListener(this);
   localChannels.push_back(std::make_shared<LocalChannel>());
+  // Every mutation of localChannels must be followed by this, or the audio
+  // thread keeps walking the previous list. prepareToPlay would cover this one
+  // in practice, but "it happens to be published later" is not a rule anyone
+  // can follow.
+  publishLocalChannels();
   if (!isStandaloneApp()) metronomeEnabled = false;
 }
 
@@ -38,15 +43,48 @@ void AntiphonAudioProcessor::setCurrentProgram(int) {}
 const juce::String AntiphonAudioProcessor::getProgramName(int) { return {}; }
 void AntiphonAudioProcessor::changeProgramName(int, const juce::String &) {}
 
+void AntiphonAudioProcessor::publishLocalChannels() {
+  // Caller holds localChannelMutex. The pointers are written first and the
+  // count released afterwards, so the audio thread -- which reads the count
+  // with acquire and then indexes below it -- never sees a slot that has not
+  // been filled in.
+  const int n =
+      juce::jmin((int)localChannels.size(), kMaxLocalChannels);
+  for (int i = 0; i < n; ++i)
+    audioChannels[(std::size_t)i] = localChannels[(std::size_t)i].get();
+  audioChannelCount.store(n, std::memory_order_release);
+}
+
 int AntiphonAudioProcessor::addLocalChannel() {
-  juce::ScopedLock sl(localChannelMutex);
-  auto ch = std::make_shared<LocalChannel>();
-  int ringSize = (int)getSampleRate() * 30;
-  if (ringSize > 0) {
-    ch->ring.setSize(2, ringSize);
-    ch->fifo.setTotalSize(ringSize);
+  const int ringSize = (int)getSampleRate() * 30;
+
+  // Built before the lock is taken. This allocation is the reason the audio
+  // thread must not share this lock: it is megabytes, and it used to happen
+  // with the lock held.
+  std::shared_ptr<LocalChannel> ch;
+  {
+    juce::ScopedLock sl(localChannelMutex);
+    if ((int)localChannels.size() >= kMaxLocalChannels)
+      return -1;
+    if (!spareLocalChannels.empty()) {
+      ch = spareLocalChannels.back();
+      spareLocalChannels.pop_back();
+    }
   }
+
+  if (ch == nullptr) {
+    ch = std::make_shared<LocalChannel>();
+    if (ringSize > 0) {
+      ch->ring.setSize(2, ringSize);
+      ch->fifo.setTotalSize(ringSize);
+    }
+  } else {
+    ch->resetForReuse();
+  }
+
+  juce::ScopedLock sl(localChannelMutex);
   localChannels.push_back(ch);
+  publishLocalChannels();
   return (int)localChannels.size() - 1;
 }
 
@@ -54,7 +92,13 @@ void AntiphonAudioProcessor::removeLastLocalChannel() {
   juce::ScopedLock sl(localChannelMutex);
   if (localChannels.size() <= 1) return;
   localChannels.back()->isValid.store(false);
+  // Kept alive rather than destroyed: the audio thread may be holding the raw
+  // pointer for the rest of this block, and freeing an 11 MB ring underneath it
+  // is exactly the crash this design exists to prevent. A later add takes it
+  // back out of the pool.
+  spareLocalChannels.push_back(localChannels.back());
   localChannels.pop_back();
+  publishLocalChannels();
 }
 
 int AntiphonAudioProcessor::addInputBus() {
@@ -115,11 +159,18 @@ void AntiphonAudioProcessor::prepareToPlay(double sampleRate,
                                          int samplesPerBlock) {
   juce::ScopedLock sl(localChannelMutex);
   int ringSize = (int)sampleRate * 30;
-  for (auto &lc : localChannels) {
-    lc->ring.setSize(2, ringSize);
-    lc->ring.clear();
-    lc->fifo.setTotalSize(ringSize);
+  // The spares are sized here too. A recycled channel must never resize its own
+  // ring -- see LocalChannel::resetForReuse -- so this is the only place the
+  // sample rate can reach it. Safe because the host does not call prepareToPlay
+  // concurrently with processBlock.
+  for (auto *list : {&localChannels, &spareLocalChannels}) {
+    for (auto &lc : *list) {
+      lc->ring.setSize(2, ringSize);
+      lc->ring.clear();
+      lc->fifo.setTotalSize(ringSize);
+    }
   }
+  publishLocalChannels();
   ninjamClient.setSampleRate(sampleRate);
 
   intervalClock.prepare(sampleRate);
@@ -165,8 +216,8 @@ void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
   if (count <= 0)
     return;
 
-  juce::ScopedLock sl(localChannelMutex);
   const int numInBuses = getBusCount(true);
+  const int numChannels = audioChannelCount.load(std::memory_order_acquire);
 
   // Null for a channel index the snapshot does not have, which ChannelMix
   // treats as absent rather than reading past the end.
@@ -176,8 +227,8 @@ void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
                : nullptr;
   };
 
-  for (auto &lcPtr : localChannels) {
-    auto &lc = *lcPtr;
+  for (int ci = 0; ci < numChannels; ++ci) {
+    auto &lc = *audioChannels[(std::size_t)ci];
     const int busIdx = juce::jlimit(0, numInBuses - 1, lc.inputBusIndex.load());
     auto *bus = getBus(true, busIdx);
     if (!bus)
@@ -295,15 +346,18 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
   // 4. Monitor mix pass -- mix all local input buses into output 0/1.
   {
-    juce::ScopedLock sl(localChannelMutex);
+    const int numChannels = audioChannelCount.load(std::memory_order_acquire);
 
     bool anyMonitorSolo = false;
-    for (auto &lcPtr : localChannels)
-      if (lcPtr->monitorSolo.load()) { anyMonitorSolo = true; break; }
+    for (int ci = 0; ci < numChannels; ++ci)
+      if (audioChannels[(std::size_t)ci]->monitorSolo.load()) {
+        anyMonitorSolo = true;
+        break;
+      }
 
     int numInBuses = getBusCount(true);
-    for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
-      auto &lc = *localChannels[ci];
+    for (int ci = 0; ci < numChannels; ++ci) {
+      auto &lc = *audioChannels[(std::size_t)ci];
       int busIdx = juce::jlimit(0, numInBuses - 1, lc.inputBusIndex.load());
       auto *bus = getBus(true, busIdx);
       if (!bus) continue;
@@ -346,29 +400,36 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   }
 
   // Helper: fire per-channel callAsync at interval boundary
+  //
+  // The callAsync below still allocates and posts from the audio thread, which
+  // is a PRINCIPLES 7 violation in its own right -- but it fires once per
+  // interval rather than per block, and removing it means the redesign tracked
+  // as *Lock-free TX handoff* in ROADMAP.md. The lock is gone; the post is not.
   auto fireCaptureLambdas = [this]() {
-    juce::ScopedLock sl(localChannelMutex);
-    for (int ci = 0; ci < (int)localChannels.size(); ++ci) {
-      auto &lcPtr = localChannels[ci];
-      if (!lcPtr->xmitEnabled.load()) { lcPtr->fifo.reset(); continue; }
-      int length = lcPtr->fifo.getNumReady();
+    const int numChannels = audioChannelCount.load(std::memory_order_acquire);
+    for (int ci = 0; ci < numChannels; ++ci) {
+      auto *lc = audioChannels[(std::size_t)ci];
+      if (!lc->xmitEnabled.load()) { lc->fifo.reset(); continue; }
+      int length = lc->fifo.getNumReady();
       if (ninjamClient.isConnected() && length > 0) {
-        bool mono = lcPtr->isMono.load();
-        auto capturedPtr = lcPtr;
-        juce::MessageManager::callAsync([this, capturedPtr, length, ci, mono]() {
-          if (!capturedPtr->isValid.load()) return;
+        bool mono = lc->isMono.load();
+        // A raw pointer is as safe here as the shared_ptr used to be: the
+        // channel outlives the processor's audio path, and the lambda already
+        // captures `this`, so it cannot outlive the processor either.
+        juce::MessageManager::callAsync([this, lc, length, ci, mono]() {
+          if (!lc->isValid.load()) return;
           juce::AudioBuffer<float> buf(2, length);
           int s1, n1, s2, n2;
-          capturedPtr->fifo.prepareToRead(length, s1, n1, s2, n2);
+          lc->fifo.prepareToRead(length, s1, n1, s2, n2);
           for (int ch = 0; ch < 2; ++ch) {
-            if (n1 > 0) buf.copyFrom(ch, 0,  capturedPtr->ring, ch, s1, n1);
-            if (n2 > 0) buf.copyFrom(ch, n1, capturedPtr->ring, ch, s2, n2);
+            if (n1 > 0) buf.copyFrom(ch, 0,  lc->ring, ch, s1, n1);
+            if (n2 > 0) buf.copyFrom(ch, n1, lc->ring, ch, s2, n2);
           }
-          capturedPtr->fifo.finishedRead(n1 + n2);
+          lc->fifo.finishedRead(n1 + n2);
           ninjamClient.processCapturedAudio(buf, length, ci, mono);
         });
       } else {
-        lcPtr->fifo.reset();
+        lc->fifo.reset();
       }
     }
   };
@@ -587,6 +648,9 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
     for (auto *ch : xml->getChildIterator()) {
         if (!ch->hasTagName("LocalChannel")) continue;
         int idx = ch->getIntAttribute("idx", 0);
+        // Clamped: a corrupt or hostile state must not be able to grow this
+        // past what the published audio-thread view can hold.
+        if (idx < 0 || idx >= kMaxLocalChannels) continue;
         while (idx >= (int)localChannels.size())
             localChannels.push_back(std::make_shared<LocalChannel>());
         auto &lc = *localChannels[idx];
@@ -599,6 +663,7 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
         lc.xmitEnabled.store(ch->getBoolAttribute("xmit", true));
         lc.inputBusIndex.store(ch->getIntAttribute("inputBus", 0));
     }
+    publishLocalChannels();
 }
 
 void AntiphonAudioProcessor::sendChannelInfoToServer() {

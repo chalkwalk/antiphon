@@ -6,6 +6,7 @@
 #include "MetronomeVoice.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
+#include <array>
 #include <map>
 #include <memory>
 #include <vector>
@@ -28,6 +29,28 @@ public:
 
     juce::AbstractFifo fifo{1};
     juce::AudioBuffer<float> ring;
+
+    // Returns a recycled channel to a fresh one's state. Deliberately does not
+    // touch the ring's size: the audio thread may still hold a pointer to this
+    // object from before it was removed, and reallocating the buffer under it
+    // is the one thing that would turn this design into a crash. The ring is
+    // only ever sized in prepareToPlay, which the host does not run
+    // concurrently with processBlock.
+    void resetForReuse() {
+      name = "Instrument";
+      isMono.store(false);
+      volume.store(1.0f);
+      pan.store(0.0f);
+      muted.store(false);
+      monitorSolo.store(false);
+      xmitEnabled.store(true);
+      peakL.store(0.0f);
+      peakR.store(0.0f);
+      inputBusIndex.store(0);
+      fifo.reset();
+      ring.clear();
+      isValid.store(true);
+    }
   };
 
   AntiphonAudioProcessor();
@@ -97,8 +120,29 @@ public:
   NinjamClient ninjamClient;
   juce::String connectionStatus = "Disconnected";
 
+  // The UI's view of the local channels. Message thread only -- the audio
+  // thread must never take this lock, because the things that hold it are
+  // exactly the things that are slow: addLocalChannel allocates a 30-second
+  // ring (about 11 MB at 96 kHz), setStateInformation parses XML, and the
+  // editor's 30 Hz timer constructs channel strips under it.
   juce::CriticalSection localChannelMutex;
   std::vector<std::shared_ptr<LocalChannel>> localChannels;
+
+  // What the audio thread actually walks: raw pointers to the same objects,
+  // published by publishLocalChannels() once the vector above is settled.
+  //
+  // Safe without a lock because a LocalChannel is never destroyed while the
+  // processor lives. Removing a channel moves it to `spareLocalChannels` and
+  // shrinks the count; a later add takes it back out. So a pointer the audio
+  // thread is holding across a block can go stale in the sense of no longer
+  // being in use, but never in the sense of dangling.
+  static constexpr int kMaxLocalChannels = 32;
+  std::array<LocalChannel *, (std::size_t)kMaxLocalChannels> audioChannels{};
+  std::atomic<int> audioChannelCount{0};
+  std::vector<std::shared_ptr<LocalChannel>> spareLocalChannels;
+
+  // Call with localChannelMutex held, after any change to localChannels.
+  void publishLocalChannels();
 
   // Host Sync State
   double hostBpm = 120.0;

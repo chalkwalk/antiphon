@@ -103,11 +103,19 @@ far were in this table's blind spots, so it is worth knowing cold.
 | **UI timer** (30 Hz) | `timerCallback`: syncs remote player strips against `getRemoteUsers()`, relayouts the elastic channel area, updates toolbar enable states and the status readout, repaints. |
 
 **Locks** (`juce::CriticalSection`): `usersMutex` covers `remoteUsers` and the
-channel-to-slot map, and is shared by the network and message threads only;
+channel-to-slot map; `localChannelMutex` covers the UI's `localChannels` vector;
 `writeMutex` serialises whole frames onto the socket; plus `chatMutex`,
-`channelInfoMutex`, `localChannelMutex`, `txFileMutex`, `rxFileMutex`.
-**The audio thread takes none of them.** `guidToInterval` needs no lock at all:
-it is touched only by the network thread.
+`channelInfoMutex`, `txFileMutex`, `rxFileMutex`.
+
+**The audio thread takes none of them.** That is a rule, not an observation:
+what holds the other end of `localChannelMutex` is a megabyte-scale ring
+allocation (`addLocalChannel`), an XML parse (`setStateInformation`) and the
+editor's 30 Hz timer constructing channel strips. The audio thread reads
+`audioChannels`, a fixed array of raw pointers published with a release store on
+`audioChannelCount`; a `LocalChannel` is never destroyed while the processor
+lives, so removing one shrinks the count and parks the object in
+`spareLocalChannels` for a later add to reuse. `guidToInterval` needs no lock at
+all -- only the network thread touches it.
 
 **Two hazards, both already bitten, both now structurally handled:**
 

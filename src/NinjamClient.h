@@ -287,8 +287,11 @@ private:
 
   int64 lastKeepAliveTime = 0;
 
-  bool isSavingTx = false;
-  bool isSavingRx = false;
+  // Atomic because the audio thread reads isSavingRx to decide whether to take
+  // rxFileMutex at all. Plain bools here were also a data race: the message
+  // thread wrote them while the audio thread read them.
+  std::atomic<bool> isSavingTx{false};
+  std::atomic<bool> isSavingRx{false};
   std::unique_ptr<juce::FileOutputStream> txOggFile;
   std::unique_ptr<juce::AudioFormatWriter> txWavWriter;
   std::unique_ptr<juce::FileOutputStream> rxOggFile;

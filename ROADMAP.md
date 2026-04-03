@@ -127,8 +127,47 @@ that appears as an unreproducible dropout in someone else's DAW.
       audio thread entirely; the audio thread should only ever see a flag.
       Now applied from the message thread when the toggle changes
       (`applyDebugCaptureSettings`); `processBlock` no longer mentions them.
-- [ ] Re-audit the rest of `processBlock` for the same class of problem once
-      those two are gone, and record the result so the list stays authoritative.
+- [x] **Re-audit of `processBlock`, 2026-08-08.** Four findings; three fixed
+      here, one deferred to a tracked work area. The result, so the list stays
+      authoritative:
+
+      - [x] **`localChannelMutex` was taken three times per block** -- the
+            monitor mix, `captureInputRange` and `fireCaptureLambdas`. This was
+            worse than the RX lock, because of what held the other end: the
+            editor's 30 Hz timer holds it while *constructing channel strips*,
+            `addLocalChannel` held it across a 30-second ring allocation (about
+            11 MB at 96 kHz), and `setStateInformation` holds it while parsing
+            XML. The audio thread could block on any of those.
+
+            Fixed the same way as the RX path. `localChannels` stays a locked
+            `std::vector` for the UI; the audio thread walks `audioChannels`, a
+            fixed array of raw pointers published by `publishLocalChannels()`
+            with a release store on the count. Safe without a lock because a
+            `LocalChannel` is never destroyed while the processor lives:
+            removing one moves it to `spareLocalChannels` and shrinks the count,
+            and a later add takes it back out. A recycled channel never resizes
+            its own ring -- only `prepareToPlay` does, which the host does not
+            run concurrently with `processBlock`.
+      - [x] **`getDecodedAudio` took `rxFileMutex` on every block**, even with
+            Save Rx off, and `isSavingRx` was a plain `bool` written by the
+            message thread while the audio thread read it. Now an atomic checked
+            before the lock is considered, so the normal path takes no lock at
+            all. The file write itself stays on the audio thread when the toggle
+            is on: writing the mix as the audio thread sees it is the whole
+            point of the toggle, and it is never on in ordinary use.
+      - [x] **`clockEvents` and `captureSegments` cannot outgrow their
+            reserves.** Checked rather than assumed: `clockEvents` reserves at
+            least 64 events, and exceeding it needs 63 beats inside one block --
+            about 1.5 million samples at 120 bpm and 48 kHz. `captureSegments`
+            reserves 8 against one segment per interval boundary crossed. Both
+            are safe by orders of magnitude, and no change was made.
+      - [ ] **`MessageManager::callAsync` still fires from the audio thread** at
+            each interval boundary in `fireCaptureLambdas`. It is a `new`, a
+            lock, an array append and a `write()` syscall
+            (`juce_Messaging_linux.cpp:72`). Once per interval rather than per
+            block, and removing it means the redesign already tracked below as
+            *Lock-free TX handoff* -- so it is recorded there, not fixed here.
+            The lock around it is gone; the post is not.
 
 ### Underrun tail
 
@@ -156,6 +195,12 @@ class of bug presents until it does not.
 `processBlock` does a `callAsync` with a full buffer copy at each interval
 boundary. A `juce::AbstractFifo` would remove the copy and the allocation and
 reduce TX latency jitter. Much safer to attempt now the loopback tests exist.
+
+This is now the **last remaining `PRINCIPLES 7` violation on the audio thread**,
+and the re-audit above confirmed the cost precisely: `callAsync` is a `new`, a
+`CriticalSection`, a `ReferenceCountedArray` append and a `write()` syscall
+(`juce_Messaging_linux.cpp:72`). It fires once per interval rather than once per
+block, which is why it outlived the rest.
 
 - [ ] Replace the per-channel `callAsync` copy with a FIFO drained on the message
       thread.

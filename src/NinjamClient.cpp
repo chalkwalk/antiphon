@@ -20,7 +20,7 @@ void NinjamClient::removeListener(NinjamClientListener *listener) {
 
 void NinjamClient::setSaveTx(bool shouldSave) {
   juce::ScopedLock sl(txFileMutex);
-  if (shouldSave && !isSavingTx) {
+  if (shouldSave && !isSavingTx.load()) {
     juce::File desktop =
         juce::File::getSpecialLocation(juce::File::userDesktopDirectory);
     juce::File oggF = desktop.getChildFile("tx.ogg");
@@ -39,16 +39,16 @@ void NinjamClient::setSaveTx(bool shouldSave) {
     const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
     txWavWriter.reset(wavFormat.createWriterFor(
         new juce::FileOutputStream(wavF), rate, 2, 32, strArr, 0));
-  } else if (!shouldSave && isSavingTx) {
+  } else if (!shouldSave && isSavingTx.load()) {
     txOggFile.reset();
     txWavWriter.reset();
   }
-  isSavingTx = shouldSave;
+  isSavingTx.store(shouldSave);
 }
 
 void NinjamClient::setSaveRx(bool shouldSave) {
   juce::ScopedLock sl(rxFileMutex);
-  if (shouldSave && !isSavingRx) {
+  if (shouldSave && !isSavingRx.load()) {
     juce::File desktop =
         juce::File::getSpecialLocation(juce::File::userDesktopDirectory);
     juce::File oggF = desktop.getChildFile("rx.ogg");
@@ -67,11 +67,11 @@ void NinjamClient::setSaveRx(bool shouldSave) {
     const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
     rxWavWriter.reset(wavFormat.createWriterFor(
         new juce::FileOutputStream(wavF), rate, 2, 32, strArr, 0));
-  } else if (!shouldSave && isSavingRx) {
+  } else if (!shouldSave && isSavingRx.load()) {
     rxOggFile.reset();
     rxWavWriter.reset();
   }
-  isSavingRx = shouldSave;
+  isSavingRx.store(shouldSave);
 }
 
 void NinjamClient::connectToServer(const juce::String &host, int port,
@@ -1084,9 +1084,14 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     slot.readPos += toCopy;
   }
 
-  {
+  // Checked before the lock is even considered, so the normal path takes no
+  // lock on the audio thread at all. Save Rx is a debug capture: when it is on
+  // the audio thread does file I/O and that is accepted, because writing the
+  // mix as the audio thread sees it is the whole point of the toggle. It is
+  // never on in ordinary use.
+  if (isSavingRx.load(std::memory_order_relaxed)) {
     juce::ScopedLock fl(rxFileMutex);
-    if (isSavingRx && rxWavWriter != nullptr)
+    if (isSavingRx.load(std::memory_order_relaxed) && rxWavWriter != nullptr)
       rxWavWriter->writeFromAudioSampleBuffer(buffer, 0, numSamples);
   }
 }
