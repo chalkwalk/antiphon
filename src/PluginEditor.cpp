@@ -28,7 +28,12 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   setDescription("Ninjam client. Session status, local channels, remote "
                  "players, chat.");
   setResizable(true, true);
-  setResizeLimits(900, 600, 2400, 1600);
+  // 1080 is what the toolbar actually needs: 596 px for the session and DAW
+  // groups from the left, 454 for the view and debug toggles from the right,
+  // and the 10 px window margins. Below that the two runs met in the middle and
+  // controls collapsed to nothing -- the previous 900 minimum was a width the
+  // window could be set to but could not draw.
+  setResizeLimits(1080, 600, 2400, 1600);
   setSize(1100, 700);
 
   browseButton.setButtonText("Connect...");
@@ -58,7 +63,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   metronomeToggle.setDescription("Play a click on every beat of the interval");
   addAndMakeVisible(metronomeToggle);
 
-  saveTxToggle.setButtonText("Save Tx Audio");
+  saveTxToggle.setButtonText("Save Tx");
   saveTxToggle.setToggleState(audioProcessor.saveTxEnabled,
                               juce::dontSendNotification);
   saveTxToggle.onClick = [this]() {
@@ -70,7 +75,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   saveTxToggle.setDescription("Debug: write the audio you send to a file on the desktop");
   addAndMakeVisible(saveTxToggle);
 
-  saveRxToggle.setButtonText("Save Rx Audio");
+  saveRxToggle.setButtonText("Save Rx");
   saveRxToggle.setToggleState(audioProcessor.saveRxEnabled,
                               juce::dontSendNotification);
   saveRxToggle.onClick = [this]() {
@@ -148,6 +153,12 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   outputBusGroupLabel.setJustificationType(juce::Justification::centredRight);
   outputBusGroupLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(outputBusGroupLabel);
+
+  dawOnlyNote.setText("DAW only", juce::dontSendNotification);
+  dawOnlyNote.setJustificationType(juce::Justification::centredLeft);
+  dawOnlyNote.setColour(juce::Label::textColourId,
+                        juce::Colour(AntiphonTheme::kDisabledText));
+  addChildComponent(dawOnlyNote);
 
   addOutBusButton.setButtonText("+");
   addOutBusButton.setTooltip("Add a new stereo output bus (for DAW stem recording)");
@@ -260,8 +271,47 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   for (const auto &msg : audioProcessor.ninjamClient.getChatLog())
     onChatMessage(msg.type, msg.username, msg.text);
 
+  applyHostContextToControls();
   setChatConnectedState(audioProcessor.ninjamClient.isConnected());
   startTimerHz(30);
+}
+
+void AntiphonEditor::applyHostContextToControls() {
+  // The UI is allowed to differ between the standalone and the plugin, because
+  // the two genuinely can do different things. Local channels and buses exist
+  // so a DAW can route tracks in and record stems out; Sync locks our interval
+  // grid to the DAW transport. In the standalone none of that has a
+  // counterpart, so the controls stay visible -- the shape of the app should
+  // not change under you -- but disabled, and they say why.
+  if (!audioProcessor.isStandaloneApp())
+    return;
+
+  const juce::String why =
+      "Available when Antiphon runs as a plugin in a DAW";
+
+  for (auto *b : {&addChannelButton, &addInBusButton, &removeInBusButton,
+                  &addOutBusButton, &removeOutBusButton, &syncButton}) {
+    b->setEnabled(false);
+    b->setTooltip(why);
+    // The reason belongs in the accessible description too: a reader that only
+    // announces "dimmed" leaves the user guessing what would un-dim it.
+    b->setDescription(b->getDescription() + ". " + why);
+  }
+
+  for (auto *l : {&channelGroupLabel, &inputBusGroupLabel, &outputBusGroupLabel})
+    l->setColour(juce::Label::textColourId,
+                 juce::Colour(AntiphonTheme::kDisabledText));
+
+  // Short forms, to make room for the note. A label is not a reader target --
+  // the buttons carry the accessible names -- so nothing is lost by shortening
+  // the drawn text.
+  channelGroupLabel.setText("Ch:", juce::dontSendNotification);
+  inputBusGroupLabel.setText("In:", juce::dontSendNotification);
+  outputBusGroupLabel.setText("Out:", juce::dontSendNotification);
+
+  dawOnlyNote.setVisible(true);
+  dawOnlyNote.setTitle("Plugin only");
+  dawOnlyNote.setDescription(why);
 }
 
 AntiphonEditor::~AntiphonEditor() {
@@ -463,19 +513,58 @@ void AntiphonEditor::resized() {
   auto toolbar = area.removeFromBottom(28);
   area.removeFromBottom(10); // spacer above toolbar
 
+  // Laid out from both ends rather than left to right. Consuming only from the
+  // left made the last controls run off the window -- "Save Tx Audio" was drawn
+  // outside its own 60 px button -- and the failure was invisible until you
+  // looked. Anchoring the right-hand group to the right edge means a window too
+  // narrow for everything shows a gap in the middle instead of text spilling
+  // over its border.
+
+  // Session controls, from the left.
   browseButton.setBounds(toolbar.removeFromLeft(90).reduced(0, 4));
   toolbar.removeFromLeft(4);
   disconnectButton.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
   toolbar.removeFromLeft(10);
 
+  // View and debug toggles, from the right, in reverse visual order.
+  chatToggle.setBounds(toolbar.removeFromRight(52).reduced(0, 4));
+  toolbar.removeFromRight(8);
+  testToneToggle.setBounds(toolbar.removeFromRight(80).reduced(0, 4));
+  toolbar.removeFromRight(2);
+  saveRxToggle.setBounds(toolbar.removeFromRight(68).reduced(0, 4));
+  toolbar.removeFromRight(2);
+  saveTxToggle.setBounds(toolbar.removeFromRight(68).reduced(0, 4));
+  toolbar.removeFromRight(10);
+  metronomeVolumeSlider.setBounds(toolbar.removeFromRight(60).reduced(0, 6));
+  toolbar.removeFromRight(4);
+  metronomeToggle.setBounds(toolbar.removeFromRight(90).reduced(0, 4));
+  toolbar.removeFromRight(10);
+
+  // The DAW-only run, continuing from the left. In the standalone the note
+  // prefixes the whole run rather than trailing it -- a reason is only useful
+  // before the thing it explains -- and the group labels use their short forms,
+  // which costs nothing when the controls are inert and buys the room the note
+  // needs. The full wording stays in each control's accessible name.
+  // Gated on the condition itself, not on the label's visibility: resized() runs
+  // during construction, before applyHostContextToControls() has made the note
+  // visible, so asking the label would silently give it no bounds.
+  const bool standalone = audioProcessor.isStandaloneApp();
+  if (standalone) {
+    dawOnlyNote.setBounds(toolbar.removeFromLeft(66));
+    toolbar.removeFromLeft(4);
+  }
+
+  syncButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
+  toolbar.removeFromLeft(10);
+
   // Channel: [+]
-  channelGroupLabel.setBounds(toolbar.removeFromLeft(62));
+  channelGroupLabel.setBounds(toolbar.removeFromLeft(standalone ? 30 : 62));
   toolbar.removeFromLeft(2);
   addChannelButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
   toolbar.removeFromLeft(10);
 
   // Input bus: [+] [-]
-  inputBusGroupLabel.setBounds(toolbar.removeFromLeft(70));
+  inputBusGroupLabel.setBounds(toolbar.removeFromLeft(standalone ? 34 : 70));
   toolbar.removeFromLeft(2);
   addInBusButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
   toolbar.removeFromLeft(2);
@@ -483,26 +572,11 @@ void AntiphonEditor::resized() {
   toolbar.removeFromLeft(10);
 
   // Output bus: [+] [-]
-  outputBusGroupLabel.setBounds(toolbar.removeFromLeft(76));
+  outputBusGroupLabel.setBounds(toolbar.removeFromLeft(standalone ? 38 : 76));
   toolbar.removeFromLeft(2);
   addOutBusButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
   toolbar.removeFromLeft(2);
   removeOutBusButton.setBounds(toolbar.removeFromLeft(22).reduced(0, 4));
-  toolbar.removeFromLeft(10);
-
-  metronomeToggle.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
-  toolbar.removeFromLeft(4);
-  syncButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
-  toolbar.removeFromLeft(8);
-  metronomeVolumeSlider.setBounds(toolbar.removeFromLeft(60).reduced(0, 6));
-  toolbar.removeFromLeft(10);
-  saveTxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
-  toolbar.removeFromLeft(2);
-  saveRxToggle.setBounds(toolbar.removeFromLeft(60).reduced(0, 4));
-  toolbar.removeFromLeft(2);
-  testToneToggle.setBounds(toolbar.removeFromLeft(76).reduced(0, 4));
-  toolbar.removeFromLeft(8);
-  chatToggle.setBounds(toolbar.removeFromLeft(46).reduced(0, 4));
 
   // Section labels row
   area.removeFromTop(20);
@@ -712,20 +786,38 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
 }
 
 void AntiphonEditor::setChatConnectedState(bool connected) {
-  const juce::Colour bg   = connected ? juce::Colour(0xff0a0a0a) : juce::Colour(0xff121212);
-  const juce::Colour text = connected ? juce::Colour(0xffe0e0e0) : juce::Colour(0xff1e1e1e);
+  // The disconnected panel used to be 0xff1e1e1e text on 0xff121212, which is
+  // invisible rather than dimmed -- it read as a rendering fault, not as a
+  // disabled control. It now uses the same disabled treatment as every other
+  // control in the window, and says in words why it is unavailable.
+  const juce::Colour bg =
+      connected ? juce::Colour(0xff0a0a0a)
+                : juce::Colour(AntiphonTheme::kDisabledFill);
+  const juce::Colour text = connected
+                                ? juce::Colour(0xffe0e0e0)
+                                : juce::Colour(AntiphonTheme::kDisabledText);
 
   chatDisplay.setColour(juce::TextEditor::backgroundColourId, bg);
   chatDisplay.setColour(juce::TextEditor::textColourId, text);
+  chatDisplay.setColour(juce::TextEditor::outlineColourId,
+                        juce::Colour(AntiphonTheme::kDisabledEdge));
+  if (!connected) {
+    chatDisplay.clear();
+    chatDisplay.setText("Not connected.\n\nChat becomes available once you "
+                        "join a server.\n",
+                        juce::dontSendNotification);
+  }
   chatDisplay.repaint();
 
   chatInput.setEnabled(connected);
   chatInput.setColour(juce::TextEditor::backgroundColourId, bg);
   chatInput.setColour(juce::TextEditor::textColourId, text);
+  chatInput.setColour(juce::TextEditor::outlineColourId,
+                      juce::Colour(AntiphonTheme::kDisabledEdge));
   chatInput.setTextToShowWhenEmpty(
       connected ? "Enter message or command (!vote bpm 120, /msg user text, /topic text)"
-                : "(not connected)",
-      connected ? juce::Colours::grey : juce::Colour(0xff2e2e2e));
+                : "Not connected -- join a server to chat",
+      juce::Colour(connected ? 0xff8a8a8a : AntiphonTheme::kDisabledText));
   chatInput.repaint();
 }
 
@@ -740,16 +832,24 @@ void AntiphonEditor::onDisconnected(const juce::String &) {
 
 void AntiphonEditor::updateToolbarStates() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
-  const int inBuses    = audioProcessor.getBusCount(true);
-  const int outBuses   = audioProcessor.getBusCount(false);
+
+  browseButton.setEnabled(!connected);
+  disconnectButton.setEnabled(connected);
+
+  // Everything below is DAW-only and was settled once by
+  // applyHostContextToControls(). Re-enabling it here every timer tick would
+  // quietly undo that.
+  if (audioProcessor.isStandaloneApp())
+    return;
+
+  const int inBuses  = audioProcessor.getBusCount(true);
+  const int outBuses = audioProcessor.getBusCount(false);
 
   const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
   syncButton.setEnabled(sync == SyncState::State::ReadyToSync ||
                         sync == SyncState::State::WaitingForPlay ||
                         sync == SyncState::State::Running);
 
-  browseButton.setEnabled(!connected);
-  disconnectButton.setEnabled(connected);
   removeInBusButton.setEnabled(inBuses > 1);
   removeOutBusButton.setEnabled(outBuses > 1);
 }

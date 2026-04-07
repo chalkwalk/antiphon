@@ -448,6 +448,9 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // IntervalClock owns the grid; it is sample-exact and every interval is
     // the same length, matching the reference client's integer arithmetic.
     intervalClock.setTempo(internalBpm.load(), internalBpi.load());
+    // The click's bar accent depends on the interval length; see
+    // MetronomeVoice::setBeatsPerInterval.
+    metronomeVoice.setBeatsPerInterval(internalBpi.load());
 
     // Reset phase on disconnect (flag set by onDisconnected on message thread)
     if (phaseResetPending.exchange(false)) {

@@ -120,6 +120,14 @@ private:
   juce::Label outputBusGroupLabel;
   juce::TextButton addOutBusButton;
   juce::TextButton removeOutBusButton;
+  // Shown only in the standalone, where the whole group above is inert: buses
+  // exist so a DAW can route tracks in and record stems out, and there is no
+  // DAW. Greying alone does not say *why*, so this says it in words.
+  juce::Label dawOnlyNote;
+
+  // Applies the standalone/hosted divergence. Called once at construction:
+  // which controls can ever apply is fixed for the life of the instance.
+  void applyHostContextToControls();
 
   // Local Channel Strips
   juce::OwnedArray<LocalChannelStrip> localChannelStrips;

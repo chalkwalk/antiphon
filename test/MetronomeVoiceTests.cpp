@@ -9,9 +9,10 @@ namespace {
 
 // Renders one complete click into a buffer.
 std::vector<float> renderClick(double sampleRate, int beatIndex,
-                               float gain = 1.0f) {
+                               float gain = 1.0f, int bpi = 16) {
   MetronomeVoice v;
   v.prepare(sampleRate);
+  v.setBeatsPerInterval(bpi);
   v.trigger(beatIndex);
   std::vector<float> buf((size_t)v.clickLengthSamples() + 64, 0.0f);
   v.render(buf.data(), (int)buf.size(), gain);
@@ -45,6 +46,42 @@ public:
     expectPitch(renderClick(48000.0, 1), 48000.0, 440.0, "plain beat");
     expectPitch(renderClick(48000.0, 8), 48000.0, 660.0, "bar start");
     expectPitch(renderClick(48000.0, 7), 48000.0, 440.0, "plain beat");
+
+    beginTest("an interval that is not whole bars accents only the downbeat");
+    {
+      // BPI 11 does not divide into 4-beat bars. Accenting every fourth beat
+      // regardless gives 1, 5, 9 and then a group of only 3 before the wrap,
+      // which reads as the click losing time even though the grid is exact.
+      // The reference client has no bar concept at all -- it accents beat 0 and
+      // nothing else (libninjam/ninjam/njclient.cpp:1478) -- so a BPI like this
+      // falls back to exactly that.
+      expectPitch(renderClick(48000.0, 0, 1.0f, 11), 48000.0, 880.0,
+                  "downbeat at BPI 11");
+      for (int beat : {1, 4, 8, 10})
+        expectPitch(renderClick(48000.0, beat, 1.0f, 11), 48000.0, 440.0,
+                    "beat " + juce::String(beat) + " at BPI 11");
+    }
+
+    beginTest("an interval of whole bars keeps its bar accent");
+    {
+      // The accent is worth having where it is meaningful: at BPI 16 it is what
+      // lets you keep place across a long interval.
+      for (int bpi : {4, 8, 12, 16}) {
+        expectPitch(renderClick(48000.0, 4, 1.0f, bpi), 48000.0, 660.0,
+                    "bar start at BPI " + juce::String(bpi));
+        expectPitch(renderClick(48000.0, 1, 1.0f, bpi), 48000.0, 440.0,
+                    "plain beat at BPI " + juce::String(bpi));
+      }
+    }
+
+    beginTest("the downbeat is always the loudest click, whatever the BPI");
+    {
+      for (int bpi : {4, 7, 11, 12, 16}) {
+        const double down = TestSignal::peak(renderClick(48000.0, 0, 1.0f, bpi).data(), 64);
+        const double beat = TestSignal::peak(renderClick(48000.0, 1, 1.0f, bpi).data(), 64);
+        expect(down > beat, "downbeat must lead at BPI " + juce::String(bpi));
+      }
+    }
 
     beginTest("pitch is independent of sample rate");
     for (double sr : {44100.0, 48000.0, 88200.0, 96000.0}) {

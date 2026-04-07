@@ -2,6 +2,35 @@
 #include "GainUtils.h"
 #include <JuceHeader.h>
 
+// The window's shared colour vocabulary.
+//
+// Two states in here are load-bearing and were previously indistinguishable:
+//
+//  - ON vs OFF. A toggle used to shift between 0xff16213e and 0xff0f3460, two
+//    dark navies a couple of percent apart. You could not tell whether the
+//    metronome was running without listening for it. On is now the product
+//    accent, lit, with dark text on it -- the audio-software convention for an
+//    engaged control.
+//  - ENABLED vs DISABLED. Disabled used to be the same fill at half alpha,
+//    which on a dark ground is a barely perceptible change. It is now one flat,
+//    low-contrast treatment used by every control AND by the chat panel, so
+//    "you cannot use this yet" always looks the same wherever it appears.
+namespace AntiphonTheme {
+
+constexpr juce::uint32 kAccent = 0xff00b4d8;    // teal: the product accent
+constexpr juce::uint32 kOnText = 0xff05202b;    // near-black, for use on kAccent
+constexpr juce::uint32 kControl = 0xff16213e;   // a control at rest
+
+// One disabled treatment, shared by buttons, text editors and the chat.
+constexpr juce::uint32 kDisabledFill = 0xff141821;
+constexpr juce::uint32 kDisabledEdge = 0xff2a3040;
+// Deliberately legible rather than merely dark. A disabled control still has to
+// be readable -- you need to know what it is you cannot use, and the previous
+// 0xff1e1e1e on 0xff121212 was invisible rather than dimmed.
+constexpr juce::uint32 kDisabledText = 0xff6b7385;
+
+} // namespace AntiphonTheme
+
 // Meter colour by band. Lives here rather than in GainUtils because that
 // header is compiled into the test target, which does not link juce_graphics.
 inline juce::Colour meterColour(GainUtils::MeterZone zone) {
@@ -68,6 +97,10 @@ public:
                             bool shouldDrawButtonAsHighlighted,
                             bool shouldDrawButtonAsDown) override;
 
+  void drawButtonText(juce::Graphics &g, juce::TextButton &button,
+                      bool shouldDrawButtonAsHighlighted,
+                      bool shouldDrawButtonAsDown) override;
+
   void drawToggleButton(juce::Graphics &g, juce::ToggleButton &button,
                         bool shouldDrawButtonAsHighlighted,
                         bool shouldDrawButtonAsDown) override;
@@ -82,6 +115,12 @@ public:
   // a Font that names no typeface resolves through
   // LookAndFeel::getDefaultLookAndFeel(), NOT through the component's own
   // look-and-feel. Hence installProductLookAndFeel() below -- setting this
+  // One place that knows what a control surface looks like in each state, so
+  // buttons and toggles cannot drift apart again.
+  static void paintControlSurface(juce::Graphics &g, juce::Button &button,
+                                  juce::Colour fill, bool isOn,
+                                  bool highlighted, bool down);
+
   // class on the editor alone would leave every font as the platform default.
   juce::Typeface::Ptr getTypefaceForFont(const juce::Font &) override;
 };

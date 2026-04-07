@@ -50,12 +50,20 @@ AntiphonLookAndFeel::AntiphonLookAndFeel() {
             juce::Colour(0xff1a1a2e)); // Dark background
   setColour(juce::TextButton::buttonColourId,
             juce::Colour(0xff16213e)); // Button surface
+  // Lit, not a second shade of navy. The old 0xff0f3460 differed from the rest
+  // state by a couple of percent and read as "off" at a glance.
   setColour(juce::TextButton::buttonOnColourId,
-            juce::Colour(0xff0f3460)); // Active button
+            juce::Colour(AntiphonTheme::kAccent));
   setColour(juce::TextButton::textColourOffId, juce::Colours::lightgrey);
-  setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+  setColour(juce::TextButton::textColourOnId,
+            juce::Colour(AntiphonTheme::kOnText));
   setColour(juce::Slider::thumbColourId,
-            juce::Colour(0xff00b4d8)); // Teal Accent
+            juce::Colour(AntiphonTheme::kAccent)); // Teal Accent
+  // Without these a horizontal slider drew its thumb over an unpainted track,
+  // so the metronome volume read as a stray dot floating in the toolbar rather
+  // than as a control with a range.
+  setColour(juce::Slider::trackColourId, juce::Colour(0xff2a3550));
+  setColour(juce::Slider::backgroundColourId, juce::Colour(0xff11162a));
   setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff00b4d8));
   setColour(juce::Slider::rotarySliderOutlineColourId,
             juce::Colour(0xff111111));
@@ -97,24 +105,62 @@ void AntiphonLookAndFeel::drawRotarySlider(juce::Graphics &g, int x, int y,
   g.fillPath(p);
 }
 
-void AntiphonLookAndFeel::drawButtonBackground(
-    juce::Graphics &g, juce::Button &button,
-    const juce::Colour &backgroundColour, bool shouldDrawButtonAsHighlighted,
-    bool shouldDrawButtonAsDown) {
+void AntiphonLookAndFeel::paintControlSurface(juce::Graphics &g,
+                                             juce::Button &button,
+                                             juce::Colour fill, bool isOn,
+                                             bool highlighted, bool down) {
   auto bounds = button.getLocalBounds().toFloat().reduced(0.5f, 0.5f);
-  auto baseColour =
-      backgroundColour
-          .withMultipliedSaturation(button.hasKeyboardFocus(true) ? 1.3f : 0.9f)
-          .withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f);
 
-  if (shouldDrawButtonAsDown || shouldDrawButtonAsHighlighted)
-    baseColour = baseColour.contrasting(shouldDrawButtonAsDown ? 0.2f : 0.1f);
+  if (!button.isEnabled()) {
+    // Flat, low-contrast, and no longer shaped like something you can press.
+    // Half-alpha over a dark ground -- what this used to do -- is not a visible
+    // change at all.
+    g.setColour(juce::Colour(AntiphonTheme::kDisabledFill));
+    g.fillRoundedRectangle(bounds, 4.0f);
+    g.setColour(juce::Colour(AntiphonTheme::kDisabledEdge));
+    g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+    return;
+  }
+
+  auto baseColour = fill.withMultipliedSaturation(
+      button.hasKeyboardFocus(true) ? 1.3f : 0.9f);
+  if (down || highlighted)
+    baseColour = baseColour.contrasting(down ? 0.2f : 0.1f);
 
   g.setColour(baseColour);
   g.fillRoundedRectangle(bounds, 4.0f);
 
-  g.setColour(button.findColour(juce::ComboBox::outlineColourId));
-  g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+  // An engaged control gets a bright edge as well as a bright fill, so the
+  // state survives both a colour-blind reader and a bad monitor.
+  g.setColour(isOn ? baseColour.brighter(0.5f)
+                   : button.findColour(juce::ComboBox::outlineColourId));
+  g.drawRoundedRectangle(bounds, 4.0f, isOn ? 1.5f : 1.0f);
+}
+
+void AntiphonLookAndFeel::drawButtonBackground(
+    juce::Graphics &g, juce::Button &button,
+    const juce::Colour &backgroundColour, bool shouldDrawButtonAsHighlighted,
+    bool shouldDrawButtonAsDown) {
+  // A plain TextButton has no toggle state to show, so `isOn` is false unless
+  // it is genuinely being used as a toggle.
+  paintControlSurface(g, button, backgroundColour, button.getToggleState(),
+                      shouldDrawButtonAsHighlighted, shouldDrawButtonAsDown);
+}
+
+void AntiphonLookAndFeel::drawButtonText(juce::Graphics &g,
+                                         juce::TextButton &button, bool, bool) {
+  const bool on = button.getToggleState();
+  juce::Colour textColour =
+      button.findColour(on ? juce::TextButton::textColourOnId
+                           : juce::TextButton::textColourOffId);
+  if (!button.isEnabled())
+    textColour = juce::Colour(AntiphonTheme::kDisabledText);
+
+  g.setColour(textColour);
+  g.setFont(juce::jmin(15.0f, (float)button.getHeight() * 0.6f));
+  g.drawFittedText(button.getButtonText(),
+                   button.getLocalBounds().reduced(2, 0),
+                   juce::Justification::centred, 2);
 }
 
 void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
@@ -127,22 +173,21 @@ void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
   auto bounds = button.getLocalBounds().toFloat().reduced(2.0f);
 
   if (button.getButtonText().isNotEmpty()) {
-    // Treat it somewhat like a text button if it has text (e.g., Mute/Solo)
-    juce::Colour baseColour =
-        button.findColour(juce::TextButton::buttonColourId);
-    if (button.getToggleState()) {
-      baseColour = button.findColour(juce::TextButton::buttonOnColourId);
-    }
+    // A labelled toggle is drawn as a lit button, which is the convention for
+    // an engaged control in audio software -- Mute, Solo, Transmit, Metronome.
+    const bool on = button.getToggleState();
+    paintControlSurface(g, button,
+                        button.findColour(on ? juce::TextButton::buttonOnColourId
+                                             : juce::TextButton::buttonColourId),
+                        on, shouldDrawButtonAsHighlighted,
+                        shouldDrawButtonAsDown);
 
-    if (shouldDrawButtonAsDown || shouldDrawButtonAsHighlighted)
-      baseColour = baseColour.contrasting(shouldDrawButtonAsDown ? 0.2f : 0.1f);
+    juce::Colour textColour =
+        button.findColour(on ? juce::TextButton::textColourOnId
+                             : juce::TextButton::textColourOffId);
+    if (!button.isEnabled())
+      textColour = juce::Colour(AntiphonTheme::kDisabledText);
 
-    g.setColour(baseColour);
-    g.fillRoundedRectangle(bounds, 4.0f);
-
-    auto textColour = button.getToggleState()
-        ? button.findColour(juce::TextButton::textColourOnId)
-        : button.findColour(juce::TextButton::textColourOffId);
     g.setColour(textColour);
     g.setFont(fontSize);
     g.drawFittedText(button.getButtonText(), button.getLocalBounds(),

@@ -13,6 +13,10 @@ void MetronomeVoice::prepare(double sr) {
   phase = 0.0;
 }
 
+void MetronomeVoice::setBeatsPerInterval(int bpi) {
+  beatsPerBar = (bpi > 0 && bpi % 4 == 0) ? 4 : 0;
+}
+
 void MetronomeVoice::trigger(int beatIndex) {
   if (sampleRate <= 0.0)
     return;
@@ -20,7 +24,7 @@ void MetronomeVoice::trigger(int beatIndex) {
   if (beatIndex == 0) {
     frequency = 880.0;
     amplitude = 0.10f;
-  } else if (beatIndex % 4 == 0) {
+  } else if (beatsPerBar > 0 && beatIndex % beatsPerBar == 0) {
     frequency = 660.0;
     amplitude = 0.06f;
   } else {
