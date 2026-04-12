@@ -7,40 +7,53 @@ project(Antiphon VERSION 0.1.0)
 # enable_testing() must be called at the top level for ctest to work
 enable_testing()
 
-# JUCE patches, applied to the submodule at configure time.
+# Submodule patches, applied at configure time.
 #
-# Each is idempotent: "git apply --reverse --check" succeeds only when the
-# patch is already in the working tree, so a second configure is a no-op and a
-# fresh clone gets it applied once.
-set(ANTIPHON_JUCE_PATCHES
-    "${CMAKE_CURRENT_SOURCE_DIR}/patches/juce-linux-plugin-keyboard-focus.patch")
+# Each entry is "<submodule dir>|<patch file>". Each patch is idempotent:
+# "git apply --reverse --check" succeeds only when the patch is already in the
+# working tree, so a second configure is a no-op and a fresh clone gets it
+# applied once.
+#
+# Do not hand-edit a submodule. Change the .patch, revert the submodule, and
+# reconfigure.
+set(ANTIPHON_SUBMODULE_PATCHES
+    "JUCE|patches/juce-linux-plugin-keyboard-focus.patch"
+    "JUCE|patches/juce-bus-layout-change-notification.patch"
+    "modules/clap-juce-extensions|patches/clap-bus-layout-rescan.patch")
 
 find_package(Git QUIET)
 if(GIT_FOUND)
-    foreach(juce_patch IN LISTS ANTIPHON_JUCE_PATCHES)
-        if(NOT EXISTS "${juce_patch}")
+    foreach(patch_entry IN LISTS ANTIPHON_SUBMODULE_PATCHES)
+        string(REPLACE "|" ";" patch_parts "${patch_entry}")
+        list(GET patch_parts 0 patch_submodule)
+        list(GET patch_parts 1 patch_relative)
+        set(patch_file "${CMAKE_CURRENT_SOURCE_DIR}/${patch_relative}")
+        set(patch_dir "${CMAKE_CURRENT_SOURCE_DIR}/${patch_submodule}")
+
+        if(NOT EXISTS "${patch_file}")
             continue()
         endif()
-        get_filename_component(juce_patch_name "${juce_patch}" NAME)
+        get_filename_component(patch_name "${patch_file}" NAME)
+
         execute_process(
-            COMMAND "${GIT_EXECUTABLE}" apply --reverse --check "${juce_patch}"
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/JUCE"
-            RESULT_VARIABLE _juce_patch_present
+            COMMAND "${GIT_EXECUTABLE}" apply --reverse --check "${patch_file}"
+            WORKING_DIRECTORY "${patch_dir}"
+            RESULT_VARIABLE _patch_present
             ERROR_QUIET OUTPUT_QUIET)
-        if(NOT _juce_patch_present EQUAL 0)
-            message(STATUS "Applying JUCE patch: ${juce_patch_name}")
+        if(NOT _patch_present EQUAL 0)
+            message(STATUS "Applying ${patch_submodule} patch: ${patch_name}")
             execute_process(
-                COMMAND "${GIT_EXECUTABLE}" apply "${juce_patch}"
-                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/JUCE"
-                RESULT_VARIABLE _juce_patch_result)
-            if(NOT _juce_patch_result EQUAL 0)
+                COMMAND "${GIT_EXECUTABLE}" apply "${patch_file}"
+                WORKING_DIRECTORY "${patch_dir}"
+                RESULT_VARIABLE _patch_result)
+            if(NOT _patch_result EQUAL 0)
                 message(FATAL_ERROR
-                    "Failed to apply ${juce_patch_name} to the JUCE submodule. "
+                    "Failed to apply ${patch_name} to ${patch_submodule}. "
                     "Ensure submodules are initialised (git submodule update "
-                    "--init --recursive) and the JUCE working tree is clean.")
+                    "--init --recursive) and its working tree is clean.")
             endif()
         else()
-            message(STATUS "JUCE patch already applied: ${juce_patch_name}")
+            message(STATUS "${patch_submodule} patch already applied: ${patch_name}")
         endif()
     endforeach()
 endif()

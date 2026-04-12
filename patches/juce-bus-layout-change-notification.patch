@@ -1,0 +1,50 @@
+diff --git a/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp b/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp
+index c7b02c3774..2ed9c9368a 100644
+--- a/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp
++++ b/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp
+@@ -1506,6 +1506,12 @@ public:
+     {
+         int32 flags = 0;
+ 
++        // A bus was added or removed at runtime. VST3 hosts cache the plugin's
++        // I/O topology, so without kIoChanged the host keeps the old one and the
++        // new bus is never routed anywhere.
++        if (details.busLayoutChanged)
++            flags |= Vst::kIoChanged;
++
+         if (details.parameterInfoChanged)
+         {
+             for (int32 i = 0; i < parameters.getParameterCount(); ++i)
+diff --git a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorListener.h b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorListener.h
+index 790b4cc9a5..4809b13890 100644
+--- a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorListener.h
++++ b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorListener.h
+@@ -80,6 +80,8 @@ public:
+         bool programChanged           = false;
+         /** @see withNonParameterStateChanged */
+         bool nonParameterStateChanged = false;
++        /** @see withBusLayoutChanged */
++        bool busLayoutChanged         = false;
+ 
+         /** Indicates that the AudioProcessor's latency has changed.
+ 
+@@ -123,6 +125,19 @@ public:
+         */
+         [[nodiscard]] ChangeDetails withNonParameterStateChanged (bool b) const noexcept { return with (&ChangeDetails::nonParameterStateChanged, b); }
+ 
++        /** Indicates that the AudioProcessor's bus layout has changed -- a bus
++            was added or removed at runtime.
++
++            Hosts cache a plugin's input and output topology, so a plugin with
++            dynamic buses has to say when that topology changed or the host keeps
++            routing to the old one. There was previously no way to express this
++            through updateHostDisplay(), which made a runtime addBus()/removeBus()
++            invisible to the host.
++
++            @see busLayoutChanged
++        */
++        [[nodiscard]] ChangeDetails withBusLayoutChanged         (bool b) const noexcept { return with (&ChangeDetails::busLayoutChanged,         b); }
++
+         /** Returns the default set of flags that will be used when
+             AudioProcessor::updateHostDisplay() is called with no arguments.
+         */

@@ -101,9 +101,19 @@ void AntiphonAudioProcessor::removeLastLocalChannel() {
   publishLocalChannels();
 }
 
+// A plain updateHostDisplay() does not tell a host that the bus topology
+// changed -- JUCE's ChangeDetails had no way to say it, so the host kept
+// routing to the layout it cached when the plugin was loaded and a new bus
+// never appeared. patches/juce-bus-layout-change-notification.patch adds the
+// flag and maps it to VST3's kIoChanged; patches/clap-bus-layout-rescan.patch
+// maps it to CLAP's audio-ports rescan.
+static juce::AudioProcessorListener::ChangeDetails busLayoutChange() {
+  return juce::AudioProcessorListener::ChangeDetails{}.withBusLayoutChanged(true);
+}
+
 int AntiphonAudioProcessor::addInputBus() {
   if (!addBus(true)) return -1;
-  updateHostDisplay();
+  updateHostDisplay(busLayoutChange());
   return getBusCount(true) - 1;
 }
 
@@ -117,12 +127,12 @@ void AntiphonAudioProcessor::removeLastInputBus() {
         lc->inputBusIndex.store(0);
   }
   removeBus(true);
-  updateHostDisplay();
+  updateHostDisplay(busLayoutChange());
 }
 
 int AntiphonAudioProcessor::addOutputBus() {
   if (!addBus(false)) return -1;
-  updateHostDisplay();
+  updateHostDisplay(busLayoutChange());
   return getBusCount(false) - 1;
 }
 
@@ -135,7 +145,7 @@ void AntiphonAudioProcessor::removeLastOutputBus() {
       if (ch.outputBusIndex == removedIdx)
         ninjamClient.setRemoteUserOutputBus(uname, chIdx, 0);
   removeBus(false);
-  updateHostDisplay();
+  updateHostDisplay(busLayoutChange());
 }
 
 void AntiphonAudioProcessor::setRemoteUserOutputBus(const juce::String &username,

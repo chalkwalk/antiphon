@@ -378,6 +378,39 @@ implementation used only for the double-hash challenge-response in
 
 ## 10. UI architecture
 
+### 10.0 State legibility, and where standalone differs
+
+Three states have to be readable without learning anything, and all three were
+once encoded as near-invisible colour shifts. The vocabulary lives in
+`AntiphonTheme` (`src/AntiphonLookAndFeel.h`) and every control draws through
+`AntiphonLookAndFeel::paintControlSurface`, so they cannot drift apart again:
+
+| State | How it reads |
+|---|---|
+| On | Lit: the teal product accent, dark text, brighter edge |
+| Off | Flat dark control surface, grey text |
+| Unavailable | One shared low-contrast treatment, *legible* grey text |
+
+Disabled text is deliberately readable rather than merely dark. You have to be
+able to tell what it is you cannot use; the previous `0xff1e1e1e` on
+`0xff121212` read as a rendering fault, not as a disabled control. The chat
+panel uses the same treatment as the buttons, and says in words why it is
+unavailable.
+
+**The standalone and the plugin are allowed to diverge**, because they can do
+different things. Local channels and buses exist so a DAW can route tracks in
+and record stems out, and **Sync** locks our interval grid to the DAW transport;
+none of that has a counterpart in the standalone. Those controls stay visible
+there -- the shape of the app should not change under you -- but disabled,
+prefixed by a "DAW only" note, with the reason in each tooltip and accessible
+description. `AntiphonEditor::applyHostContextToControls()` settles this once at
+construction, since which controls can ever apply is fixed for the life of an
+instance; `updateToolbarStates()` returns early in the standalone so its 30 Hz
+tick cannot quietly undo it.
+
+Bus changes are signalled to the host through `ChangeDetails::busLayoutChanged`,
+which does not exist in stock JUCE -- see the patch pair in `AGENTS.md`.
+
 ### 10.1 Overall layout
 
 ```

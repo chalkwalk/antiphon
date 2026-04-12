@@ -1,0 +1,24 @@
+diff --git a/src/wrapper/clap-juce-wrapper.cpp b/src/wrapper/clap-juce-wrapper.cpp
+index b2062f2..65b3e38 100644
+--- a/src/wrapper/clap-juce-wrapper.cpp
++++ b/src/wrapper/clap-juce-wrapper.cpp
+@@ -665,6 +665,19 @@ class ClapJuceWrapper : public clap::helpers::Plugin<
+             });
+         }
+ #endif
++        if (details.busLayoutChanged)
++        {
++            // A bus was added or removed at runtime. The host caches the port
++            // list, so without a rescan it keeps routing to the old topology and
++            // the new bus never appears.
++            runOnMainThread([this] {
++                if (isBeingDestroyed())
++                    return;
++
++                if (_host.canUseAudioPorts())
++                    _host.audioPortsRescan(CLAP_AUDIO_PORTS_RESCAN_LIST);
++            });
++        }
+         if (details.parameterInfoChanged)
+         {
+             // JUCE documentations states that, `parameterInfoChanged` means

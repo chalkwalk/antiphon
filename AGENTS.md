@@ -149,15 +149,20 @@ cmake -S . -B build-dbg -DCMAKE_BUILD_TYPE=RelWithDebInfo
 without a full round-trip. **Test Tone** injects `IntervalProbe` into every input
 bus, which is what makes transmit alignment measurable.
 
-## JUCE is patched at configure time
+## Submodules are patched at configure time
 
-`patches/*.patch` are applied to the JUCE submodule by the block at the top of
-the root `CMakeLists.txt`. Each is idempotent (`git apply --reverse --check`
-detects an already-applied patch), so configuring twice is a no-op and a fresh
-clone gets them once.
+`patches/*.patch` are applied by the block at the top of the root
+`CMakeLists.txt`. Each entry names the submodule it targets, so both `JUCE` and
+`modules/clap-juce-extensions` are covered. Each patch is idempotent
+(`git apply --reverse --check` detects an already-applied patch), so configuring
+twice is a no-op and a fresh clone gets them once.
 
-**Do not hand-edit JUCE.** Change the `.patch` file, revert the submodule, and
-reconfigure.
+**Do not hand-edit a submodule.** Change the `.patch` file, revert the
+submodule, and reconfigure.
+
+**When writing a patch, preserve line endings.** JUCE sources are CRLF. Editing
+one through a tool that normalises newlines rewrites every line and produces an
+8000-line diff instead of a six-line one.
 
 - **`juce-linux-plugin-keyboard-focus.patch`** -- an embedded plugin window on
   Linux never considers itself focused, so `Component::takeKeyboardFocus()` asks
@@ -168,6 +173,17 @@ reconfigure.
   invisible in the standalone, where the peer already holds focus. The patch
   records the target before the grab.
   See <https://forum.juce.com/t/any-idea-why-vst-plugins-on-linux-immediately-lose-focus/35456>.
+
+- **`juce-bus-layout-change-notification.patch`** and
+  **`clap-bus-layout-rescan.patch`** -- a plugin with dynamic buses had no way
+  to tell a host that its I/O topology changed. `ChangeDetails` carries
+  latency, parameter, program and state flags but nothing for buses, and
+  neither the VST3 nor the CLAP wrapper acted on a bus change, so
+  `updateHostDisplay()` after `addBus()`/`removeBus()` did nothing at all: the
+  host kept routing to the layout it cached at load and the new bus never
+  appeared. The pair adds `ChangeDetails::busLayoutChanged` and maps it to
+  VST3's `kIoChanged` and CLAP's `audioPortsRescan(CLAP_AUDIO_PORTS_RESCAN_LIST)`.
+  Used by `addInputBus`/`removeLastInputBus`/`addOutputBus`/`removeLastOutputBus`.
 
 ---
 
