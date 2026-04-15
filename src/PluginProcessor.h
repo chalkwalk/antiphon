@@ -176,6 +176,19 @@ public:
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
 
+  // The tempo the interval clock is *actually running*, which is not the same
+  // as internalBpm/internalBpi.
+  //
+  // A server BPM or BPI change takes effect at the next interval boundary, so
+  // the current interval plays out at its original length -- that is what keeps
+  // us aligned with every other client. internalBpi changes the instant the
+  // server says so, and the UI used to read it directly: on a 16 -> 11 change
+  // the phase bar re-divided immediately while the phase still ran to the old
+  // interval, so it read "15.50 / 11" and drew past its own end. These follow
+  // the clock, so the display changes exactly when the audio does.
+  std::atomic<int> publishedActiveBpm{120};
+  std::atomic<int> publishedActiveBpi{16};
+
   // Last-used connection settings (persisted via getStateInformation)
   juce::String lastHost{"ninbot.com"};
   int          lastPort{2049};

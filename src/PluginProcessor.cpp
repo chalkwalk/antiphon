@@ -459,8 +459,10 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // the same length, matching the reference client's integer arithmetic.
     intervalClock.setTempo(internalBpm.load(), internalBpi.load());
     // The click's bar accent depends on the interval length; see
-    // MetronomeVoice::setBeatsPerInterval.
-    metronomeVoice.setBeatsPerInterval(internalBpi.load());
+    // MetronomeVoice::setBeatsPerInterval. Taken from the clock rather than
+    // from internalBpi, so a pending change does not alter the accent of the
+    // interval still playing.
+    metronomeVoice.setBeatsPerInterval(intervalClock.getBpi());
 
     // Reset phase on disconnect (flag set by onDisconnected on message thread)
     if (phaseResetPending.exchange(false)) {
@@ -521,6 +523,10 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
 
     publishedPhaseBeats.store((float)intervalClock.phaseBeats());
+    // Published together with the phase they belong to, so the UI can never
+    // divide this interval's progress by the next interval's length.
+    publishedActiveBpm.store(intervalClock.getBpm());
+    publishedActiveBpi.store(intervalClock.getBpi());
 
     // Capture, split at the interval boundary.
     //

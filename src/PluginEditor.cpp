@@ -230,7 +230,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   chatInput.setMultiLine(false);
   chatInput.setReturnKeyStartsNewLine(false);
   chatInput.setTextToShowWhenEmpty(
-      "Enter message or command (!vote bpm 120, /msg user text, /topic text)",
+      "Message, or a command: /bpm 120, /bpi 16, /topic text, /msg user text",
       juce::Colours::grey);
   chatInput.onReturnKey = [this]() {
     juce::String text = chatInput.getText().trim();
@@ -241,8 +241,20 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       } else if (text.startsWithIgnoreCase("/me ")) {
         audioProcessor.ninjamClient.sendChatMessage(text);
       } else if (text.startsWithIgnoreCase("/topic ") ||
-                 text.startsWithIgnoreCase("/kick ")) {
+                 text.startsWithIgnoreCase("/kick ") ||
+                 text.startsWithIgnoreCase("/bpm ") ||
+                 text.startsWithIgnoreCase("/bpi ")) {
+        // The server's own list, from the error it returns for a bad one:
+        // "ADMIN requires valid parameter, i.e. topic, kick, bpm, bpi"
+        // (references/libninjam/ninjam/server/usercon.cpp:1192). bpm and bpi
+        // were missing here, so an admin typing /bpm 120 got "Unknown command"
+        // from us and the server never saw it. Each needs the matching
+        // privilege; the server replies "No BPM permission" if you lack it.
         audioProcessor.ninjamClient.sendAdminCommand(text.substring(1));
+      } else if (text.startsWithIgnoreCase("/admin ")) {
+        // Escape hatch: pass anything through as an ADMIN message, so a server
+        // command we do not know about does not need a code change here.
+        audioProcessor.ninjamClient.sendAdminCommand(text.substring(7).trim());
       } else if (text.startsWithIgnoreCase("/msg ")) {
         int firstSpace = text.indexOfChar(5, ' ');
         if (firstSpace > 0) {
@@ -251,7 +263,9 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
           audioProcessor.ninjamClient.sendPrivateMessage(user, msg);
         }
       } else if (text.startsWithChar('/')) {
-        chatDisplay.insertTextAtCaret("Local: Unknown command.\n");
+        chatDisplay.insertTextAtCaret(
+            "Local: unknown command. Try /topic, /kick, /bpm, /bpi, /msg, /me, "
+            "or /admin <anything> to pass a command straight to the server.\n");
       } else {
         audioProcessor.ninjamClient.sendChatMessage(text);
       }
@@ -376,11 +390,19 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
   if (connected) {
     g.setColour(juce::Colours::white);
-    g.drawFittedText("Server:  " +
-                         juce::String((double)audioProcessor.internalBpm.load(), 1) +
-                         " BPM   " +
-                         juce::String(audioProcessor.internalBpi.load()) + " BPI",
-                     row2, juce::Justification::centredLeft, 1);
+    // The running tempo, not the pending one. A server change that has not
+    // reached an interval boundary yet is shown as pending rather than applied,
+    // because until the boundary it is not what you are playing to.
+    const int activeBpm = audioProcessor.publishedActiveBpm.load();
+    const int activeBpi = audioProcessor.publishedActiveBpi.load();
+    const int wantBpm = audioProcessor.internalBpm.load();
+    const int wantBpi = audioProcessor.internalBpi.load();
+    juce::String tempoText = "Server:  " + juce::String(activeBpm) + " BPM   " +
+                             juce::String(activeBpi) + " BPI";
+    if (wantBpm != activeBpm || wantBpi != activeBpi)
+      tempoText += "   (-> " + juce::String(wantBpm) + " / " +
+                   juce::String(wantBpi) + " next interval)";
+    g.drawFittedText(tempoText, row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
     g.drawFittedText("Not connected", row2, juce::Justification::centredLeft, 1);
@@ -391,8 +413,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   auto phaseBar = header.removeFromTop(8);
   g.setColour(juce::Colour(0xff1a1a2e));
   g.fillRect(phaseBar);
-  if (audioProcessor.internalBpi.load() > 0) {
-    int bpi = audioProcessor.internalBpi.load();
+  if (audioProcessor.publishedActiveBpi.load() > 0) {
+    int bpi = audioProcessor.publishedActiveBpi.load();
     float frac = juce::jlimit(
         0.0f, 1.0f, audioProcessor.publishedPhaseBeats.load() / (float)bpi);
     int barW = phaseBar.getWidth();
@@ -404,9 +426,13 @@ void AntiphonEditor::paint(juce::Graphics &g) {
     g.fillRect(phaseBar.withWidth((int)(barW * frac)));
 
     if (connected) {
+      // Bar ticks only when the interval divides into whole bars, matching
+      // MetronomeVoice::setBeatsPerInterval -- at BPI 11 a tick every fourth
+      // beat would draw a bar the click does not play.
+      const bool wholeBars = (bpi % 4 == 0);
       for (int i = 1; i < bpi; ++i) {
         int lineX = barX + (int)((float)i / bpi * barW);
-        bool isBarBoundary = (i % 4 == 0);
+        bool isBarBoundary = wholeBars && (i % 4 == 0);
         g.setColour(isBarBoundary ? juce::Colours::white.withAlpha(0.55f)
                                   : juce::Colours::white.withAlpha(0.18f));
         int lineH = isBarBoundary ? barH : barH - 2;
@@ -422,7 +448,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       float bFlash = audioProcessor.beatFlashIntensity.load();
       if (bFlash > 0.0f) {
         int flashBeat = audioProcessor.lastBeatCrossedIndex.load();
-        float alpha = (flashBeat % 4 == 0) ? 0.50f : 0.25f;
+        float alpha = (bpi % 4 == 0 && flashBeat % 4 == 0) ? 0.50f : 0.25f;
         g.setColour(juce::Colours::white.withAlpha(bFlash * alpha));
         g.fillRect(phaseBar);
       }
@@ -438,7 +464,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
     g.drawFittedText(
         "Phase: " +
             juce::String(audioProcessor.publishedPhaseBeats.load(), 2) + " / " +
-            juce::String(audioProcessor.internalBpi.load()),
+            juce::String(audioProcessor.publishedActiveBpi.load()),
         row3, juce::Justification::centredLeft, 1);
   } else {
     // Driven by the sync state machine rather than re-derived here, so the text
@@ -815,7 +841,7 @@ void AntiphonEditor::setChatConnectedState(bool connected) {
   chatInput.setColour(juce::TextEditor::outlineColourId,
                       juce::Colour(AntiphonTheme::kDisabledEdge));
   chatInput.setTextToShowWhenEmpty(
-      connected ? "Enter message or command (!vote bpm 120, /msg user text, /topic text)"
+      connected ? "Message, or a command: /bpm 120, /bpi 16, /topic text, /msg user text"
                 : "Not connected -- join a server to chat",
       juce::Colour(connected ? 0xff8a8a8a : AntiphonTheme::kDisabledText));
   chatInput.repaint();
@@ -928,8 +954,9 @@ void AntiphonEditor::relayoutChannelArea() {
 bool AntiphonEditor::updateStatusReadout() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
   const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
-  const int bpm = audioProcessor.internalBpm.load();
-  const int bpi = audioProcessor.internalBpi.load();
+  // The running tempo, so the spoken status and the drawn one agree.
+  const int bpm = audioProcessor.publishedActiveBpm.load();
+  const int bpi = audioProcessor.publishedActiveBpi.load();
 
   juce::String s;
   if (!connected) {

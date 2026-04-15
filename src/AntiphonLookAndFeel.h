@@ -22,12 +22,16 @@ constexpr juce::uint32 kOnText = 0xff05202b;    // near-black, for use on kAccen
 constexpr juce::uint32 kControl = 0xff16213e;   // a control at rest
 
 // One disabled treatment, shared by buttons, text editors and the chat.
-constexpr juce::uint32 kDisabledFill = 0xff141821;
-constexpr juce::uint32 kDisabledEdge = 0xff2a3040;
+//
+// Deliberately neutral grey rather than a darker shade of the window's navy.
+// Desaturation is what reads as "inactive"; a navy-tinted fill still looked
+// like a live part of the interface, just dimmer.
+constexpr juce::uint32 kDisabledFill = 0xff26282e;
+constexpr juce::uint32 kDisabledEdge = 0xff3a3d45;
 // Deliberately legible rather than merely dark. A disabled control still has to
 // be readable -- you need to know what it is you cannot use, and the previous
 // 0xff1e1e1e on 0xff121212 was invisible rather than dimmed.
-constexpr juce::uint32 kDisabledText = 0xff6b7385;
+constexpr juce::uint32 kDisabledText = 0xff8b8f99;
 
 } // namespace AntiphonTheme
 

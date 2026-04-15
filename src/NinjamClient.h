@@ -34,6 +34,15 @@ public:
   void setSaveTx(bool shouldSave);
   void setSaveRx(bool shouldSave);
 
+  // Finalises the debug dumps without changing the toggles.
+  //
+  // A WAV file is only readable once its writer is destroyed and the header
+  // written, so leaving the toggle on held tx.wav and rx.wav open and unusable
+  // for the whole life of the plugin. Called on disconnect; a later connect
+  // reopens them if the toggle is still set.
+  void closeDebugCaptureFiles();
+  void reopenDebugCaptureFiles();
+
   void run() override;
 
   bool isConnected() const { return connectionState == 3; }

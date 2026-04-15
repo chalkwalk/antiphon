@@ -74,6 +74,26 @@ void NinjamClient::setSaveRx(bool shouldSave) {
   isSavingRx.store(shouldSave);
 }
 
+void NinjamClient::closeDebugCaptureFiles() {
+  {
+    juce::ScopedLock sl(txFileMutex);
+    txOggFile.reset();
+    txWavWriter.reset(); // destroying the writer is what writes the WAV header
+  }
+  juce::ScopedLock sl(rxFileMutex);
+  rxOggFile.reset();
+  rxWavWriter.reset();
+}
+
+void NinjamClient::reopenDebugCaptureFiles() {
+  // setSaveTx/Rx only act on a change, so the flag is cleared first to make the
+  // reopen a change again.
+  if (isSavingTx.exchange(false))
+    setSaveTx(true);
+  if (isSavingRx.exchange(false))
+    setSaveRx(true);
+}
+
 void NinjamClient::connectToServer(const juce::String &host, int port,
                                    const juce::String &username,
                                    const juce::String &password) {
@@ -215,6 +235,11 @@ void NinjamClient::run() {
     remoteUsers.clear();
   }
 
+  // Finalise the debug dumps so tx.wav and rx.wav are readable now rather than
+  // when the plugin is closed. The toggles keep their state; a later connect
+  // reopens them.
+  closeDebugCaptureFiles();
+
   callAsyncIfAlive([this]() {
     listeners.call(&NinjamClientListener::onDisconnected, "Connection closed");
   });
@@ -246,6 +271,8 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       return false;
 
     connectionState = 3;
+    // Reopen the debug dumps if their toggles survived a previous disconnect.
+    reopenDebugCaptureFiles();
     sendChannelInfo();
     callAsyncIfAlive(
         [this]() { listeners.call(&NinjamClientListener::onConnected); });

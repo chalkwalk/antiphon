@@ -32,6 +32,10 @@ private:
   juce::Rectangle<int> vuLArea, vuRArea;
   // What the meter currently shows, so a change too small to see costs nothing.
   float shownFractionL = -1.0f, shownFractionR = -1.0f;
+  // Mono draws one wide bar instead of two, so a change to it has to force a
+  // repaint even when neither level moved past the redraw threshold. -1 means
+  // "nothing drawn yet", so the first pass always paints.
+  int shownMono = -1;
 
   juce::TextEditor nameEditor;
   juce::ToggleButton monoButton;

@@ -184,11 +184,17 @@ void LocalChannelStrip::updatePeaks() {
   // pixels wide.
   const float fL = GainUtils::meterFraction(decayedPeakL);
   const float fR = GainUtils::meterFraction(decayedPeakR);
-  if (!GainUtils::meterNeedsRepaint(shownFractionL, fL) &&
+  // Mono changes the meter's shape, not its level, so the level threshold
+  // cannot see it: toggling Mono left the meter drawn as a stereo pair until
+  // something happened to move a bar far enough to redraw for its own reasons.
+  const int mono = (channel != nullptr && channel->isMono.load()) ? 1 : 0;
+  const bool shapeChanged = mono != shownMono;
+  if (!shapeChanged && !GainUtils::meterNeedsRepaint(shownFractionL, fL) &&
       !GainUtils::meterNeedsRepaint(shownFractionR, fR))
     return;
   shownFractionL = fL;
   shownFractionR = fR;
+  shownMono = mono;
 
   const auto meters = vuLArea.getUnion(vuRArea);
   if (!meters.isEmpty())
