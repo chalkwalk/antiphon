@@ -216,6 +216,56 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       "Scrollable list of the channels you transmit");
   addAndMakeVisible(localChannelsViewport);
 
+  roomMembersLabel.setText("In room (0)", juce::dontSendNotification);
+  roomMembersLabel.setJustificationType(juce::Justification::centredLeft);
+  roomMembersLabel.setColour(juce::Label::textColourId, juce::Colour(0xffb0b6c0));
+  roomMembersLabel.setTitle("Players in the room");
+  roomMembersLabel.setDescription(
+      "Everyone on the server, including listeners with no audio channels");
+  addAndMakeVisible(roomMembersLabel);
+
+  // The chip. Hidden until there is something to decide.
+  chipLabel.setJustificationType(juce::Justification::centredLeft);
+  chipLabel.setColour(juce::Label::textColourId, juce::Colour(0xffe0a030));
+  addChildComponent(chipLabel);
+
+  chipActionButton.setButtonText("Vote");
+  chipActionButton.setTitle("Cast vote");
+  chipActionButton.setDescription("Send your vote for this tempo to the server");
+  chipActionButton.onClick = [this]() {
+    // A vote is only ever sent from here -- never as a side effect of the DAW
+    // tempo changing.
+    if (chipDawBpm > 0) {
+      audioProcessor.ninjamClient.sendChatMessage("!vote bpm " +
+                                                  juce::String(chipDawBpm));
+      dismissedDawBpm = chipDawBpm;
+    } else if (pendingVote.valid) {
+      audioProcessor.ninjamClient.sendChatMessage(
+          juce::String("!vote ") + (pendingVote.isBpm ? "bpm " : "bpi ") +
+          juce::String(pendingVote.target));
+      dismissedVoteTarget = pendingVote.target;
+      dismissedVoteIsBpm = pendingVote.isBpm;
+      pendingVote = {};
+    }
+    updateTempoChip();
+  };
+  addChildComponent(chipActionButton);
+
+  chipDismissButton.setButtonText("Dismiss");
+  chipDismissButton.setTitle("Dismiss");
+  chipDismissButton.setDescription("Hide this prompt until the value changes");
+  chipDismissButton.onClick = [this]() {
+    if (chipDawBpm > 0) {
+      dismissedDawBpm = chipDawBpm;
+    } else if (pendingVote.valid) {
+      dismissedVoteTarget = pendingVote.target;
+      dismissedVoteIsBpm = pendingVote.isBpm;
+      pendingVote = {};
+    }
+    updateTempoChip();
+  };
+  addChildComponent(chipDismissButton);
+
   chatDisplay.setMultiLine(true);
   chatDisplay.setReadOnly(true);
   chatDisplay.setScrollbarsShown(true);
@@ -335,23 +385,48 @@ AntiphonEditor::~AntiphonEditor() {
   setLookAndFeel(nullptr);
 }
 
+juce::Colour AntiphonEditor::colourForChatCategory(ChatFormat::Category c) {
+  using C = ChatFormat::Category;
+  switch (c) {
+  case C::Topic:          return juce::Colour(0xffb0b6c0);
+  case C::JoinPart:       return juce::Colour(0xff6f7787);
+  case C::SelfMessage:    return juce::Colour(AntiphonTheme::kAccent);
+  case C::OtherMessage:   return juce::Colour(0xffe6e6ea);
+  case C::PrivateMessage: return juce::Colour(0xffcf6fd8);
+  case C::Action:         return juce::Colour(0xffd8c46a);
+  case C::Voting:         return juce::Colour(0xffe0a030);
+  case C::ServerNotice:
+  default:                return juce::Colour(0xff9aa1ad);
+  }
+}
+
 void AntiphonEditor::onChatMessage(const juce::String &type,
                                                const juce::String &username,
                                                const juce::String &text) {
-  juce::String line;
-  if (type == "PRIVMSG") {
-    line = "[PM] <" + username + "> " + text;
-  } else if (type == "MSG") {
-    if (text.startsWithIgnoreCase("/me ")) {
-      line = "* " + username + " " + text.substring(4);
-    } else {
-      line = "<" + username + "> " + text;
-    }
-  } else {
-    line = "*** " + text;
-  }
+  const auto line = ChatFormat::render(type, username, text,
+                                       audioProcessor.ninjamClient.getSelfUsername());
+
+  // juce::TextEditor keeps a colour per inserted run, so setting the colour
+  // before each insert gives per-message colour with no new widget -- and a
+  // read-only TextEditor stays the best primitive for reader navigation.
+  chatDisplay.setColour(juce::TextEditor::textColourId,
+                        colourForChatCategory(line.category));
   chatDisplay.moveCaretToEnd();
-  chatDisplay.insertTextAtCaret(line + "\n");
+  chatDisplay.insertTextAtCaret(line.text + "\n");
+
+  // The voting system talks through chat, so this is also where a vote is
+  // noticed. A settled vote clears the chip rather than offering it again.
+  const auto vote = ChatFormat::parseVote(text);
+  if (vote.valid) {
+    if (vote.settled) {
+      pendingVote = {};
+    } else if (!(vote.settled) &&
+               !(vote.target == dismissedVoteTarget &&
+                 vote.isBpm == dismissedVoteIsBpm)) {
+      pendingVote = vote;
+    }
+    updateTempoChip();
+  }
 }
 
 void AntiphonEditor::paint(juce::Graphics &g) {
@@ -613,13 +688,31 @@ void AntiphonEditor::resized() {
     auto rightPanel = area.removeFromRight(320);
     area.removeFromRight(10);
     chatInput.setBounds(rightPanel.removeFromBottom(24));
-    rightPanel.removeFromBottom(10);
+    rightPanel.removeFromBottom(6);
+
+    // The chip sits between the history and the input: close to the thing it
+    // is about, and in the tab order right before where you would reply.
+    if (chipLabel.isVisible()) {
+      auto chipRow = rightPanel.removeFromBottom(24);
+      chipDismissButton.setBounds(chipRow.removeFromRight(66).reduced(0, 2));
+      chipRow.removeFromRight(4);
+      chipActionButton.setBounds(chipRow.removeFromRight(62).reduced(0, 2));
+      chipRow.removeFromRight(6);
+      chipLabel.setBounds(chipRow);
+      rightPanel.removeFromBottom(6);
+    }
+
+    roomMembersLabel.setBounds(rightPanel.removeFromTop(18));
+    rightPanel.removeFromTop(4);
     chatDisplay.setBounds(rightPanel);
     chatDisplay.setVisible(true);
     chatInput.setVisible(true);
+    roomMembersLabel.setVisible(true);
   } else {
     chatDisplay.setVisible(false);
     chatInput.setVisible(false);
+    roomMembersLabel.setVisible(false);
+    setChipVisible(false);
   }
 
   // Elastic local/remote split
@@ -809,6 +902,86 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   }
 
   return false;
+}
+
+void AntiphonEditor::updateRoomMembers() {
+  const auto members = audioProcessor.ninjamClient.getRoomMembers();
+  juce::String text = "In room (" + juce::String((int)members.size()) + ")";
+  if (!members.empty()) {
+    juce::StringArray names;
+    for (const auto &m : members)
+      names.add(m.channelCount > 0
+                    ? m.username
+                    : m.username + " (no audio)");
+    text += ": " + names.joinIntoString(", ");
+  }
+
+  // Only touched when it actually changed: this runs at 30 Hz, and setText on
+  // a Label repaints.
+  if (text == lastRoomMembersText)
+    return;
+  lastRoomMembersText = text;
+  roomMembersLabel.setText(text, juce::dontSendNotification);
+  roomMembersLabel.setDescription(text);
+}
+
+void AntiphonEditor::setChipVisible(bool shouldShow) {
+  if (chipLabel.isVisible() == shouldShow)
+    return;
+  chipLabel.setVisible(shouldShow);
+  chipActionButton.setVisible(shouldShow);
+  chipDismissButton.setVisible(shouldShow);
+  resized();
+}
+
+void AntiphonEditor::updateTempoChip() {
+  const bool connected = audioProcessor.ninjamClient.isConnected();
+  if (!connected) {
+    pendingVote = {};
+    chipDawBpm = 0;
+    setChipVisible(false);
+    return;
+  }
+
+  // A server vote in progress outranks our own suggestion: someone has already
+  // started one, and offering a competing proposal would split the vote.
+  if (pendingVote.valid) {
+    chipDawBpm = 0;
+    juce::String t = "Vote: " + juce::String(pendingVote.target) + " " +
+                     (pendingVote.isBpm ? "BPM" : "BPI");
+    if (pendingVote.needed > 0)
+      t += "  (" + juce::String(pendingVote.votes) + "/" +
+           juce::String(pendingVote.needed) + ")";
+    chipLabel.setText(t, juce::dontSendNotification);
+    chipLabel.setTitle(t);
+    chipActionButton.setButtonText("Vote");
+    chipActionButton.setDescription("Add your vote for " + t);
+    setChipVisible(true);
+    return;
+  }
+
+  // Otherwise: the DAW is at a different tempo from the server. This only
+  // offers the vote -- changing your DAW tempo never casts one.
+  const int serverBpm = audioProcessor.publishedActiveBpm.load();
+  const int hostBpm = (int)std::lround(audioProcessor.hostBpm);
+  const bool worthProposing = !audioProcessor.isStandaloneApp() &&
+                              hostBpm > 0 && serverBpm > 0 &&
+                              hostBpm != serverBpm && hostBpm != dismissedDawBpm;
+  if (worthProposing) {
+    chipDawBpm = hostBpm;
+    const juce::String t =
+        "Your DAW is at " + juce::String(hostBpm) + " BPM";
+    chipLabel.setText(t, juce::dontSendNotification);
+    chipLabel.setTitle(t);
+    chipActionButton.setButtonText("Propose");
+    chipActionButton.setDescription("Vote to change the server tempo to " +
+                                    juce::String(hostBpm) + " BPM");
+    setChipVisible(true);
+    return;
+  }
+
+  chipDawBpm = 0;
+  setChipVisible(false);
 }
 
 void AntiphonEditor::setChatConnectedState(bool connected) {
@@ -1016,6 +1189,10 @@ void AntiphonEditor::timerCallback() {
   }
 
   updateToolbarStates();
+  if (audioProcessor.chatVisible.load()) {
+    updateRoomMembers();
+    updateTempoChip();
+  }
   // Only the header animates -- status text, phase bar, beat flashes. The
   // channel strips repaint their own meters, so repainting the whole editor
   // here redrew every static label, every dB scale and the whole background

@@ -4,6 +4,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <memory>
+#include <set>
 #include <vector>
 
 class NinjamClientListener {
@@ -120,6 +121,24 @@ public:
   };
 
   std::map<juce::String, RemoteUser> getRemoteUsers() const;
+
+  // Everyone in the room, including players with no audio channels.
+  //
+  // getRemoteUsers() is the mixer's view and deliberately drops a user the
+  // moment their channel map empties -- a strip with no channels is not a
+  // mixer entry. But a listener with no channels is still in the room, and
+  // "who am I playing with?" is a question the mixer cannot answer. Membership
+  // is tracked separately, from JOIN and PART and from any username that
+  // appears in USER_INFO_CHANGE.
+  struct RoomMember {
+    juce::String username;
+    int channelCount = 0;
+  };
+  std::vector<RoomMember> getRoomMembers() const;
+
+  // What we connected as, so the UI can tell your own messages from everyone
+  // else's. Empty until a connection is attempted.
+  juce::String getSelfUsername() const;
 
   // Set to true on DOWNLOAD_INTERVAL_BEGIN. The audio thread drains it and
   // never acts on it: the local metronome is the sole authority for interval
@@ -266,6 +285,8 @@ private:
   juce::CriticalSection usersMutex;
   std::map<juce::String, RemoteUser> remoteUsers;
   std::map<std::pair<juce::String, int>, int> slotIndexByKey;
+  // Room membership, which outlives a user's channels. See getRoomMembers.
+  std::set<juce::String> roomMembers;
 
   juce::CriticalSection chatMutex;
   juce::Array<ChatMessage> chatLog;

@@ -40,6 +40,7 @@ target_sources(Antiphon
         RemoteChannelRow.cpp
         LocalChannelStrip.cpp
         AntiphonLookAndFeel.cpp
+        ChatFormat.cpp
         AccessibilityAudit.cpp
         ServerBrowserDialog.cpp
         Sha1.cpp

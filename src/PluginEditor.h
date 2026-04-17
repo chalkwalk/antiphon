@@ -3,6 +3,7 @@
 #include "LocalChannelStrip.h"
 #include "NinjamClient.h"
 #include "AntiphonLookAndFeel.h"
+#include "ChatFormat.h"
 #include "Announcer.h"
 #include "Shortcuts.h"
 #include "StatusReadout.h"
@@ -135,8 +136,32 @@ private:
   juce::Component localChannelsContainer;
 
   // Chat UI Controls
+  juce::Label roomMembersLabel;
   juce::TextEditor chatDisplay;
+
+  // The chip: one row between the chat and its input, offering an action you
+  // can take about the tempo. Never acts on its own -- a vote is always a
+  // click, never a side effect of changing your DAW tempo.
+  juce::Label chipLabel;
+  juce::TextButton chipActionButton;
+  juce::TextButton chipDismissButton;
+
   juce::TextEditor chatInput;
+
+  static juce::Colour colourForChatCategory(ChatFormat::Category c);
+  void updateRoomMembers();
+  void updateTempoChip();
+  void setChipVisible(bool shouldShow);
+
+  // The server vote currently on offer, and the DAW tempo currently worth
+  // proposing. Dismissal is remembered per value, so saying no to one proposal
+  // does not silence the next, different one.
+  ChatFormat::VoteState pendingVote;
+  int dismissedVoteTarget = 0;
+  bool dismissedVoteIsBpm = true;
+  int dismissedDawBpm = 0;
+  int chipDawBpm = 0;      // non-zero when the chip is offering a DAW tempo
+  juce::String lastRoomMembersText;
 
   // Remote Mixer Controls
   juce::Viewport remoteUsersViewport;

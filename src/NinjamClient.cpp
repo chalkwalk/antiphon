@@ -233,6 +233,7 @@ void NinjamClient::run() {
     juce::ScopedLock sl(usersMutex);
     slotIndexByKey.clear();
     remoteUsers.clear();
+    roomMembers.clear();
   }
 
   // Finalise the debug dumps so tx.wav and rx.wav are readable now rather than
@@ -303,6 +304,10 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       juce::ScopedLock sl(usersMutex);
       for (const auto &e : entries) {
         if (e.active) {
+          // Membership is not removed when the channels go: a player who drops
+          // to zero channels is still in the room, just not in the mixer.
+          if (roomMembers.insert(e.username).second)
+            changed = true;
           if (remoteUsers.find(e.username) == remoteUsers.end())
             remoteUsers[e.username] = RemoteUser{e.username, {}};
 
@@ -542,9 +547,17 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       } else if (msg.type == "JOIN") {
         msg.username = "Server";
         msg.text = parsed.p1 + " joined";
+        if (parsed.p1.isNotEmpty()) {
+          juce::ScopedLock sl(usersMutex);
+          roomMembers.insert(parsed.p1);
+        }
       } else if (msg.type == "PART") {
         msg.username = "Server";
         msg.text = parsed.p1 + " left";
+        if (parsed.p1.isNotEmpty()) {
+          juce::ScopedLock sl(usersMutex);
+          roomMembers.erase(parsed.p1);
+        }
       } else {
         msg.username = "Server";
         msg.text = "[" + msg.type + "] " + parsed.p1 + " " + parsed.p2;
@@ -898,6 +911,25 @@ void NinjamClient::updateChannelParam(const juce::String &username,
   auto sit = slotIndexByKey.find(std::make_pair(username, channelIndex));
   if (sit != slotIndexByKey.end())
     toSlot(streamSlots[(std::size_t)sit->second]);
+}
+
+std::vector<NinjamClient::RoomMember> NinjamClient::getRoomMembers() const {
+  std::vector<RoomMember> out;
+  juce::ScopedLock sl(usersMutex);
+  out.reserve(roomMembers.size());
+  for (const auto &name : roomMembers) {
+    RoomMember m;
+    m.username = name;
+    auto it = remoteUsers.find(name);
+    m.channelCount = it != remoteUsers.end() ? (int)it->second.channels.size() : 0;
+    out.push_back(m);
+  }
+  return out;
+}
+
+juce::String NinjamClient::getSelfUsername() const {
+  juce::ScopedLock sl(usersMutex);
+  return currentUsername;
 }
 
 void NinjamClient::setRemoteUserVolume(const juce::String &username,

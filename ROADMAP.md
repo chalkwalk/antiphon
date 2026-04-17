@@ -169,6 +169,30 @@ that appears as an unreproducible dropout in someone else's DAW.
             *Lock-free TX handoff* -- so it is recorded there, not fixed here.
             The lock around it is gone; the post is not.
 
+### Transmit gating is per interval, not per sample
+
+`xmitEnabled` is read once, at the interval boundary, while `captureInputRange`
+fills the ring unconditionally. So the flag decides all-or-nothing for a whole
+interval, and toggling within one has no effect except through its final state:
+
+- ends **on** at the boundary: the *entire* interval is sent, including every
+  stretch where TX was off -- audio you may never have meant to share;
+- ends **off**: the whole interval is dropped, including the part recorded
+  while TX was on.
+
+Agreed behaviour: TX gates the audio, the interval boundary gates the
+transmission. Anything TX was off for becomes silence, the interval keeps its
+exact length, and an interval with TX off throughout sends nothing at all --
+which is what happens today and is what the reference client does for a
+non-broadcasting channel. The protocol has no objection: an interval is just an
+Ogg stream of N samples, and Vorbis encodes silence almost for free.
+
+- [ ] Write zeros instead of input in `captureInputRange` while `xmitEnabled`
+      is false, so multiple toggles inside one interval behave as they read.
+- [ ] Test in `AudioLoopbackTests.cpp`: toggle mid-interval over a steady tone
+      and assert the recovered interval is full length with silence exactly
+      where TX was off.
+
 ### Underrun tail
 
 When a decoded interval runs short, `getDecodedAudio` leaves the remainder of the
