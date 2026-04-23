@@ -258,16 +258,24 @@ void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
     const float *srcL = sourcePointer(offset);
     const float *srcR = busCh > 1 ? sourcePointer(offset + 1) : nullptr;
 
+    // Transmit gates the audio here, sample by sample, rather than deciding the
+    // whole interval at the boundary. Capture itself never stops, so the
+    // interval keeps its exact length and carries silence for the stretches you
+    // were not transmitting.
+    const bool transmitting = lc.xmitEnabled.load();
+    if (transmitting)
+      lc.txActiveThisInterval.store(true);
+
     int s1, n1, s2, n2;
     lc.fifo.prepareToWrite(count, s1, n1, s2, n2);
     if (n1 > 0)
       ChannelMix::write(lc.ring.getWritePointer(0, s1),
                         lc.ring.getWritePointer(1, s1), srcL, srcR, mono,
-                        startSample, n1, gains);
+                        startSample, n1, gains, transmitting);
     if (n2 > 0)
       ChannelMix::write(lc.ring.getWritePointer(0, s2),
                         lc.ring.getWritePointer(1, s2), srcL, srcR, mono,
-                        startSample + n1, n2, gains);
+                        startSample + n1, n2, gains, transmitting);
     lc.fifo.finishedWrite(n1 + n2);
   }
 }
@@ -419,7 +427,14 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     const int numChannels = audioChannelCount.load(std::memory_order_acquire);
     for (int ci = 0; ci < numChannels; ++ci) {
       auto *lc = audioChannels[(std::size_t)ci];
-      if (!lc->xmitEnabled.load()) { lc->fifo.reset(); continue; }
+      // An interval goes out if transmit was on for any part of it; the parts
+      // it was off for are already silence in the ring. Only an interval you
+      // were silent for throughout is dropped entirely, which is what the
+      // reference client does for a channel that is not broadcasting.
+      if (!lc->txActiveThisInterval.exchange(false)) {
+        lc->fifo.reset();
+        continue;
+      }
       int length = lc->fifo.getNumReady();
       if (ninjamClient.isConnected() && length > 0) {
         bool mono = lc->isMono.load();

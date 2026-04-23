@@ -187,11 +187,19 @@ which is what happens today and is what the reference client does for a
 non-broadcasting channel. The protocol has no objection: an interval is just an
 Ogg stream of N samples, and Vorbis encodes silence almost for free.
 
-- [ ] Write zeros instead of input in `captureInputRange` while `xmitEnabled`
-      is false, so multiple toggles inside one interval behave as they read.
-- [ ] Test in `AudioLoopbackTests.cpp`: toggle mid-interval over a steady tone
-      and assert the recovered interval is full length with silence exactly
-      where TX was off.
+- [x] `ChannelMix::write` takes a `transmitting` flag and writes silence rather
+      than input when it is false. The gate went there, not into
+      `captureInputRange`, because `PluginProcessor` cannot be compiled into the
+      test target -- logic left in it is untestable by construction.
+- [x] An interval is sent when transmit was on for *any* part of it, tracked by
+      `LocalChannel::txActiveThisInterval`. Reading `xmitEnabled` at the
+      boundary instead would discard an interval you played most of and then
+      switched off during. An interval you were silent for throughout still
+      sends nothing, which is what the reference client does for a channel that
+      is not broadcasting.
+- [x] Tested in `ChannelMixTests.cpp`, block by block with the flag changing --
+      the same shape as `processBlock` across an interval. Proven to have teeth
+      by ignoring the gate and watching 28 assertions go red.
 
 ### Underrun tail
 

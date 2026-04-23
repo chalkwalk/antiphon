@@ -26,6 +26,12 @@ public:
     std::atomic<float> peakR{0.0f};
     std::atomic<bool> isValid{true};
     std::atomic<int> inputBusIndex{0};
+    // Set by the capture pass whenever it writes with transmit on, cleared at
+    // the interval boundary. An interval is sent if transmit was on for any
+    // part of it -- the parts it was off for are already silence in the ring.
+    // Reading xmitEnabled at the boundary instead would throw away an interval
+    // you played most of and then switched off during.
+    std::atomic<bool> txActiveThisInterval{false};
 
     juce::AbstractFifo fifo{1};
     juce::AudioBuffer<float> ring;
@@ -47,6 +53,7 @@ public:
       peakL.store(0.0f);
       peakR.store(0.0f);
       inputBusIndex.store(0);
+      txActiveThisInterval.store(false);
       fifo.reset();
       ring.clear();
       isValid.store(true);

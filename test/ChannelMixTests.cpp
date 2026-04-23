@@ -109,7 +109,7 @@ public:
     {
       std::vector<float> dl(8, -1.0f), dr(8, -1.0f);
       ChannelMix::write(dl.data(), dr.data(), left.data(), right.data(), true, 4,
-                        8, {2.0f, 0.5f});
+                        8, {2.0f, 0.5f}, true);
       for (int i = 0; i < 8; ++i) {
         expectWithinAbsoluteError(dl[(size_t)i], expectedSum * 2.0f, 1.0e-6f);
         expectWithinAbsoluteError(dr[(size_t)i], expectedSum * 0.5f, 1.0e-6f);
@@ -124,9 +124,58 @@ public:
       for (int i = 0; i < 16; ++i) ramp[(size_t)i] = (float)i;
       std::vector<float> dst(4, 0.0f);
       ChannelMix::write(dst.data(), nullptr, ramp.data(), nullptr, false, 12, 4,
-                        {1.0f, 1.0f});
+                        {1.0f, 1.0f}, true);
       expectWithinAbsoluteError(dst[0], 12.0f, 1.0e-6f);
       expectWithinAbsoluteError(dst[3], 15.0f, 1.0e-6f);
+    }
+
+    beginTest("transmit off writes silence, not nothing");
+    {
+      // Silence rather than "skip" is the whole point: an interval has to keep
+      // its exact length, so the only way to say "not transmitting here" is
+      // samples of zero. Pre-filled with a sentinel so a no-op would fail.
+      std::vector<float> dl(8, -1.0f), dr(8, -1.0f);
+      ChannelMix::write(dl.data(), dr.data(), left.data(), right.data(), false,
+                        0, 8, {1.0f, 1.0f}, false);
+      for (int i = 0; i < 8; ++i) {
+        expectEquals(dl[(size_t)i], 0.0f);
+        expectEquals(dr[(size_t)i], 0.0f);
+      }
+    }
+
+    beginTest("toggling transmit inside one interval silences only the off parts");
+    {
+      // The behaviour the per-interval flag could not express. Transmit used to
+      // be read once, at the interval boundary, so a toggle inside an interval
+      // either sent all of it -- including the parts you had switched off for --
+      // or none of it. Writing block by block with the flag changing is exactly
+      // what processBlock does across an interval.
+      constexpr int kBlock = 4;
+      constexpr int kBlocks = 6;
+      const bool txPerBlock[kBlocks] = {true, false, false, true, false, true};
+
+      std::vector<float> src(kBlock * kBlocks, 0.75f);
+      std::vector<float> dst(kBlock * kBlocks, -1.0f);
+
+      for (int b = 0; b < kBlocks; ++b)
+        ChannelMix::write(dst.data() + b * kBlock, nullptr, src.data(), nullptr,
+                          false, b * kBlock, kBlock, {1.0f, 1.0f},
+                          txPerBlock[b]);
+
+      // Full length, every sample written.
+      expectEquals((int)dst.size(), kBlock * kBlocks);
+      for (int b = 0; b < kBlocks; ++b) {
+        for (int i = 0; i < kBlock; ++i) {
+          const float got = dst[(size_t)(b * kBlock + i)];
+          if (txPerBlock[b])
+            expectWithinAbsoluteError(got, 0.75f, 1.0e-6f,
+                                      "block " + juce::String(b) +
+                                          " should carry audio");
+          else
+            expectEquals(got, 0.0f,
+                         "block " + juce::String(b) + " should be silent");
+        }
+      }
     }
 
     beginTest("addInto accumulates rather than overwriting");
