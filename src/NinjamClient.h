@@ -1,4 +1,5 @@
 #pragma once
+#include "GainRamp.h"
 #include "SpscRing.h"
 #include "VorbisCodec.h"
 #include <JuceHeader.h>
@@ -140,6 +141,28 @@ public:
   // else's. Empty until a connection is attempted.
   juce::String getSelfUsername() const;
 
+  // Whether anything, anywhere, is soloed -- a bitmask, exactly as the
+  // reference client keeps it (`m_issoloactive`, njclient.cpp:1750 and :1886).
+  //
+  // Solo is ONE global bus spanning local and remote channels: soloing a local
+  // channel silences remote players, and soloing a remote channel silences your
+  // local monitor. Both of the reference's mix decisions test the combined
+  // value (:1307 for the local monitor, :1388 for remote playback). We used to
+  // keep two independent solo buses, which meant solo did not do the one thing
+  // solo is for -- hearing that channel on its own.
+  enum SoloBits { kRemoteSolo = 1, kLocalSolo = 2 };
+  std::atomic<int> soloMask{0};
+  bool isAnySoloActive() const {
+    return soloMask.load(std::memory_order_relaxed) != 0;
+  }
+  // Called by the processor when a local channel's solo changes; the client
+  // owns the mask because both mixes have to agree on it.
+  void setLocalSoloActive(bool active) {
+    const int bits = soloMask.load(std::memory_order_relaxed);
+    soloMask.store(active ? (bits | kLocalSolo) : (bits & ~kLocalSolo),
+                   std::memory_order_relaxed);
+  }
+
   // Set to true on DOWNLOAD_INTERVAL_BEGIN. The audio thread drains it and
   // never acts on it: the local metronome is the sole authority for interval
   // swaps (PRINCIPLES 9). Driving swaps from this signal instead let network
@@ -214,6 +237,9 @@ private:
     std::atomic<bool> muted{false};
     std::atomic<bool> soloed{false};
     std::atomic<int> outputBus{0};
+    // Upstream of everything: with Recv off we have asked the server to stop
+    // sending this channel, so there is no signal for solo to recover.
+    std::atomic<bool> recvEnabled{true};
     // Audio thread writes, UI reads. Was a plain float in the shared map, and
     // was therefore a race in every build that ever ran.
     std::atomic<float> peakLevel{0.0f};
@@ -234,6 +260,10 @@ private:
     // Audio thread only. `fadeOut` keeps the previous interval alive for a short
     // crossfade across the swap boundary, masking the discontinuity left by
     // un-played tail samples.
+    // Audio thread only. Mute is applied as a ramped gain rather than as a
+    // branch, so switching it cannot click.
+    GainRamp muteRamp;
+
     DecodedInterval *current = nullptr;
     int readPos = 0;
     DecodedInterval *fadeOut = nullptr;

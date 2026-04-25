@@ -100,6 +100,8 @@ LocalChannelStrip::LocalChannelStrip(
   soloButton.setToggleState(channel->monitorSolo.load(), juce::dontSendNotification);
   soloButton.onClick = [this]() {
     channel->monitorSolo.store(soloButton.getToggleState());
+    // Solo is one bus across local and remote, so the client has to be told.
+    audioProcessor.refreshLocalSoloState();
   };
   addAndMakeVisible(soloButton);
 

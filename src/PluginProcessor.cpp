@@ -99,6 +99,12 @@ void AntiphonAudioProcessor::removeLastLocalChannel() {
   spareLocalChannels.push_back(localChannels.back());
   localChannels.pop_back();
   publishLocalChannels();
+  // Removing the only soloed channel must release the solo bus, or everything
+  // else stays silent with nothing on screen explaining why.
+  bool anyLocalSolo = false;
+  for (const auto &lc : localChannels)
+    if (lc->monitorSolo.load()) { anyLocalSolo = true; break; }
+  ninjamClient.setLocalSoloActive(anyLocalSolo);
 }
 
 // A plain updateHostDisplay() does not tell a host that the bus topology
@@ -178,6 +184,8 @@ void AntiphonAudioProcessor::prepareToPlay(double sampleRate,
       lc->ring.setSize(2, ringSize);
       lc->ring.clear();
       lc->fifo.setTotalSize(ringSize);
+      lc->monitorRamp.prepare(sampleRate);
+      lc->monitorRamp.jumpTo(1.0f);
     }
   }
   publishLocalChannels();
@@ -366,12 +374,10 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   {
     const int numChannels = audioChannelCount.load(std::memory_order_acquire);
 
-    bool anyMonitorSolo = false;
-    for (int ci = 0; ci < numChannels; ++ci)
-      if (audioChannels[(std::size_t)ci]->monitorSolo.load()) {
-        anyMonitorSolo = true;
-        break;
-      }
+    // The global solo bus, so a soloed *remote* channel silences local monitors
+    // too (njclient.cpp:1307 tests the combined mask). Two independent solo
+    // buses meant solo never did the one thing solo is for.
+    const bool anySolo = ninjamClient.isAnySoloActive();
 
     int numInBuses = getBusCount(true);
     for (int ci = 0; ci < numChannels; ++ci) {
@@ -382,14 +388,16 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       int offset = bus->getChannelIndexInProcessBlockBuffer(0);
       int busCh = bus->getNumberOfChannels();
 
-      bool muted = lc.muted.load();
-      bool solo  = lc.monitorSolo.load();
-      float monitorFactor = (muted ? 0.0f : 1.0f) *
-                            (anyMonitorSolo && !solo ? 0.0f : 1.0f);
+      // njclient.cpp:1307 -- solo wins outright over mute, so a channel that is
+      // both is heard. We used to multiply the two, so mute won and solo could
+      // not bring a muted channel back.
+      const bool muted = lc.muted.load();
+      const bool solo = lc.monitorSolo.load();
+      const bool audible = (!anySolo && !muted) || solo;
+      lc.monitorRamp.setTarget(audible ? 1.0f : 0.0f);
+
       const auto txGains =
           ChannelMix::panGains(lc.volume.load(), lc.pan.load());
-      const ChannelMix::Frame monGains{txGains.left * monitorFactor,
-                                       txGains.right * monitorFactor};
       bool mono = lc.isMono.load();
 
       // Every bus reads the snapshot: the live buffer no longer holds valid
@@ -405,15 +413,30 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       // Metered after mono summing, so a mono channel shows the single signal
       // it actually transmits rather than an unrelated stereo pair. Scaled by
       // monitor gain, so the VU shows what you hear.
+      const ChannelMix::Frame monGains{
+          txGains.left * lc.monitorRamp.current(),
+          txGains.right * lc.monitorRamp.current()};
       const auto p =
           ChannelMix::peaks(srcL, srcR, mono, 0, ns, monGains);
       lc.peakL.store(p.left);
       lc.peakR.store(p.right);
 
-      if (totalNumOutputChannels < 2) continue;
+      if (totalNumOutputChannels >= 2) {
+        // Per sample, because the ramp moves within the block. addInto took a
+        // constant gain, which is exactly why mute used to click.
+        float *outL = buffer.getWritePointer(0);
+        float *outR = buffer.getWritePointer(1);
+        for (int i = 0; i < ns; ++i) {
+          const float g = lc.monitorRamp.gainAt(i);
+          const auto f = ChannelMix::sourceFrame(srcL, srcR, mono, i);
+          outL[i] += f.left * txGains.left * g;
+          outR[i] += f.right * txGains.right * g;
+        }
+      }
 
-      ChannelMix::addInto(buffer.getWritePointer(0), buffer.getWritePointer(1),
-                          srcL, srcR, mono, ns, monGains);
+      // Advances for the whole block whether or not it was mixed, so the ramp
+      // stays in step with the clock.
+      lc.monitorRamp.advance(ns);
     }
   }
 
@@ -698,6 +721,16 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
         lc.inputBusIndex.store(ch->getIntAttribute("inputBus", 0));
     }
     publishLocalChannels();
+}
+
+void AntiphonAudioProcessor::refreshLocalSoloState() {
+  bool anyLocalSolo = false;
+  {
+    juce::ScopedLock sl(localChannelMutex);
+    for (const auto &lc : localChannels)
+      if (lc->monitorSolo.load()) { anyLocalSolo = true; break; }
+  }
+  ninjamClient.setLocalSoloActive(anyLocalSolo);
 }
 
 void AntiphonAudioProcessor::sendChannelInfoToServer() {

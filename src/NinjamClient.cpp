@@ -235,6 +235,7 @@ void NinjamClient::run() {
     remoteUsers.clear();
     roomMembers.clear();
   }
+  soloMask.fetch_and(~kRemoteSolo, std::memory_order_relaxed);
 
   // Finalise the debug dumps so tx.wav and rx.wav are readable now rather than
   // when the plugin is closed. The toggles keep their state; a later connect
@@ -745,7 +746,17 @@ int NinjamClient::acquireStreamSlot(const juce::String &username,
     slot.muted.store(seed.isMuted, std::memory_order_relaxed);
     slot.soloed.store(seed.isSoloed, std::memory_order_relaxed);
     slot.outputBus.store(seed.outputBusIndex, std::memory_order_relaxed);
+    slot.recvEnabled.store(seed.recvEnabled, std::memory_order_relaxed);
     slot.peakLevel.store(0.0f, std::memory_order_relaxed);
+    slot.muteRamp.prepare(sampleRate);
+    // Starts wherever the channel should already be, so claiming a slot for a
+    // channel you had muted does not fade it in.
+    {
+      const bool mutedNow =
+          seed.isMuted || !seed.recvEnabled ||
+          (isAnySoloActive() && !seed.isSoloed);
+      slot.muteRamp.jumpTo(mutedNow ? 0.0f : 1.0f);
+    }
     // Everything above must be visible to the audio thread before it sees the
     // slot go live.
     slot.state.store(StreamSlot::kLive, std::memory_order_release);
@@ -965,16 +976,37 @@ void NinjamClient::setRemoteUserSolo(const juce::String &username,
       [solo](StreamSlot &s) {
         s.soloed.store(solo, std::memory_order_relaxed);
       });
+
+  // The remote half of the global solo bus (njclient.cpp:1750). Recomputed
+  // rather than counted, so it cannot drift out of step with the channels.
+  bool anyRemoteSolo = false;
+  {
+    juce::ScopedLock sl(usersMutex);
+    for (const auto &[uname, user] : remoteUsers) {
+      for (const auto &[chIdx, ch] : user.channels)
+        if (ch.isSoloed) { anyRemoteSolo = true; break; }
+      if (anyRemoteSolo) break;
+    }
+  }
+  const int bits = soloMask.load(std::memory_order_relaxed);
+  soloMask.store(anyRemoteSolo ? (bits | kRemoteSolo) : (bits & ~kRemoteSolo),
+                 std::memory_order_relaxed);
 }
 
 void NinjamClient::setRemoteUserRecv(const juce::String &username,
                                      int channelIndex, bool recv) {
-  // recvEnabled drives the server-side mask only; the audio thread never reads
-  // it, so there is no slot atomic to match.
+  // Recv both tells the server to stop sending and silences what we already
+  // have. The server-side change cannot be immediate -- an interval may already
+  // be in flight -- so without the local half the control would appear to do
+  // nothing for a second or two. Making recv part of the mute decision needs no
+  // handover: once the server does stop, there is nothing left to mute and the
+  // condition is still true.
   updateChannelParam(
       username, channelIndex,
       [recv](RemoteUserChannel &c) { c.recvEnabled = recv; },
-      [](StreamSlot &) {});
+      [recv](StreamSlot &s) {
+        s.recvEnabled.store(recv, std::memory_order_relaxed);
+      });
   sendUserMask();
 }
 
@@ -1013,11 +1045,8 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
   int numSamples = buffer.getNumSamples();
   int dstChannels = buffer.getNumChannels();
 
-  bool anySolo = false;
-  for (auto &slot : streamSlots)
-    if (slot.state.load(std::memory_order_acquire) == StreamSlot::kLive &&
-        slot.soloed.load(std::memory_order_relaxed))
-      anySolo = true;
+  // The global bus, so a local solo silences remote players too.
+  const bool anySolo = isAnySoloActive();
 
   for (auto &slot : streamSlots) {
     const int slotState = slot.state.load(std::memory_order_acquire);
@@ -1027,17 +1056,37 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
       releaseSlotOnAudioThread(slot);
       continue;
     }
-    if (slot.current == nullptr && slot.fadeOut == nullptr)
-      continue;
-
     const float vol = slot.volume.load(std::memory_order_relaxed);
     const float pan = slot.pan.load(std::memory_order_relaxed);
     const bool isSoloed = slot.soloed.load(std::memory_order_relaxed);
     const int outBusIdx = slot.outputBus.load(std::memory_order_relaxed);
-    bool isMuted = slot.muted.load(std::memory_order_relaxed);
 
-    if (anySolo && !isSoloed)
+    // njclient.cpp:1388. When any solo is active it *replaces* the mute
+    // decision rather than combining with it, so a channel that is both muted
+    // and soloed is heard. We used to AND the two, so mute won and solo could
+    // not bring a muted channel back.
+    //
+    // Recv sits upstream of all of it: if we have asked the server to stop
+    // sending a channel there is no signal to un-mute, so not even solo can
+    // recover it. The reference reaches the same place by deleting the decode
+    // state outright (njclient.cpp:1710).
+    bool isMuted = anySolo ? !isSoloed
+                           : slot.muted.load(std::memory_order_relaxed);
+    if (!slot.recvEnabled.load(std::memory_order_relaxed))
       isMuted = true;
+
+    // Mute is a gain, not a branch: cutting the mix in and out between blocks
+    // is a step discontinuity, which is a click.
+    slot.muteRamp.setTarget(isMuted ? 0.0f : 1.0f);
+
+    // Everything that mixes lives in here so that the ramp below advances for
+    // the whole block on every path, including the ones that mix nothing. A
+    // ramp that only moved on blocks carrying audio would drift out of step
+    // with the clock, and mute would take longer than 5 ms whenever a stream
+    // underran.
+    [&] {
+    if (slot.current == nullptr && slot.fadeOut == nullptr)
+      return;
 
     float lGain = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
     float rGain = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
@@ -1051,7 +1100,7 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
       fadeCopy = std::min(numSamples, slot.fadeRemaining);
       int elapsed = slot.fadeTotal - slot.fadeRemaining;
 
-      if (!isMuted) {
+      {
         int oldChannels = slot.fadeOut->buffer.getNumChannels();
         for (int ch = 0; ch < std::min(oldChannels, 2); ++ch) {
           int dstCh = busIdx * 2 + ch;
@@ -1062,7 +1111,7 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
           float *dst = buffer.getWritePointer(dstCh);
           for (int s = 0; s < fadeCopy; ++s) {
             float g = (float)(slot.fadeRemaining - s) / slot.fadeTotal;
-            dst[s] += src[s] * chGain * g;
+            dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
           }
         }
 
@@ -1080,16 +1129,14 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
               float *dst = buffer.getWritePointer(dstCh);
               for (int s = 0; s < newFadeCopy; ++s) {
                 float g = (float)(elapsed + s) / slot.fadeTotal;
-                dst[s] += src[s] * chGain * g;
+                dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
               }
             }
+            // readPos advances whatever the mute gain is, so a muted stream
+            // stays in time and un-muting lands where it should.
             slot.readPos += newFadeCopy;
           }
         }
-      } else if (slot.current) {
-        // Still advance readPos in muted streams so timing stays consistent.
-        int newAvail = slot.current->writePos.load() - slot.readPos;
-        slot.readPos += std::min(fadeCopy, newAvail);
       }
 
       slot.fadeOutPos += fadeCopy;
@@ -1103,22 +1150,24 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
 
     // Post-fade region: normal mix from current at full gain.
     if (!slot.current)
-      continue;
+      return;
 
     auto &iv = *slot.current;
     int avail = iv.writePos.load() - slot.readPos;
     int remainingSamples = numSamples - fadeCopy;
     if (remainingSamples <= 0)
-      continue;
+      return;
     if (avail <= 0) {
       if (!iv.finalReceived.load())
         diagUnderrunBlocks.fetch_add(1);
-      continue;
+      return;
     }
 
     int toCopy = std::min(remainingSamples, avail);
     int srcChannels = slot.current->buffer.getNumChannels();
 
+    // Metered before the mute gain, so the meter keeps showing that a player is
+    // playing even while you have them muted.
     float peak = 0.0f;
     for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
       float chGain = (ch == 0) ? lGain : rGain;
@@ -1129,18 +1178,23 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
     }
     slot.peakLevel.store(peak, std::memory_order_relaxed);
 
-    if (!isMuted) {
-      for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
-        int dstCh = busIdx * 2 + ch;
-        if (dstCh < dstChannels) {
-          float gain = (ch == 0) ? lGain : rGain;
-          buffer.addFrom(dstCh, fadeCopy, slot.current->buffer, ch,
-                         slot.readPos, toCopy, gain);
-        }
-      }
+    // addFrom took a constant gain, which is why mute used to be a branch and
+    // therefore a click. The ramp has to be read per sample, at the offset
+    // within the block that this region occupies.
+    for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
+      int dstCh = busIdx * 2 + ch;
+      if (dstCh >= dstChannels) continue;
+      const float chGain = (ch == 0) ? lGain : rGain;
+      const float *src = slot.current->buffer.getReadPointer(ch, slot.readPos);
+      float *dst = buffer.getWritePointer(dstCh) + fadeCopy;
+      for (int s = 0; s < toCopy; ++s)
+        dst[s] += src[s] * chGain * slot.muteRamp.gainAt(fadeCopy + s);
     }
 
     slot.readPos += toCopy;
+    }();
+
+    slot.muteRamp.advance(numSamples);
   }
 
   // Checked before the lock is even considered, so the normal path takes no

@@ -1,6 +1,7 @@
 #include <JuceHeader.h>
 
 #include "FakeNinjamServer.h"
+#include "GainRamp.h"
 #include "IntervalClock.h"
 #include "NinjamClient.h"
 #include "TestSignal.h"
@@ -165,14 +166,87 @@ public:
       s.client.setRemoteUserMute("peer", 0, true);
       expect(s.sendInterval(pcm));
       auto muted = s.render(s.intervalSamples);
-      expectEquals(TestSignal::peak(muted.getReadPointer(0),
-                                    muted.getNumSamples()),
-                   0.0, "muted channel produced audio");
+      {
+        // Mute is a 5 ms ramp, not a step -- a step in gain is a click. So the
+        // first few hundred samples carry the fade, and silence is asserted
+        // after it rather than from sample zero.
+        const int ramp = (int)(48000.0 * GainRamp::kDefaultRampSeconds) + 8;
+        expect(muted.getNumSamples() > ramp * 4, "buffer too short to judge");
+
+        expectEquals(TestSignal::peak(muted.getReadPointer(0) + ramp,
+                                      muted.getNumSamples() - ramp),
+                     0.0, "muted channel still producing audio after the ramp");
+
+        // ...and it faded rather than cut. A hard cut would leave the whole
+        // buffer silent from the first sample, so this fails if the ramp is
+        // ever dropped.
+        expect(TestSignal::peak(muted.getReadPointer(0), ramp) > 0.0,
+               "mute cut instantly instead of ramping");
+      }
 
       s.client.setRemoteUserMute("peer", 0, false);
       expect(s.sendInterval(pcm));
       expect(analyse(s.render(s.intervalSamples), 0, 48000.0).rms > 0.0,
              "unmute did not restore audio");
+    }
+
+    beginTest("solo overrides mute rather than combining with it");
+    {
+      // njclient.cpp:1307 and :1388 -- when any solo is active it *replaces*
+      // the mute decision, so a channel that is both muted and soloed is heard.
+      // We used to AND the two, so mute won and solo could not recover a muted
+      // channel.
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+      auto pcm = makeSineBuffer(s.intervalSamples, 440.0, 48000.0, 0.5f);
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+
+      s.client.setRemoteUserMute("peer", 0, true);
+      s.client.setRemoteUserSolo("peer", 0, true);
+      expect(s.sendInterval(pcm));
+      expect(analyse(s.render(s.intervalSamples), 0, 48000.0).rms > 0.05,
+             "a muted but soloed channel must be heard");
+
+      s.client.setRemoteUserSolo("peer", 0, false);
+      s.client.setRemoteUserMute("peer", 0, false);
+    }
+
+    beginTest("recv off silences playback without waiting for the server");
+    {
+      // The server cannot stop instantly -- an interval may already be in
+      // flight -- so recv also mutes locally, or the control appears to do
+      // nothing for a second or two. Recv sits upstream of solo: there is no
+      // signal for solo to recover.
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+      auto pcm = makeSineBuffer(s.intervalSamples, 440.0, 48000.0, 0.5f);
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+
+      expect(s.sendInterval(pcm));
+      expect(analyse(s.render(s.intervalSamples), 0, 48000.0).rms > 0.05,
+             "no audio before recv was touched");
+
+      s.client.setRemoteUserRecv("peer", 0, false);
+      expect(s.sendInterval(pcm));
+      auto off = s.render(s.intervalSamples);
+      const int ramp = (int)(48000.0 * GainRamp::kDefaultRampSeconds) + 8;
+      expectEquals(TestSignal::peak(off.getReadPointer(0) + ramp,
+                                    off.getNumSamples() - ramp),
+                   0.0, "recv off still produced audio");
+
+      // Solo must not bring back a channel we are not receiving.
+      s.client.setRemoteUserSolo("peer", 0, true);
+      expect(s.sendInterval(pcm));
+      auto soloed = s.render(s.intervalSamples);
+      expectEquals(TestSignal::peak(soloed.getReadPointer(0) + ramp,
+                                    soloed.getNumSamples() - ramp),
+                   0.0, "solo recovered a channel that is not being received");
+
+      s.client.setRemoteUserSolo("peer", 0, false);
+      s.client.setRemoteUserRecv("peer", 0, true);
+      expect(s.sendInterval(pcm));
+      expect(analyse(s.render(s.intervalSamples), 0, 48000.0).rms > 0.05,
+             "recv back on did not restore audio");
     }
 
     beginTest("hard pan silences the opposite channel");

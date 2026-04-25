@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GainRamp.h"
 #include "IntervalClock.h"
 #include "IntervalProbe.h"
 #include "SyncState.h"
@@ -32,6 +33,9 @@ public:
     // Reading xmitEnabled at the boundary instead would throw away an interval
     // you played most of and then switched off during.
     std::atomic<bool> txActiveThisInterval{false};
+    // Audio thread only. The monitor gain, ramped so mute and solo cannot
+    // click.
+    GainRamp monitorRamp;
 
     juce::AbstractFifo fifo{1};
     juce::AudioBuffer<float> ring;
@@ -119,6 +123,10 @@ public:
   void removeLastOutputBus();
   void setRemoteUserOutputBus(const juce::String &username, int channelIndex,
                               int busIdx);
+  // Recomputes the local half of the global solo bus. Called whenever a local
+  // solo changes; the client owns the mask because the remote mix has to agree
+  // with the monitor mix about whether anything is soloed.
+  void refreshLocalSoloState();
   void sendChannelInfoToServer();
   // Message thread only: opens or closes the debug dump files to match the
   // saveTx/saveRx flags.

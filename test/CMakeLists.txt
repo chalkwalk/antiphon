@@ -31,6 +31,7 @@ target_sources(NinjamTests
         AccessibilityAuditTests.cpp
         SpscRingTests.cpp
         ChatFormatTests.cpp
+        GainRampTests.cpp
         FakeNinjamServer.cpp
         LoopbackTests.cpp
         AudioLoopbackTests.cpp
