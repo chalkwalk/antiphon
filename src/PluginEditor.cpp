@@ -852,7 +852,8 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   // against 'A' silently never fires. See Shortcuts.h.
   const auto action = Shortcuts::match(key.getKeyCode(),
                                        key.getModifiers().isCtrlDown(),
-                                       key.getModifiers().isAltDown());
+                                       key.getModifiers().isAltDown(),
+                                       key.getModifiers().isShiftDown());
   if (action == Shortcuts::Action::None)
     return false;
 
@@ -873,6 +874,23 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
     } else {
       announcer.say("Sync is not available yet", true);
     }
+    return true;
+  }
+
+  if (action == Shortcuts::Action::RetroactiveTransmit) {
+    // Applies to the strip the focus is in, so it behaves like holding that
+    // strip's own TX button. Falls back to the first channel when focus is
+    // elsewhere, which is the common single-channel case.
+    LocalChannelStrip *target = nullptr;
+    for (auto *strip : localChannelStrips)
+      if (strip->hasKeyboardFocus(true)) { target = strip; break; }
+    if (target == nullptr && !localChannelStrips.isEmpty())
+      target = localChannelStrips[0];
+
+    if (target != nullptr)
+      target->toggleTransmitRetroactively();
+    else
+      announcer.say("No channel to transmit", true);
     return true;
   }
 
@@ -1225,8 +1243,8 @@ void AntiphonEditor::timerCallback() {
     // Add missing strips
     while (localChannelStrips.size() < numChannels) {
       int idx = localChannelStrips.size();
-      auto *strip = new LocalChannelStrip(audioProcessor,
-                                          audioProcessor.localChannels[idx]);
+      auto *strip = new LocalChannelStrip(
+          audioProcessor, audioProcessor.localChannels[(std::size_t)idx], idx);
       localChannelStrips.add(strip);
       localChannelsContainer.addAndMakeVisible(strip);
     }

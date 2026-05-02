@@ -201,6 +201,19 @@ Ogg stream of N samples, and Vorbis encodes silence almost for free.
       the same shape as `processBlock` across an interval. Proven to have teeth
       by ignoring the gate and watching 28 assertions go red.
 
+### Clickless gain changes and retroactive transmit
+
+Shipped. `GainRamp` ramps every gain change over 5 ms; `TransmitSpans` records
+where transmit was on and applies it at the interval boundary with ramped edges;
+solo became one global bus that overrides mute; Recv silences immediately.
+Holding TX, or Ctrl+Alt+Shift+T, toggles transmit and applies it to the whole
+interval so far. See `DESIGN.md` section 6.1.
+
+- [ ] The gesture itself has no automated coverage -- it lives in
+      `LocalChannelStrip`, which cannot be compiled into the test target. The
+      logic under it (`TransmitSpans`, `GainRamp`) is tested; the press, the
+      hold threshold, the flash and the announcement need hands.
+
 ### Underrun tail
 
 When a decoded interval runs short, `getDecodedAudio` leaves the remainder of the

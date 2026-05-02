@@ -30,9 +30,12 @@ public:
   static constexpr double kDefaultRampSeconds = 0.005; // 5 ms
 
   void prepare(double sampleRate, double rampSeconds = kDefaultRampSeconds) {
-    lengthSamples = sampleRate > 0.0 ? (int)(sampleRate * rampSeconds) : 0;
-    if (lengthSamples < 1)
-      lengthSamples = 1;
+    prepareSamples(sampleRate > 0.0 ? (int)(sampleRate * rampSeconds) : 0);
+  }
+
+  // For callers that already know the length in samples.
+  void prepareSamples(int n) {
+    lengthSamples = n < 1 ? 1 : n;
     position = lengthSamples; // not ramping
   }
 

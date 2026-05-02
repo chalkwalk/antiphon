@@ -20,12 +20,18 @@ namespace Shortcuts {
 
 enum class Action {
   None,
-  FocusChat,  // Ctrl+Alt+C
-  ArmSync,    // Ctrl+Alt+S
-  WriteAudit  // Ctrl+Alt+A
+  FocusChat,          // Ctrl+Alt+C
+  ArmSync,            // Ctrl+Alt+S
+  WriteAudit,         // Ctrl+Alt+A
+  // Ctrl+Alt+Shift+T. The keyboard equivalent of holding the TX button:
+  // toggles transmit and applies it to the whole interval so far. A gesture
+  // available only to the mouse would be unreachable for a screen-reader user
+  // and for anyone with a motor impairment (PRINCIPLES 11).
+  RetroactiveTransmit
 };
 
-inline Action match(int keyCode, bool ctrlDown, bool altDown) {
+inline Action match(int keyCode, bool ctrlDown, bool altDown,
+                    bool shiftDown = false) {
   if (!ctrlDown || !altDown) return Action::None;
 
   // Fold case rather than trusting the platform. Guarded so a control
@@ -34,6 +40,10 @@ inline Action match(int keyCode, bool ctrlDown, bool altDown) {
                                                    : keyCode;
 
   switch (c) {
+  case 'T':
+    // Shift is what separates it from a plain toggle, and there is no
+    // unshifted Ctrl+Alt+T to collide with.
+    return shiftDown ? Action::RetroactiveTransmit : Action::None;
   case 'A':
     return Action::WriteAudit;
   case 'C':

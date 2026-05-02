@@ -266,24 +266,23 @@ void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
     const float *srcL = sourcePointer(offset);
     const float *srcR = busCh > 1 ? sourcePointer(offset + 1) : nullptr;
 
-    // Transmit gates the audio here, sample by sample, rather than deciding the
-    // whole interval at the boundary. Capture itself never stops, so the
-    // interval keeps its exact length and carries silence for the stretches you
-    // were not transmitting.
-    const bool transmitting = lc.xmitEnabled.load();
-    if (transmitting)
-      lc.txActiveThisInterval.store(true);
+    // The ring stores what was played, un-gated. Where transmit was on is
+    // recorded separately and applied at the boundary, which is what lets the
+    // retroactive gesture reach back into an interval that is still being
+    // captured.
+    auto &spans = lc.spans[(std::size_t)lc.writeSpanIndex.load()];
+    spans.setStateAt(lc.fifo.getNumReady(), lc.xmitEnabled.load());
 
     int s1, n1, s2, n2;
     lc.fifo.prepareToWrite(count, s1, n1, s2, n2);
     if (n1 > 0)
       ChannelMix::write(lc.ring.getWritePointer(0, s1),
                         lc.ring.getWritePointer(1, s1), srcL, srcR, mono,
-                        startSample, n1, gains, transmitting);
+                        startSample, n1, gains);
     if (n2 > 0)
       ChannelMix::write(lc.ring.getWritePointer(0, s2),
                         lc.ring.getWritePointer(1, s2), srcL, srcR, mono,
-                        startSample + n1, n2, gains, transmitting);
+                        startSample + n1, n2, gains);
     lc.fifo.finishedWrite(n1 + n2);
   }
 }
@@ -450,21 +449,30 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     const int numChannels = audioChannelCount.load(std::memory_order_acquire);
     for (int ci = 0; ci < numChannels; ++ci) {
       auto *lc = audioChannels[(std::size_t)ci];
-      // An interval goes out if transmit was on for any part of it; the parts
-      // it was off for are already silence in the ring. Only an interval you
-      // were silent for throughout is dropped entirely, which is what the
-      // reference client does for a channel that is not broadcasting.
-      if (!lc->txActiveThisInterval.exchange(false)) {
+      const int length = lc->fifo.getNumReady();
+
+      // Hand this interval's spans to the copy-out and start recording the next
+      // one, carrying the current transmit state across the boundary.
+      const int handoff = lc->writeSpanIndex.load();
+      const int next = 1 - handoff;
+      lc->spans[(std::size_t)next].beginInterval(lc->xmitEnabled.load());
+      lc->writeSpanIndex.store(next);
+
+      // An interval goes out if transmit was on for any part of it. Only one
+      // you were silent for throughout is dropped, which is what the reference
+      // client does for a channel that is not broadcasting.
+      if (!lc->spans[(std::size_t)handoff].anyActive(length)) {
         lc->fifo.reset();
         continue;
       }
-      int length = lc->fifo.getNumReady();
       if (ninjamClient.isConnected() && length > 0) {
         bool mono = lc->isMono.load();
+        const int rampSamples = lc->monitorRamp.rampLengthSamples();
         // A raw pointer is as safe here as the shared_ptr used to be: the
         // channel outlives the processor's audio path, and the lambda already
         // captures `this`, so it cannot outlive the processor either.
-        juce::MessageManager::callAsync([this, lc, length, ci, mono]() {
+        juce::MessageManager::callAsync(
+            [this, lc, length, ci, mono, handoff, rampSamples]() {
           if (!lc->isValid.load()) return;
           juce::AudioBuffer<float> buf(2, length);
           int s1, n1, s2, n2;
@@ -474,6 +482,10 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
             if (n2 > 0) buf.copyFrom(ch, n1, lc->ring, ch, s2, n2);
           }
           lc->fifo.finishedRead(n1 + n2);
+          // Silence the stretches transmit was off for, ramping each edge so
+          // switching it cannot click in what the other players hear.
+          lc->spans[(std::size_t)handoff].applyTo(
+              buf.getArrayOfWritePointers(), 2, length, rampSamples);
           ninjamClient.processCapturedAudio(buf, length, ci, mono);
         });
       } else {
@@ -580,6 +592,7 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         if (seg.count > 0)
           captureInputRange(seg.start, seg.count);
         if (seg.closesInterval) {
+          publishedIntervalIndex.fetch_add(1);
           fireCaptureLambdas();
           ninjamClient.swapIntervalBuffers();
           ninjamClient.diagSwaps.fetch_add(1);
@@ -721,6 +734,25 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
         lc.inputBusIndex.store(ch->getIntAttribute("inputBus", 0));
     }
     publishLocalChannels();
+}
+
+bool AntiphonAudioProcessor::applyRetroactiveTransmit(
+    int channelIndex, bool on, juce::int64 pressIntervalIndex) {
+  // Too late: the interval the press belonged to has already been handed off
+  // and transmitted, so rewriting its spans would change nothing at best and
+  // the wrong interval at worst.
+  if (pressIntervalIndex != publishedIntervalIndex.load())
+    return false;
+
+  juce::ScopedLock sl(localChannelMutex);
+  if (channelIndex < 0 || channelIndex >= (int)localChannels.size())
+    return false;
+
+  auto &lc = *localChannels[(std::size_t)channelIndex];
+  // O(1): the ordinary toggle already covered the press onwards, so making the
+  // earlier part match leaves one uniform span with no transitions.
+  lc.spans[(std::size_t)lc.writeSpanIndex.load()].makeWholeInterval(on);
+  return true;
 }
 
 void AntiphonAudioProcessor::refreshLocalSoloState() {

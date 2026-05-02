@@ -7,8 +7,15 @@
 class LocalChannelStrip : public juce::Component {
 public:
   LocalChannelStrip(AntiphonAudioProcessor &processor,
-                    std::shared_ptr<AntiphonAudioProcessor::LocalChannel> channel);
+                    std::shared_ptr<AntiphonAudioProcessor::LocalChannel> channel,
+                    int channelIndex);
   ~LocalChannelStrip() override;
+
+  // Toggles transmit and applies it to the whole interval so far, as though it
+  // had been that way from the start. Bound to holding the TX button and to a
+  // keyboard chord -- a gesture with no keyboard equivalent would be
+  // unreachable for a screen-reader user (PRINCIPLES 11).
+  void toggleTransmitRetroactively(bool alreadyToggled = false);
 
   void paint(juce::Graphics &) override;
   void resized() override;
@@ -43,7 +50,27 @@ private:
   juce::Slider panSlider;
   juce::ToggleButton muteButton;
   juce::ToggleButton soloButton;
-  juce::ToggleButton xmitButton;
+  // TX, which is also the retroactive gesture. The press moment is captured on
+  // mouse-down rather than when the hold expires: the plain toggle has already
+  // taken effect from the press, so the rewrite only has to cover what came
+  // before it.
+  class TransmitButton : public juce::ToggleButton {
+  public:
+    std::function<void()> onHold;
+    void mouseDown(const juce::MouseEvent &e) override;
+    void mouseUp(const juce::MouseEvent &e) override;
+
+  private:
+    // Long enough not to fire on an ordinary click, short enough to use while
+    // an interval is still running -- at 137 BPM and 11 BPI you have under five
+    // seconds to decide.
+    static constexpr int kHoldMs = 400;
+    juce::uint32 pressedAtMs = 0;
+  };
+  TransmitButton xmitButton;
+  int channelIndex = 0;
+  // Set when the retroactive gesture fires, so the button can flash and say so.
+  double retroFlashUntilMs = 0.0;
   juce::TextButton removeButton;
   juce::ComboBox inputBusBox;
 

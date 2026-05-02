@@ -59,6 +59,32 @@ public:
              "space is transport in every DAW; never claim it");
       expect(Shortcuts::match(0x1b, true, true) == A::None, "escape");
     }
+    beginTest("the retroactive transmit chord needs shift, and only shift");
+    {
+      // Ctrl+Alt+Shift+T. Without shift it must do nothing rather than fall
+      // through to some other action, or a mistyped chord would toggle
+      // transmit unexpectedly in the middle of a jam.
+      expect(Shortcuts::match('T', true, true, true) ==
+             Shortcuts::Action::RetroactiveTransmit);
+      expect(Shortcuts::match('t', true, true, true) ==
+             Shortcuts::Action::RetroactiveTransmit);
+      expect(Shortcuts::match('T', true, true, false) ==
+             Shortcuts::Action::None);
+      expect(Shortcuts::match('T', false, true, true) ==
+             Shortcuts::Action::None);
+      expect(Shortcuts::match('T', true, false, true) ==
+             Shortcuts::Action::None);
+    }
+
+    beginTest("shift does not disturb the existing chords");
+    {
+      expect(Shortcuts::match('C', true, true, true) ==
+             Shortcuts::Action::FocusChat);
+      expect(Shortcuts::match('S', true, true, true) ==
+             Shortcuts::Action::ArmSync);
+      expect(Shortcuts::match('A', true, true, true) ==
+             Shortcuts::Action::WriteAudit);
+    }
   }
 };
 

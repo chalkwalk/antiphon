@@ -176,10 +176,32 @@ One strip per thing you send. Each strip, top to bottom:
 | **Fader** | Volume, in dB. Affects both what you hear and what you send. |
 | **M** | **Monitor mute.** Silences it *for you only*. The room still hears you. |
 | **S** | **Monitor solo.** Same -- local only. |
-| **TX** | **Transmit.** Turn this off and the room stops hearing you. Green = on. |
+| **TX** | **Transmit.** Turn this off and the room stops hearing you. Green = on. **Hold it** (or press Ctrl+Alt+Shift+T) to toggle it *and* apply that to the whole of the interval so far -- see below. |
 | **Input bus** | Which plugin input feeds this channel. |
 | **Mono** | Sum the bus to mono. Halves the data you send. |
 | **Remove** | Delete the strip. Does not remove the bus. |
+
+#### Transmit, and taking it back
+
+TX gates the audio, not the whole interval. Toggle it part way through and the
+interval still goes out, silent for the stretches you had it off -- toggle it
+rhythmically and that is what the room hears. Leave it off for a whole interval
+and nothing is sent at all.
+
+Because Ninjam plays everything an interval late, you have until the end of the
+current interval to change your mind. **Hold TX** (or press Ctrl+Alt+Shift+T) and
+the toggle applies to the interval from its start:
+
+- Holding it **on** shares what you have already played this interval.
+- Holding it **off** takes the interval back before anyone hears it.
+
+The button flashes and a screen reader says which happened. If the interval
+boundary has already passed, it says so instead -- that one has gone.
+
+Worth knowing: for this to work, audio you are **not** transmitting is held in
+memory for up to one interval. It never leaves your machine unless you use the
+gesture, but it is kept rather than discarded, and that is the price of being
+able to change your mind.
 
 The important distinction: **M and S are for you, TX is for them.** You can mute
 yourself in your own headphones while still playing to the room, or keep
@@ -192,8 +214,8 @@ channel gets a pan, a fader, a VU meter, M, S, an output bus and:
 
 | Control | Does |
 |---|---|
-| **M** / **S** | Mute and solo, in your mix only. |
-| **R** (Recv) | **Stop downloading this channel.** Different from mute: mute still receives the audio and silences it, Recv-off tells the server not to send it. Use it to save bandwidth. |
+| **M** / **S** | Mute and solo, in your mix only -- never what others hear. Solo is one bus across local *and* remote channels, and it overrides mute, so a channel that is both muted and soloed is heard. |
+| **R** (Recv) | **Stop downloading this channel.** Different from mute: mute receives the audio and silences it, Recv-off tells the server not to send it at all. It also silences the channel immediately rather than waiting for the server, and because it is upstream, solo cannot bring back a channel you are not receiving. |
 | **Output bus** | Which plugin output this channel goes to -- this is how you record stems. |
 
 Your routing is remembered per player, per channel. If someone drops out and

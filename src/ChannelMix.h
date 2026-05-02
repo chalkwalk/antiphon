@@ -66,30 +66,19 @@ inline Frame peaks(const float *srcL, const float *srcR, bool mono, int start,
 // transmit ring buffer, which is written in up to two segments.
 // Writes the channel's contribution to the transmit ring.
 //
-// `transmitting` gates the *audio*, not the capture. When it is false this
-// writes silence rather than writing nothing, and that distinction is the whole
-// point: an interval must keep its exact length, so the only way to represent
-// "I was not transmitting for this stretch" is samples of zero.
+// Deliberately un-gated: the ring stores what you played, and TransmitSpans
+// records which parts of it you agreed to send, with the two combined at the
+// interval boundary.
 //
-// Transmit used to be read once per interval, at the boundary, while capture
-// ran unconditionally. The flag therefore decided all-or-nothing for a whole
-// interval: switch it off, play something private, switch it back on before the
-// boundary, and every bit of it went out. Gating here makes the control mean
-// what it says at the moment you use it.
+// This used to take a `transmitting` flag and write silence when it was false.
+// That was the right behaviour in the wrong place -- gating at capture destroys
+// the audio, so there was nothing left for the retroactive gesture to enable.
 //
 // Deliberately independent of mute and solo, which are monitor-only: what you
 // hear and what you send are separate questions in both directions.
 inline void write(float *dstL, float *dstR, const float *srcL,
                   const float *srcR, bool mono, int srcStart, int count,
-                  Frame gains, bool transmitting) {
-  if (!transmitting) {
-    for (int i = 0; i < count; ++i) {
-      if (dstL != nullptr) dstL[i] = 0.0f;
-      if (dstR != nullptr) dstR[i] = 0.0f;
-    }
-    return;
-  }
-
+                  Frame gains) {
   for (int i = 0; i < count; ++i) {
     const Frame f = sourceFrame(srcL, srcR, mono, srcStart + i);
     if (dstL != nullptr) dstL[i] = f.left * gains.left;

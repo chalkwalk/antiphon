@@ -2,10 +2,26 @@
 #include "AntiphonLookAndFeel.h"
 #include "LocalChannelStrip.h"
 
+void LocalChannelStrip::TransmitButton::mouseDown(const juce::MouseEvent &e) {
+  pressedAtMs = juce::Time::getMillisecondCounter();
+  // The toggle happens now, exactly as it always did. A hold does the same
+  // thing with a wider scope, so there is no reason to make the ordinary click
+  // wait for a timeout to find out which it was.
+  juce::ToggleButton::mouseDown(e);
+}
+
+void LocalChannelStrip::TransmitButton::mouseUp(const juce::MouseEvent &e) {
+  const bool held =
+      juce::Time::getMillisecondCounter() - pressedAtMs >= (juce::uint32)kHoldMs;
+  juce::ToggleButton::mouseUp(e);
+  if (held && isMouseOver() && onHold)
+    onHold();
+}
+
 LocalChannelStrip::LocalChannelStrip(
     AntiphonAudioProcessor &p,
-    std::shared_ptr<AntiphonAudioProcessor::LocalChannel> ch)
-    : audioProcessor(p), channel(std::move(ch)) {
+    std::shared_ptr<AntiphonAudioProcessor::LocalChannel> ch, int index)
+    : audioProcessor(p), channel(std::move(ch)), channelIndex(index) {
 
   // The strip is a focus container, so a reader navigates strip by strip and
   // announces "Instrument, Mute" rather than presenting forty flat controls
@@ -108,8 +124,14 @@ LocalChannelStrip::LocalChannelStrip(
   xmitButton.setButtonText("TX");
   xmitButton.setTitle("Transmit");
   xmitButton.setDescription(
-      "Send this channel's audio to the other players");
-  xmitButton.setTooltip("Transmit: send this channel's audio to the server");
+      "Send this channel's audio to the other players. Hold, or press "
+      "Control Alt Shift T, to also apply the change to this interval from its "
+      "start");
+  xmitButton.setTooltip(
+      "Transmit: send this channel's audio to the server.\n"
+      "Hold to apply the change to the whole of the interval so far -- "
+      "retroactively transmitting what you have played, or taking it back "
+      "before anyone hears it.");
   xmitButton.setColour(juce::TextButton::buttonOnColourId,  juce::Colour(0xff0d5c2a)); // green = live
   xmitButton.setColour(juce::TextButton::buttonColourId,    juce::Colour(0xff5a1515)); // red = silent
   xmitButton.setColour(juce::TextButton::textColourOnId,    juce::Colours::white);
@@ -118,6 +140,7 @@ LocalChannelStrip::LocalChannelStrip(
   xmitButton.onClick = [this]() {
     channel->xmitEnabled.store(xmitButton.getToggleState());
   };
+  xmitButton.onHold = [this]() { toggleTransmitRetroactively(true); };
   addAndMakeVisible(xmitButton);
 
   removeButton.setButtonText("X");
@@ -166,6 +189,37 @@ void LocalChannelStrip::updateInputBusCount(int numBuses) {
   (void)current;
 }
 
+void LocalChannelStrip::toggleTransmitRetroactively(bool alreadyToggled) {
+  // From the keyboard nothing has toggled yet, so do it here; from the mouse
+  // the press already did, and toggling again would undo it.
+  if (!alreadyToggled) {
+    xmitButton.setToggleState(!xmitButton.getToggleState(),
+                              juce::sendNotification);
+  }
+
+  // The interval the press belonged to. The toggle has already happened, so the
+  // state we are spreading backwards is the one the button now shows.
+  const auto pressInterval = audioProcessor.currentIntervalIndex();
+  const bool on = xmitButton.getToggleState();
+
+  const bool applied =
+      audioProcessor.applyRetroactiveTransmit(channelIndex, on, pressInterval);
+
+  // Feedback matters more here than for an ordinary toggle: the effect is
+  // invisible, and you have only until the interval boundary to notice it did
+  // not happen.
+  retroFlashUntilMs = juce::Time::getMillisecondCounterHiRes() + 350.0;
+  repaint();
+
+  // Rate limiting and verbosity are the Announcer's job; this is an explicit
+  // user action, so it is always important enough to say.
+  juce::AccessibilityHandler::postAnnouncement(
+      applied ? (on ? "Transmitting this interval from its start"
+                    : "This interval will not be sent")
+              : "Too late, that interval has already been sent",
+      juce::AccessibilityHandler::AnnouncementPriority::high);
+}
+
 void LocalChannelStrip::updatePeaks() {
   const double now = juce::Time::getMillisecondCounterHiRes();
   // Clamped so a long gap (editor hidden, host stalled) drops the meter by a
@@ -191,6 +245,11 @@ void LocalChannelStrip::updatePeaks() {
   // something happened to move a bar far enough to redraw for its own reasons.
   const int mono = (channel != nullptr && channel->isMono.load()) ? 1 : 0;
   const bool shapeChanged = mono != shownMono;
+  if (retroFlashUntilMs > 0.0) {
+    if (juce::Time::getMillisecondCounterHiRes() >= retroFlashUntilMs)
+      retroFlashUntilMs = 0.0;
+    repaint(xmitButton.getBounds());
+  }
   if (!shapeChanged && !GainUtils::meterNeedsRepaint(shownFractionL, fL) &&
       !GainUtils::meterNeedsRepaint(shownFractionR, fR))
     return;
@@ -230,6 +289,17 @@ void LocalChannelStrip::paint(juce::Graphics &g) {
 
   if (!scaleArea.isEmpty())
     drawDbScale(g, volumeSlider, scaleArea);
+
+  // A retroactive change is invisible -- it edits an interval that has not been
+  // sent yet -- so it gets a brief flash over the TX button to say it landed.
+  if (retroFlashUntilMs > 0.0) {
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (now < retroFlashUntilMs) {
+      const float alpha = (float)((retroFlashUntilMs - now) / 350.0) * 0.75f;
+      g.setColour(juce::Colours::white.withAlpha(alpha));
+      g.fillRoundedRectangle(xmitButton.getBounds().toFloat(), 4.0f);
+    }
+  }
 }
 
 void LocalChannelStrip::resized() {

@@ -275,6 +275,69 @@ handoff*.
 
 ---
 
+## 6.1 What you hear, what they hear, and what is stored
+
+Four controls look similar and are not. The distinction is the signal chain:
+
+```
+your input --[TX]--> transmit ring --[spans]--> encode --> the other players
+           \--[Mute/Solo]--> [Vol/Pan] --> your monitor
+
+server --[Recv]--> decode --[Solo/Mute]--> [Vol/Pan] --> your mix
+```
+
+| Control | Affects your monitor | Affects what others hear |
+|---|---|---|
+| **Mute** (local) | yes | **no** |
+| **Solo** (local or remote) | yes | **no** |
+| **TX** | no | **yes** -- this is the one |
+| **Recv** (remote) | yes | no -- tells the server to stop sending |
+
+**Solo is one global bus.** Soloing a local channel silences remote players and
+vice versa. This mirrors the reference client, where both mix decisions test the
+combined `m_issoloactive` mask (`njclient.cpp:1307` and `:1388`, bits set at
+`:1750` and `:1886`). Two independent solo buses -- what we had -- meant solo did
+not do the one thing solo is for.
+
+**Solo overrides mute** rather than combining with it: a channel that is both is
+heard (`:1307`, `:1388`).
+
+**Recv is upstream of everything**, so solo cannot recover a channel we have
+asked the server to stop sending. It also mutes locally and immediately, because
+the server side cannot be instant -- an interval may already be in flight. No
+handover is needed: once the server does stop, there is nothing left to mute.
+
+**Every gain change is ramped over 5 ms** (`GainRamp`), because a step in gain is
+a discontinuity and a discontinuity is a click -- on the transmit path, a click
+baked into everyone else's mix. Not zero-crossing detection: left and right cross
+at different times, silence and DC never cross, and a crossing removes the
+discontinuity in value but not in slope.
+
+### Transmit is recorded, then applied
+
+The transmit ring stores **what you played**, un-gated. `TransmitSpans` records
+**which parts you agreed to send**, as the points where TX changed rather than a
+flag per sample -- about 2 KB per channel against 11.5 MB for a second audio
+buffer. The two are combined at the interval boundary, with each edge ramped.
+
+An interval is uploaded if TX was on for *any* part of it; the rest is silence.
+An interval you were silent for throughout is not sent at all, which is what the
+reference does for a channel that is not broadcasting.
+
+Keeping the audio rather than gating at capture is what makes the retroactive
+gesture possible: holding TX (or Ctrl+Alt+Shift+T) toggles it *and* applies that
+to the whole interval so far, so you can share what you just played or take it
+back before anyone hears it. The rewrite is anchored at the moment the button
+went down, not when the hold timer expired, and is void if the interval boundary
+has passed -- that interval has already gone out.
+
+**The cost, stated plainly: audio you are not transmitting is held in memory for
+up to one interval.** It never leaves the machine unless you perform the
+gesture. Gating at capture would destroy it and make retroactive transmit
+impossible; this is the trade that buys the feature.
+
+---
+
 ## 7. Remote playback, mixing and routing
 
 Each `(username, channelIndex)` pair holds one of the fixed `streamSlots`

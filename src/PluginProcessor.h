@@ -4,6 +4,7 @@
 #include "IntervalClock.h"
 #include "IntervalProbe.h"
 #include "SyncState.h"
+#include "TransmitSpans.h"
 #include "MetronomeVoice.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
@@ -32,7 +33,12 @@ public:
     // part of it -- the parts it was off for are already silence in the ring.
     // Reading xmitEnabled at the boundary instead would throw away an interval
     // you played most of and then switched off during.
-    std::atomic<bool> txActiveThisInterval{false};
+    // Where transmit was on within the interval being captured, and within the
+    // one being handed off. Double-buffered because the audio thread starts
+    // recording the next interval the moment the boundary passes, while the
+    // handoff is still reading the previous one.
+    TransmitSpans spans[2];
+    std::atomic<int> writeSpanIndex{0};
     // Audio thread only. The monitor gain, ramped so mute and solo cannot
     // click.
     GainRamp monitorRamp;
@@ -57,7 +63,9 @@ public:
       peakL.store(0.0f);
       peakR.store(0.0f);
       inputBusIndex.store(0);
-      txActiveThisInterval.store(false);
+      writeSpanIndex.store(0);
+      spans[0].beginInterval(false);
+      spans[1].beginInterval(false);
       fifo.reset();
       ring.clear();
       isValid.store(true);
@@ -126,6 +134,23 @@ public:
   // Recomputes the local half of the global solo bus. Called whenever a local
   // solo changes; the client owns the mask because the remote mix has to agree
   // with the monitor mix about whether anything is soloed.
+  // Applies the transmit state to the whole interval so far, as though it had
+  // been that way from the start.
+  //
+  // `pressSampleInInterval` and `pressIntervalIndex` are taken at the moment
+  // the button went down, not when the hold timer expired: the plain toggle
+  // already set the state from the press onwards, so rewriting the part before
+  // it leaves the interval uniform. Returns false if the interval boundary has
+  // passed since the press -- that interval has already gone out, so there is
+  // nothing left to rewrite.
+  bool applyRetroactiveTransmit(int channelIndex, bool on,
+                                juce::int64 pressIntervalIndex);
+
+  // Which interval we are in, so a press can be matched to it later.
+  juce::int64 currentIntervalIndex() const {
+    return publishedIntervalIndex.load();
+  }
+
   void refreshLocalSoloState();
   void sendChannelInfoToServer();
   // Message thread only: opens or closes the debug dump files to match the
@@ -190,6 +215,9 @@ public:
 
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
+  // Counts intervals since the clock was reset, so a press can be matched to
+  // the interval it happened in.
+  std::atomic<juce::int64> publishedIntervalIndex{0};
 
   // The tempo the interval clock is *actually running*, which is not the same
   // as internalBpm/internalBpi.
