@@ -280,7 +280,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   chatInput.setMultiLine(false);
   chatInput.setReturnKeyStartsNewLine(false);
   chatInput.setTextToShowWhenEmpty(
-      "Message, or a command: /bpm 120, /bpi 16, /topic text, /msg user text",
+      "Message, or a command: /key Dm, /bpm 120, /bpi 16, /msg user text",
       juce::Colours::grey);
   chatInput.onReturnKey = [this]() {
     juce::String text = chatInput.getText().trim();
@@ -290,6 +290,19 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         audioProcessor.ninjamClient.sendChatMessage(text);
       } else if (text.startsWithIgnoreCase("/me ")) {
         audioProcessor.ninjamClient.sendChatMessage(text);
+      } else if (text.startsWithIgnoreCase("/key ")) {
+        // Sends the tagged form, which every other client shows as plain text
+        // and which we parse back on the way in. Nothing is set locally here --
+        // the message we receive is what updates the header, so what we display
+        // is exactly what the room was told.
+        const auto key = MusicalKey::parseName(text.substring(5));
+        if (key.valid) {
+          audioProcessor.ninjamClient.sendChatMessage(
+              MusicalKey::buildTagged(key));
+        } else {
+          chatDisplay.insertTextAtCaret(
+              "Local: not a key. Try /key Dm, /key F# Dorian, /key Bb major.\n");
+        }
       } else if (text.startsWithIgnoreCase("/topic ") ||
                  text.startsWithIgnoreCase("/kick ") ||
                  text.startsWithIgnoreCase("/bpm ") ||
@@ -314,8 +327,9 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         }
       } else if (text.startsWithChar('/')) {
         chatDisplay.insertTextAtCaret(
-            "Local: unknown command. Try /topic, /kick, /bpm, /bpi, /msg, /me, "
-            "or /admin <anything> to pass a command straight to the server.\n");
+            "Local: unknown command. Try /key, /topic, /kick, /bpm, /bpi, /msg, "
+            "/me, or /admin <anything> to pass a command straight to the "
+            "server.\n");
       } else {
         audioProcessor.ninjamClient.sendChatMessage(text);
       }
@@ -395,6 +409,10 @@ juce::Colour AntiphonEditor::colourForChatCategory(ChatFormat::Category c) {
   case C::PrivateMessage: return juce::Colour(0xffcf6fd8);
   case C::Action:         return juce::Colour(0xffd8c46a);
   case C::Voting:         return juce::Colour(0xffe0a030);
+  // Musical facts about the session get their own green, distinct from the
+  // amber the voting system uses -- they are settled, not under discussion.
+  case C::Key:
+  case C::ChordProgression: return juce::Colour(0xff6fd88a);
   case C::ServerNotice:
   default:                return juce::Colour(0xff9aa1ad);
   }
@@ -413,6 +431,17 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
                         colourForChatCategory(line.category));
   chatDisplay.moveCaretToEnd();
   chatDisplay.insertTextAtCaret(line.text + "\n");
+
+  // A key can arrive as chat or inside a topic; both land here.
+  if (const auto key = MusicalKey::parseTagged(text); key.valid) {
+    if (key != sessionKey) {
+      sessionKey = key;
+      announcer.say("Key: " + MusicalKey::displayName(key) + ". " +
+                        MusicalKey::scaleNotes(key),
+                    true);
+      repaint(headerRepaintArea);
+    }
+  }
 
   // The voting system talks through chat, so this is also where a vote is
   // noticed. A settled vote clears the chip rather than offering it again.
@@ -477,6 +506,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
     if (wantBpm != activeBpm || wantBpi != activeBpi)
       tempoText += "   (-> " + juce::String(wantBpm) + " / " +
                    juce::String(wantBpi) + " next interval)";
+    if (sessionKey.valid)
+      tempoText += "   Key " + MusicalKey::displayName(sessionKey);
     g.drawFittedText(tempoText, row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
@@ -1032,7 +1063,7 @@ void AntiphonEditor::setChatConnectedState(bool connected) {
   chatInput.setColour(juce::TextEditor::outlineColourId,
                       juce::Colour(AntiphonTheme::kDisabledEdge));
   chatInput.setTextToShowWhenEmpty(
-      connected ? "Message, or a command: /bpm 120, /bpi 16, /topic text, /msg user text"
+      connected ? "Message, or a command: /key Dm, /bpm 120, /bpi 16, /msg user text"
                 : "Not connected -- join a server to chat",
       juce::Colour(connected ? 0xff8a8a8a : AntiphonTheme::kDisabledText));
   chatInput.repaint();
@@ -1044,6 +1075,8 @@ void AntiphonEditor::onConnected() {
 }
 
 void AntiphonEditor::onDisconnected(const juce::String &) {
+  // The key belongs to the session, not to us.
+  sessionKey = {};
   setChatConnectedState(false);
 }
 

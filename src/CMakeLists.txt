@@ -41,6 +41,7 @@ target_sources(Antiphon
         LocalChannelStrip.cpp
         AntiphonLookAndFeel.cpp
         ChatFormat.cpp
+        MusicalKey.cpp
         AccessibilityAudit.cpp
         ServerBrowserDialog.cpp
         Sha1.cpp

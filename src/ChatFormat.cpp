@@ -1,5 +1,7 @@
 #include "ChatFormat.h"
 
+#include "MusicalKey.h"
+
 namespace ChatFormat {
 
 Line render(const juce::String &type, const juce::String &username,
@@ -10,6 +12,20 @@ Line render(const juce::String &type, const juce::String &username,
   // be recognised by content before anything else claims it.
   if (parseVote(text).valid) {
     out.category = Category::Voting;
+    out.text = "~~ " + text;
+    return out;
+  }
+
+  // A key announcement is recognised by its tag wherever it came from, so the
+  // same line works whether it was typed as chat or left in the topic.
+  if (MusicalKey::parseTagged(text).valid) {
+    out.category = Category::Key;
+    out.text = "~~ " + text;
+    return out;
+  }
+
+  if (isChordProgression(text)) {
+    out.category = Category::ChordProgression;
     out.text = "~~ " + text;
     return out;
   }
@@ -57,6 +73,39 @@ Line render(const juce::String &type, const juce::String &username,
   out.category = Category::ServerNotice;
   out.text = "*** " + text;
   return out;
+}
+
+bool isChordProgression(const juce::String &text) {
+  const auto trimmed = text.trim();
+  if (!trimmed.startsWithChar('|'))
+    return false;
+
+  // At least two measures with something in them. One "|C" is a chord, not a
+  // progression, and requiring two is what keeps a stray pipe out.
+  int measures = 0;
+  bool anyChord = false;
+  for (const auto &part : juce::StringArray::fromTokens(trimmed, "|", "")) {
+    const auto measure = part.trim();
+    if (measure.isEmpty())
+      continue;
+    ++measures;
+    for (const auto &token :
+         juce::StringArray::fromTokens(measure, " \t", "")) {
+      const auto chord = token.trim();
+      if (chord.isEmpty())
+        continue;
+      // A chord starts with a note letter, optionally with an accidental. The
+      // rest -- m, 7, maj7, sus4, /G -- is not worth validating: this only
+      // decides how to colour a line.
+      const auto letter =
+          juce::CharacterFunctions::toUpperCase(chord[0]);
+      if (letter < 'A' || letter > 'G')
+        return false; // a word in the middle means this is prose with pipes
+      anyChord = true;
+    }
+  }
+
+  return measures >= 2 && anyChord;
 }
 
 VoteState parseVote(const juce::String &text) {

@@ -4,6 +4,7 @@
 #include "NinjamClient.h"
 #include "AntiphonLookAndFeel.h"
 #include "ChatFormat.h"
+#include "MusicalKey.h"
 #include "Announcer.h"
 #include "Shortcuts.h"
 #include "StatusReadout.h"
@@ -157,6 +158,10 @@ private:
   // proposing. Dismissal is remembered per value, so saying no to one proposal
   // does not silence the next, different one.
   ChatFormat::VoteState pendingVote;
+
+  // The key the room is playing in, as last announced by anyone. Display only:
+  // Ninjam has no field for it, so it rides on chat (see MusicalKey.h).
+  MusicalKey::Key sessionKey;
   int dismissedVoteTarget = 0;
   bool dismissedVoteIsBpm = true;
   int dismissedDawBpm = 0;

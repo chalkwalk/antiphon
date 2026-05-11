@@ -31,6 +31,7 @@ target_sources(NinjamTests
         AccessibilityAuditTests.cpp
         SpscRingTests.cpp
         ChatFormatTests.cpp
+        MusicalKeyTests.cpp
         GainRampTests.cpp
         TransmitSpansTests.cpp
         FakeNinjamServer.cpp
@@ -45,6 +46,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
+        ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp
         ${CMAKE_SOURCE_DIR}/src/AccessibilityAudit.cpp
 )
 

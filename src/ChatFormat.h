@@ -24,7 +24,9 @@ enum class Category {
   OtherMessage, // something another player said
   PrivateMessage,
   Action,       // "/me waves"
-  Voting        // the voting system, including tempo changes
+  Voting,       // the voting system, including tempo changes
+  Key,          // "[key: D minor]" -- see MusicalKey.h
+  ChordProgression // "| Dm7 | G7 |" -- Jamtaba's convention, display only
 };
 
 struct Line {
@@ -51,5 +53,20 @@ struct VoteState {
 
 // Returns valid == false for any line that is not from the voting system.
 VoteState parseVote(const juce::String &text);
+
+// Whether a line is a chord progression in the convention Jamtaba established:
+// measures separated by bars, as in "| Dm7 | G7 | Bb | Am7".
+//
+// Detection only -- we render the line as its own kind of message and do
+// nothing else with it. A chart synced to the interval is Jamtaba's feature and
+// stays theirs; what people here actually do is pick a key and let the chords
+// follow, which MusicalKey covers.
+//
+// Deliberately stricter than Jamtaba's parser, which also accepts "!", "I" and
+// "l" as separators and consequently reads "I AM TIRED ..." and "LETS TAKE A
+// BREAK" as progressions -- both are real cases in their own test suite
+// (references/JamTaba/tests/auto/chords/TestChatChordsProgressionParser.cpp).
+// Only "|" is a separator here, and at least two measures are required.
+bool isChordProgression(const juce::String &text);
 
 } // namespace ChatFormat

@@ -129,6 +129,50 @@ public:
       expect(!parseVote("[voting system] something new we do not know").valid);
     }
 
+    beginTest("chord progressions are recognised, using Jamtaba's own vectors");
+    {
+      // Taken from
+      // references/JamTaba/tests/auto/chords/TestChatChordsProgressionParser.cpp
+      // so we accept what people already type in Ninjam rooms.
+      for (const auto *s : {"| C    | F    | G    | F    ", "|C    |F    |G    |F",
+                            "|C|F|G|F", "|  C|  F|  G|  F", "|C| F| G |F",
+                            "|C|F||G|F",
+                            "|C |Fmaj7 |G7 |Am7 |Am7/G |F#m7(b5) |Fmaj9"})
+        expect(isChordProgression(s),
+               juce::String("not recognised: ") + s);
+    }
+
+    beginTest("prose with pipes is not a chord progression");
+    {
+      // Jamtaba's parser accepts "!", "I" and "l" as measure separators, so it
+      // reads these two as progressions -- both are real entries in their test
+      // suite. Only "|" separates here, so they cannot reach us; the rest guard
+      // the cases that could.
+      for (const auto *s : {"I AM TIRED ...", "LETS TAKE A BREAK", "|C",
+                            "| lets play something", "hello", "", "|",
+                            "|| ||", "| C | and then something else"})
+        expect(!isChordProgression(s),
+               juce::String("wrongly read as a progression: ") + s);
+    }
+
+    beginTest("a key announcement is its own category");
+    {
+      const auto l = render("MSG", "daniel", "[key: D minor]", "me");
+      expect(l.category == Category::Key);
+      expect(l.text.startsWith("~~"), "must keep a prefix like every category");
+
+      expect(render("MSG", "daniel", "lets play in D minor", "me").category ==
+                 Category::OtherMessage,
+             "free text must stay an ordinary message");
+    }
+
+    beginTest("a progression is categorised whoever sends it");
+    {
+      const auto l = render("MSG", "sam", "|Dm7 |G7 |Bb |Am7", "me");
+      expect(l.category == Category::ChordProgression);
+      expect(l.text.startsWith("~~"));
+    }
+
     beginTest("a voting line is categorised as voting, whoever sends it");
     {
       const auto l = render(
