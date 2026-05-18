@@ -73,5 +73,10 @@ add_subdirectory(modules/vorbis EXCLUDE_FROM_ALL)
 # Add the sources subdirectory
 add_subdirectory(src)
 
+# Offline tools. Kept out of src/ because nothing here is part of the plugin --
+# antiphon-stems is a headless converter that links neither JUCE's GUI modules
+# nor the plugin client.
+add_subdirectory(tools)
+
 # Unit and loopback tests (console app, headless)
 add_subdirectory(test)

@@ -68,6 +68,9 @@ src/
   Shortcuts.h               # Ctrl+Alt shortcut mapping; matches key code, not text
   AudioDeviceStartup.h      # 4-state standalone device-open policy, with a budget
   ChannelMix.h              # mono/pan/gain: one home for three rules that drifted
+  MusicalKey.h              # key and mode: parse, display, scale notes
+  ClipsortLog.{h,cpp}       # session archive manifest: read and write
+  StemRender.h              # one clip into one interval, resampled and aligned
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
   IntervalProbe.h           # shared test signal: plugin Test Tone + tests + refclient
   # --- UI ---
@@ -90,6 +93,8 @@ test/
   AuditMain.cpp             # AntiphonAudit: accessibility gate over the real UI
   refclient/                # differential rig; TEMPORARY, excised before release
   fixtures/                 # golden wire captures, testserver.cfg
+tools/
+  StemsMain.cpp             # antiphon-stems: session archive -> WAV stems
 scripts/
   testserver.sh             # builds and runs a local ninjamsrv out of tree
   analyze_archive.py        # measures a server session archive
@@ -118,6 +123,8 @@ ctest --test-dir build --output-on-failure
 # Accessibility gate over the real component tree; exit code is the finding
 # count, and the report goes to stdout. Runs headless, no display needed.
 ./build/test/AntiphonAudit_artefacts/AntiphonAudit
+# Offline: turn a session archive into WAV stems.
+./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/
 ```
 
 Targets: `Antiphon_Standalone` (easiest for iteration), `Antiphon_VST3`. CLAP is
