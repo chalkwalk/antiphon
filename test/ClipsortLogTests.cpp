@@ -83,17 +83,48 @@ public:
       expectEquals(s.malformedLines, 5);
     }
 
-    beginTest("a clip before any interval line is rejected");
+    beginTest("a clip before the first interval line belongs to interval 0");
     {
-      // Keeping it would silently place it at the start of the session, which
-      // is worse than dropping it: everything after would look fine.
+      // Every real server log opens this way: the session directory is created
+      // on a periodic check that can land part-way through an interval, so the
+      // upload already in progress is logged before the first boundary.
+      // Rejecting it -- which is what this module did until a real archive
+      // showed otherwise -- silently drops audio from the front of a session.
       const juce::String log =
           juce::String("user ") + kGuidA + " \"a\" 0 \"c\"\n" +
-          "interval 0 120 16\n" + "user " + kGuidB + " \"b\" 0 \"c\"\n";
+          "interval 1 120 16\n" + "user " + kGuidB + " \"b\" 0 \"c\"\n";
       const auto s = parse(log);
-      expectEquals((int)s.clips.size(), 1);
-      expectEquals(s.clips[0].guid, juce::String(kGuidB));
-      expectEquals(s.malformedLines, 1);
+      expectEquals((int)s.clips.size(), 2);
+      expectEquals(s.clips[0].guid, juce::String(kGuidA));
+      expectEquals(s.clips[0].interval, 0);
+      expectEquals(s.clips[1].interval, 1);
+      expectEquals(s.malformedLines, 0);
+      expectEquals(s.firstInterval, 0);
+      expectEquals(s.lastInterval, 1);
+      expectEquals(s.intervalCount, 2);
+
+      // And it must carry a tempo, or it has no length and is written as
+      // nothing -- the same clip lost by a different route. The first tempo the
+      // log states is the best evidence for what was in force a moment before.
+      expectEquals(s.clips[0].bpm, 120);
+      expectEquals(s.clips[0].bpi, 16);
+      expect(intervalSamples(s.clips[0].bpm, s.clips[0].bpi, 48000.0) > 0,
+             "a clip with no tempo occupies no time and disappears");
+    }
+
+    beginTest("a server log numbering from 1 spans what it actually covers");
+    {
+      // The server restarts numbering at 1 in every half-hour directory, so a
+      // log that starts at 1 must not be given a phantom interval 0 -- that
+      // would prepend silence to a segment and push everything after it late.
+      const juce::String log = juce::String("interval 1 120 16\n") + "user " +
+                               kGuidA + " \"a\" 0 \"c\"\n" +
+                               "interval 2 120 16\n" + "user " + kGuidA +
+                               " \"a\" 0 \"c\"\n";
+      const auto s = parse(log);
+      expectEquals(s.firstInterval, 1);
+      expectEquals(s.lastInterval, 2);
+      expectEquals(s.intervalCount, 2, "two intervals, not three");
     }
 
     beginTest("a missing channel name is allowed, not malformed");
@@ -121,6 +152,7 @@ public:
       expectEquals((int)parse("").clips.size(), 0);
       expectEquals((int)parse("interval 0 120 16\n").clips.size(), 0);
       expectEquals(parse("interval 0 120 16\n").intervalCount, 1);
+      expectEquals(parse("").intervalCount, 0, "nothing spans nothing");
     }
 
     beginTest("intervals count from the highest seen, not from the clip count");
@@ -132,6 +164,8 @@ public:
                                "interval 9 120 16\n" + "user " + kGuidA +
                                " \"a\" 0 \"c\"\n";
       const auto s = parse(log);
+      expectEquals(s.firstInterval, 0);
+      expectEquals(s.lastInterval, 9);
       expectEquals(s.intervalCount, 10);
       expectEquals((int)s.clips.size(), 2);
     }

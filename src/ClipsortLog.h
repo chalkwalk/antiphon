@@ -16,9 +16,23 @@
 //   user <32-hex-guid> "<username>" <channel> "<channel name>"
 //
 // A `user` line belongs to the most recent `interval` line above it, so the
-// interval number is carried forward while scanning. BPM and BPI can change
-// mid-session, which is why each clip records the values in force when it was
-// sent -- interval lengths are not constant across a session.
+// interval number is carried forward while scanning. The server writes `user`
+// when an upload *begins* (usercon.cpp:652) and `interval` when the loop
+// counter advances (:900), which is what makes carry-forward the right reading.
+//
+// A real log opens with a `user` line before any `interval` line -- the session
+// directory is created on a periodic check that can land mid-interval, so the
+// upload already in progress is logged first. Those clips belong to interval 0.
+// Rejecting them, which seems like the safe thing to do, silently drops real
+// audio from the front of every session.
+//
+// BPM and BPI can change mid-session, which is why each clip records the values
+// in force when it was sent -- interval lengths are not constant across a
+// session. A real four-segment session seen here ran 100, 120, 80 and 60 bpm.
+//
+// The server rotates to a new directory every half hour and **restarts interval
+// numbering at 1 in each**, so a session is usually several directories that
+// have to be concatenated. See `Segment` in the stem tool.
 //
 // Both halves live here on purpose: `parse` for the stem converter, and the
 // line builders for the client's own session saving, so the two cannot drift.
@@ -39,10 +53,14 @@ struct Clip {
 
 struct Session {
   std::vector<Clip> clips;
-  // Highest interval number seen, plus one. The timeline the stems are laid out
-  // against: a player who sent nothing in an interval still needs its length of
-  // silence, or every later stem drifts against the others.
-  int intervalCount = 0;
+  // The span of intervals this log covers. Not assumed to start at 0 or 1: a
+  // server log starts at 1, while a clip logged before the first boundary sits
+  // at 0. The timeline the stems are laid out against -- a player who sent
+  // nothing in an interval still needs its length of silence, or every later
+  // stem drifts against the others.
+  int firstInterval = 0;
+  int lastInterval = -1;
+  int intervalCount = 0; // lastInterval - firstInterval + 1, or 0
   int malformedLines = 0; // reported rather than swallowed
 };
 

@@ -79,6 +79,38 @@ DecodedClip decodeClip(const juce::File &file) {
   return out;
 }
 
+// One archive directory: the server rotates every half hour and restarts
+// interval numbering at 1 in each, so a session that ran from 18:00 to 20:00 is
+// four directories that have to be laid end to end. Clips live inside the
+// segment that logged them, so each keeps its own base directory.
+struct Segment {
+  juce::File dir;
+  ClipsortLog::Session session;
+  int base = 0; // where this segment starts on the merged timeline
+};
+
+// Sorted by name, which for the server's YYYYMMDD_HHMM.ninjam form is
+// chronological. Accepts either a single session directory or a parent holding
+// several.
+std::vector<juce::File> findSegmentDirs(const juce::File &root) {
+  std::vector<juce::File> dirs;
+  if (root.getChildFile("clipsort.log").existsAsFile()) {
+    dirs.push_back(root);
+    return dirs;
+  }
+
+  for (const auto &entry : juce::RangedDirectoryIterator(
+           root, false, "*", juce::File::findDirectories)) {
+    if (entry.getFile().getChildFile("clipsort.log").existsAsFile())
+      dirs.push_back(entry.getFile());
+  }
+
+  std::sort(dirs.begin(), dirs.end(), [](const auto &a, const auto &b) {
+    return a.getFileName() < b.getFileName();
+  });
+  return dirs;
+}
+
 int usage() {
   std::cout
       << "antiphon-stems -- Ninjam session archive to WAV stems\n\n"
@@ -87,8 +119,12 @@ int usage() {
          "written by a Ninjam server, an archive bot, or Antiphon itself.\n"
          "One WAV per player per channel is written, all the same length and\n"
          "sample-aligned, so they line up when dropped into a DAW.\n\n"
+         "A session is usually several directories, because the server rotates\n"
+         "every half hour and restarts interval numbering in each. Point this at\n"
+         "the parent and they are laid end to end automatically.\n\n"
          "  -o <out-dir>   where to write (default: <session-dir>/stems)\n"
-         "  --rate <hz>    output rate (default: the highest any clip declares)\n";
+         "  --rate <hz>    output rate (default: the highest any clip declares)\n"
+         "  --bits <n>     16, 24 or 32 (default 24; 16 halves the file size)\n";
   return 1;
 }
 
@@ -100,6 +136,7 @@ int main(int argc, char *argv[]) {
   juce::String sessionArg;
   juce::String outArg;
   double requestedRate = 0.0;
+  int bitDepth = 24;
 
   for (int i = 1; i < argc; ++i) {
     const juce::String arg(argv[i]);
@@ -107,6 +144,8 @@ int main(int argc, char *argv[]) {
       outArg = argv[++i];
     else if (arg == "--rate" && i + 1 < argc)
       requestedRate = juce::String(argv[++i]).getDoubleValue();
+    else if (arg == "--bits" && i + 1 < argc)
+      bitDepth = juce::String(argv[++i]).getIntValue();
     else if (arg.startsWith("-"))
       return usage();
     else if (sessionArg.isEmpty())
@@ -120,37 +159,72 @@ int main(int argc, char *argv[]) {
 
   const juce::File sessionDir(
       juce::File::getCurrentWorkingDirectory().getChildFile(sessionArg));
-  const juce::File logFile = sessionDir.getChildFile("clipsort.log");
-  if (!logFile.existsAsFile()) {
+
+  auto segmentDirs = findSegmentDirs(sessionDir);
+  if (segmentDirs.empty()) {
     std::cerr << "No clipsort.log in " << sessionDir.getFullPathName()
-              << "\n";
+              << " or any directory below it.\n";
     return 2;
   }
 
-  const auto session = ClipsortLog::parse(logFile.loadFileAsString());
-  if (session.clips.empty()) {
-    std::cerr << "No clips in the manifest.\n";
+  // Lay the segments end to end. Each restarts its own numbering, so the offset
+  // is the running total rather than the interval numbers themselves.
+  std::vector<Segment> segments;
+  int totalIntervals = 0;
+  int totalMalformed = 0;
+  for (const auto &dir : segmentDirs) {
+    Segment seg;
+    seg.dir = dir;
+    seg.session =
+        ClipsortLog::parse(dir.getChildFile("clipsort.log").loadFileAsString());
+    if (seg.session.intervalCount <= 0)
+      continue;
+    seg.base = totalIntervals;
+    totalIntervals += seg.session.intervalCount;
+    totalMalformed += seg.session.malformedLines;
+    segments.push_back(seg);
+  }
+
+  if (segments.empty()) {
+    std::cerr << "No clips in any manifest.\n";
     return 2;
   }
-  if (session.malformedLines > 0)
-    std::cerr << "Warning: " << session.malformedLines
-              << " unreadable line(s) in the manifest, skipped.\n";
+  if (totalMalformed > 0)
+    std::cerr << "Warning: " << totalMalformed
+              << " unreadable line(s) across the manifests, skipped.\n";
 
-  // Index clips by stem and interval, and find the rate to write at.
-  std::map<StemKey, std::map<int, ClipsortLog::Clip>> byStem;
-  std::map<int, std::pair<int, int>> tempoByInterval; // interval -> (bpm, bpi)
-  for (const auto &clip : session.clips) {
-    byStem[{clip.username, clip.channelIndex}][clip.interval] = clip;
-    tempoByInterval[clip.interval] = {clip.bpm, clip.bpi};
+  // Index clips by stem and by their position on the merged timeline. A clip
+  // also has to remember which segment it lives in, because that is the
+  // directory its Ogg file sits under.
+  struct Located {
+    ClipsortLog::Clip clip;
+    juce::File dir;
+  };
+  std::map<StemKey, std::map<int, Located>> byStem;
+  std::map<int, std::pair<int, int>> tempoByInterval;
+  int totalClips = 0;
+  for (const auto &seg : segments) {
+    for (const auto &clip : seg.session.clips) {
+      const int at = seg.base + (clip.interval - seg.session.firstInterval);
+      byStem[{clip.username, clip.channelIndex}][at] = Located{clip, seg.dir};
+      tempoByInterval[at] = {clip.bpm, clip.bpi};
+      ++totalClips;
+    }
   }
 
   double outRate = requestedRate;
   if (outRate <= 0.0) {
     // Players can be at different rates, so the highest one is the only choice
     // that never has to throw detail away.
-    for (const auto &clip : session.clips) {
+    // One clip per stem is enough to learn the rates in play; decoding all of
+    // them twice would double the run time of a long session for nothing.
+    for (const auto &[key, intervals] : byStem) {
+      juce::ignoreUnused(key);
+      if (intervals.empty())
+        continue;
+      const auto &located = intervals.begin()->second;
       const auto file =
-          sessionDir.getChildFile(ClipsortLog::clipPath(clip.guid));
+          located.dir.getChildFile(ClipsortLog::clipPath(located.clip.guid));
       if (!file.existsAsFile())
         continue;
       const auto decoded = decodeClip(file);
@@ -173,8 +247,39 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "Session: " << sessionDir.getFullPathName() << "\n"
-            << "Intervals: " << session.intervalCount << "   Stems: "
-            << byStem.size() << "   Rate: " << (int)outRate << " Hz\n\n";
+            << "Segments: " << segments.size() << "   Intervals: "
+            << totalIntervals << "   Clips: " << totalClips
+            << "   Stems: " << byStem.size() << "   Rate: " << (int)outRate
+            << " Hz\n";
+  for (const auto &seg : segments)
+    std::cout << "  " << seg.dir.getFileName() << "  intervals "
+              << seg.base << ".." << (seg.base + seg.session.intervalCount - 1)
+              << "\n";
+  std::cout << "\n";
+
+  if (bitDepth != 16 && bitDepth != 24 && bitDepth != 32) {
+    std::cerr << "--bits must be 16, 24 or 32\n";
+    return 2;
+  }
+
+  // WAV cannot address more than 4 GB, and a long jam gets close: two hours of
+  // 24-bit stereo at 48 kHz is about 2 GB per stem. Say so before spending
+  // several minutes producing a file that will not open.
+  {
+    juce::int64 projectedFrames = 0;
+    for (const auto &[at, tempo] : tempoByInterval) {
+      juce::ignoreUnused(at);
+      projectedFrames +=
+          ClipsortLog::intervalSamples(tempo.first, tempo.second, outRate);
+    }
+    const juce::int64 bytes = projectedFrames * 2 * (bitDepth / 8);
+    const double gb = (double)bytes / 1.0e9;
+    std::cout << "Each stem will be about " << juce::String(gb, 2) << " GB.\n";
+    if (bytes > 3900000000LL)
+      std::cerr << "Warning: that is at or past what a WAV file can address. "
+                   "Use --bits 16, or split the session.\n";
+    std::cout << "\n";
+  }
 
   juce::WavAudioFormat wav;
   int written = 0;
@@ -183,8 +288,8 @@ int main(int argc, char *argv[]) {
   for (const auto &[key, intervals] : byStem) {
     const juce::String name =
         sanitise(key.username) + "-" +
-        sanitise(intervals.begin()->second.channelName.isNotEmpty()
-                     ? intervals.begin()->second.channelName
+        sanitise(intervals.begin()->second.clip.channelName.isNotEmpty()
+                     ? intervals.begin()->second.clip.channelName
                      : "ch" + juce::String(key.channelIndex)) +
         ".wav";
     const juce::File outFile = outDir.getChildFile(name);
@@ -197,7 +302,7 @@ int main(int argc, char *argv[]) {
       return 2;
     }
     std::unique_ptr<juce::AudioFormatWriter> writer(
-        wav.createWriterFor(stream.release(), outRate, 2, 24, {}, 0));
+        wav.createWriterFor(stream.release(), outRate, 2, (unsigned int)bitDepth, {}, 0));
     if (writer == nullptr) {
       std::cerr << "Could not create a WAV writer for "
                 << outFile.getFullPathName() << "\n";
@@ -210,7 +315,7 @@ int main(int argc, char *argv[]) {
     // Every stem walks the full timeline, so an interval a player sat out
     // becomes silence of exactly the right length rather than a gap that pulls
     // everything after it out of alignment.
-    for (int interval = 0; interval < session.intervalCount; ++interval) {
+    for (int interval = 0; interval < totalIntervals; ++interval) {
       auto tempo = tempoByInterval.find(interval);
       if (tempo == tempoByInterval.end()) {
         // No clip from anyone in this interval, so its length is unknown.
@@ -231,8 +336,8 @@ int main(int argc, char *argv[]) {
 
       const auto clip = intervals.find(interval);
       if (clip != intervals.end()) {
-        const auto file =
-            sessionDir.getChildFile(ClipsortLog::clipPath(clip->second.guid));
+        const auto file = clip->second.dir.getChildFile(
+            ClipsortLog::clipPath(clip->second.clip.guid));
         if (file.existsAsFile()) {
           const auto decoded = decodeClip(file);
           if (decoded.ok) {
@@ -256,7 +361,7 @@ int main(int argc, char *argv[]) {
     writer.reset(); // destroying the writer is what writes the WAV header
 
     std::cout << "  " << name << "   " << clipsPlaced << "/"
-              << session.intervalCount << " intervals, "
+              << totalIntervals << " intervals, "
               << juce::String(framesThisStem / outRate, 1) << " s\n";
     ++written;
     if (totalFrames == 0)

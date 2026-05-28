@@ -67,7 +67,21 @@ Session parse(const juce::String &logText) {
   int currentInterval = 0;
   int currentBpm = 0;
   int currentBpi = 0;
-  bool sawInterval = false;
+  int minInterval = 0;
+  int maxInterval = -1;
+  int firstBpm = 0;
+  int firstBpi = 0;
+  bool sawAny = false;
+
+  auto note = [&](int n) {
+    if (!sawAny) {
+      minInterval = maxInterval = n;
+      sawAny = true;
+    } else {
+      minInterval = juce::jmin(minInterval, n);
+      maxInterval = juce::jmax(maxInterval, n);
+    }
+  };
 
   juce::StringArray lines;
   lines.addLines(logText);
@@ -91,8 +105,11 @@ Session parse(const juce::String &logText) {
       currentInterval = n;
       currentBpm = bpm;
       currentBpi = bpi;
-      sawInterval = true;
-      session.intervalCount = juce::jmax(session.intervalCount, n + 1);
+      if (firstBpm <= 0) {
+        firstBpm = bpm;
+        firstBpi = bpi;
+      }
+      note(n);
       continue;
     }
 
@@ -115,14 +132,11 @@ Session parse(const juce::String &logText) {
       // missing one is not malformed -- just unnamed.
       readQuoted(line, pos, clip.channelName);
 
-      // A clip before any interval line has no timeline to sit on. Keeping it
-      // at interval 0 would silently place it at the start of the session.
-      if (!sawInterval) {
-        ++session.malformedLines;
-        continue;
-      }
-
+      // A clip before the first interval line belongs to interval 0. Real logs
+      // open with one, because the session directory can be created part-way
+      // through an interval; dropping it loses real audio.
       clip.interval = currentInterval;
+      note(currentInterval);
       clip.bpm = currentBpm;
       clip.bpi = currentBpi;
       session.clips.push_back(clip);
@@ -132,6 +146,23 @@ Session parse(const juce::String &logText) {
     ++session.malformedLines; // a verb we do not know
   }
 
+  // Clips logged before the first interval line have no tempo yet, and an
+  // interval with no tempo has no length, so they would be written as nothing
+  // at all -- the rejection removed earlier, arrived at by a different route.
+  // The first tempo the log states is the best evidence for what was in force a
+  // moment earlier.
+  for (auto &clip : session.clips) {
+    if (clip.bpm > 0 && clip.bpi > 0)
+      break; // they are in file order, so the first tempo-bearing one ends it
+    clip.bpm = firstBpm;
+    clip.bpi = firstBpi;
+  }
+
+  if (sawAny) {
+    session.firstInterval = minInterval;
+    session.lastInterval = maxInterval;
+    session.intervalCount = maxInterval - minInterval + 1;
+  }
   return session;
 }
 
