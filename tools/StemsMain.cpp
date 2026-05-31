@@ -124,7 +124,9 @@ int usage() {
          "the parent and they are laid end to end automatically.\n\n"
          "  -o <out-dir>   where to write (default: <session-dir>/stems)\n"
          "  --rate <hz>    output rate (default: the highest any clip declares)\n"
-         "  --bits <n>     16, 24 or 32 (default 24; 16 halves the file size)\n";
+         "  --bits <n>     16 (default), 24 or 32. Vorbis decodes to float and\n"
+         "                 carries no bit depth; 16 is all the decode justifies,\n"
+         "                 and 24 costs 50% more disk for no more detail.\n";
   return 1;
 }
 
@@ -136,7 +138,14 @@ int main(int argc, char *argv[]) {
   juce::String sessionArg;
   juce::String outArg;
   double requestedRate = 0.0;
-  int bitDepth = 24;
+  // 16-bit by default. Vorbis has no bit depth to match -- it decodes to float,
+  // and an Ogg declares bits_per_sample=0 -- so the only question is what
+  // precision the decode actually justifies. At Ninjam bitrates the codec's own
+  // noise floor sits far above 16-bit quantisation at -96 dBFS, so the extra
+  // eight bits store decode noise and 50% more disk. Measured across the
+  // loudest clips of a real session: no sample exceeded 0.573, so there is no
+  // overshoot for the wider integer range to protect either.
+  int bitDepth = 16;
 
   for (int i = 1; i < argc; ++i) {
     const juce::String arg(argv[i]);
