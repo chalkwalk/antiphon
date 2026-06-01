@@ -107,8 +107,11 @@ private:
 
   juce::ToggleButton metronomeToggle;
   juce::Slider metronomeVolumeSlider;
-  juce::ToggleButton saveTxToggle;
-  juce::ToggleButton saveRxToggle;
+  // Records the jam as a Ninjam archive that antiphon-stems turns into WAV
+  // stems. Replaces the Save Tx / Save Rx pair, which were debug dumps of the
+  // mix rather than a per-player archive, and which nobody could get stems out
+  // of.
+  juce::ToggleButton recordToggle;
   juce::ToggleButton testToneToggle;
   juce::TextButton syncButton;
   juce::ToggleButton chatToggle;

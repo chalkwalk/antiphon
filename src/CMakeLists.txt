@@ -42,6 +42,7 @@ target_sources(Antiphon
         AntiphonLookAndFeel.cpp
         ChatFormat.cpp
         ClipsortLog.cpp
+        SessionWriter.cpp
         MusicalKey.cpp
         AccessibilityAudit.cpp
         ServerBrowserDialog.cpp

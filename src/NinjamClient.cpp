@@ -74,6 +74,40 @@ void NinjamClient::setSaveRx(bool shouldSave) {
   isSavingRx.store(shouldSave);
 }
 
+juce::File NinjamClient::defaultSessionDirectory() {
+  return juce::File::getSpecialLocation(juce::File::userMusicDirectory)
+      .getChildFile("Antiphon Sessions");
+}
+
+bool NinjamClient::startSessionRecording(const juce::File &parentDir) {
+  // Timestamp first so a directory of sessions sorts chronologically, then the
+  // server, so you can tell which jam is which without opening them. Shaped
+  // like the server's own directories, so a saved session and a downloaded one
+  // look the same to every reader.
+  juce::String host;
+  {
+    juce::ScopedLock sl(usersMutex);
+    host = currentHost;
+  }
+
+  juce::String tidyHost;
+  for (int i = 0; i < host.length(); ++i) {
+    const auto c = host[i];
+    tidyHost += juce::CharacterFunctions::isLetterOrDigit(c) || c == '.' ||
+                        c == '-'
+                    ? juce::String::charToString(c)
+                    : juce::String("_");
+  }
+  if (tidyHost.isEmpty())
+    tidyHost = "offline";
+
+  const auto name =
+      juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S") + "_" + tidyHost;
+  return sessionWriter.start(parentDir, name);
+}
+
+void NinjamClient::stopSessionRecording() { sessionWriter.stop(); }
+
 void NinjamClient::closeDebugCaptureFiles() {
   {
     juce::ScopedLock sl(txFileMutex);
@@ -236,6 +270,10 @@ void NinjamClient::run() {
     roomMembers.clear();
   }
   soloMask.fetch_and(~kRemoteSolo, std::memory_order_relaxed);
+
+  // Close any clip still open: a disconnect mid-upload leaves valid Ogg up to
+  // the point it stopped, which is better than a file with no header flushed.
+  sessionWriter.stop();
 
   // Finalise the debug dumps so tx.wav and rx.wav are readable now rather than
   // when the plugin is closed. The toggles keep their state; a later connect
@@ -405,6 +443,23 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     pd.decoder = std::make_unique<VorbisDecoder>();
     guidToInterval[begin.guidHex] = std::move(pd);
 
+    if (sessionWriter.isActive()) {
+      juce::String channelName;
+      {
+        juce::ScopedLock sl(usersMutex);
+        auto uit = remoteUsers.find(begin.username);
+        if (uit != remoteUsers.end()) {
+          auto cit = uit->second.channels.find(begin.channelIndex);
+          if (cit != uit->second.channels.end())
+            channelName = cit->second.channelName;
+        }
+      }
+      sessionWriter.beginClip(begin.guidHex, begin.username,
+                              begin.channelIndex, channelName,
+                              sessionIntervalIndex.load(), serverBpm,
+                              serverBpi);
+    }
+
     // Signal the audio thread that a new server interval has started.
     // compare_exchange prevents re-signalling if the audio thread hasn't
     // processed the previous signal yet (avoids double-swap for multi-channel
@@ -433,6 +488,13 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       if (pdPtr != nullptr) {
         auto &pd = *pdPtr;
         auto &interval = *pd.target;
+
+        // Archived before decoding, so what is saved is what arrived rather
+        // than a re-encode of what we made of it.
+        if (write.audioSize > 0)
+          sessionWriter.appendClip(guid, write.audioData, write.audioSize);
+        if (write.isFinal)
+          sessionWriter.endClip(guid);
 
         int oggDataSize = write.audioSize;
         if (oggDataSize > 0 && pd.decoder != nullptr) {
@@ -626,6 +688,18 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
   for (int i = 0; i < 16; i++)
     guid[i] = (juce::uint8)(juce::Random::getSystemRandom().nextInt(256));
 
+  const juce::String guidHex = NinjamProtocol::guidToHex(guid);
+  if (sessionWriter.isActive()) {
+    juce::String channelName;
+    {
+      juce::ScopedLock sl(channelInfoMutex);
+      if (channelIndex >= 0 && channelIndex < storedChannelNames.size())
+        channelName = storedChannelNames[channelIndex];
+    }
+    sessionWriter.beginClip(guidHex, currentUsername, channelIndex, channelName,
+                            sessionIntervalIndex.load(), serverBpm, serverBpi);
+  }
+
   int numCh = mono ? 1 : buffer.getNumChannels();
   const char fourcc[4] = {'O', 'G', 'G', 'v'};
   auto beginPacket =
@@ -672,6 +746,8 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
       writeFull(0x84, writePacket.getData(),
                 static_cast<int>(writePacket.getSize()));
 
+      sessionWriter.appendClip(guidHex, oggData, avail);
+
       {
         juce::ScopedLock sl(txFileMutex);
         if (isSavingTx && txOggFile != nullptr)
@@ -695,6 +771,8 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
     writeFull(0x84, writePacket.getData(),
               static_cast<int>(writePacket.getSize()));
 
+    sessionWriter.appendClip(guidHex, oggData, avail);
+
     {
       juce::ScopedLock sl(txFileMutex);
       if (isSavingTx && txOggFile != nullptr)
@@ -703,6 +781,9 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
 
     encoder.advance(avail);
   }
+
+  // The final packet has gone, so the clip is complete.
+  sessionWriter.endClip(guidHex);
 }
 
 int NinjamClient::acquireStreamSlot(const juce::String &username,
@@ -825,6 +906,9 @@ void NinjamClient::releaseSlotOnAudioThread(StreamSlot &slot) {
 
 void NinjamClient::swapIntervalBuffers() {
   constexpr int kFadeSamples = 256;
+  // The archive's timeline. An atomic increment only -- the writers read it
+  // from other threads and never touch the audio thread's work.
+  sessionIntervalIndex.fetch_add(1, std::memory_order_relaxed);
   for (auto &slot : streamSlots) {
     const int st = slot.state.load(std::memory_order_acquire);
     if (st == StreamSlot::kFree)

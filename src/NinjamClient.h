@@ -1,5 +1,6 @@
 #pragma once
 #include "GainRamp.h"
+#include "SessionWriter.h"
 #include "SpscRing.h"
 #include "VorbisCodec.h"
 #include <JuceHeader.h>
@@ -35,6 +36,36 @@ public:
 
   void setSaveTx(bool shouldSave);
   void setSaveRx(bool shouldSave);
+
+  // Records the session as a Ninjam archive: the Ogg bytes exactly as sent and
+  // received, plus the manifest, in the server's own format. antiphon-stems
+  // turns the result into WAV stems.
+  //
+  // Public servers do not all archive, and those that do do not all let you
+  // have the files, so this is the only way to be sure of getting stems out of
+  // a jam you played.
+  // Where sessions go unless told otherwise: a folder beside your music, not
+  // buried in application support, because these are recordings you will want
+  // to find and drag into a DAW.
+  static juce::File defaultSessionDirectory();
+
+  // Names the session `<date>_<time>_<server>.ninjam`, so a directory of them
+  // sorts chronologically and each says where it came from.
+  bool startSessionRecording(const juce::File &parentDir);
+  void stopSessionRecording();
+  bool isRecordingSession() const { return sessionWriter.isActive(); }
+  juce::File sessionRecordingDirectory() const {
+    return sessionWriter.directory();
+  }
+  int sessionRecordingClipCount() const {
+    return sessionWriter.clipCount();
+  }
+
+  // Which local interval transfers are happening in. Incremented by the audio
+  // thread at each boundary. Uploads and downloads for the same musical
+  // interval occur in the same one -- you send your interval N while receiving
+  // everyone else's -- so one counter keeps every stem on the same timeline.
+  std::atomic<int> sessionIntervalIndex{0};
 
   // Finalises the debug dumps without changing the toggles.
   //
@@ -357,6 +388,8 @@ private:
   std::unique_ptr<juce::FileOutputStream> rxOggFile;
   std::unique_ptr<juce::AudioFormatWriter> rxWavWriter;
   juce::WavAudioFormat wavFormat;
+
+  SessionWriter sessionWriter;
 
   juce::CriticalSection txFileMutex;
   juce::CriticalSection rxFileMutex;

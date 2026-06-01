@@ -111,6 +111,54 @@ std::vector<juce::File> findSegmentDirs(const juce::File &root) {
   return dirs;
 }
 
+// Parses the leading YYYYMMDD_HHMM of a server session directory name.
+// Returns a comparable minute count, or -1 if the name is not that shape.
+juce::int64 timestampMinutes(const juce::File &dir) {
+  const auto name = dir.getFileNameWithoutExtension();
+  if (name.length() < 13 || name[8] != '_')
+    return -1;
+  const auto date = name.substring(0, 8);
+  const auto time = name.substring(9, 13);
+  for (const auto &part : {date, time})
+    for (int i = 0; i < part.length(); ++i)
+      if (part[i] < '0' || part[i] > '9')
+        return -1;
+
+  const int y = date.substring(0, 4).getIntValue();
+  const int mo = date.substring(4, 6).getIntValue();
+  const int d = date.substring(6, 8).getIntValue();
+  const int h = time.substring(0, 2).getIntValue();
+  const int mi = time.substring(2, 4).getIntValue();
+  // Not calendar-exact, and does not need to be: it only has to order and
+  // difference names from the same few days.
+  return (((juce::int64)y * 12 + mo) * 31 + d) * 1440 + h * 60 + mi;
+}
+
+void warnIfNotConsecutive(const std::vector<juce::File> &dirs) {
+  juce::int64 previous = -1;
+  for (const auto &dir : dirs) {
+    const auto t = timestampMinutes(dir);
+    if (t < 0) {
+      std::cerr << "Warning: " << dir.getFileName()
+                << " is not named like a session directory, so its place in "
+                   "the running order is a guess.\n";
+      previous = -1;
+      continue;
+    }
+    if (previous >= 0) {
+      const auto gap = t - previous;
+      // The server rotates every 30 minutes. Anything much larger means these
+      // are probably separate jams that happen to share a folder.
+      if (gap > 60)
+        std::cerr << "Warning: " << juce::String(gap)
+                  << " minutes between segments before " << dir.getFileName()
+                  << ". If these are separate sessions, convert them "
+                     "separately -- joining them makes one long wrong file.\n";
+    }
+    previous = t;
+  }
+}
+
 int usage() {
   std::cout
       << "antiphon-stems -- Ninjam session archive to WAV stems\n\n"
@@ -135,7 +183,7 @@ int usage() {
 int main(int argc, char *argv[]) {
   juce::ScopedJuceInitialiser_GUI juceInit;
 
-  juce::String sessionArg;
+  juce::StringArray sessionArgs;
   juce::String outArg;
   double requestedRate = 0.0;
   // 16-bit by default. Vorbis has no bit depth to match -- it decodes to float,
@@ -157,24 +205,47 @@ int main(int argc, char *argv[]) {
       bitDepth = juce::String(argv[++i]).getIntValue();
     else if (arg.startsWith("-"))
       return usage();
-    else if (sessionArg.isEmpty())
-      sessionArg = arg;
     else
-      return usage();
+      sessionArgs.add(arg);
   }
 
-  if (sessionArg.isEmpty())
+  if (sessionArgs.isEmpty())
     return usage();
 
+  // Several paths may be named, in which case they are used exactly as given,
+  // in that order -- the escape hatch for an archive we cannot make sense of
+  // automatically. One path is searched: itself if it holds a manifest, else
+  // one level below.
+  std::vector<juce::File> segmentDirs;
   const juce::File sessionDir(
-      juce::File::getCurrentWorkingDirectory().getChildFile(sessionArg));
+      juce::File::getCurrentWorkingDirectory().getChildFile(sessionArgs[0]));
 
-  auto segmentDirs = findSegmentDirs(sessionDir);
+  if (sessionArgs.size() > 1) {
+    for (const auto &arg : sessionArgs) {
+      const auto f =
+          juce::File::getCurrentWorkingDirectory().getChildFile(arg);
+      if (!f.getChildFile("clipsort.log").existsAsFile()) {
+        std::cerr << "No clipsort.log in " << f.getFullPathName() << "\n";
+        return 2;
+      }
+      segmentDirs.push_back(f);
+    }
+  } else {
+    segmentDirs = findSegmentDirs(sessionDir);
+  }
+
   if (segmentDirs.empty()) {
     std::cerr << "No clipsort.log in " << sessionDir.getFullPathName()
               << " or any directory below it.\n";
     return 2;
   }
+
+  // Combining is only right if these really are consecutive parts of one jam.
+  // The server names its directories by the half hour they opened, so the
+  // timestamps say whether they are contiguous -- and silently welding two
+  // unrelated sessions together produces a long, plausible, wrong file.
+  if (sessionArgs.size() == 1 && segmentDirs.size() > 1)
+    warnIfNotConsecutive(segmentDirs);
 
   // Lay the segments end to end. Each restarts its own numbering, so the offset
   // is the running total rather than the interval numbers themselves.
@@ -290,6 +361,96 @@ int main(int argc, char *argv[]) {
     std::cout << "\n";
   }
 
+  // Annotate the stems, because a WAV that knows its own tempo is worth a lot
+  // more when it lands in a DAW than one that does not.
+  //
+  //  - the ACID chunk carries a tempo, which several hosts read to warp or to
+  //    set the project tempo on import;
+  //  - cue markers, labelled, land on every tempo change, which is the thing a
+  //    Ninjam jam does that a normal recording does not -- this session went
+  //    100, 120, 80, 60 bpm and without markers you would have to find those
+  //    boundaries by ear;
+  //  - a RIFF INFO comment records where the audio came from, since a bare
+  //    stem otherwise says nothing about which jam it was.
+  juce::StringPairArray metadata;
+  {
+    juce::int64 frame = 0;
+    int lastBpm = 0, lastBpi = 0;
+    int cueCount = 0;
+    int firstBpm = 0;
+    juce::int64 totalBeats = 0;
+
+    for (int interval = 0; interval < totalIntervals; ++interval) {
+      auto tempo = tempoByInterval.find(interval);
+      if (tempo == tempoByInterval.end()) {
+        if (interval > 0 && tempoByInterval.count(interval - 1))
+          tempo = tempoByInterval.find(interval - 1);
+        else
+          continue;
+      }
+      const int bpm = tempo->second.first;
+      const int bpi = tempo->second.second;
+      const int frames = ClipsortLog::intervalSamples(bpm, bpi, outRate);
+      if (frames <= 0)
+        continue;
+
+      if (bpm != lastBpm || bpi != lastBpi) {
+        if (firstBpm == 0)
+          firstBpm = bpm;
+        const juce::String prefix = "Cue" + juce::String(cueCount);
+        metadata.set(prefix + "Identifier", juce::String(cueCount + 1));
+        metadata.set(prefix + "Order", juce::String(cueCount));
+        metadata.set(prefix + "ChunkID", juce::String(0x61746164)); // 'data'
+        metadata.set(prefix + "ChunkStart", "0");
+        metadata.set(prefix + "BlockStart", "0");
+        metadata.set(prefix + "Offset", juce::String(frame));
+        // A label needs its own count and a Text suffix; without NumCueLabels
+        // the adtl list is never emitted and the markers arrive unnamed.
+        const juce::String label = "Cue" + juce::String(cueCount);
+        juce::ignoreUnused(label);
+        metadata.set("CueLabel" + juce::String(cueCount) + "Identifier",
+                     juce::String(cueCount + 1));
+        metadata.set("CueLabel" + juce::String(cueCount) + "Text",
+                     juce::String(bpm) + " BPM, " + juce::String(bpi) + " BPI");
+        ++cueCount;
+        lastBpm = bpm;
+        lastBpi = bpi;
+      }
+
+      frame += frames;
+      totalBeats += bpi;
+    }
+
+    if (cueCount > 0) {
+      metadata.set("NumCuePoints", juce::String(cueCount));
+      metadata.set("NumCueLabels", juce::String(cueCount));
+    }
+
+    if (firstBpm > 0) {
+      metadata.set(juce::WavAudioFormat::acidizerFlag, "1");
+      metadata.set(juce::WavAudioFormat::acidOneShot, "0");
+      metadata.set(juce::WavAudioFormat::acidStretch, "1");
+      metadata.set(juce::WavAudioFormat::acidDiskBased, "1");
+      metadata.set(juce::WavAudioFormat::acidTempo, juce::String(firstBpm));
+      metadata.set(juce::WavAudioFormat::acidBeats, juce::String(totalBeats));
+      // Ninjam has no time signature, so 4/4 is stated as the assumption it is
+      // rather than left for a host to invent.
+      metadata.set(juce::WavAudioFormat::acidNumerator, "4");
+      metadata.set(juce::WavAudioFormat::acidDenominator, "4");
+    }
+
+    metadata.set(juce::WavAudioFormat::riffInfoSoftware, "Antiphon antiphon-stems");
+    metadata.set(juce::WavAudioFormat::riffInfoComment,
+                 "Ninjam session " + sessionDir.getFileName() + ", " +
+                     juce::String((int)segments.size()) + " segment(s), " +
+                     juce::String(totalIntervals) + " intervals");
+    if (cueCount > 0)
+      std::cout << cueCount << " tempo marker(s) written into each stem.\n\n";
+  }
+
+  // 5 ms, the same length the live mix uses for a mute (GainRamp).
+  const int edgeFade = (int)(outRate * 0.005);
+
   juce::WavAudioFormat wav;
   int written = 0;
   juce::int64 totalFrames = 0;
@@ -311,7 +472,8 @@ int main(int argc, char *argv[]) {
       return 2;
     }
     std::unique_ptr<juce::AudioFormatWriter> writer(
-        wav.createWriterFor(stream.release(), outRate, 2, (unsigned int)bitDepth, {}, 0));
+        wav.createWriterFor(stream.release(), outRate, 2,
+                            (unsigned int)bitDepth, metadata, 0));
     if (writer == nullptr) {
       std::cerr << "Could not create a WAV writer for "
                 << outFile.getFullPathName() << "\n";
@@ -320,6 +482,7 @@ int main(int argc, char *argv[]) {
 
     juce::int64 framesThisStem = 0;
     int clipsPlaced = 0;
+    int faded = 0;
 
     // Every stem walks the full timeline, so an interval a player sat out
     // becomes silence of exactly the right length rather than a gap that pulls
@@ -344,13 +507,14 @@ int main(int argc, char *argv[]) {
       block.clear();
 
       const auto clip = intervals.find(interval);
+      int produced = 0;
       if (clip != intervals.end()) {
         const auto file = clip->second.dir.getChildFile(
             ClipsortLog::clipPath(clip->second.clip.guid));
         if (file.existsAsFile()) {
           const auto decoded = decodeClip(file);
           if (decoded.ok) {
-            StemRender::placeClip(
+            produced = StemRender::placeClip(
                 decoded.interleaved.data(),
                 decoded.numChannels > 0
                     ? (int)decoded.interleaved.size() / decoded.numChannels
@@ -363,6 +527,29 @@ int main(int argc, char *argv[]) {
         }
       }
 
+      // Only the joins where audio meets silence need a fade. Between two
+      // intervals that both carry audio the waveform continues by itself, and
+      // fading there would put an amplitude wobble at the interval rate through
+      // the whole stem.
+      if (produced > 0) {
+        const bool prevHadAudio = intervals.count(interval - 1) > 0;
+        const bool nextHasAudio = intervals.count(interval + 1) > 0;
+        const bool shortClip = produced < frames;
+
+        // A clip that came up short decays into its own padding rather than
+        // stepping to zero part-way through the interval.
+        if (shortClip)
+          StemRender::fadeEdges(block.getWritePointer(0),
+                                block.getWritePointer(1), produced, edgeFade,
+                                !prevHadAudio, true);
+        else
+          StemRender::fadeEdges(block.getWritePointer(0),
+                                block.getWritePointer(1), frames, edgeFade,
+                                !prevHadAudio, !nextHasAudio);
+        if (!prevHadAudio || !nextHasAudio || shortClip)
+          ++faded;
+      }
+
       writer->writeFromAudioSampleBuffer(block, 0, frames);
       framesThisStem += frames;
     }
@@ -371,7 +558,8 @@ int main(int argc, char *argv[]) {
 
     std::cout << "  " << name << "   " << clipsPlaced << "/"
               << totalIntervals << " intervals, "
-              << juce::String(framesThisStem / outRate, 1) << " s\n";
+              << juce::String(framesThisStem / outRate, 1) << " s, "
+              << faded << " faded edge(s)\n";
     ++written;
     if (totalFrames == 0)
       totalFrames = framesThisStem;

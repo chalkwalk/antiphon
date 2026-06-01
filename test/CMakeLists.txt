@@ -49,6 +49,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
         ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
+        ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp
         ${CMAKE_SOURCE_DIR}/src/AccessibilityAudit.cpp
 )

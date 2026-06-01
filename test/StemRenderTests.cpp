@@ -123,11 +123,72 @@ public:
       expectWithinAbsoluteError(l[500], 0.5f, 0.01f);
     }
 
+    beginTest("placeClip reports how much it actually wrote");
+    {
+      // The caller needs this to know whether the interval was filled or
+      // padded, which is what decides whether its tail needs a fade.
+      auto clip = makeClip(60, 2, 0.5f, -0.5f);
+      std::vector<float> l(100, 0.0f), r(100, 0.0f);
+      expectEquals(StemRender::placeClip(clip.data(), 60, 2, 48000.0, l.data(),
+                                         r.data(), 100, 48000.0),
+                   60, "a short clip fills only what it has");
+      expectEquals(StemRender::placeClip(clip.data(), 60, 2, 48000.0, l.data(),
+                                         r.data(), 40, 48000.0),
+                   40, "a long clip fills the interval and no more");
+    }
+
+    beginTest("a faded edge removes the step where audio meets silence");
+    {
+      // The click this exists to prevent. A player who sat an interval out
+      // leaves a step from full amplitude straight to zero.
+      const int frames = 1000, fade = 240;
+      std::vector<float> l((std::size_t)frames, 1.0f), r((std::size_t)frames, 1.0f);
+
+      StemRender::fadeEdges(l.data(), r.data(), frames, fade, true, true);
+
+      expectWithinAbsoluteError(l[0], 0.0f, 0.02f, "must start from silence");
+      expectWithinAbsoluteError(l[(std::size_t)frames - 1], 0.0f, 0.02f,
+                                "must end in silence");
+      expectWithinAbsoluteError(l[(std::size_t)frames / 2], 1.0f, 1.0e-6f,
+                                "the middle must be untouched");
+
+      double worst = 0.0;
+      for (int i = 1; i < frames; ++i)
+        worst = std::max(worst, (double)std::abs(l[(std::size_t)i] -
+                                                 l[(std::size_t)(i - 1)]));
+      expect(worst < 0.05, "largest step was " + juce::String(worst, 4) +
+                               " -- that is still a click");
+    }
+
+    beginTest("fading only one end leaves the other alone");
+    {
+      const int frames = 1000, fade = 240;
+      std::vector<float> l((std::size_t)frames, 1.0f), r((std::size_t)frames, 1.0f);
+      StemRender::fadeEdges(l.data(), r.data(), frames, fade, false, true);
+      expectWithinAbsoluteError(l[0], 1.0f, 1.0e-6f,
+                                "the start joins audio and must not be faded");
+      expectWithinAbsoluteError(l[(std::size_t)frames - 1], 0.0f, 0.02f);
+    }
+
+    beginTest("a fade longer than the interval cannot overrun or overlap");
+    {
+      const int frames = 10;
+      std::vector<float> l((std::size_t)frames, 1.0f), r((std::size_t)frames, 1.0f);
+      StemRender::fadeEdges(l.data(), r.data(), frames, 10000, true, true);
+      expectEquals((int)l.size(), frames);
+      for (int i = 0; i < frames; ++i)
+        expect(l[(std::size_t)i] >= 0.0f && l[(std::size_t)i] <= 1.0f,
+               "gain left its range");
+    }
+
     beginTest("degenerate input is ignored rather than trusted");
     {
       std::vector<float> l(8, 0.0f), r(8, 0.0f);
       auto clip = makeClip(8, 2, 1.0f, 1.0f);
 
+      StemRender::fadeEdges(nullptr, r.data(), 8, 4, true, true);
+      StemRender::fadeEdges(l.data(), r.data(), 0, 4, true, true);
+      StemRender::fadeEdges(l.data(), r.data(), 8, 0, true, true);
       StemRender::placeClip(nullptr, 8, 2, 48000.0, l.data(), r.data(), 8, 48000.0);
       StemRender::placeClip(clip.data(), 0, 2, 48000.0, l.data(), r.data(), 8, 48000.0);
       StemRender::placeClip(clip.data(), 8, 0, 48000.0, l.data(), r.data(), 8, 48000.0);

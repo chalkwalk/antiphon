@@ -63,29 +63,44 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   metronomeToggle.setDescription("Play a click on every beat of the interval");
   addAndMakeVisible(metronomeToggle);
 
-  saveTxToggle.setButtonText("Save Tx");
-  saveTxToggle.setToggleState(audioProcessor.saveTxEnabled,
+  recordToggle.setButtonText("Record");
+  recordToggle.setToggleState(audioProcessor.ninjamClient.isRecordingSession(),
                               juce::dontSendNotification);
-  saveTxToggle.onClick = [this]() {
-    audioProcessor.saveTxEnabled = saveTxToggle.getToggleState();
-    audioProcessor.applyDebugCaptureSettings();
+  recordToggle.onClick = [this]() {
+    if (recordToggle.getToggleState()) {
+      const auto parent = NinjamClient::defaultSessionDirectory();
+      parent.createDirectory();
+      if (audioProcessor.ninjamClient.startSessionRecording(parent)) {
+        const auto dir =
+            audioProcessor.ninjamClient.sessionRecordingDirectory();
+        statusReadout.setStatus("Recording to " + dir.getFullPathName());
+        announcer.say("Recording the session", true);
+      } else {
+        recordToggle.setToggleState(false, juce::dontSendNotification);
+        statusReadout.setStatus("Could not start recording");
+        announcer.say("Could not start recording", true);
+      }
+    } else {
+      const auto dir = audioProcessor.ninjamClient.sessionRecordingDirectory();
+      const int clips = audioProcessor.ninjamClient.sessionRecordingClipCount();
+      audioProcessor.ninjamClient.stopSessionRecording();
+      statusReadout.setStatus("Saved " + juce::String(clips) + " clips to " +
+                              dir.getFullPathName());
+      announcer.say("Recording stopped, " + juce::String(clips) + " clips saved",
+                    true);
+    }
   };
-  saveTxToggle.setRepaintsOnMouseActivity(true);
-  saveTxToggle.setTitle("Save transmitted audio");
-  saveTxToggle.setDescription("Debug: write the audio you send to a file on the desktop");
-  addAndMakeVisible(saveTxToggle);
-
-  saveRxToggle.setButtonText("Save Rx");
-  saveRxToggle.setToggleState(audioProcessor.saveRxEnabled,
-                              juce::dontSendNotification);
-  saveRxToggle.onClick = [this]() {
-    audioProcessor.saveRxEnabled = saveRxToggle.getToggleState();
-    audioProcessor.applyDebugCaptureSettings();
-  };
-  saveRxToggle.setRepaintsOnMouseActivity(true);
-  saveRxToggle.setTitle("Save received audio");
-  saveRxToggle.setDescription("Debug: write the audio you receive to a file on the desktop");
-  addAndMakeVisible(saveRxToggle);
+  recordToggle.setRepaintsOnMouseActivity(true);
+  recordToggle.setTitle("Record session");
+  recordToggle.setDescription(
+      "Save the jam as a Ninjam archive, one file per player per interval, for "
+      "converting to WAV stems with antiphon-stems");
+  recordToggle.setTooltip(
+      "Record the session to " +
+      NinjamClient::defaultSessionDirectory().getFullPathName() +
+      "\nEvery player is saved separately, exactly as sent, so the jam can be "
+      "turned into stems afterwards.");
+  addAndMakeVisible(recordToggle);
 
   testToneToggle.setButtonText("Test Tone");
   testToneToggle.setTooltip(
@@ -663,9 +678,7 @@ void AntiphonEditor::resized() {
   toolbar.removeFromRight(8);
   testToneToggle.setBounds(toolbar.removeFromRight(80).reduced(0, 4));
   toolbar.removeFromRight(2);
-  saveRxToggle.setBounds(toolbar.removeFromRight(68).reduced(0, 4));
-  toolbar.removeFromRight(2);
-  saveTxToggle.setBounds(toolbar.removeFromRight(68).reduced(0, 4));
+  recordToggle.setBounds(toolbar.removeFromRight(72).reduced(0, 4));
   toolbar.removeFromRight(10);
   metronomeVolumeSlider.setBounds(toolbar.removeFromRight(60).reduced(0, 6));
   toolbar.removeFromRight(4);

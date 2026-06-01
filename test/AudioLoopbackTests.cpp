@@ -1,6 +1,7 @@
 #include <JuceHeader.h>
 
 #include "FakeNinjamServer.h"
+#include "ClipsortLog.h"
 #include "GainRamp.h"
 #include "IntervalClock.h"
 #include "NinjamClient.h"
@@ -366,6 +367,60 @@ public:
              "channel 0 measured " + juce::String(f0, 1) + " Hz");
       expect(std::fabs(f1 - 880.0) / 880.0 < 0.03,
              "channel 1 measured " + juce::String(f1, 1) + " Hz");
+    }
+
+    beginTest("a recorded session round-trips through the archive format");
+    {
+      // The whole point of saving: what comes back out has to be readable by
+      // the same reader that reads a server's archive, or the recording is
+      // worthless. Writer and parser live in one module so they cannot drift,
+      // and this is the test that proves it end to end over a real socket.
+      const auto tmp =
+          juce::File::getSpecialLocation(juce::File::tempDirectory)
+              .getChildFile("antiphon-session-test");
+      tmp.deleteRecursively();
+      tmp.createDirectory();
+
+      {
+        AudioSession s;
+        expect(s.start(48000.0, 120, 8));
+        expect(s.client.startSessionRecording(tmp), "recording did not start");
+
+        auto pcm = makeSineBuffer(s.intervalSamples, 440.0, 48000.0, 0.5f);
+        for (int i = 0; i < 3; ++i) {
+          expect(s.sendInterval(pcm), "interval " + juce::String(i));
+          s.render(512);
+        }
+        s.client.stopSessionRecording();
+      }
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+
+      // One session directory, named for the time and the server.
+      auto dirs = tmp.findChildFiles(juce::File::findDirectories, false, "*.ninjam");
+      expectEquals(dirs.size(), 1, "expected exactly one session directory");
+      if (dirs.size() != 1) { tmp.deleteRecursively(); return; }
+
+      const auto dir = dirs[0];
+      const auto log = dir.getChildFile("clipsort.log");
+      expect(log.existsAsFile(), "no manifest was written");
+
+      const auto parsed = ClipsortLog::parse(log.loadFileAsString());
+      expectEquals(parsed.malformedLines, 0,
+                   "our own writer must produce something our parser accepts");
+      expect(!parsed.clips.empty(), "no clips in the manifest");
+
+      // Every clip named in the manifest must actually be on disk, in the
+      // place the reader will look for it, and contain something.
+      for (const auto &clip : parsed.clips) {
+        const auto file = dir.getChildFile(ClipsortLog::clipPath(clip.guid));
+        expect(file.existsAsFile(),
+               "manifest names a clip that is not on disk: " + clip.guid);
+        expect(file.getSize() > 0, "clip is empty: " + clip.guid);
+        expect(clip.bpm == 120 && clip.bpi == 8,
+               "clip did not record the tempo in force");
+      }
+
+      tmp.deleteRecursively();
     }
 
     beginTest("slots are recycled, so a channel can rejoin indefinitely");
