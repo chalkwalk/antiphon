@@ -499,6 +499,10 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // incoming audio, never to drive the local clock. Network jitter would
   // otherwise yank the interval clock mid-interval and discard seconds of
   // un-played audio.
+  // Declared out here because the remote mix below sits outside the clock
+  // block; assigned inside, once SyncState has been updated for this block.
+  RunGate gate;
+
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
     // Drain any pending signal so the diagnostic counter stays at 0.
@@ -539,12 +543,14 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
     publishedSyncState.store((int)syncState.get());
 
-    // Everything below is gated on being in step, not merely connected: before
-    // the user has synced we neither transmit nor play, so a jam never starts
-    // out of phase with their DAW.
-    const bool isConnected = syncState.isRunning();
+    // Three separate questions, which used to be one. See RunGate.h: the
+    // transport drives the grid, the connection decides what happens to the
+    // audio. Recomputed every block from live state, so a connection landing or
+    // dropping takes effect immediately without anything having to remember.
+    gate = computeRunGate(ninjamClient.isConnected(), syncState.isRunning(),
+                          transportIsPlaying(), practiceEnabled.load());
 
-    if (isConnected) {
+    if (gate.gridRunning) {
       clockEvents.clear();
       intervalClock.advance(ns, clockEvents);
 
@@ -586,7 +592,7 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // rounds every transmitted interval up to a multiple of the block size --
     // measured against the reference client as roughly +1.3 ms of stretch at
     // each interval seam (work item #27).
-    if (isConnected) {
+    if (gate.inJam) {
       IntervalClock::splitAtIntervalStarts(clockEvents, ns, captureSegments);
       for (const auto &seg : captureSegments) {
         if (seg.count > 0)
@@ -602,8 +608,9 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  // 7. Remote audio mix
-  if (ninjamClient.isConnected())
+  // 7. Remote audio mix. Gated on being in the jam rather than merely
+  // connected, so a stopped transport stops everything together.
+  if (gate.inJam)
     ninjamClient.getDecodedAudio(buffer);
 
 }
@@ -777,6 +784,14 @@ void AntiphonAudioProcessor::sendChannelInfoToServer() {
 
 void AntiphonAudioProcessor::onConnected() {
   connectionStatus = "Connected";
+  // Practice is offline-only; the gate enforces that every block, but switching
+  // it off here keeps the UI honest about what is going on.
+  practiceEnabled.store(false);
+  // The standalone has no host transport to start, so connecting starts ours.
+  // Without this you would join a room and hear nothing until you found a
+  // button that did not exist before today.
+  if (isStandaloneApp())
+    localTransportPlaying.store(true);
   hasConnectedSinceLastAttempt = true;
   lastConnectFailed.store(false);
   sendChannelInfoToServer();

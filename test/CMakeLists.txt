@@ -34,6 +34,7 @@ target_sources(NinjamTests
         MusicalKeyTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
+        RunGateTests.cpp
         GainRampTests.cpp
         TransmitSpansTests.cpp
         FakeNinjamServer.cpp

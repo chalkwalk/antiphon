@@ -183,6 +183,50 @@ otherwise ignores it entirely. Network jitter must never move the playback clock
 
 ---
 
+## 4.1 What is running: the transport, the jam, and practice
+
+Three questions that used to be one condition. `syncState.isRunning()` gated both
+whether the interval clock advanced and whether we were in the jam, and
+`SyncState` reports `Disconnected` whenever there is no server -- so offline the
+clock, the metronome, the phase bar and capture all stopped together.
+
+`RunGate` (`src/RunGate.h`) separates them, in one sentence: **a transport drives
+the grid; the connection decides what happens to the audio.**
+
+| | Grid runs when | Transmit | Practice |
+|---|---|---|---|
+| **Plugin** | host transport playing | connected + synced + playing | offline + playing |
+| **Standalone** | local transport playing | connected + playing | offline + playing |
+
+Consequences worth knowing:
+
+- **The grid runs whenever the transport does**, connected or not, so Antiphon
+  works as a plain BPI-aware metronome on its own. The metronome defaults off in
+  the plugin, so no DAW project starts clicking unexpectedly.
+- **The standalone has its own transport.** Connecting starts it, so joining a
+  room behaves as it always did; it can then be stopped. **Sync stays DAW-only**,
+  and now for a stated reason: in the plugin you do not control the transport
+  from here, so you arm and wait for the edge; in the standalone pressing play
+  *is* the edge.
+- **`SyncState::Running` deliberately survives a transport stop**, so an
+  accidental stop never re-phases a jam. "In step" and "playing right now" are
+  therefore different questions, and `inJam` is the conjunction.
+
+This is safe because **Ninjam's absolute interval phase is free**: every client
+plays each received interval starting at its own downbeat, so phase offsets
+between clients cancel out per listener. That is the same fact that makes the
+local metronome the sole authority (`PRINCIPLES §9`). A locally started grid
+cannot desync us from the room.
+
+`computeRunGate` carries the invariant `!(inJam && echoOn)` -- transmitting and
+practising can never both be live, because one requires a connection and the
+other requires none. That is a safety property, so it is asserted over every
+input combination in `test/RunGateTests.cpp` rather than assumed;
+`PluginProcessor` cannot be compiled into the test target, so if it were not
+tested there it would not be tested at all.
+
+---
+
 ## 5. Sync to the host
 
 `SyncState` (`src/SyncState.h`) is a five-state machine, pure and JUCE-free so

@@ -114,6 +114,11 @@ private:
   juce::ToggleButton recordToggle;
   juce::ToggleButton testToneToggle;
   juce::TextButton syncButton;
+  // Standalone only. The plugin locks to the host transport; the standalone had
+  // none, so it gets its own. Sync stays DAW-only for a reason worth stating:
+  // in the plugin you do not control the transport from here so you arm and
+  // wait for the edge, while here pressing play IS the edge.
+  juce::TextButton transportButton;
   juce::ToggleButton chatToggle;
 
   // Compact toolbar groups: "Channel: [+]"  "Input bus: [+][-]"  "Output bus: [+][-]"
@@ -133,6 +138,7 @@ private:
   // Applies the standalone/hosted divergence. Called once at construction:
   // which controls can ever apply is fixed for the life of the instance.
   void applyHostContextToControls();
+  void refreshTransportButton();
 
   // Local Channel Strips
   juce::OwnedArray<LocalChannelStrip> localChannelStrips;

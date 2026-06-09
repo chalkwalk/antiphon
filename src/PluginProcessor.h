@@ -2,6 +2,7 @@
 
 #include "GainRamp.h"
 #include "IntervalClock.h"
+#include "RunGate.h"
 #include "IntervalProbe.h"
 #include "SyncState.h"
 #include "TransmitSpans.h"
@@ -212,6 +213,21 @@ public:
   std::atomic<bool> syncRequested{false};   // set by the Sync button
 
   void requestSync() { syncRequested.store(true); }
+
+  // The standalone's own transport. The plugin uses the host's; the standalone
+  // had none, so its grid ran purely on being connected and there was nothing
+  // to start or stop. Connecting turns it on, so existing behaviour is
+  // unchanged and nobody joins a room to silence.
+  std::atomic<bool> localTransportPlaying{false};
+
+  // Whichever transport applies to this build.
+  bool transportIsPlaying() const {
+    return isStandaloneApp() ? localTransportPlaying.load() : hostIsPlaying;
+  }
+
+  // Offline practice: your own audio played back to you, delayed. Offline-only,
+  // which is what makes "never transmitted" true by construction.
+  std::atomic<bool> practiceEnabled{false};
 
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};

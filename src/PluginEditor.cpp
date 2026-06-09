@@ -129,6 +129,16 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   syncButton.setDescription("Lock the interval grid to the next start of the DAW transport");
   addAndMakeVisible(syncButton);
 
+  transportButton.onClick = [this]() {
+    const bool playing = !audioProcessor.localTransportPlaying.load();
+    audioProcessor.localTransportPlaying.store(playing);
+    refreshTransportButton();
+    announcer.say(playing ? "Transport running" : "Transport stopped", true);
+  };
+  transportButton.setRepaintsOnMouseActivity(true);
+  addChildComponent(transportButton);
+  refreshTransportButton();
+
   // Compact toolbar groups
   channelGroupLabel.setText("Channel:", juce::dontSendNotification);
   channelGroupLabel.setJustificationType(juce::Justification::centredRight);
@@ -369,6 +379,20 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   startTimerHz(30);
 }
 
+void AntiphonEditor::refreshTransportButton() {
+  const bool playing = audioProcessor.localTransportPlaying.load();
+  transportButton.setButtonText(playing ? "Stop" : "Play");
+  transportButton.setToggleState(playing, juce::dontSendNotification);
+  transportButton.setTitle(playing ? "Stop the transport" : "Start the transport");
+  transportButton.setDescription(
+      playing ? "Stop the interval clock, the metronome and transmission"
+              : "Start the interval clock, so the metronome runs and, when "
+                "connected, audio is transmitted");
+  transportButton.setTooltip(
+      "The standalone's own transport. It drives the interval grid the way the "
+      "DAW transport does in the plugin.\nConnecting starts it for you.");
+}
+
 void AntiphonEditor::applyHostContextToControls() {
   // The UI is allowed to differ between the standalone and the plugin, because
   // the two genuinely can do different things. Local channels and buses exist
@@ -401,6 +425,9 @@ void AntiphonEditor::applyHostContextToControls() {
   channelGroupLabel.setText("Ch:", juce::dontSendNotification);
   inputBusGroupLabel.setText("In:", juce::dontSendNotification);
   outputBusGroupLabel.setText("Out:", juce::dontSendNotification);
+
+  // The standalone gets a transport of its own where the plugin has Sync.
+  transportButton.setVisible(true);
 
   dawOnlyNote.setVisible(true);
   dawOnlyNote.setTitle("Plugin only");
@@ -668,6 +695,8 @@ void AntiphonEditor::resized() {
   // over its border.
 
   // Session controls, from the left.
+  const bool standalone = audioProcessor.isStandaloneApp();
+
   browseButton.setBounds(toolbar.removeFromLeft(90).reduced(0, 4));
   toolbar.removeFromLeft(4);
   disconnectButton.setBounds(toolbar.removeFromLeft(82).reduced(0, 4));
@@ -693,14 +722,18 @@ void AntiphonEditor::resized() {
   // Gated on the condition itself, not on the label's visibility: resized() runs
   // during construction, before applyHostContextToControls() has made the note
   // visible, so asking the label would silently give it no bounds.
-  const bool standalone = audioProcessor.isStandaloneApp();
+  // The transport comes first and is a live control, so the note must not
+  // prefix it -- it belongs to the inert run that follows.
+  if (standalone)
+    transportButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
+  else
+    syncButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
+  toolbar.removeFromLeft(10);
+
   if (standalone) {
     dawOnlyNote.setBounds(toolbar.removeFromLeft(66));
     toolbar.removeFromLeft(4);
   }
-
-  syncButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
-  toolbar.removeFromLeft(10);
 
   // Channel: [+]
   channelGroupLabel.setBounds(toolbar.removeFromLeft(standalone ? 30 : 62));
