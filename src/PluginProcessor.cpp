@@ -445,7 +445,13 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // is a PRINCIPLES 7 violation in its own right -- but it fires once per
   // interval rather than per block, and removing it means the redesign tracked
   // as *Lock-free TX handoff* in ROADMAP.md. The lock is gone; the post is not.
-  auto fireCaptureLambdas = [this]() {
+  auto fireCaptureLambdas = [this](const RunGate &postGate) {
+    // inJam and echoOn are read HERE and captured by value. Re-reading them
+    // inside the lambda would let a connection landing between the boundary and
+    // the message thread's turn transmit an interval that was captured offline.
+    const bool postInJam = postGate.inJam;
+    const bool postEchoOn = postGate.echoOn;
+
     const int numChannels = audioChannelCount.load(std::memory_order_acquire);
     for (int ci = 0; ci < numChannels; ++ci) {
       auto *lc = audioChannels[(std::size_t)ci];
@@ -465,14 +471,15 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         lc->fifo.reset();
         continue;
       }
-      if (ninjamClient.isConnected() && length > 0) {
+      if ((postInJam || postEchoOn) && length > 0) {
         bool mono = lc->isMono.load();
         const int rampSamples = lc->monitorRamp.rampLengthSamples();
         // A raw pointer is as safe here as the shared_ptr used to be: the
         // channel outlives the processor's audio path, and the lambda already
         // captures `this`, so it cannot outlive the processor either.
         juce::MessageManager::callAsync(
-            [this, lc, length, ci, mono, handoff, rampSamples]() {
+            [this, lc, length, ci, mono, handoff, rampSamples, postInJam,
+             postEchoOn]() {
           if (!lc->isValid.load()) return;
           juce::AudioBuffer<float> buf(2, length);
           int s1, n1, s2, n2;
@@ -486,7 +493,12 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
           // switching it cannot click in what the other players hear.
           lc->spans[(std::size_t)handoff].applyTo(
               buf.getArrayOfWritePointers(), 2, length, rampSamples);
-          ninjamClient.processCapturedAudio(buf, length, ci, mono);
+          if (postInJam)
+            ninjamClient.processCapturedAudio(buf, length, ci, mono);
+          // v1 echoes one channel: summing several needs to know when the last
+          // channel's post for a boundary has arrived, which is fragile.
+          if (postEchoOn && ci == 0)
+            ninjamClient.pushEchoInterval(buf, length);
         });
       } else {
         lc->fifo.reset();
@@ -592,26 +604,39 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // rounds every transmitted interval up to a multiple of the block size --
     // measured against the reference client as roughly +1.3 ms of stretch at
     // each interval seam (work item #27).
-    if (gate.inJam) {
+    if (gate.inJam || gate.echoOn) {
       IntervalClock::splitAtIntervalStarts(clockEvents, ns, captureSegments);
       for (const auto &seg : captureSegments) {
         if (seg.count > 0)
           captureInputRange(seg.start, seg.count);
         if (seg.closesInterval) {
           publishedIntervalIndex.fetch_add(1);
-          fireCaptureLambdas();
-          ninjamClient.swapIntervalBuffers();
-          ninjamClient.diagSwaps.fetch_add(1);
-          ninjamClient.intervalBeginSignal.store(false);
+          // The gate is captured by value at post time inside this call.
+          fireCaptureLambdas(gate);
+          if (gate.inJam) {
+            ninjamClient.swapIntervalBuffers();
+            ninjamClient.diagSwaps.fetch_add(1);
+            ninjamClient.intervalBeginSignal.store(false);
+          }
         }
       }
     }
+
+    // Echo slots are serviced on EVERY block outside a jam, not only while
+    // practice is on. Switching practice off marks them draining, and only the
+    // audio thread completes that transition -- skip the call and they stay
+    // draining forever, so the history can never be released and the next
+    // enable deadlocks against its own predecessor.
+    if (!gate.inJam)
+      ninjamClient.swapEchoBuffers();
   }
 
   // 7. Remote audio mix. Gated on being in the jam rather than merely
   // connected, so a stopped transport stops everything together.
   if (gate.inJam)
     ninjamClient.getDecodedAudio(buffer);
+  else
+    ninjamClient.getEchoAudio(buffer);
 
 }
 
@@ -762,6 +787,24 @@ bool AntiphonAudioProcessor::applyRetroactiveTransmit(
   return true;
 }
 
+bool AntiphonAudioProcessor::setPracticeEnabled(bool on) {
+  if (!on) {
+    practiceEnabled.store(false);
+    ninjamClient.setPracticeEnabled(false, 0, 0.0);
+    return true;
+  }
+
+  // The history is interval-sized, so it needs the grid the clock is actually
+  // running -- not the pending tempo, which may not have taken effect yet.
+  const int intervalSamples = intervalClock.samplesPerInterval();
+  const double sr = getSampleRate();
+  if (!ninjamClient.setPracticeEnabled(true, intervalSamples, sr))
+    return false;
+
+  practiceEnabled.store(true);
+  return true;
+}
+
 void AntiphonAudioProcessor::refreshLocalSoloState() {
   bool anyLocalSolo = false;
   {
@@ -786,7 +829,7 @@ void AntiphonAudioProcessor::onConnected() {
   connectionStatus = "Connected";
   // Practice is offline-only; the gate enforces that every block, but switching
   // it off here keeps the UI honest about what is going on.
-  practiceEnabled.store(false);
+  setPracticeEnabled(false);
   // The standalone has no host transport to start, so connecting starts ours.
   // Without this you would join a room and hear nothing until you found a
   // button that did not exist before today.

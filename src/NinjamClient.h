@@ -1,5 +1,6 @@
 #pragma once
 #include "GainRamp.h"
+#include "EchoSchedule.h"
 #include "SessionWriter.h"
 #include "SpscRing.h"
 #include "VorbisCodec.h"
@@ -90,6 +91,11 @@ public:
 
   void swapIntervalBuffers();
 
+  // The practice-echo half of the slot array. See swapEchoBuffers in the .cpp
+  // for why these are serviced whenever we are not in a jam.
+  void swapEchoBuffers();
+  void getEchoAudio(juce::AudioBuffer<float> &buffer);
+
   // Update the local channel names sent to the server via CLIENT_SET_CHANNEL_INFO (0x82).
   // Safe to call from any thread. Sends immediately if connected.
   void updateChannelInfo(const juce::StringArray &names);
@@ -171,6 +177,49 @@ public:
   // What we connected as, so the UI can tell your own messages from everyone
   // else's. Empty until a connection is attempted.
   juce::String getSelfUsername() const;
+
+  // ---- Practice echo -------------------------------------------------
+  //
+  // Your own audio played back N intervals late, as a virtual player, so you
+  // can practise the Ninjam form alone. Deliberately not a looper: no layers,
+  // no overdub, no persistence, no editing. Offline-only, which makes "never
+  // transmitted" true by construction rather than by discipline.
+  //
+  // Deliberately NOT a fake entry in remoteUsers. That map is read by
+  // sendUserMask, getRoomMembers, getRemoteUsers and the disconnect teardown,
+  // so a synthetic user there would have to be filtered out of four places --
+  // four chances for a later edit to leak a player that does not exist onto a
+  // real server. Its own storage means those four need no changes at all.
+  struct EchoTap {
+    int delayIntervals = 4;
+    RemoteUserChannel channel;
+  };
+
+  static constexpr int kDefaultEchoDelays[3] = {4, 6, 8};
+  // Roughly forty intervals of a typical jam; a slow tempo allows fewer. Stops
+  // a 32-BPI session at 60 bpm quietly reserving hundreds of megabytes.
+  static constexpr long long kEchoMemoryBudgetBytes = 128000000LL;
+
+  // Message thread. Building the history allocates, so it must not be called
+  // from the audio thread; the gate in the processor is what keeps that true.
+  bool setPracticeEnabled(bool enabled, int intervalSamples, double sampleRate);
+  bool isPracticeEnabled() const { return practiceActive.load(); }
+
+  std::vector<EchoTap> getEchoTaps() const;
+  void setEchoTapDelay(int tap, int intervals);
+  void setEchoTapVolume(int tap, float volume);
+  void setEchoTapPan(int tap, float pan);
+  void setEchoTapMute(int tap, bool mute);
+  void setEchoTapSolo(int tap, bool solo);
+  void setEchoTapOutputBus(int tap, int busIdx);
+  int maxEchoDelay() const { return maxEchoDelayIntervals; }
+
+  // Message thread: one interval of your own audio, already mixed to the
+  // channel's width. Ignored while connected, mirroring processCapturedAudio's
+  // own guard, so a connection landing between the boundary and this call
+  // cannot put practice audio anywhere near the wire.
+  void pushEchoInterval(const juce::AudioBuffer<float> &audio, int numSamples);
+
 
   // Whether anything, anywhere, is soloed -- a bitmask, exactly as the
   // reference client keeps it (`m_issoloactive`, njclient.cpp:1750 and :1886).
@@ -314,7 +363,26 @@ private:
   // Running out drops the channel and says so, rather than growing an array the
   // audio thread is walking.
   static constexpr int kMaxStreams = 64;
-  std::array<StreamSlot, (std::size_t)kMaxStreams> streamSlots;
+
+  // Practice echo taps live past the network slots, never among them.
+  // acquireStreamSlot already stops at kMaxStreams, so a remote channel cannot
+  // be handed an echo slot, and the loops below take explicit ranges so a
+  // disconnect cannot tear down an echo either.
+  //
+  // The segregation also keeps SPSC true. A network slot's non-audio owner is
+  // the network thread; an echo slot's is the message thread. The invariant is
+  // "one non-audio owner per slot", not "the network thread owns everything",
+  // and it holds statically because neither thread's loop reaches the other's
+  // range.
+  static constexpr int kMaxEchoTaps = 3;
+  static constexpr int kFirstEchoSlot = kMaxStreams;
+  static constexpr int kTotalSlots = kMaxStreams + kMaxEchoTaps;
+  std::array<StreamSlot, (std::size_t)kTotalSlots> streamSlots;
+
+  // One body, two ranges: [0, kMaxStreams) for the network, [kFirstEchoSlot,
+  // kTotalSlots) for practice.
+  void swapSlotRange(int first, int last);
+  void mixSlotRange(int first, int last, juce::AudioBuffer<float> &buffer);
 
   int acquireStreamSlot(const juce::String &username, int channelIndex);
   void releaseStreamSlot(const juce::String &username, int channelIndex);
@@ -388,6 +456,31 @@ private:
   std::unique_ptr<juce::FileOutputStream> rxOggFile;
   std::unique_ptr<juce::AudioFormatWriter> rxWavWriter;
   juce::WavAudioFormat wavFormat;
+
+  // The shared history. One ring of interval-sized buffers, sized by the
+  // DEEPEST tap whether or not that tap is audible: a muted tap has to be able
+  // to unmute instantly rather than waiting for the history to refill, which
+  // would read as a bug rather than as a feature.
+  //
+  // Ownership is deliberately unlike the network path. The same entry is read
+  // by the 4-interval tap now and the 8-interval tap four intervals later, so
+  // the audio thread must not be the thing that frees it. It keeps handing
+  // entries back through `retired` exactly as it always did, and the bank's
+  // drain pops and discards -- the ring owns the storage for its whole life.
+  // Turning that discard into a free is a use-after-free in the mix.
+  std::vector<std::unique_ptr<DecodedInterval>> echoHistory;
+  long long echoIntervalsWritten = 0;
+  int maxEchoDelayIntervals = 0;
+  EchoTap echoTaps[kMaxEchoTaps];
+  std::atomic<bool> practiceActive{false};
+  juce::CriticalSection echoMutex; // message thread and UI, never audio
+
+  // The remote half of the global solo bus, covering remote channels AND echo
+  // taps -- scanning only one of them lets clearing a solo in the other bring
+  // the whole room back.
+  void recomputeRemoteSolo();
+  void drainEchoRetired();
+  void teardownEcho();
 
   SessionWriter sessionWriter;
 

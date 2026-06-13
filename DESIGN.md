@@ -382,6 +382,57 @@ impossible; this is the trade that buys the feature.
 
 ---
 
+## 6.2 Practice echo
+
+Offline, your own audio is played back to you several intervals late, as virtual
+players. A duet with your past self: the same musical form the room gives you,
+alone. Deliberately **not a looper** -- no layers, no overdub, no persistence, no
+editing. Jamtaba's looper mixes its output into the channel *after* the fader
+(`LocalInputNode.cpp:352`), and that buffer is what reaches the encoder, so its
+loops are transmitted; that is the DAW-inside-the-plugin shape `NON-GOALS.md`
+refuses. An echo has no such gradient: there is nothing to add to it.
+
+**Offline-only**, which makes "never transmitted" true by construction rather
+than by discipline. `RunGate` enforces it every block, and the invariant is
+asserted over every input combination (`§4.1`).
+
+**Slot segregation.** Echo taps live at `[kFirstEchoSlot, kTotalSlots)` in the
+same fixed array as the network streams, never among them. `acquireStreamSlot`
+stops at `kMaxStreams`, and every loop over the array takes an explicit range, so
+a disconnect cannot tear down an echo and `drainAllRetired` cannot free storage
+the history ring still owns. This also keeps SPSC true with a different owner:
+the invariant is **one non-audio owner per slot**, and for echo slots that owner
+is the message thread rather than the network thread.
+
+**One ring, several taps.** The history is sized by the *deepest* tap regardless
+of mute -- a muted tap must unmute instantly rather than waiting for a refill,
+which would read as a bug. Three taps at 4, 6 and 8 therefore cost what 8 costs,
+not what 4+6+8 costs.
+
+The same entry is read by the 4-interval tap now and the 8-interval tap four
+intervals later, so **the audio thread must not be the thing that frees it**. It
+keeps handing entries back through `retired` exactly as it always did, and the
+bank's drain **pops and discards** -- the ring owns the storage for its whole
+life. Turning that discard into a free is a use-after-free in the mix.
+
+Depth is `deepest + 2`. One spare stops the writer catching a reader in the same
+interval; the second covers the crossfade tail the previous interval keeps
+sounding into the current one. `test/EchoScheduleTests.cpp` runs the real tap set
+over ten thousand intervals asserting no live entry is ever overwritten, and
+checks that one interval less of slack *would* collide -- so the +2 is measured
+rather than superstition.
+
+A memory budget clamps the deepest selectable delay, because a 32-BPI session at
+60 bpm makes each stored interval four times the size of a normal one.
+
+**In the mixer** the taps appear as a strip like any other player, so fader, pan,
+mute, solo and output bus all work -- an echo can be routed to its own DAW bus.
+Only the shortest is audible to begin with; all three exist so the delay pickers
+are discoverable. The picker takes the **Recv** button's place, Recv being
+meaningless when there is no server to stop sending.
+
+---
+
 ## 7. Remote playback, mixing and routing
 
 Each `(username, channelIndex)` pair holds one of the fixed `streamSlots`

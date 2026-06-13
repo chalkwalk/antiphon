@@ -214,6 +214,18 @@ interval so far. See `DESIGN.md` section 6.1.
       logic under it (`TransmitSpans`, `GainRamp`) is tested; the press, the
       hold threshold, the flash and the announcement need hands.
 
+### Practice echo
+
+Shipped. See `DESIGN.md` section 6.2.
+
+- [ ] v1 echoes one local channel. Summing several needs to know when the last
+      channel's post for a boundary has arrived, which is fragile; deferred
+      rather than guessed at.
+- [ ] The echo history is rebuilt on a tempo or BPI change, since every stored
+      interval becomes the wrong length. Currently that means switching practice
+      off and on; doing it automatically, with an announcement, would be
+      friendlier.
+
 ### Underrun tail
 
 When a decoded interval runs short, `getDecodedAudio` leaves the remainder of the

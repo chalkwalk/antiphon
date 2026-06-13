@@ -4,8 +4,8 @@
 #include "PluginProcessor.h"
 
 RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
-                                   juce::String uname, int chIdx)
-    : audioProcessor(p), username(uname), channelIndex(chIdx) {
+                                   juce::String uname, int chIdx, int tap)
+    : audioProcessor(p), username(uname), channelIndex(chIdx), echoTap(tap) {
 
   channelNameLabel.setFont(juce::FontOptions{}.withHeight(11.0f));
   channelNameLabel.setColour(juce::Label::textColourId,
@@ -30,6 +30,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Volume in dB: -inf to +6, unity at 0. Remote channels default to "
       "-12 dB, matching the reference client.");
   volumeSlider.onValueChange = [this]() {
+    if (isEcho())
+      audioProcessor.ninjamClient.setEchoTapVolume(echoTap, GainUtils::dbToGain(volumeSlider.getValue()));
+    else
     audioProcessor.ninjamClient.setRemoteUserVolume(
         username, channelIndex, GainUtils::dbToGain(volumeSlider.getValue()));
   };
@@ -49,6 +52,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Stereo position of this remote channel in your mix");
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
+    if (isEcho())
+      audioProcessor.ninjamClient.setEchoTapPan(echoTap, (float)panSlider.getValue());
+    else
     audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
                                                  (float)panSlider.getValue());
   };
@@ -59,6 +65,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Silence this remote channel in your mix. Audio is still received.");
   muteButton.setTooltip("Mute: silence this player in your mix (audio still downloads)");
   muteButton.onClick = [this]() {
+    if (isEcho())
+      audioProcessor.ninjamClient.setEchoTapMute(echoTap, muteButton.getToggleState());
+    else
     audioProcessor.ninjamClient.setRemoteUserMute(username, channelIndex,
                                                   muteButton.getToggleState());
   };
@@ -69,6 +78,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Hear only soloed remote channels");
   soloButton.setTooltip("Solo: hear only soloed remote channels");
   soloButton.onClick = [this]() {
+    if (isEcho())
+      audioProcessor.ninjamClient.setEchoTapSolo(echoTap, soloButton.getToggleState());
+    else
     audioProcessor.ninjamClient.setRemoteUserSolo(username, channelIndex,
                                                   soloButton.getToggleState());
   };
@@ -89,6 +101,26 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   };
   addAndMakeVisible(recvButton);
 
+  // The delay picker, in the Recv button's place. Same 1-based-ID pattern as
+  // the output bus box below.
+  delayBox.onChange = [this]() {
+    const int sel = delayBox.getSelectedId();
+    if (sel > 0 && isEcho())
+      audioProcessor.ninjamClient.setEchoTapDelay(echoTap, sel);
+  };
+  delayBox.setTitle("Echo delay");
+  delayBox.setDescription(
+      "How many intervals late this echo plays your own audio back");
+  delayBox.setTooltip(
+      "How far behind this echo follows you, in intervals. A longer delay makes "
+      "a wider canon.");
+  addChildComponent(delayBox);
+
+  if (isEcho()) {
+    recvButton.setVisible(false);
+    delayBox.setVisible(true);
+  }
+
   outputBusBox.setTitle("Output bus");
   outputBusBox.setDescription(
       "Which plugin output bus this channel is routed to, for recording stems");
@@ -96,7 +128,10 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   outputBusBox.onChange = [this]() {
     int sel = outputBusBox.getSelectedId() - 1;
     if (sel >= 0)
-      audioProcessor.setRemoteUserOutputBus(username, channelIndex, sel);
+      if (isEcho())
+        audioProcessor.ninjamClient.setEchoTapOutputBus(echoTap, sel);
+      else
+        audioProcessor.setRemoteUserOutputBus(username, channelIndex, sel);
   };
   addAndMakeVisible(outputBusBox);
   updateOutputBusCount(1);
@@ -115,6 +150,20 @@ void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
   int busId = c.outputBusIndex + 1;
   if (busId != outputBusBox.getSelectedId())
     outputBusBox.setSelectedId(busId, juce::dontSendNotification);
+}
+
+void RemoteChannelRow::setEchoDelayOptions(int maxDelay, int current) {
+  if (!isEcho())
+    return;
+  const int wanted = juce::jlimit(1, juce::jmax(1, maxDelay), current);
+  if (delayBox.getNumItems() != juce::jmax(1, maxDelay)) {
+    delayBox.clear(juce::dontSendNotification);
+    for (int i = 1; i <= juce::jmax(1, maxDelay); ++i)
+      delayBox.addItem(juce::String(i) + (i == 1 ? " interval" : " intervals"),
+                       i);
+  }
+  if (delayBox.getSelectedId() != wanted)
+    delayBox.setSelectedId(wanted, juce::dontSendNotification);
 }
 
 void RemoteChannelRow::updateOutputBusCount(int numBuses) {
@@ -172,7 +221,10 @@ void RemoteChannelRow::resized() {
   area.removeFromTop(4);
 
   area.removeFromBottom(4);
-  recvButton.setBounds(area.removeFromBottom(22));
+  if (isEcho())
+    delayBox.setBounds(area.removeFromBottom(22));
+  else
+    recvButton.setBounds(area.removeFromBottom(22));
   area.removeFromBottom(4);
   outputBusBox.setBounds(area.removeFromBottom(22));
   area.removeFromBottom(4);

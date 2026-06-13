@@ -260,9 +260,13 @@ void NinjamClient::run() {
   // the slot is next claimed. If the audio thread never runs again, the
   // destructor gets it.
   guidToInterval.clear();
-  for (auto &slot : streamSlots)
+  // Network range only: a disconnect must not tear down a practice echo, which
+  // is offline by definition and has nothing to do with this connection.
+  for (int i = 0; i < kMaxStreams; ++i) {
+    auto &slot = streamSlots[(std::size_t)i];
     if (slot.state.load(std::memory_order_acquire) != StreamSlot::kFree)
       slot.state.store(StreamSlot::kDraining, std::memory_order_release);
+  }
   {
     juce::ScopedLock sl(usersMutex);
     slotIndexByKey.clear();
@@ -879,8 +883,11 @@ void NinjamClient::drainRetired(StreamSlot &slot) {
 }
 
 void NinjamClient::drainAllRetired() {
-  for (auto &slot : streamSlots)
-    drainRetired(slot);
+  // Network range only. An echo slot's intervals belong to the history ring,
+  // not to `owned`, so letting drainRetired near them would free storage the
+  // ring is still using.
+  for (int i = 0; i < kMaxStreams; ++i)
+    drainRetired(streamSlots[(std::size_t)i]);
 }
 
 void NinjamClient::releaseSlotOnAudioThread(StreamSlot &slot) {
@@ -905,11 +912,16 @@ void NinjamClient::releaseSlotOnAudioThread(StreamSlot &slot) {
 }
 
 void NinjamClient::swapIntervalBuffers() {
-  constexpr int kFadeSamples = 256;
   // The archive's timeline. An atomic increment only -- the writers read it
   // from other threads and never touch the audio thread's work.
   sessionIntervalIndex.fetch_add(1, std::memory_order_relaxed);
-  for (auto &slot : streamSlots) {
+  swapSlotRange(0, kMaxStreams);
+}
+
+void NinjamClient::swapSlotRange(int first, int last) {
+  constexpr int kFadeSamples = 256;
+  for (int slotIdx = first; slotIdx < last; ++slotIdx) {
+    auto &slot = streamSlots[(std::size_t)slotIdx];
     const int st = slot.state.load(std::memory_order_acquire);
     if (st == StreamSlot::kFree)
       continue;
@@ -1061,19 +1073,33 @@ void NinjamClient::setRemoteUserSolo(const juce::String &username,
         s.soloed.store(solo, std::memory_order_relaxed);
       });
 
+  recomputeRemoteSolo();
+}
+
+void NinjamClient::recomputeRemoteSolo() {
   // The remote half of the global solo bus (njclient.cpp:1750). Recomputed
   // rather than counted, so it cannot drift out of step with the channels.
-  bool anyRemoteSolo = false;
+  //
+  // Echo taps are scanned too, and that is not cosmetic: scanning only
+  // remoteUsers means clearing a remote solo would clear the bit while an echo
+  // tap was still soloed, un-soloing it and bringing the whole room back.
+  bool anySolo = false;
   {
     juce::ScopedLock sl(usersMutex);
     for (const auto &[uname, user] : remoteUsers) {
       for (const auto &[chIdx, ch] : user.channels)
-        if (ch.isSoloed) { anyRemoteSolo = true; break; }
-      if (anyRemoteSolo) break;
+        if (ch.isSoloed) { anySolo = true; break; }
+      if (anySolo) break;
     }
   }
+  if (!anySolo && practiceActive.load()) {
+    juce::ScopedLock sl(echoMutex);
+    for (const auto &tap : echoTaps)
+      if (tap.channel.isSoloed) { anySolo = true; break; }
+  }
+
   const int bits = soloMask.load(std::memory_order_relaxed);
-  soloMask.store(anyRemoteSolo ? (bits | kRemoteSolo) : (bits & ~kRemoteSolo),
+  soloMask.store(anySolo ? (bits | kRemoteSolo) : (bits & ~kRemoteSolo),
                  std::memory_order_relaxed);
 }
 
@@ -1123,7 +1149,8 @@ void NinjamClient::sendUserMask() {
   writeFull(0x81, payload.getData(), (int)payload.getSize());
 }
 
-void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
+void NinjamClient::mixSlotRange(int first, int last,
+                                juce::AudioBuffer<float> &buffer) {
   // No lock, no allocation, no map traversal: a walk over a fixed array whose
   // entries are never created or destroyed (PRINCIPLES section 7).
   int numSamples = buffer.getNumSamples();
@@ -1132,7 +1159,8 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
   // The global bus, so a local solo silences remote players too.
   const bool anySolo = isAnySoloActive();
 
-  for (auto &slot : streamSlots) {
+  for (int slotIdx = first; slotIdx < last; ++slotIdx) {
+    auto &slot = streamSlots[(std::size_t)slotIdx];
     const int slotState = slot.state.load(std::memory_order_acquire);
     if (slotState == StreamSlot::kFree)
       continue;
@@ -1280,6 +1308,10 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
 
     slot.muteRamp.advance(numSamples);
   }
+}
+
+void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
+  mixSlotRange(0, kMaxStreams, buffer);
 
   // Checked before the lock is even considered, so the normal path takes no
   // lock on the audio thread at all. Save Rx is a debug capture: when it is on
@@ -1289,8 +1321,230 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
   if (isSavingRx.load(std::memory_order_relaxed)) {
     juce::ScopedLock fl(rxFileMutex);
     if (isSavingRx.load(std::memory_order_relaxed) && rxWavWriter != nullptr)
-      rxWavWriter->writeFromAudioSampleBuffer(buffer, 0, numSamples);
+      rxWavWriter->writeFromAudioSampleBuffer(buffer, 0,
+                                              buffer.getNumSamples());
   }
+}
+
+// The practice half. Serviced on every block where we are not in a jam, not
+// only when practice is enabled: switching it off marks the slots draining, and
+// only the audio thread can complete that transition. Skipping the call would
+// leave them draining forever, so the memory could never be reclaimed and the
+// next enable would deadlock against its own predecessor.
+// ---- Practice echo --------------------------------------------------------
+
+bool NinjamClient::setPracticeEnabled(bool enabled, int intervalSamples,
+                                      double sr) {
+  juce::ScopedLock sl(echoMutex);
+
+  if (!enabled) {
+    teardownEcho();
+    return true;
+  }
+  if (intervalSamples <= 0 || sr <= 0.0)
+    return false;
+
+  teardownEcho();
+
+  // Sized by the deepest tap regardless of mute, so unmuting is instant rather
+  // than silent while the history refills.
+  int deepest = 0;
+  for (int i = 0; i < kMaxEchoTaps; ++i) {
+    echoTaps[i].delayIntervals = kDefaultEchoDelays[i];
+    echoTaps[i].channel = RemoteUserChannel{};
+    echoTaps[i].channel.channelIndex = i;
+    echoTaps[i].channel.channelName =
+        "Echo " + juce::String(kDefaultEchoDelays[i]);
+    echoTaps[i].channel.volume = 1.0f;
+    // Only the shortest tap is audible to begin with. All three exist so the
+    // delay pickers are discoverable, but three at once is a wall of sound
+    // before you have played a note.
+    echoTaps[i].channel.isMuted = i > 0;
+    deepest = juce::jmax(deepest, echoTaps[i].delayIntervals);
+  }
+
+  const int allowed =
+      EchoSchedule::maxDelayForBudget(kEchoMemoryBudgetBytes, intervalSamples, 2);
+  if (allowed < 1)
+    return false;
+  maxEchoDelayIntervals = juce::jmin(deepest, allowed);
+  for (auto &tap : echoTaps)
+    tap.delayIntervals = juce::jmin(tap.delayIntervals, maxEchoDelayIntervals);
+
+  const int depth = EchoSchedule::historyDepth(maxEchoDelayIntervals);
+  echoHistory.clear();
+  echoHistory.reserve((std::size_t)depth);
+  for (int i = 0; i < depth; ++i) {
+    auto entry = std::make_unique<DecodedInterval>();
+    entry->buffer.setSize(2, intervalSamples);
+    entry->buffer.clear();
+    // Taken once, before the audio thread can see it; see DecodedInterval.
+    entry->publishWritePointers();
+    entry->finalReceived.store(true);
+    echoHistory.push_back(std::move(entry));
+  }
+  echoIntervalsWritten = 0;
+
+  for (int i = 0; i < kMaxEchoTaps; ++i) {
+    auto &slot = streamSlots[(std::size_t)(kFirstEchoSlot + i)];
+    slot.username = "Echo";
+    slot.channelIndex = i;
+    slot.volume.store(echoTaps[i].channel.volume);
+    slot.pan.store(echoTaps[i].channel.pan);
+    slot.muted.store(echoTaps[i].channel.isMuted);
+    slot.soloed.store(false);
+    slot.outputBus.store(0);
+    slot.recvEnabled.store(true);
+    slot.peakLevel.store(0.0f);
+    slot.muteRamp.prepare(sr);
+    slot.muteRamp.jumpTo(echoTaps[i].channel.isMuted ? 0.0f : 1.0f);
+    slot.state.store(StreamSlot::kLive, std::memory_order_release);
+  }
+
+  practiceActive.store(true);
+  return true;
+}
+
+void NinjamClient::teardownEcho() {
+  // Caller holds echoMutex. Only marks: the audio thread may be mid-block
+  // holding pointers into these slots, and it is the one that completes the
+  // transition to kFree.
+  for (int i = 0; i < kMaxEchoTaps; ++i) {
+    auto &slot = streamSlots[(std::size_t)(kFirstEchoSlot + i)];
+    if (slot.state.load(std::memory_order_acquire) != StreamSlot::kFree)
+      slot.state.store(StreamSlot::kDraining, std::memory_order_release);
+  }
+  practiceActive.store(false);
+  // The history itself is released on the next enable, once the slots have
+  // been observed free -- the same idiom acquireStreamSlot uses.
+}
+
+void NinjamClient::drainEchoRetired() {
+  // Pops and DISCARDS. The entries belong to echoHistory for its whole life,
+  // because the same one is read by different taps at different times. Freeing
+  // here would be a use-after-free in the mix.
+  for (int i = 0; i < kMaxEchoTaps; ++i) {
+    auto &slot = streamSlots[(std::size_t)(kFirstEchoSlot + i)];
+    while (slot.retired.pop() != nullptr) {
+    }
+  }
+}
+
+void NinjamClient::pushEchoInterval(const juce::AudioBuffer<float> &audio,
+                                    int numSamples) {
+  // Mirrors processCapturedAudio's guard from the other side: practice audio
+  // must never be near the wire, and a connection landing between the interval
+  // boundary and this call is exactly when that could happen.
+  if (isConnected())
+    return;
+
+  juce::ScopedLock sl(echoMutex);
+  if (!practiceActive.load() || echoHistory.empty())
+    return;
+
+  drainEchoRetired();
+
+  const int depth = (int)echoHistory.size();
+  // The interval being stored right now. Held before the counter moves,
+  // because both the write slot and every tap's read slot are relative to it:
+  // reading after the increment makes every tap one interval shallower than
+  // asked for, which sounds almost right and is not.
+  const long long thisInterval = echoIntervalsWritten;
+  const int writeSlot = EchoSchedule::writeSlotFor(thisInterval, depth);
+  auto &entry = *echoHistory[(std::size_t)writeSlot];
+
+  const int frames = juce::jmin(numSamples, entry.buffer.getNumSamples());
+  entry.writePos.store(0);
+  entry.buffer.clear();
+  for (int ch = 0; ch < juce::jmin(2, audio.getNumChannels()); ++ch)
+    if (auto *dst = entry.channelWritePtr[(std::size_t)ch])
+      juce::FloatVectorOperations::copy(dst, audio.getReadPointer(ch), frames);
+  // A mono source feeds both sides, matching what the room would have heard.
+  if (audio.getNumChannels() == 1 && entry.channelWritePtr[1] != nullptr)
+    juce::FloatVectorOperations::copy(entry.channelWritePtr[1],
+                                      audio.getReadPointer(0), frames);
+  entry.writePos.store(frames);
+
+  ++echoIntervalsWritten;
+
+  // Hand each tap the entry it is due, if the history is deep enough yet.
+  for (int i = 0; i < kMaxEchoTaps; ++i) {
+    const int readSlot = EchoSchedule::readSlotFor(
+        thisInterval, echoTaps[i].delayIntervals, depth);
+    if (readSlot < 0)
+      continue; // still filling: silence is the honest answer
+    auto &slot = streamSlots[(std::size_t)(kFirstEchoSlot + i)];
+    slot.ready.push(echoHistory[(std::size_t)readSlot].get());
+  }
+}
+
+std::vector<NinjamClient::EchoTap> NinjamClient::getEchoTaps() const {
+  juce::ScopedLock sl(echoMutex);
+  std::vector<EchoTap> out;
+  if (!practiceActive.load())
+    return out;
+  for (int i = 0; i < kMaxEchoTaps; ++i) {
+    EchoTap t = echoTaps[i];
+    t.channel.peakLevel =
+        streamSlots[(std::size_t)(kFirstEchoSlot + i)].peakLevel.load(
+            std::memory_order_relaxed);
+    out.push_back(t);
+  }
+  return out;
+}
+
+void NinjamClient::setEchoTapDelay(int tap, int intervals) {
+  juce::ScopedLock sl(echoMutex);
+  if (tap < 0 || tap >= kMaxEchoTaps || maxEchoDelayIntervals < 1)
+    return;
+  echoTaps[tap].delayIntervals =
+      juce::jlimit(1, maxEchoDelayIntervals, intervals);
+}
+
+void NinjamClient::setEchoTapVolume(int tap, float volume) {
+  juce::ScopedLock sl(echoMutex);
+  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  echoTaps[tap].channel.volume = volume;
+  streamSlots[(std::size_t)(kFirstEchoSlot + tap)].volume.store(volume);
+}
+
+void NinjamClient::setEchoTapPan(int tap, float pan) {
+  juce::ScopedLock sl(echoMutex);
+  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  echoTaps[tap].channel.pan = pan;
+  streamSlots[(std::size_t)(kFirstEchoSlot + tap)].pan.store(pan);
+}
+
+void NinjamClient::setEchoTapMute(int tap, bool mute) {
+  juce::ScopedLock sl(echoMutex);
+  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  echoTaps[tap].channel.isMuted = mute;
+  streamSlots[(std::size_t)(kFirstEchoSlot + tap)].muted.store(mute);
+}
+
+void NinjamClient::setEchoTapSolo(int tap, bool solo) {
+  {
+    juce::ScopedLock sl(echoMutex);
+    if (tap < 0 || tap >= kMaxEchoTaps) return;
+    echoTaps[tap].channel.isSoloed = solo;
+    streamSlots[(std::size_t)(kFirstEchoSlot + tap)].soloed.store(solo);
+  }
+  recomputeRemoteSolo();
+}
+
+void NinjamClient::setEchoTapOutputBus(int tap, int busIdx) {
+  juce::ScopedLock sl(echoMutex);
+  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  echoTaps[tap].channel.outputBusIndex = busIdx;
+  streamSlots[(std::size_t)(kFirstEchoSlot + tap)].outputBus.store(busIdx);
+}
+
+void NinjamClient::swapEchoBuffers() {
+  swapSlotRange(kFirstEchoSlot, kTotalSlots);
+}
+
+void NinjamClient::getEchoAudio(juce::AudioBuffer<float> &buffer) {
+  mixSlotRange(kFirstEchoSlot, kTotalSlots, buffer);
 }
 
 juce::Array<NinjamClient::ChatMessage> NinjamClient::getChatLog() const {

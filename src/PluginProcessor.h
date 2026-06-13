@@ -229,6 +229,10 @@ public:
   // which is what makes "never transmitted" true by construction.
   std::atomic<bool> practiceEnabled{false};
 
+  // Builds the echo history at the current interval length, which only the
+  // processor knows. Message thread: this allocates.
+  bool setPracticeEnabled(bool on);
+
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
   // Counts intervals since the clock was reset, so a press can be matched to
