@@ -283,7 +283,16 @@ Learned the hard way; each of these cost real time.
   with file and line, in code gdb could not even name. Build commands above.
 
 - **TSan for the threading bugs ASan cannot see.** Four threads touch shared
-  state here, and both threading bugs found so far were of that kind.
+  state here, and every threading bug found so far was of that kind.
+
+  **The baseline is zero warnings, in both TSan and ASan.** Anything else is a
+  regression you introduced -- there is no list of known-acceptable findings to
+  check against, and that is deliberate. A suite with a remembered exception is
+  one nobody reads carefully.
+
+  The only sanitiser output that is not ours is four UBSan lines from inside
+  vendored libvorbis (`bitwise.c`, `floor1.c`, `psy.c`). Ignore those; do not
+  ignore anything in `src/`.
 
 - **Never diagnose a "hang" through `timeout` and a pipe.** JUCE's output is
   block-buffered, so `timeout 300 ... | tail` throws away everything the run

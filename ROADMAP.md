@@ -239,13 +239,28 @@ block silent. A hard cut to silence is the most audible possible failure mode.
 
 ### Client shutdown race
 
-`~NinjamClient` closes the socket while `run()` may be blocked in `read()`.
-Currently only visible as test-teardown flakiness, which is exactly how this
-class of bug presents until it does not.
+Shipped. The socket now has exactly one owner: the network thread creates it,
+uses it and closes it, and `disconnectFromServer` signals rather than reaching
+in.
 
-- [ ] Signal the thread and wait for it before touching the socket.
-- [ ] Confirm the fix under TSan, which is the tool that can actually see this
-      (`-fsanitize=thread`; it cannot be combined with ASan).
+- [x] `disconnectFromServer` no longer touches the socket. It used to call
+      `close()` to interrupt a blocking read, while `run()` closed it as well on
+      the way out -- both writing the socket's own members, since
+      `StreamingSocket::close()` clears its `hostName`. A real race, not a false
+      positive: the fd could in principle be reused between the two closes.
+- [x] `readFull` waits with a timeout instead of blocking for a whole message.
+      The blocking form only re-checked `threadShouldExit` between reads, so a
+      peer that sent half a message and stalled held the thread until the socket
+      gave up -- which is what made the external close look necessary in the
+      first place. Signalling is now enough.
+- [x] Confirmed under TSan: **0 warnings**, down from 29. Restoring the external
+      close brings all 29 back, so the fix is the fix rather than a change of
+      timing.
+
+**The baseline is now zero, in both sanitisers.** Any TSan warning is a
+regression, and so is any ASan error. The only remaining sanitiser output is
+four UBSan lines from inside vendored libvorbis (`bitwise.c`, `floor1.c`,
+`psy.c`), which is not ours and is documented as ignorable in `AGENTS.md`.
 
 ### Lock-free TX handoff
 

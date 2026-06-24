@@ -144,9 +144,20 @@ void NinjamClient::connectToServer(const juce::String &host, int port,
 }
 
 void NinjamClient::disconnectFromServer() {
-  if (socket)
-    socket->close();
-
+  // Deliberately does NOT touch the socket.
+  //
+  // It used to call socket->close() from here to interrupt a blocking read on
+  // the network thread. run() closes the socket too on its way out, so both
+  // threads were writing the socket's own members -- StreamingSocket::close()
+  // clears its hostName -- and TSan reported it every time a session ended.
+  // The usual "close it from outside to wake the reader" trick, and a real race
+  // rather than a false positive: the fd could in principle be reused between
+  // the two closes.
+  //
+  // The socket now has exactly one owner, the network thread, which creates it,
+  // uses it and closes it. That is only possible because the receive loop polls
+  // with a timeout rather than blocking, so signalling is enough to end it --
+  // see readFull.
   connectionState = 0;
   signalThreadShouldExit();
   stopThread(3000);
@@ -161,7 +172,22 @@ bool NinjamClient::readFull(void *dest, int numBytes) {
     if (threadShouldExit() || !socket->isConnected())
       return false;
 
-    int r = socket->read(d + read, numBytes - read, true);
+    // Waits with a timeout rather than blocking for the whole message.
+    //
+    // The blocking form only re-checked threadShouldExit between reads, so a
+    // server that sent half a message and stalled held this thread until the
+    // socket itself gave up. That is what made an external close look
+    // necessary, and the external close is what raced. Polling means a
+    // disconnect is honoured within the timeout, whatever the peer does.
+    const int ready = socket->waitUntilReady(true, 100);
+    if (ready < 0)
+      return false; // error
+    if (ready == 0)
+      continue; // nothing yet; loop to re-check threadShouldExit
+
+    // Ready means at least one byte, so this cannot block; the outer loop
+    // accumulates whatever arrives.
+    int r = socket->read(d + read, numBytes - read, false);
     if (r <= 0)
       return false;
     read += r;
