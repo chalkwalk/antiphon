@@ -149,6 +149,12 @@ private:
   juce::Component localChannelsContainer;
 
   // Chat UI Controls
+  //
+  // The room list grows to fit its names, up to a cap: the chat below it is
+  // the more valuable use of the space, and a room of twenty is a scroll
+  // problem rather than a layout one.
+  static constexpr int kRoomMemberLineHeight = 18;
+  static constexpr int kMaxRoomMemberLines = 3;
   juce::Label roomMembersLabel;
   juce::TextEditor chatDisplay;
 
@@ -179,6 +185,9 @@ private:
   int dismissedDawBpm = 0;
   int chipDawBpm = 0;      // non-zero when the chip is offering a DAW tempo
   juce::String lastRoomMembersText;
+  // How many lines the room list currently needs, so resized() can give it the
+  // height rather than cramming every player into one.
+  int roomMembersLines = 1;
 
   // Remote Mixer Controls
   juce::Viewport remoteUsersViewport;

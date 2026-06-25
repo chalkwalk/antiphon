@@ -562,6 +562,20 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     gate = computeRunGate(ninjamClient.isConnected(), syncState.isRunning(),
                           transportIsPlaying(), practiceEnabled.load());
 
+    // Offline, the downbeat is wherever the transport started.
+    //
+    // Connected, SyncState owns the phase: it resets the clock on the armed
+    // transport-start edge and deliberately keeps running across a stop, so
+    // that an accidental stop cannot re-phase a jam. Offline it reports
+    // Disconnected and never fires at all, so nothing aligned the grid to the
+    // transport and the metronome free-ran against the host's. There is no
+    // room to desync from here, so starting the grid at zero is simply right.
+    if (gate.gridRunning && !gridWasRunning && !si.connected) {
+      intervalClock.reset();
+      metronomeVoice.reset();
+    }
+    gridWasRunning = gate.gridRunning;
+
     if (gate.gridRunning) {
       clockEvents.clear();
       intervalClock.advance(ns, clockEvents);
@@ -617,6 +631,12 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
             ninjamClient.swapIntervalBuffers();
             ninjamClient.diagSwaps.fetch_add(1);
             ninjamClient.intervalBeginSignal.store(false);
+          } else if (gate.echoOn) {
+            // The echo's boundary swap, and the only place it belongs. It
+            // consumes what the message thread stored after an earlier
+            // boundary, which is why EchoSchedule charges two intervals for
+            // the handoff.
+            ninjamClient.swapEchoBuffers();
           }
         }
       }
@@ -627,8 +647,12 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // audio thread completes that transition -- skip the call and they stay
     // draining forever, so the history can never be released and the next
     // enable deadlocks against its own predecessor.
+    //
+    // Servicing is NOT swapping. This used to call swapEchoBuffers, which
+    // meant the interval that had just started playing was retired one block
+    // later: you heard the first block of each interval and nothing else.
     if (!gate.inJam)
-      ninjamClient.swapEchoBuffers();
+      ninjamClient.serviceEchoSlots();
   }
 
   // 7. Remote audio mix. Gated on being in the jam rather than merely

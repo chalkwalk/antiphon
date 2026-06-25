@@ -211,6 +211,13 @@ Consequences worth knowing:
 - **`SyncState::Running` deliberately survives a transport stop**, so an
   accidental stop never re-phases a jam. "In step" and "playing right now" are
   therefore different questions, and `inJam` is the conjunction.
+- **Offline, the downbeat is wherever the transport started.** `SyncState` is
+  what aligns the grid to the transport, and it reports `Disconnected` with no
+  server, so offline it never fires and nothing else was aligning anything --
+  the metronome free-ran against the host's, which is precisely what a practice
+  session is played against. `processBlock` takes the rising edge of
+  `gridRunning` itself when disconnected. Connected, the edge stays SyncState's:
+  there the phase belongs to the room.
 
 This is safe because **Ninjam's absolute interval phase is free**: every client
 plays each received interval starting at its own downbeat, so phase offsets
@@ -417,10 +424,34 @@ life. Turning that discard into a free is a use-after-free in the mix.
 
 Depth is `deepest + 2`. One spare stops the writer catching a reader in the same
 interval; the second covers the crossfade tail the previous interval keeps
-sounding into the current one. `test/EchoScheduleTests.cpp` runs the real tap set
+sounding into the current one. `test/EchoScheduleTests.cpp` runs every tap depth
 over ten thousand intervals asserting no live entry is ever overwritten, and
 checks that one interval less of slack *would* collide -- so the +2 is measured
 rather than superstition.
+
+**The handoff costs two intervals, and the delay is measured from the far side
+of it.** An interval's audio is not complete until the boundary that ends it;
+the audio thread posts it there and the message thread stores it just after, so
+the earliest swap that can see the result is the one beginning the interval
+after next. `EchoSchedule::readSlotForPush` therefore works *forward* from the
+interval the entry will be heard in rather than counting back from the push. The
+difference is exactly two intervals -- a tap labelled 4 that plays six -- which
+sounds entirely plausible and is not what you chose. `kMinDelayIntervals` is the
+same constant seen from the other end: a one-interval echo would have to play
+audio that has not been captured yet, so the picker starts at two.
+
+**Swapping is once per interval; servicing is once per block.** `swapEchoBuffers`
+is the boundary swap, the exact counterpart of `swapIntervalBuffers`.
+`serviceEchoSlots` is the per-block call, and it completes the `Draining ->
+Free` transition and nothing else -- necessary because only the audio thread may
+publish `kFree`, so skipping it on idle blocks would strand the history forever.
+Calling the *swap* per block instead retires the playing interval one block
+after it starts, since `swapSlotRange` reads anything unplayed as a swap
+arriving early and fades it out: audible as a snippet at each interval start and
+silence for the rest. `test/EchoBankTests.cpp` measures the duty cycle of a
+whole interval across three block sizes for that reason, and its harness mirrors
+`processBlock`'s call order deliberately -- when it did not, the suite passed
+against a pipeline the product did not have.
 
 A memory budget clamps the deepest selectable delay, because a 32-BPI session at
 60 bpm makes each stored interval four times the size of a normal one.

@@ -94,6 +94,7 @@ public:
   // The practice-echo half of the slot array. See swapEchoBuffers in the .cpp
   // for why these are serviced whenever we are not in a jam.
   void swapEchoBuffers();
+  void serviceEchoSlots();
   void getEchoAudio(juce::AudioBuffer<float> &buffer);
 
   // Update the local channel names sent to the server via CLIENT_SET_CHANNEL_INFO (0x82).

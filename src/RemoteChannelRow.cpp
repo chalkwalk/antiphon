@@ -1,3 +1,4 @@
+#include "EchoSchedule.h"
 #include "GainUtils.h"
 #include "AntiphonLookAndFeel.h"
 #include "RemoteChannelRow.h"
@@ -155,12 +156,15 @@ void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
 void RemoteChannelRow::setEchoDelayOptions(int maxDelay, int current) {
   if (!isEcho())
     return;
-  const int wanted = juce::jlimit(1, juce::jmax(1, maxDelay), current);
-  if (delayBox.getNumItems() != juce::jmax(1, maxDelay)) {
+  // The list starts at the handoff, not at 1: a one-interval echo would have
+  // to play audio that has not been captured yet. See EchoSchedule.
+  const int lowest = EchoSchedule::kMinDelayIntervals;
+  const int highest = juce::jmax(lowest, maxDelay);
+  const int wanted = juce::jlimit(lowest, highest, current);
+  if (delayBox.getNumItems() != highest - lowest + 1) {
     delayBox.clear(juce::dontSendNotification);
-    for (int i = 1; i <= juce::jmax(1, maxDelay); ++i)
-      delayBox.addItem(juce::String(i) + (i == 1 ? " interval" : " intervals"),
-                       i);
+    for (int i = lowest; i <= highest; ++i)
+      delayBox.addItem(juce::String(i) + " intervals", i);
   }
   if (delayBox.getSelectedId() != wanted)
     delayBox.setSelectedId(wanted, juce::dontSendNotification);

@@ -811,7 +811,8 @@ void AntiphonEditor::resized() {
       rightPanel.removeFromBottom(6);
     }
 
-    roomMembersLabel.setBounds(rightPanel.removeFromTop(18));
+    roomMembersLabel.setBounds(
+        rightPanel.removeFromTop(kRoomMemberLineHeight * roomMembersLines));
     rightPanel.removeFromTop(4);
     chatDisplay.setBounds(rightPanel);
     chatDisplay.setVisible(true);
@@ -1050,6 +1051,21 @@ void AntiphonEditor::updateRoomMembers() {
   lastRoomMembersText = text;
   roomMembersLabel.setText(text, juce::dontSendNotification);
   roomMembersLabel.setDescription(text);
+
+  // A Label wraps to as many lines as its height allows, so a one-line box
+  // silently truncated the room as soon as a third player joined -- the names
+  // were there, just not on screen. Measure what the text needs and ask for
+  // the height, capped so a busy room cannot eat the chat.
+  const int width = juce::jmax(1, roomMembersLabel.getWidth());
+  const auto &font = roomMembersLabel.getFont();
+  const int wanted = juce::jlimit(
+      1, kMaxRoomMemberLines,
+      (int)std::ceil(juce::GlyphArrangement::getStringWidth(font, text) /
+                     (float)width));
+  if (wanted != roomMembersLines) {
+    roomMembersLines = wanted;
+    resized();
+  }
 }
 
 void AntiphonEditor::setChipVisible(bool shouldShow) {

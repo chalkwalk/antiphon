@@ -21,6 +21,20 @@
 
 namespace EchoSchedule {
 
+// What the handoff costs, and therefore what the shallowest honest tap is.
+//
+// An interval's audio is not complete until the boundary that ends it. The
+// audio thread posts it there, the message thread stores it just after, and
+// the earliest swap that can see the result is the one that begins the
+// interval after next. So a tap is two intervals from the microphone before it
+// can be heard at all, and asking for one interval is asking for audio that
+// does not exist yet.
+//
+// This is not a tuning constant. Shortening it means capturing continuously
+// rather than at the boundary, which is a different design.
+static constexpr int kHandoffIntervals = 2;
+static constexpr int kMinDelayIntervals = kHandoffIntervals;
+
 // How many stored intervals a set of taps needs.
 //
 // One spare beyond the deepest delay would be enough to stop the writer
@@ -39,6 +53,14 @@ inline int writeSlotFor(long long intervalIndex, int depth) {
   return (int)(((intervalIndex % depth) + depth) % depth);
 }
 
+// Which interval a tap is heard during, given the interval it was played in.
+// The definition the UI promises: "4 intervals" means you hear it four
+// intervals after you played it, exactly as another player in the room would
+// have heard it one interval later.
+inline long long heardDuring(long long playedDuring, int delay) {
+  return playedDuring + delay;
+}
+
 // Which stored slot a tap should play during interval `now`, or -1 while the
 // pipeline is still filling -- for the first `delay` intervals there is simply
 // nothing that old to play, and silence is the honest answer.
@@ -48,18 +70,46 @@ inline int readSlotFor(long long now, int delay, int depth) {
   return writeSlotFor(now - delay, depth);
 }
 
-// Whether writing interval `now` would land on an entry a tap could still be
-// reading. False is the only acceptable answer; it is a test, not a runtime
-// check, because the depth is chosen to make it impossible.
-inline bool wouldOverwriteLiveEntry(long long now, int delay, int depth) {
-  const int writeSlot = writeSlotFor(now, depth);
-  // The tap is reading the entry for `now - delay`, and the one before it may
-  // still be sounding its fade tail.
+// Which stored slot to hand a tap at the push for interval `pushInterval`, or
+// -1 when there is nothing honest to hand it.
+//
+// This is where the handoff is paid for. The entry handed here is consumed by
+// the swap that begins interval `pushInterval + kHandoffIntervals`, so that is
+// the interval the tap will be heard during, and the entry it needs is the one
+// `delay` earlier than that. Deriving it from the delay the user asked for --
+// rather than counting back from the push -- is the whole difference between a
+// tap that means what its label says and one that is two intervals deeper.
+//
+// Three ways to have nothing to hand over, all of them silence: a delay
+// shallower than the handoff can deliver, a session too young to have an
+// interval that old, and a source interval that has not been played yet.
+inline int readSlotForPush(long long pushInterval, int delay, int depth) {
+  if (depth < 1 || delay < kMinDelayIntervals)
+    return -1;
+  const long long source = pushInterval + kHandoffIntervals - delay;
+  if (source < 0 || source > pushInterval)
+    return -1;
+  return writeSlotFor(source, depth);
+}
+
+// Whether the write at the push for `pushInterval` would land on an entry a
+// tap could still be reading. False is the only acceptable answer; it is a
+// test, not a runtime check, because the depth is chosen to make it impossible.
+inline bool wouldOverwriteLiveEntry(long long pushInterval, int delay,
+                                    int depth) {
+  const int writeSlot = writeSlotFor(pushInterval, depth);
+  // At this push the tap is playing the entry handed at the previous push, and
+  // the one before that may still be sounding its fade tail.
+  //
+  // The entry handed by THIS push is deliberately not checked: at the minimum
+  // delay it is the slot just written, because a 2-interval tap plays the
+  // interval that has this moment finished. That is the intended handoff, and
+  // it is safe because the write completes before the hand.
   for (int back = 0; back <= 1; ++back) {
-    const long long reading = now - delay - back;
-    if (reading < 0)
+    const long long playing = pushInterval + 1 - delay - back;
+    if (playing < 0)
       continue;
-    if (writeSlotFor(reading, depth) == writeSlot)
+    if (writeSlotFor(playing, depth) == writeSlot)
       return true;
   }
   return false;

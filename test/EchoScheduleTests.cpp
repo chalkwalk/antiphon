@@ -33,6 +33,60 @@ public:
       expect(readSlotFor(4, 4, depth) >= 0, "by interval 4 it can");
     }
 
+    beginTest("a tap labelled N intervals is heard N intervals later");
+    {
+      // The promise the UI makes, stated as arithmetic. The handoff cost is
+      // real -- an entry stored at a push is not consumed until the swap two
+      // intervals later -- but it belongs inside readSlotForPush, not added to
+      // what the user asked for. Counting back from the push instead put every
+      // tap two intervals deeper than its label, which sounds like a canon and
+      // is not the one you chose.
+      const int depth = historyDepth(8);
+      for (int delay = kMinDelayIntervals; delay <= 8; ++delay) {
+        for (long long push = 20; push < 40; ++push) {
+          const int slot = readSlotForPush(push, delay, depth);
+          // The entry handed here is consumed by the swap that begins interval
+          // push + kHandoffIntervals, so that is when it is heard.
+          const long long heardIn = push + kHandoffIntervals;
+          const long long playedIn = heardIn - delay;
+          expectEquals(slot, writeSlotFor(playedIn, depth),
+                       "delay " + juce::String(delay) + " at push " +
+                           juce::String((int)push));
+          expectEquals(heardDuring(playedIn, delay), heardIn,
+                       "the two definitions must agree");
+        }
+      }
+    }
+
+    beginTest("a delay shallower than the handoff has nothing to play");
+    {
+      // One interval would mean playing audio that has not been captured yet:
+      // an interval is not complete until the boundary that ends it, and the
+      // store happens after that. Refusing is the honest answer, and the
+      // picker starts at kMinDelayIntervals for the same reason.
+      const int depth = historyDepth(8);
+      for (int delay = 0; delay < kMinDelayIntervals; ++delay)
+        expectEquals(readSlotForPush(50, delay, depth), -1,
+                     "delay " + juce::String(delay) + " cannot be delivered");
+      expect(readSlotForPush(50, kMinDelayIntervals, depth) >= 0,
+             "the shallowest deliverable delay must in fact deliver");
+    }
+
+    beginTest("a push cannot hand over an interval that has not happened");
+    {
+      // The pipeline filling, from the push side. At the shallowest delay the
+      // entry handed over is the one just written, and every deeper tap counts
+      // back from there -- so early pushes have nothing old enough.
+      const int depth = historyDepth(8);
+      expectEquals(readSlotForPush(0, 8, depth), -1, "no history at all yet");
+      expectEquals(readSlotForPush(5, 8, depth), -1, "still filling");
+      expect(readSlotForPush(6, 8, depth) >= 0,
+             "by push 6 the 8-interval tap has interval 0 to play");
+      // The shallowest tap is ready at once: it plays what just finished.
+      expectEquals(readSlotForPush(0, kMinDelayIntervals, depth),
+                   writeSlotFor(0, depth));
+    }
+
     beginTest("the deepest delay sets the depth, not the sum of the taps");
     {
       // The whole reason the taps share one ring. Three taps at 4, 6 and 8 cost
@@ -48,11 +102,10 @@ public:
       // more intervals than the ring holds, so the indices wrap many times, and
       // assert the writer never lands on an entry a reader could still want --
       // including the one still sounding its fade tail.
-      const int taps[] = {4, 6, 8};
       const int depth = historyDepth(8);
 
       for (long long now = 0; now < 10000; ++now)
-        for (int delay : taps)
+        for (int delay = kMinDelayIntervals; delay <= 8; ++delay)
           expect(!wouldOverwriteLiveEntry(now, delay, depth),
                  "interval " + juce::String((int)now) + ", tap " +
                      juce::String(delay) + " would be overwritten");
@@ -61,15 +114,15 @@ public:
     beginTest("one interval less of slack really would collide");
     {
       // Proves the slack is doing something rather than being superstition.
-      // With depth = delay + 1 there is no room for the fade tail, and the
-      // writer lands on an entry still sounding.
+      // With depth = delay there is no room for the entry still sounding, and
+      // the writer lands straight on it.
       bool everCollided = false;
-      const int tooShallow = 8 + 1;
+      const int tooShallow = 8;
       for (long long now = 0; now < 100 && !everCollided; ++now)
         if (wouldOverwriteLiveEntry(now, 8, tooShallow))
           everCollided = true;
       expect(everCollided,
-             "if this passes, the +2 slack is not earning its place");
+             "if this passes, the slack is not earning its place");
     }
 
     beginTest("write slots cycle and cover the whole ring");
@@ -104,6 +157,7 @@ public:
 
       const int deep = maxDelayForBudget(128000000LL, intervalSamples, 2);
       expect(deep > 8, "a normal jam must allow the default taps");
+      expect(deep >= kMinDelayIntervals, "and at least the shallowest one");
       expect(deep < 100, "and the budget must actually bite");
 
       // A slow tempo with a long interval costs far more per entry, so the
@@ -124,6 +178,8 @@ public:
       expect(historyDepth(-5) >= 3);
       expectEquals(writeSlotFor(5, 0), 0, "a zero-depth ring cannot be indexed");
       expectEquals(readSlotFor(5, 0, 6), -1, "a zero delay is not a tap");
+      expectEquals(readSlotForPush(5, 0, 6), -1, "nor at the push");
+      expectEquals(readSlotForPush(5, 4, 0), -1, "nor with no ring");
     }
   }
 };

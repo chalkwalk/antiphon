@@ -1217,6 +1217,12 @@ void NinjamClient::mixSlotRange(int first, int last,
     // is a step discontinuity, which is a click.
     slot.muteRamp.setTarget(isMuted ? 0.0f : 1.0f);
 
+    // Reset per block rather than only on the path that copies audio. A slot
+    // that mixes nothing -- underrunning, drained, or between intervals -- used
+    // to keep whatever it last measured, so a player who stopped sending left
+    // their meter pinned at the last thing they played.
+    float peak = 0.0f;
+
     // Everything that mixes lives in here so that the ramp below advances for
     // the whole block on every path, including the ones that mix nothing. A
     // ramp that only moved on blocks carrying audio would drift out of step
@@ -1306,7 +1312,6 @@ void NinjamClient::mixSlotRange(int first, int last,
 
     // Metered before the mute gain, so the meter keeps showing that a player is
     // playing even while you have them muted.
-    float peak = 0.0f;
     for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
       float chGain = (ch == 0) ? lGain : rGain;
       const float *src =
@@ -1314,7 +1319,6 @@ void NinjamClient::mixSlotRange(int first, int last,
       for (int s = 0; s < toCopy; ++s)
         peak = std::max(peak, std::abs(src[s]) * chGain);
     }
-    slot.peakLevel.store(peak, std::memory_order_relaxed);
 
     // addFrom took a constant gain, which is why mute used to be a branch and
     // therefore a click. The ramp has to be read per sample, at the offset
@@ -1332,6 +1336,7 @@ void NinjamClient::mixSlotRange(int first, int last,
     slot.readPos += toCopy;
     }();
 
+    slot.peakLevel.store(peak, std::memory_order_relaxed);
     slot.muteRamp.advance(numSamples);
   }
 }
@@ -1391,11 +1396,15 @@ bool NinjamClient::setPracticeEnabled(bool enabled, int intervalSamples,
 
   const int allowed =
       EchoSchedule::maxDelayForBudget(kEchoMemoryBudgetBytes, intervalSamples, 2);
-  if (allowed < 1)
+  // Below the handoff there is no tap that can be heard at all, so a budget
+  // that cannot buy one is a refusal rather than a degraded mode.
+  if (allowed < EchoSchedule::kMinDelayIntervals)
     return false;
   maxEchoDelayIntervals = juce::jmin(deepest, allowed);
   for (auto &tap : echoTaps)
-    tap.delayIntervals = juce::jmin(tap.delayIntervals, maxEchoDelayIntervals);
+    tap.delayIntervals =
+        juce::jlimit(EchoSchedule::kMinDelayIntervals, maxEchoDelayIntervals,
+                     tap.delayIntervals);
 
   const int depth = EchoSchedule::historyDepth(maxEchoDelayIntervals);
   echoHistory.clear();
@@ -1493,9 +1502,12 @@ void NinjamClient::pushEchoInterval(const juce::AudioBuffer<float> &audio,
 
   ++echoIntervalsWritten;
 
-  // Hand each tap the entry it is due, if the history is deep enough yet.
+  // Hand each tap the entry it is due, if the history is deep enough yet. The
+  // handoff cost is paid inside readSlotForPush: the entry handed here is not
+  // consumed until the swap two intervals from now, and the tap's delay is
+  // measured from there, so that "4 intervals" means four.
   for (int i = 0; i < kMaxEchoTaps; ++i) {
-    const int readSlot = EchoSchedule::readSlotFor(
+    const int readSlot = EchoSchedule::readSlotForPush(
         thisInterval, echoTaps[i].delayIntervals, depth);
     if (readSlot < 0)
       continue; // still filling: silence is the honest answer
@@ -1523,8 +1535,13 @@ void NinjamClient::setEchoTapDelay(int tap, int intervals) {
   juce::ScopedLock sl(echoMutex);
   if (tap < 0 || tap >= kMaxEchoTaps || maxEchoDelayIntervals < 1)
     return;
-  echoTaps[tap].delayIntervals =
-      juce::jlimit(1, maxEchoDelayIntervals, intervals);
+  echoTaps[tap].delayIntervals = juce::jlimit(
+      EchoSchedule::kMinDelayIntervals, maxEchoDelayIntervals, intervals);
+  // The name carries the delay, so it has to follow it. A strip still reading
+  // "Echo 4" while its picker says 6 is the kind of disagreement that gets
+  // believed over the picker.
+  echoTaps[tap].channel.channelName =
+      "Echo " + juce::String(echoTaps[tap].delayIntervals);
 }
 
 void NinjamClient::setEchoTapVolume(int tap, float volume) {
@@ -1566,7 +1583,26 @@ void NinjamClient::setEchoTapOutputBus(int tap, int busIdx) {
 }
 
 void NinjamClient::swapEchoBuffers() {
+  // Once per interval, at the boundary -- exactly like swapIntervalBuffers.
+  // Calling it per block instead retires the interval that is playing after a
+  // single block, because swapSlotRange treats anything unplayed as a swap
+  // arriving early and fades it out. The symptom is a snippet of audio at each
+  // interval start and silence for the rest of it; see serviceEchoSlots for
+  // the per-block half that this used to be conflated with.
   swapSlotRange(kFirstEchoSlot, kTotalSlots);
+}
+
+void NinjamClient::serviceEchoSlots() {
+  // The per-block half: it completes the Draining -> Free transition and
+  // nothing else. Only the audio thread may publish kFree, so if this is not
+  // called on blocks where echo is idle, switching practice off leaves the
+  // slots draining forever, the history is never released, and the next enable
+  // waits on its own predecessor.
+  for (int i = kFirstEchoSlot; i < kTotalSlots; ++i) {
+    auto &slot = streamSlots[(std::size_t)i];
+    if (slot.state.load(std::memory_order_acquire) == StreamSlot::kDraining)
+      releaseSlotOnAudioThread(slot);
+  }
 }
 
 void NinjamClient::getEchoAudio(juce::AudioBuffer<float> &buffer) {

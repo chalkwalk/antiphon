@@ -189,6 +189,8 @@ public:
   double hostBpm = 120.0;
   double hostPpqPosition = 0.0;
   bool hostIsPlaying = false;
+  // Audio thread only: the edge that starts the offline grid at zero.
+  bool gridWasRunning = false;
 
   // Internal Metronome State (atomic: written on message thread, read on audio+UI threads)
   std::atomic<int> internalBpm{120};

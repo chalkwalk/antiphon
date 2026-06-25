@@ -103,6 +103,25 @@ public:
       expect(!computeRunGate(false, false, true, false).inJam);
     }
 
+    beginTest("the offline grid starts on a transport edge, not on a sync");
+    {
+      // Why processBlock needs its own rising-edge reset offline. SyncState is
+      // the thing that aligns the downbeat to the transport, and it reports
+      // Disconnected whenever there is no server -- so with no connection it
+      // never fires, and nothing else was aligning the grid. The metronome
+      // free-ran against the host's, which is precisely what practice mode is
+      // measured against.
+      const auto stopped = computeRunGate(false, false, false, true);
+      const auto started = computeRunGate(false, false, true, true);
+      expect(!stopped.gridRunning);
+      expect(started.gridRunning,
+             "the edge processBlock resets the interval clock on");
+
+      // Connected, the edge belongs to SyncState and must not be taken twice.
+      expect(computeRunGate(true, true, true, false).inJam,
+             "connected, the jam owns the phase");
+    }
+
     beginTest("a jam that loses its connection stops transmitting at once");
     {
       const auto before = computeRunGate(true, true, true, false);
