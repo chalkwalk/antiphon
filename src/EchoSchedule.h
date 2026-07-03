@@ -21,18 +21,22 @@
 
 namespace EchoSchedule {
 
-// What the handoff costs, and therefore what the shallowest honest tap is.
+// What the handoff costs, and therefore what the shallowest tap is.
 //
-// An interval's audio is not complete until the boundary that ends it. The
-// audio thread posts it there, the message thread stores it just after, and
-// the earliest swap that can see the result is the one that begins the
-// interval after next. So a tap is two intervals from the microphone before it
-// can be heard at all, and asking for one interval is asking for audio that
-// does not exist yet.
+// An interval's audio is complete at the boundary that ends it, and the audio
+// thread stores it into the ring as it goes -- so at that boundary the entry
+// is already there to be handed over, and the swap at the same boundary can
+// start playing it immediately. One interval is therefore the shortest
+// possible echo, and it is the useful one: what you just played comes back at
+// the top of the next interval, which is what a looper does and what the room
+// would have done with you at a delay of one.
 //
-// This is not a tuning constant. Shortening it means capturing continuously
-// rather than at the boundary, which is a different design.
-static constexpr int kHandoffIntervals = 2;
+// This was two while the store went through the message thread: an entry
+// posted at a boundary could not be seen by the swap that had already
+// happened, so the earliest consumer was the boundary after. Moving the store
+// onto the audio thread is what bought the interval back, and it is the only
+// reason the picker can start at 1.
+static constexpr int kHandoffIntervals = 1;
 static constexpr int kMinDelayIntervals = kHandoffIntervals;
 
 // How many stored intervals a set of taps needs.
@@ -70,15 +74,15 @@ inline int readSlotFor(long long now, int delay, int depth) {
   return writeSlotFor(now - delay, depth);
 }
 
-// Which stored slot to hand a tap at the push for interval `pushInterval`, or
-// -1 when there is nothing honest to hand it.
+// Which stored slot to hand a tap when interval `pushInterval` closes, or -1
+// when there is nothing honest to hand it.
 //
-// This is where the handoff is paid for. The entry handed here is consumed by
-// the swap that begins interval `pushInterval + kHandoffIntervals`, so that is
-// the interval the tap will be heard during, and the entry it needs is the one
-// `delay` earlier than that. Deriving it from the delay the user asked for --
-// rather than counting back from the push -- is the whole difference between a
-// tap that means what its label says and one that is two intervals deeper.
+// The entry handed here is consumed by the swap at this same boundary, which
+// begins interval `pushInterval + kHandoffIntervals`. That is the interval the
+// tap will be heard during, so the entry it needs is the one `delay` earlier
+// than that. Deriving it from the delay the user asked for -- rather than
+// counting back from the close -- is the whole difference between a tap that
+// means what its label says and one that is deeper than it claims.
 //
 // Three ways to have nothing to hand over, all of them silence: a delay
 // shallower than the handoff can deliver, a session too young to have an
@@ -97,16 +101,13 @@ inline int readSlotForPush(long long pushInterval, int delay, int depth) {
 // test, not a runtime check, because the depth is chosen to make it impossible.
 inline bool wouldOverwriteLiveEntry(long long pushInterval, int delay,
                                     int depth) {
-  const int writeSlot = writeSlotFor(pushInterval, depth);
-  // At this push the tap is playing the entry handed at the previous push, and
-  // the one before that may still be sounding its fade tail.
-  //
-  // The entry handed by THIS push is deliberately not checked: at the minimum
-  // delay it is the slot just written, because a 2-interval tap plays the
-  // interval that has this moment finished. That is the intended handoff, and
-  // it is safe because the write completes before the hand.
+  // When interval `pushInterval` closes, the audio thread starts filling the
+  // entry for the next one. Live at that moment: the entry just handed over,
+  // which is about to play, and the one handed at the previous boundary, which
+  // may still be sounding its fade tail.
+  const int writeSlot = writeSlotFor(pushInterval + 1, depth);
   for (int back = 0; back <= 1; ++back) {
-    const long long playing = pushInterval + 1 - delay - back;
+    const long long playing = pushInterval + kHandoffIntervals - delay - back;
     if (playing < 0)
       continue;
     if (writeSlotFor(playing, depth) == writeSlot)

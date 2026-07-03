@@ -215,11 +215,24 @@ public:
   void setEchoTapOutputBus(int tap, int busIdx);
   int maxEchoDelay() const { return maxEchoDelayIntervals; }
 
-  // Message thread: one interval of your own audio, already mixed to the
-  // channel's width. Ignored while connected, mirroring processCapturedAudio's
-  // own guard, so a connection landing between the boundary and this call
-  // cannot put practice audio anywhere near the wire.
-  void pushEchoInterval(const juce::AudioBuffer<float> &audio, int numSamples);
+  // Audio thread: your own audio, stored into the history as it is played.
+  //
+  // This is on the audio thread on purpose, and it is what makes a
+  // one-interval echo possible at all -- see EchoSchedule::kHandoffIntervals.
+  // It allocates nothing and takes no lock: the ring is published with a
+  // release store and read back with acquire, the same idiom as the local
+  // channel list, and the write is a straight mix into storage that already
+  // exists.
+  //
+  // Deliberately not TX-gated. Transmit decides what the room hears, and
+  // offline there is no room; an echo that silently stopped recording because
+  // a button elsewhere was off would be a trap rather than a feature.
+  void writeEchoBlock(const float *srcL, const float *srcR, bool mono,
+                      int startSample, int count, float gainL, float gainR);
+
+  // Audio thread, at the interval boundary and before swapEchoBuffers: hands
+  // each tap the entry it is now due and moves the write on to the next.
+  void closeEchoInterval();
 
 
   // Whether anything, anywhere, is soloed -- a bitmask, exactly as the
@@ -470,9 +483,35 @@ private:
   // drain pops and discards -- the ring owns the storage for its whole life.
   // Turning that discard into a free is a use-after-free in the mix.
   std::vector<std::unique_ptr<DecodedInterval>> echoHistory;
-  long long echoIntervalsWritten = 0;
+
+  // The audio thread's view of the ring above: raw pointers plus a count
+  // released after them, so a depth it can see is always fully populated.
+  // Storing 0 retires the ring without freeing anything.
+  static constexpr int kMaxEchoRing = 66; // deepest delay + the 2 of slack
+  DecodedInterval *echoRing[kMaxEchoRing] = {};
+  std::atomic<int> echoRingDepth{0};
+  long long echoWriteInterval = 0; // audio thread only
+
+  // Freeing a retired ring needs proof that no audio block is still inside it.
+  // The message thread bumps the generation when it retires one; the audio
+  // thread copies it back at the END of every block it touches echo on, after
+  // the mix and after any slot release. Seeing the two equal therefore means a
+  // whole block has come and gone since the change, so nothing can still hold
+  // a pointer. Without this the old ring was freed outright on the next
+  // enable, while the audio thread could still be reading it.
+  std::atomic<unsigned> echoRingGeneration{0};
+  std::atomic<unsigned> echoRingSeen{0};
+  struct RetiredEchoRing {
+    std::vector<std::unique_ptr<DecodedInterval>> entries;
+    unsigned generation = 0;
+  };
+  std::vector<RetiredEchoRing> retiredEchoRings;
+  void reclaimRetiredEchoRings();
+
   int maxEchoDelayIntervals = 0;
   EchoTap echoTaps[kMaxEchoTaps];
+  // The delays again, for the audio thread, which cannot take echoMutex.
+  std::atomic<int> echoTapDelays[kMaxEchoTaps];
   std::atomic<bool> practiceActive{false};
   juce::CriticalSection echoMutex; // message thread and UI, never audio
 

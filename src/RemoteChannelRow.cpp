@@ -156,15 +156,17 @@ void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
 void RemoteChannelRow::setEchoDelayOptions(int maxDelay, int current) {
   if (!isEcho())
     return;
-  // The list starts at the handoff, not at 1: a one-interval echo would have
-  // to play audio that has not been captured yet. See EchoSchedule.
+  // The list starts at the shallowest delay the pipeline can actually deliver.
+  // That is one interval -- what you just played, back at the top of the next
+  // one -- because the store happens on the audio thread. See EchoSchedule.
   const int lowest = EchoSchedule::kMinDelayIntervals;
   const int highest = juce::jmax(lowest, maxDelay);
   const int wanted = juce::jlimit(lowest, highest, current);
   if (delayBox.getNumItems() != highest - lowest + 1) {
     delayBox.clear(juce::dontSendNotification);
     for (int i = lowest; i <= highest; ++i)
-      delayBox.addItem(juce::String(i) + " intervals", i);
+      delayBox.addItem(juce::String(i) + (i == 1 ? " interval" : " intervals"),
+                       i);
   }
   if (delayBox.getSelectedId() != wanted)
     delayBox.setSelectedId(wanted, juce::dontSendNotification);

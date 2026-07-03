@@ -79,10 +79,12 @@ public:
       // back from there -- so early pushes have nothing old enough.
       const int depth = historyDepth(8);
       expectEquals(readSlotForPush(0, 8, depth), -1, "no history at all yet");
-      expectEquals(readSlotForPush(5, 8, depth), -1, "still filling");
-      expect(readSlotForPush(6, 8, depth) >= 0,
-             "by push 6 the 8-interval tap has interval 0 to play");
-      // The shallowest tap is ready at once: it plays what just finished.
+      expectEquals(readSlotForPush(6, 8, depth), -1, "still filling");
+      expect(readSlotForPush(7, 8, depth) >= 0,
+             "closing interval 7 is when the 8-interval tap first has "
+             "interval 0 to play");
+      // The shallowest tap is ready at once: it plays what just finished,
+      // which is what makes it a looper rather than a delay line.
       expectEquals(readSlotForPush(0, kMinDelayIntervals, depth),
                    writeSlotFor(0, depth));
     }

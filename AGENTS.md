@@ -63,6 +63,7 @@ src/
   Sha1.{h,cpp}              # minimal FIPS 180-1, auth path only
   # --- JUCE-free, testable modules (this is where audio-thread logic goes) ---
   IntervalClock.{h,cpp}     # sample-exact beat/interval grid; njclient.cpp:806
+  HostGrid.h                # offline: the grid derived from the host's PPQ
   MetronomeVoice.{h,cpp}    # one-shot click, 880/660/440 Hz
   SyncState.h               # 5-state DAW sync machine (transport start, not timeline)
   Shortcuts.h               # Ctrl+Alt shortcut mapping; matches key code, not text

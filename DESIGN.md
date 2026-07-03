@@ -211,13 +211,12 @@ Consequences worth knowing:
 - **`SyncState::Running` deliberately survives a transport stop**, so an
   accidental stop never re-phases a jam. "In step" and "playing right now" are
   therefore different questions, and `inJam` is the conjunction.
-- **Offline, the downbeat is wherever the transport started.** `SyncState` is
-  what aligns the grid to the transport, and it reports `Disconnected` with no
-  server, so offline it never fires and nothing else was aligning anything --
-  the metronome free-ran against the host's, which is precisely what a practice
-  session is played against. `processBlock` takes the rising edge of
-  `gridRunning` itself when disconnected. Connected, the edge stays SyncState's:
-  there the phase belongs to the room.
+- **Offline in a host, the host's timeline owns the grid outright.** See
+  `HostGrid.h` and section 4.2. In the standalone, where there is no external
+  timeline, the grid still starts on the transport edge -- `processBlock` takes
+  that edge itself, because `SyncState` reports `Disconnected` with no server
+  and so never fires. Connected, the edge stays SyncState's: there the phase
+  belongs to the room.
 
 This is safe because **Ninjam's absolute interval phase is free**: every client
 plays each received interval starting at its own downbeat, so phase offsets
@@ -231,6 +230,47 @@ other requires none. That is a safety property, so it is asserted over every
 input combination in `test/RunGateTests.cpp` rather than assumed;
 `PluginProcessor` cannot be compiled into the test target, so if it were not
 tested there it would not be tested at all.
+
+---
+
+## 4.2 Who owns the grid: counted, or derived
+
+`IntervalClock` free-runs. It is handed a block size and steps its own cursor
+forward on an integer grid whose interval length is **truncated**, verbatim from
+`njclient.cpp:806`. Connected, that is not a detail to be improved: truncating
+identically to every other client is exactly what keeps our boundaries on theirs,
+and the local metronome is the sole authority for swaps (`PRINCIPLES §9`).
+
+Offline it is the wrong instrument, and measurably so. Two errors pull a counted
+grid away from the DAW's, and both accumulate without bound:
+
+| | Size over half an hour | Why |
+|---|---|---|
+| Integer tempo | **seconds** | Ninjam's BPM is an integer; a host at 128.5 is not. |
+| Interval truncation | ~50 samples | Up to a sample lost per interval, with nobody else losing it too. |
+
+The first dominates by orders of magnitude, and neither is visible at the start
+of a take -- which is the worst possible shape. Practice is the case that cares
+most, because a practice session is played against the host's own click and may
+well be recorded.
+
+So **offline, with a host reporting a position, `HostGrid` replaces the clock.**
+Every answer -- the beat offsets in this block, the interval index, the phase --
+is a pure function of the PPQ position the host reports for this block. That is
+stateless by construction, and the consequences all fall out of it:
+
+- Nothing accumulates, so nothing drifts.
+- Tempo automation is followed for free.
+- A loop or a playhead jump lands the grid where the host put it.
+- The downbeat is the host's bar, not wherever play was pressed, so a recorded
+  practice take drops straight onto the DAW's timeline.
+- The tempo shown is the host's, because that is the one the grid is running at.
+
+The switch is `!connected && hasTransport && hostHasPpq`. In the standalone
+there is no external timeline -- our clock *is* the timeline -- so it free-runs
+there as before. `IntervalClock` still holds the BPI and is still what
+`splitAtIntervalStarts` and the metronome consume, because `HostGrid` emits the
+same event type in the same order.
 
 ---
 
@@ -429,16 +469,37 @@ over ten thousand intervals asserting no live entry is ever overwritten, and
 checks that one interval less of slack *would* collide -- so the +2 is measured
 rather than superstition.
 
-**The handoff costs two intervals, and the delay is measured from the far side
-of it.** An interval's audio is not complete until the boundary that ends it;
-the audio thread posts it there and the message thread stores it just after, so
-the earliest swap that can see the result is the one beginning the interval
-after next. `EchoSchedule::readSlotForPush` therefore works *forward* from the
-interval the entry will be heard in rather than counting back from the push. The
-difference is exactly two intervals -- a tap labelled 4 that plays six -- which
-sounds entirely plausible and is not what you chose. `kMinDelayIntervals` is the
-same constant seen from the other end: a one-interval echo would have to play
-audio that has not been captured yet, so the picker starts at two.
+**Capture is on the audio thread, and that is what buys the shortest tap.**
+`writeEchoBlock` stores your input into the ring as it plays, block by block, so
+by the time a boundary arrives the entry is already complete: `closeEchoInterval`
+hands it to the taps and the swap immediately after picks it up. A tap can
+therefore be **one interval** -- what you just played, back at the top of the
+next one, which is what a looper does and what the room would have done with you
+at a delay of one.
+
+Going through the message thread cost an extra interval, because an entry stored
+just after a boundary could not be seen by the swap that had already happened.
+That made two the shallowest possible delay, and "why does the shortest echo
+start at 2?" is a fair question with no good answer.
+`EchoSchedule::kHandoffIntervals` is the one constant that states the cost, and
+`readSlotForPush` works *forward* from the interval an entry will be heard in
+rather than counting back from the store -- counting back is what once made
+every tap two intervals deeper than its label.
+
+The write allocates nothing, takes no lock, and does not clear: `writePos` is
+what the mix reads up to, so stale audio beyond it is unreachable and a
+multi-megabyte memset at every boundary is avoided. It is deliberately **not**
+transmit-gated -- transmit decides what the room hears, and offline there is no
+room.
+
+**Retiring the ring needs proof, not a comment.** The old code cleared
+`echoHistory` the moment practice was re-enabled while claiming the storage was
+released "once the slots have been observed free"; nothing observed anything,
+and ASan calls it a heap-use-after-free. A retired ring is now parked with the
+generation at which it was retired, the audio thread copies the generation back
+at the *end* of every block it touches echo on, and the ring is freed only once
+those match -- which means a whole block has come and gone since it stopped
+being published.
 
 **Swapping is once per interval; servicing is once per block.** `swapEchoBuffers`
 is the boundary swap, the exact counterpart of `swapIntervalBuffers`.

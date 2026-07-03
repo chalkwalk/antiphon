@@ -188,6 +188,9 @@ public:
   // Host Sync State
   double hostBpm = 120.0;
   double hostPpqPosition = 0.0;
+  // Whether the host reports a position at all. Without one there is no
+  // timeline to lock to and the free-running clock is all there is.
+  bool hostHasPpq = false;
   bool hostIsPlaying = false;
   // Audio thread only: the edge that starts the offline grid at zero.
   bool gridWasRunning = false;
@@ -295,6 +298,7 @@ private:
   // every local channel's ring. Called once per segment of a block so that a
   // transmitted interval ends on the exact sample, not on a block boundary.
   void captureInputRange(int startSample, int count);
+  void captureEchoRange(int startSample, int count);
 
   int64_t testToneSample = 0;
   ninjam::IntervalProbe testProbe;

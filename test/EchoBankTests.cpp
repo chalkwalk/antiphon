@@ -20,58 +20,56 @@ struct EchoHarness {
     return client.setPracticeEnabled(true, intervalSamples, 48000.0);
   }
 
-  // One interval of a constant value, so which interval came back out is
+  // One interval of a constant value, written the way the audio thread writes
+  // it -- in blocks, as it is played -- so which interval came back out is
   // readable from a single sample.
-  void pushInterval(float value) {
-    juce::AudioBuffer<float> buf(2, intervalSamples);
-    for (int ch = 0; ch < 2; ++ch)
-      juce::FloatVectorOperations::fill(buf.getWritePointer(ch), value,
-                                        intervalSamples);
-    client.pushEchoInterval(buf, intervalSamples);
-    ++pushes;
+  void writeIntervalAudio(float value, int blockSize) {
+    juce::AudioBuffer<float> block(2, blockSize);
+    for (int pos = 0; pos < intervalSamples; pos += blockSize) {
+      const int n = juce::jmin(blockSize, intervalSamples - pos);
+      for (int ch = 0; ch < 2; ++ch)
+        juce::FloatVectorOperations::fill(block.getWritePointer(ch), value, n);
+      client.writeEchoBlock(block.getReadPointer(0), block.getReadPointer(1),
+                            false, 0, n, 1.0f, 1.0f);
+    }
   }
 
-  // Which absolute interval the last runInterval call actually played.
+  // Which absolute interval the last runInterval call played.
   //
   // Worth stating rather than counting loop iterations, because they are not
   // the same number and assuming they were is how a correct implementation
-  // gets "fixed". The push at a boundary carries the interval that has just
-  // ended, so the interval being played is the one after it -- which, since
-  // the push index counts from zero, is the number of pushes made so far.
-  long long playingInterval() const { return pushes; }
+  // gets "fixed". The first call plays interval 0 while filling it, so the
+  // count of completed intervals is the index of the one just played.
+  long long playingInterval() const { return closed - 1; }
 
-  int pushes = 0;
+  int closed = 0;
 
   // One whole interval of the real pipeline, in the order processBlock runs
-  // it: swap ONCE at the interval boundary, then service the slots on every
-  // block. At the boundary the audio thread posts the interval that has just
-  // ended and then swaps; the message thread stores the post a moment later,
-  // which is why it cannot be picked up by the swap that has already happened.
-  // `justPlayed` is the audio of the interval ending at this boundary.
+  // it: write per block as the audio plays, then close and swap at the
+  // boundary -- both on this thread, which is what lets a one-interval echo
+  // exist at all. `value` is what you play during this interval.
   //
-  // Mirroring processBlock is the whole point. This harness used to swap per
-  // interval and call nothing per block, while the processor swapped per
+  // Mirroring processBlock is the whole point. This harness once swapped per
+  // interval and called nothing per block, while the processor swapped per
   // block -- so the suite tested a pipeline the product did not have, and
   // passed while echo played one block of each interval and then went silent.
   // If this loop stops matching processBlock, it stops being a test.
-  juce::AudioBuffer<float> runInterval(float justPlayed, int blockSize = 512) {
-    return runIntervalImpl(&justPlayed, blockSize);
+  juce::AudioBuffer<float> runInterval(float value, int blockSize = 512) {
+    return runIntervalImpl(&value, blockSize);
   }
 
   // A boundary that stores nothing: the source has stopped. Reaches the paths
-  // where a slot has no audio at all, which pushing silence does not.
+  // where a slot has no audio at all, which writing silence does not.
   juce::AudioBuffer<float> runIntervalWithoutPush(int blockSize = 512) {
     return runIntervalImpl(nullptr, blockSize);
   }
 
-  juce::AudioBuffer<float> runIntervalImpl(const float *justPlayed,
-                                           int blockSize) {
-    client.swapEchoBuffers();
-    if (justPlayed != nullptr)
-      pushInterval(*justPlayed);
+  juce::AudioBuffer<float> runIntervalImpl(const float *value, int blockSize) {
+    if (value != nullptr)
+      writeIntervalAudio(*value, blockSize);
+
     juce::AudioBuffer<float> out(2, intervalSamples);
     out.clear();
-
     juce::AudioBuffer<float> block(2, blockSize);
     for (int pos = 0; pos < intervalSamples; pos += blockSize) {
       const int n = juce::jmin(blockSize, intervalSamples - pos);
@@ -82,9 +80,12 @@ struct EchoHarness {
       for (int ch = 0; ch < 2; ++ch)
         out.copyFrom(ch, pos, block, ch, 0, n);
     }
+
+    client.closeEchoInterval();
+    client.swapEchoBuffers();
+    ++closed;
     return out;
   }
-
 };
 
 // The proportion of an interval that is actually carrying signal. The bug this
@@ -163,6 +164,77 @@ public:
       }
     }
 
+    beginTest("a one-interval tap plays back the moment the interval ends");
+    {
+      // The looper case, and the reason the store moved onto the audio thread.
+      // "Why does the shortest delay start at 2?" is a fair question with no
+      // good answer -- one interval is the natural shortest echo and the one a
+      // player reaches for, so the pipeline had to give it up rather than the
+      // UI explain it away.
+      EchoHarness h;
+      expect(h.start());
+      h.client.setEchoTapDelay(0, 1);
+      h.client.setEchoTapMute(0, false);
+
+      auto levelFor = [](int i) { return 0.05f * (float)(i + 1); };
+
+      // Interval 0 has nothing before it, so it is the one interval of silence
+      // a one-interval echo can honestly have.
+      const auto first = h.runInterval(levelFor(0));
+      expectWithinAbsoluteError(steadyValue(first), 0.0f, 1.0e-6f,
+                                "interval 0 has no predecessor");
+
+      for (int i = 1; i < 8; ++i) {
+        const auto out = h.runInterval(levelFor(i));
+        expectWithinAbsoluteError(
+            steadyValue(out), levelFor(i - 1), 1.0e-4f,
+            "interval " + juce::String((int)h.playingInterval()) +
+                " must play the one immediately before it");
+      }
+    }
+
+    beginTest("the shallowest delay the picker offers actually works");
+    {
+      // Ties the constant to the behaviour, so lowering kMinDelayIntervals
+      // without the pipeline to back it fails here rather than on stage.
+      EchoHarness h;
+      expect(h.start());
+      h.client.setEchoTapDelay(0, EchoSchedule::kMinDelayIntervals);
+      expectEquals(h.client.getEchoTaps()[0].delayIntervals,
+                   EchoSchedule::kMinDelayIntervals);
+
+      for (int i = 0; i < 6; ++i)
+        h.runInterval(0.3f);
+      const auto out = h.runInterval(0.3f);
+      expect(duty(out) > 0.99f,
+             "the shallowest tap must sound for a whole interval, measured " +
+                 juce::String(duty(out) * 100.0f, 1) + "%");
+    }
+
+    beginTest("rebuilding the history does not free it under the audio thread");
+    {
+      // setPracticeEnabled used to clear echoHistory the instant it was called,
+      // while the audio thread could still be mid-block holding a pointer into
+      // an entry. The comment said the storage was released "once the slots
+      // have been observed free"; nothing observed anything. Retiring the ring
+      // and reclaiming it only after the audio thread acknowledges is what
+      // makes that comment true.
+      EchoHarness h;
+      expect(h.start());
+      for (int i = 0; i < 6; ++i)
+        h.runInterval(0.4f);
+
+      // Rebuild repeatedly with the audio thread still running between each,
+      // which is the shape that would trip an allocator or a sanitiser.
+      for (int round = 0; round < 8; ++round) {
+        expect(h.client.setPracticeEnabled(true, h.intervalSamples, 48000.0),
+               "round " + juce::String(round) + " must rebuild");
+        for (int i = 0; i < 3; ++i)
+          h.runInterval(0.4f);
+      }
+      expect(h.client.isPracticeEnabled());
+    }
+
     beginTest("the whole interval sounds, not just its first block");
     {
       // The regression that made practice mode useless. swapEchoBuffers was
@@ -217,10 +289,14 @@ public:
              "the meter should be showing the signal");
 
       // Boundaries with nothing new stored, which is what a source that has
-      // stopped looks like. Pushing silence would not do: that still runs the
+      // stopped looks like. Writing silence would not do: that still runs the
       // mixing path, which always did set the peak. It is the early returns
       // that left it standing, so the test has to reach one.
-      for (int i = 0; i < 4; ++i)
+      //
+      // Long enough for the ring to come round to an entry that was opened for
+      // writing and never written -- until then the tap is quite correctly
+      // still playing the past, which is the whole point of a history.
+      for (int i = 0; i < 8; ++i)
         h.runIntervalWithoutPush();
       expect(h.client.getEchoTaps()[0].channel.peakLevel < 1.0e-4f,
              "a tap with nothing to play must read silent, measured " +

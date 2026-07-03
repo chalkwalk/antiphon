@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "HostGrid.h"
 #include "ChannelMix.h"
 #include "PluginEditor.h"
 
@@ -230,6 +231,48 @@ void AntiphonAudioProcessor::injectTestTone(int numSamples) {
   testToneSample += numSamples;
 }
 
+void AntiphonAudioProcessor::captureEchoRange(int startSample, int count) {
+  // The practice echo's own capture, running on the audio thread alongside the
+  // transmit capture rather than after it.
+  //
+  // Storing as we go is what makes a one-interval echo possible: by the time
+  // the boundary arrives the entry is already complete, so the swap at that
+  // same boundary can start playing it. Going through the message thread cost
+  // an extra interval, which is why the shallowest tap used to be 2.
+  //
+  // Deliberately NOT gated on transmit. Transmit decides what the room hears
+  // and offline there is no room; an echo that stopped recording because a
+  // button elsewhere was off would be a trap. It is also why this reads the
+  // input directly rather than reusing the transmit ring, which stores audio
+  // un-gated precisely so the spans can be applied to it later.
+  //
+  // v1 echoes the first local channel. Summing several needs to know when the
+  // last one for a boundary has arrived, which is fragile.
+  if (count <= 0 || audioChannelCount.load(std::memory_order_acquire) < 1)
+    return;
+
+  auto &lc = *audioChannels[0];
+  const int numInBuses = getBusCount(true);
+  const int busIdx = juce::jlimit(0, numInBuses - 1, lc.inputBusIndex.load());
+  auto *bus = getBus(true, busIdx);
+  if (!bus)
+    return;
+  const int offset = bus->getChannelIndexInProcessBlockBuffer(0);
+  const int busCh = bus->getNumberOfChannels();
+
+  auto sourcePointer = [this](int ch) -> const float * {
+    return ch >= 0 && ch < inputSnapshot.getNumChannels()
+               ? inputSnapshot.getReadPointer(ch)
+               : nullptr;
+  };
+
+  const auto gains = ChannelMix::panGains(lc.volume.load(), lc.pan.load());
+  ninjamClient.writeEchoBlock(sourcePointer(offset),
+                              busCh > 1 ? sourcePointer(offset + 1) : nullptr,
+                              lc.isMono.load(), startSample, count, gains.left,
+                              gains.right);
+}
+
 void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
   if (count <= 0)
     return;
@@ -337,7 +380,8 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     if (info.hasValue()) {
       hostIsPlaying = info->getIsPlaying();
       if (info->getBpm().hasValue()) hostBpm = *info->getBpm();
-      if (info->getPpqPosition().hasValue()) hostPpqPosition = *info->getPpqPosition();
+      hostHasPpq = info->getPpqPosition().hasValue();
+      if (hostHasPpq) hostPpqPosition = *info->getPpqPosition();
     }
   }
 
@@ -446,11 +490,12 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // interval rather than per block, and removing it means the redesign tracked
   // as *Lock-free TX handoff* in ROADMAP.md. The lock is gone; the post is not.
   auto fireCaptureLambdas = [this](const RunGate &postGate) {
-    // inJam and echoOn are read HERE and captured by value. Re-reading them
-    // inside the lambda would let a connection landing between the boundary and
-    // the message thread's turn transmit an interval that was captured offline.
+    // inJam is read HERE and captured by value. Re-reading it inside the
+    // lambda would let a connection landing between the boundary and the
+    // message thread's turn transmit an interval that was captured offline.
+    // Echo no longer rides along here at all: it is stored on the audio thread
+    // as it plays, which is what lets a one-interval tap exist.
     const bool postInJam = postGate.inJam;
-    const bool postEchoOn = postGate.echoOn;
 
     const int numChannels = audioChannelCount.load(std::memory_order_acquire);
     for (int ci = 0; ci < numChannels; ++ci) {
@@ -471,15 +516,14 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         lc->fifo.reset();
         continue;
       }
-      if ((postInJam || postEchoOn) && length > 0) {
+      if (postInJam && length > 0) {
         bool mono = lc->isMono.load();
         const int rampSamples = lc->monitorRamp.rampLengthSamples();
         // A raw pointer is as safe here as the shared_ptr used to be: the
         // channel outlives the processor's audio path, and the lambda already
         // captures `this`, so it cannot outlive the processor either.
         juce::MessageManager::callAsync(
-            [this, lc, length, ci, mono, handoff, rampSamples, postInJam,
-             postEchoOn]() {
+            [this, lc, length, ci, mono, handoff, rampSamples, postInJam]() {
           if (!lc->isValid.load()) return;
           juce::AudioBuffer<float> buf(2, length);
           int s1, n1, s2, n2;
@@ -495,10 +539,6 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
               buf.getArrayOfWritePointers(), 2, length, rampSamples);
           if (postInJam)
             ninjamClient.processCapturedAudio(buf, length, ci, mono);
-          // v1 echoes one channel: summing several needs to know when the last
-          // channel's post for a boundary has arrived, which is fragile.
-          if (postEchoOn && ci == 0)
-            ninjamClient.pushEchoInterval(buf, length);
         });
       } else {
         lc->fifo.reset();
@@ -562,23 +602,53 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     gate = computeRunGate(ninjamClient.isConnected(), syncState.isRunning(),
                           transportIsPlaying(), practiceEnabled.load());
 
-    // Offline, the downbeat is wherever the transport started.
+    // Offline in a host, the host's timeline owns the grid outright.
     //
-    // Connected, SyncState owns the phase: it resets the clock on the armed
-    // transport-start edge and deliberately keeps running across a stop, so
-    // that an accidental stop cannot re-phase a jam. Offline it reports
-    // Disconnected and never fires at all, so nothing aligned the grid to the
-    // transport and the metronome free-ran against the host's. There is no
-    // room to desync from here, so starting the grid at zero is simply right.
-    if (gate.gridRunning && !gridWasRunning && !si.connected) {
+    // Connected, it cannot: matching njclient's truncated interval to the
+    // sample is what keeps us aligned with everyone else in the room, and the
+    // local metronome is the sole authority for swaps (PRINCIPLES 9). Offline
+    // there is nobody to be aligned with and two error terms pulling us off
+    // the DAW's grid -- an integer tempo against the host's fractional one,
+    // worth seconds over a take, and the truncation, worth milliseconds. See
+    // HostGrid.h. Deriving every answer from the reported position leaves
+    // nothing to accumulate, and follows tempo automation and loop jumps for
+    // free.
+    const bool useHostGrid = !si.connected && si.hasTransport && hostHasPpq;
+
+    // Free-running only: with the host grid there is no accumulator to zero,
+    // and the downbeat is the host's bar rather than wherever play was pressed
+    // -- which is what makes a practice recording drop straight onto the DAW's
+    // timeline. In the standalone our clock *is* the timeline, so the edge is
+    // still the right place to start it.
+    if (gate.gridRunning && !gridWasRunning && !si.connected && !useHostGrid) {
       intervalClock.reset();
       metronomeVoice.reset();
     }
     gridWasRunning = gate.gridRunning;
 
+    // With the host driving, IntervalClock is never advanced -- so it never
+    // reaches an interval start, and setTempo only applies a change there. A
+    // BPI change would sit pending for the rest of the session. Resetting it
+    // every block keeps it at a boundary so the change lands; it is O(1)
+    // unless the tempo actually moved.
+    if (useHostGrid)
+      intervalClock.reset();
+
+    // The grid actually in force this block, whichever owns it.
+    const int activeBpi = intervalClock.getBpi();
+    const double activeBpm = useHostGrid ? hostBpm : (double)intervalClock.getBpm();
+    const double hostBeatsPerSample =
+        HostGrid::beatsPerSample(hostBpm, sampleRate);
+    const double ppqAtBlockEnd =
+        hostPpqPosition + (double)ns * hostBeatsPerSample;
+
     if (gate.gridRunning) {
       clockEvents.clear();
-      intervalClock.advance(ns, clockEvents);
+      if (useHostGrid)
+        HostGrid::advance(hostPpqPosition, hostBeatsPerSample, activeBpi, ns,
+                          clockEvents);
+      else
+        intervalClock.advance(ns, clockEvents);
 
       const float metroGain =
           metronomeEnabled.load() ? metronomeVolume.load() : 0.0f;
@@ -604,11 +674,18 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                       totalNumOutputChannels);
     }
 
-    publishedPhaseBeats.store((float)intervalClock.phaseBeats());
+    // The phase bar reads the same grid the click does -- it is the thing you
+    // check the click against, so the two disagreeing is worse than either
+    // being wrong.
+    publishedPhaseBeats.store(
+        (float)(useHostGrid ? HostGrid::phaseBeatsAt(ppqAtBlockEnd, activeBpi)
+                            : intervalClock.phaseBeats()));
     // Published together with the phase they belong to, so the UI can never
-    // divide this interval's progress by the next interval's length.
-    publishedActiveBpm.store(intervalClock.getBpm());
-    publishedActiveBpi.store(intervalClock.getBpi());
+    // divide this interval's progress by the next interval's length. Offline
+    // in a host the tempo shown is the host's, because that is the one the
+    // grid is actually running at.
+    publishedActiveBpm.store((int)std::lround(activeBpm));
+    publishedActiveBpi.store(activeBpi);
 
     // Capture, split at the interval boundary.
     //
@@ -621,8 +698,11 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     if (gate.inJam || gate.echoOn) {
       IntervalClock::splitAtIntervalStarts(clockEvents, ns, captureSegments);
       for (const auto &seg : captureSegments) {
-        if (seg.count > 0)
+        if (seg.count > 0) {
           captureInputRange(seg.start, seg.count);
+          if (gate.echoOn)
+            captureEchoRange(seg.start, seg.count);
+        }
         if (seg.closesInterval) {
           publishedIntervalIndex.fetch_add(1);
           // The gate is captured by value at post time inside this call.
@@ -632,10 +712,11 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
             ninjamClient.diagSwaps.fetch_add(1);
             ninjamClient.intervalBeginSignal.store(false);
           } else if (gate.echoOn) {
-            // The echo's boundary swap, and the only place it belongs. It
-            // consumes what the message thread stored after an earlier
-            // boundary, which is why EchoSchedule charges two intervals for
-            // the handoff.
+            // Close then swap, in that order and both on this thread. The
+            // interval that has just finished is handed to the taps and picked
+            // up by the swap in the same breath, so a one-interval echo starts
+            // at the top of the interval beginning right now.
+            ninjamClient.closeEchoInterval();
             ninjamClient.swapEchoBuffers();
           }
         }
@@ -818,10 +899,22 @@ bool AntiphonAudioProcessor::setPracticeEnabled(bool on) {
     return true;
   }
 
-  // The history is interval-sized, so it needs the grid the clock is actually
-  // running -- not the pending tempo, which may not have taken effect yet.
-  const int intervalSamples = intervalClock.samplesPerInterval();
+  // The history is interval-sized, so it needs the grid that is actually
+  // running -- not the pending tempo, which may not have taken effect yet, and
+  // in a host not the integer one either. Practice is offline by definition,
+  // so if the host is giving us a timeline it owns the interval length (see
+  // HostGrid.h) and the entries have to be cut to its measure, not ours.
+  //
+  // One extra sample of slack: the host's boundaries fall on a fractional
+  // grid, so consecutive intervals differ in length by one and the longer of
+  // the two must still fit.
   const double sr = getSampleRate();
+  const bool hostOwnsGrid =
+      !ninjamClient.isConnected() && !isStandaloneApp() && hostHasPpq;
+  const int intervalSamples =
+      hostOwnsGrid
+          ? HostGrid::intervalSamples(hostBpm, intervalClock.getBpi(), sr) + 1
+          : intervalClock.samplesPerInterval();
   if (!ninjamClient.setPracticeEnabled(true, intervalSamples, sr))
     return false;
 

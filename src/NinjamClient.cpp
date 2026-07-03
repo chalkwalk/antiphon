@@ -1,4 +1,5 @@
 #include "NinjamClient.h"
+#include "ChannelMix.h"
 #include "NinjamProtocol.h"
 
 NinjamClient::NinjamClient() : juce::Thread("NinjamClientThread") {}
@@ -1376,6 +1377,7 @@ bool NinjamClient::setPracticeEnabled(bool enabled, int intervalSamples,
     return false;
 
   teardownEcho();
+  reclaimRetiredEchoRings();
 
   // Sized by the deepest tap regardless of mute, so unmuting is instant rather
   // than silent while the history refills.
@@ -1400,14 +1402,16 @@ bool NinjamClient::setPracticeEnabled(bool enabled, int intervalSamples,
   // that cannot buy one is a refusal rather than a degraded mode.
   if (allowed < EchoSchedule::kMinDelayIntervals)
     return false;
-  maxEchoDelayIntervals = juce::jmin(deepest, allowed);
+  // The published ring is a fixed array, so the depth has a hard ceiling as
+  // well as a memory one.
+  const int ringCeiling = kMaxEchoRing - 2;
+  maxEchoDelayIntervals = juce::jmin(juce::jmin(deepest, allowed), ringCeiling);
   for (auto &tap : echoTaps)
     tap.delayIntervals =
         juce::jlimit(EchoSchedule::kMinDelayIntervals, maxEchoDelayIntervals,
                      tap.delayIntervals);
 
   const int depth = EchoSchedule::historyDepth(maxEchoDelayIntervals);
-  echoHistory.clear();
   echoHistory.reserve((std::size_t)depth);
   for (int i = 0; i < depth; ++i) {
     auto entry = std::make_unique<DecodedInterval>();
@@ -1418,7 +1422,17 @@ bool NinjamClient::setPracticeEnabled(bool enabled, int intervalSamples,
     entry->finalReceived.store(true);
     echoHistory.push_back(std::move(entry));
   }
-  echoIntervalsWritten = 0;
+  echoWriteInterval = 0;
+
+  // Pointers first, depth last: the audio thread reads the depth with acquire
+  // and only then indexes below it, so it can never see a slot that has not
+  // been filled in.
+  for (int i = 0; i < depth; ++i)
+    echoRing[(std::size_t)i] = echoHistory[(std::size_t)i].get();
+  for (int i = 0; i < kMaxEchoTaps; ++i)
+    echoTapDelays[(std::size_t)i].store(echoTaps[i].delayIntervals,
+                                        std::memory_order_relaxed);
+  echoRingDepth.store(depth, std::memory_order_release);
 
   for (int i = 0; i < kMaxEchoTaps; ++i) {
     auto &slot = streamSlots[(std::size_t)(kFirstEchoSlot + i)];
@@ -1450,14 +1464,47 @@ void NinjamClient::teardownEcho() {
       slot.state.store(StreamSlot::kDraining, std::memory_order_release);
   }
   practiceActive.store(false);
-  // The history itself is released on the next enable, once the slots have
-  // been observed free -- the same idiom acquireStreamSlot uses.
+  // Retire the ring for the audio thread before anything else can free it.
+  // Storing 0 stops new writes; bumping the generation is what a later
+  // reclaim waits on.
+  echoRingDepth.store(0, std::memory_order_release);
+  echoRingGeneration.fetch_add(1, std::memory_order_release);
+  if (!echoHistory.empty()) {
+    RetiredEchoRing r;
+    r.entries = std::move(echoHistory);
+    r.generation = echoRingGeneration.load(std::memory_order_acquire);
+    retiredEchoRings.push_back(std::move(r));
+  }
+  echoHistory.clear();
+  for (auto &p : echoRing)
+    p = nullptr;
+}
+
+void NinjamClient::reclaimRetiredEchoRings() {
+  // Caller holds echoMutex. A ring is freed only once the audio thread has
+  // acknowledged a generation at least as new as the one it was retired at,
+  // which means a whole block has finished since it stopped being published.
+  // Until then it simply waits -- correctness is worth more than the megabytes,
+  // and the wait is one block long whenever audio is running at all.
+  const unsigned seen = echoRingSeen.load(std::memory_order_acquire);
+  retiredEchoRings.erase(
+      std::remove_if(retiredEchoRings.begin(), retiredEchoRings.end(),
+                     [seen](const RetiredEchoRing &r) {
+                       return seen >= r.generation;
+                     }),
+      retiredEchoRings.end());
 }
 
 void NinjamClient::drainEchoRetired() {
-  // Pops and DISCARDS. The entries belong to echoHistory for its whole life,
-  // because the same one is read by different taps at different times. Freeing
-  // here would be a use-after-free in the mix.
+  // Pops and DISCARDS. The entries belong to the history ring for its whole
+  // life, because the same one is read by different taps at different times.
+  // Freeing here would be a use-after-free in the mix.
+  //
+  // Runs on the AUDIO thread, from serviceEchoSlots. Nothing else may pop
+  // these queues: the audio thread is the only producer, so letting it also be
+  // the only consumer keeps them trivially single-threaded, and there is no
+  // reason to route pointers nobody wants through another thread. Leaving them
+  // undrained would simply fill the ring.
   for (int i = 0; i < kMaxEchoTaps; ++i) {
     auto &slot = streamSlots[(std::size_t)(kFirstEchoSlot + i)];
     while (slot.retired.pop() != nullptr) {
@@ -1465,55 +1512,66 @@ void NinjamClient::drainEchoRetired() {
   }
 }
 
-void NinjamClient::pushEchoInterval(const juce::AudioBuffer<float> &audio,
-                                    int numSamples) {
-  // Mirrors processCapturedAudio's guard from the other side: practice audio
-  // must never be near the wire, and a connection landing between the interval
-  // boundary and this call is exactly when that could happen.
-  if (isConnected())
+void NinjamClient::writeEchoBlock(const float *srcL, const float *srcR,
+                                  bool mono, int startSample, int count,
+                                  float gainL, float gainR) {
+  // Audio thread. No lock, no allocation: the depth is read with acquire and
+  // the pointers below it were published before it, so a ring that is visible
+  // is fully built. A retired ring publishes depth 0 and this simply stops.
+  const int depth = echoRingDepth.load(std::memory_order_acquire);
+  if (depth < 1 || count <= 0)
     return;
 
-  juce::ScopedLock sl(echoMutex);
-  if (!practiceActive.load() || echoHistory.empty())
+  auto *entry = echoRing[(std::size_t)EchoSchedule::writeSlotFor(
+      echoWriteInterval, depth)];
+  if (entry == nullptr)
     return;
 
-  drainEchoRetired();
+  const int pos = entry->writePos.load(std::memory_order_relaxed);
+  const int room = entry->buffer.getNumSamples() - pos;
+  const int n = std::min(count, room);
+  if (n <= 0)
+    return;
 
-  const int depth = (int)echoHistory.size();
-  // The interval being stored right now. Held before the counter moves,
-  // because both the write slot and every tap's read slot are relative to it:
-  // reading after the increment makes every tap one interval shallower than
-  // asked for, which sounds almost right and is not.
-  const long long thisInterval = echoIntervalsWritten;
-  const int writeSlot = EchoSchedule::writeSlotFor(thisInterval, depth);
-  auto &entry = *echoHistory[(std::size_t)writeSlot];
+  // Nothing clears the entry first: writePos is what the mix reads up to, so
+  // whatever is left beyond it from three intervals ago is unreachable. A
+  // clear here would be a multi-megabyte memset on the audio thread at every
+  // boundary, which is the cost this design exists to avoid.
+  float *dstL = entry->channelWritePtr[0];
+  float *dstR = entry->channelWritePtr[1];
+  if (dstL == nullptr || dstR == nullptr)
+    return;
+  ChannelMix::write(dstL + pos, dstR + pos, srcL, srcR, mono, startSample, n,
+                    ChannelMix::Frame{gainL, gainR});
+  entry->writePos.store(pos + n, std::memory_order_release);
+}
 
-  const int frames = juce::jmin(numSamples, entry.buffer.getNumSamples());
-  entry.writePos.store(0);
-  entry.buffer.clear();
-  for (int ch = 0; ch < juce::jmin(2, audio.getNumChannels()); ++ch)
-    if (auto *dst = entry.channelWritePtr[(std::size_t)ch])
-      juce::FloatVectorOperations::copy(dst, audio.getReadPointer(ch), frames);
-  // A mono source feeds both sides, matching what the room would have heard.
-  if (audio.getNumChannels() == 1 && entry.channelWritePtr[1] != nullptr)
-    juce::FloatVectorOperations::copy(entry.channelWritePtr[1],
-                                      audio.getReadPointer(0), frames);
-  entry.writePos.store(frames);
+void NinjamClient::closeEchoInterval() {
+  // Audio thread, at the boundary, before swapEchoBuffers -- the order is what
+  // makes a one-interval echo work. The entry finished a moment ago is handed
+  // over here and the swap immediately below picks it up, so it starts playing
+  // at the top of the very next interval.
+  const int depth = echoRingDepth.load(std::memory_order_acquire);
+  if (depth < 1)
+    return;
 
-  ++echoIntervalsWritten;
+  const long long closed = echoWriteInterval;
+  ++echoWriteInterval;
 
-  // Hand each tap the entry it is due, if the history is deep enough yet. The
-  // handoff cost is paid inside readSlotForPush: the entry handed here is not
-  // consumed until the swap two intervals from now, and the tap's delay is
-  // measured from there, so that "4 intervals" means four.
   for (int i = 0; i < kMaxEchoTaps; ++i) {
     const int readSlot = EchoSchedule::readSlotForPush(
-        thisInterval, echoTaps[i].delayIntervals, depth);
+        closed, echoTapDelays[(std::size_t)i].load(std::memory_order_relaxed),
+        depth);
     if (readSlot < 0)
       continue; // still filling: silence is the honest answer
-    auto &slot = streamSlots[(std::size_t)(kFirstEchoSlot + i)];
-    slot.ready.push(echoHistory[(std::size_t)readSlot].get());
+    if (auto *entry = echoRing[(std::size_t)readSlot])
+      streamSlots[(std::size_t)(kFirstEchoSlot + i)].ready.push(entry);
   }
+
+  // The next interval starts writing at the top of its entry.
+  if (auto *next = echoRing[(std::size_t)EchoSchedule::writeSlotFor(
+          echoWriteInterval, depth)])
+    next->writePos.store(0, std::memory_order_release);
 }
 
 std::vector<NinjamClient::EchoTap> NinjamClient::getEchoTaps() const {
@@ -1542,6 +1600,8 @@ void NinjamClient::setEchoTapDelay(int tap, int intervals) {
   // believed over the picker.
   echoTaps[tap].channel.channelName =
       "Echo " + juce::String(echoTaps[tap].delayIntervals);
+  echoTapDelays[(std::size_t)tap].store(echoTaps[tap].delayIntervals,
+                                        std::memory_order_relaxed);
 }
 
 void NinjamClient::setEchoTapVolume(int tap, float volume) {
@@ -1603,10 +1663,18 @@ void NinjamClient::serviceEchoSlots() {
     if (slot.state.load(std::memory_order_acquire) == StreamSlot::kDraining)
       releaseSlotOnAudioThread(slot);
   }
+  drainEchoRetired();
 }
 
 void NinjamClient::getEchoAudio(juce::AudioBuffer<float> &buffer) {
   mixSlotRange(kFirstEchoSlot, kTotalSlots, buffer);
+
+  // The end of every block that could have touched echo, after the mix and
+  // after any slot release. Acknowledging here is what lets the message thread
+  // free a retired ring: once this equals the generation, no audio block is
+  // still inside the old storage. See reclaimRetiredEchoRings.
+  echoRingSeen.store(echoRingGeneration.load(std::memory_order_acquire),
+                     std::memory_order_release);
 }
 
 juce::Array<NinjamClient::ChatMessage> NinjamClient::getChatLog() const {

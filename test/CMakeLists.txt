@@ -36,6 +36,7 @@ target_sources(NinjamTests
         StemRenderTests.cpp
         RunGateTests.cpp
         EchoScheduleTests.cpp
+        HostGridTests.cpp
         EchoBankTests.cpp
         GainRampTests.cpp
         TransmitSpansTests.cpp
