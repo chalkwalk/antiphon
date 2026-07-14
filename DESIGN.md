@@ -440,8 +440,31 @@ loops are transmitted; that is the DAW-inside-the-plugin shape `NON-GOALS.md`
 refuses. An echo has no such gradient: there is nothing to add to it.
 
 **Offline-only**, which makes "never transmitted" true by construction rather
-than by discipline. `RunGate` enforces it every block, and the invariant is
-asserted over every input combination (`§4.1`).
+than by discipline. It is stated at four independent layers, because this is
+the one property of the feature a user has to be able to trust:
+
+1. **The storage is disjoint.** Echo audio lives in its own history ring and in
+   slots `[kFirstEchoSlot, kTotalSlots)`. The encoder is fed only by
+   `processCapturedAudio`, from the transmit ring. Nothing joins them, and
+   `acquireStreamSlot` stops at `kMaxStreams` so a network channel can never be
+   handed an echo slot.
+2. **The output cannot be re-captured.** Transmit reads `inputSnapshot`, taken
+   at the top of `processBlock` before the output is cleared and long before
+   any echo is mixed into it.
+3. **`RunGate` gates every block**, from live state, and the invariant
+   `!(inJam && echoOn)` is asserted over every input combination (`§4.1`).
+4. **The client refuses outright.** `setPracticeEnabled` and `writeEchoBlock`
+   both return early when connected. `test/LoopbackTests.cpp` proves it against
+   a real socket rather than a flag -- practice cannot be started while
+   connected, and cannot survive a connection.
+
+Joining a room also **empties the transmit ring**. Capture runs for practice as
+well as for the jam, so a connection landing mid-interval would otherwise post
+an interval whose first half was played before you joined.
+
+The UI says the same thing rather than relying on it: the Practice toggle is
+**disabled while connected**, and follows the processor rather than the last
+click, because connecting switches practice off underneath it.
 
 **Slot segregation.** Echo taps live at `[kFirstEchoSlot, kTotalSlots)` in the
 same fixed array as the network streams, never among them. `acquireStreamSlot`

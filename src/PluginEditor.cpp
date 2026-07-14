@@ -1180,6 +1180,29 @@ void AntiphonEditor::updateToolbarStates() {
   browseButton.setEnabled(!connected);
   disconnectButton.setEnabled(connected);
 
+  // Practice is offline only, so the button says so by being disabled rather
+  // than by failing when pressed. It also has to follow the processor rather
+  // than remember what was last clicked: connecting switches practice off
+  // underneath it (onConnected), and a lit toggle over a feature that is no
+  // longer running is the UI telling a lie about the one thing users most
+  // want to be sure of.
+  const bool practiceOn = audioProcessor.ninjamClient.isPracticeEnabled();
+  if (practiceToggle.getToggleState() != practiceOn)
+    practiceToggle.setToggleState(practiceOn, juce::dontSendNotification);
+  practiceToggle.setEnabled(!connected);
+  practiceToggle.setTooltip(
+      connected ? juce::String("Practice is offline only -- disconnect to use "
+                              "it. Nothing you play in practice is ever sent.")
+                : juce::String("A duet with your past self: what you play "
+                               "comes back a chosen number of intervals "
+                               "later. Offline only, never transmitted."));
+  practiceToggle.setDescription(
+      connected
+          ? juce::String("Practice mode, unavailable while connected to a "
+                         "server. It is offline only and is never transmitted")
+          : juce::String("Play your own audio back to you, delayed, as virtual "
+                         "players. Offline only, and never transmitted"));
+
   // Everything below is DAW-only and was settled once by
   // applyHostContextToControls(). Re-enabling it here every timer tick would
   // quietly undo that.

@@ -1373,6 +1373,13 @@ bool NinjamClient::setPracticeEnabled(bool enabled, int intervalSamples,
     teardownEcho();
     return true;
   }
+  // Practice is offline by definition, and this is the layer that cannot be
+  // bypassed: the UI refuses too, but a refusal that only lives in a button is
+  // one edit away from not existing. Enabling while connected is not merely
+  // pointless -- it would leave practiceEnabled true so that echo started of
+  // its own accord the moment the connection dropped.
+  if (isConnected())
+    return false;
   if (intervalSamples <= 0 || sr <= 0.0)
     return false;
 
@@ -1518,6 +1525,12 @@ void NinjamClient::writeEchoBlock(const float *srcL, const float *srcR,
   // Audio thread. No lock, no allocation: the depth is read with acquire and
   // the pointers below it were published before it, so a ring that is visible
   // is fully built. A retired ring publishes depth 0 and this simply stops.
+  // The call site already gates on RunGate::echoOn, which requires no
+  // connection -- this is the same statement made where the audio actually
+  // lands, so that no future call site can reintroduce the question.
+  if (isConnected())
+    return;
+
   const int depth = echoRingDepth.load(std::memory_order_acquire);
   if (depth < 1 || count <= 0)
     return;

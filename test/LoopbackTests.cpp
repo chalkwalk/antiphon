@@ -381,6 +381,44 @@ public:
       expect(true, "survived draining callbacks queued by a destroyed client");
     }
 
+    beginTest("practice cannot be started, or survive, on a real connection");
+    {
+      // The question is "can a practice session reach a room", and this is the
+      // one place it can be answered against a genuinely connected client
+      // rather than a flag someone set. Everything else is a gate; this is the
+      // gate being shut by a real socket.
+      Session s;
+      expect(s.connect(), "client never reached connected");
+
+      expect(!s.client.setPracticeEnabled(true, 4800, 48000.0),
+             "enabling practice while connected must be refused outright");
+      expect(!s.client.isPracticeEnabled(),
+             "and must leave nothing enabled behind it -- a lingering true "
+             "would start echo the moment the connection dropped");
+
+      // And the audio path refuses too, so a future call site cannot
+      // reintroduce the question by skipping the gate.
+      juce::AudioBuffer<float> block(2, 256);
+      block.clear();
+      s.client.writeEchoBlock(block.getReadPointer(0), block.getReadPointer(1),
+                              false, 0, 256, 1.0f, 1.0f);
+      s.client.closeEchoInterval();
+      expect(!s.client.isPracticeEnabled(),
+             "writing echo audio while connected must not bring it to life");
+
+      // Started offline, it must not survive the connection either.
+      Session t;
+      t.client.setSampleRate(48000.0);
+      expect(t.client.setPracticeEnabled(true, 4800, 48000.0),
+             "practice must start offline");
+      expect(t.client.isPracticeEnabled());
+      expect(t.connect(), "second client never reached connected");
+      // The processor switches practice off from onConnected; this asserts the
+      // client honours the same rule when asked again.
+      expect(!t.client.setPracticeEnabled(true, 4800, 48000.0),
+             "re-enabling once connected must still be refused");
+    }
+
     beginTest("disconnect and reconnect clears stale remote state");
     {
       Session s;

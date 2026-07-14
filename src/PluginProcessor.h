@@ -194,6 +194,9 @@ public:
   bool hostIsPlaying = false;
   // Audio thread only: the edge that starts the offline grid at zero.
   bool gridWasRunning = false;
+  // Audio thread only: the edge that joins a room, so the transmit ring can be
+  // emptied of anything captured before it.
+  bool wasInJam = false;
 
   // Internal Metronome State (atomic: written on message thread, read on audio+UI threads)
   std::atomic<int> internalBpm{120};

@@ -626,6 +626,26 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
     gridWasRunning = gate.gridRunning;
 
+    // Joining a room discards whatever is already in the transmit ring.
+    //
+    // Capture runs for practice as well as for the jam, so while practice is
+    // on the transmit ring is being filled too -- it is simply never posted.
+    // If a connection lands mid-interval, the very next boundary would post an
+    // interval whose first half was played before you joined. It is your own
+    // input rather than anything the echo produced, so this is tidiness rather
+    // than a leak, but "the room's first interval of you is partly from before
+    // you arrived" is not behaviour anyone would choose.
+    if (gate.inJam && !wasInJam) {
+      const int n = audioChannelCount.load(std::memory_order_acquire);
+      for (int ci = 0; ci < n; ++ci) {
+        auto *lc = audioChannels[(std::size_t)ci];
+        lc->fifo.reset();
+        lc->spans[(std::size_t)lc->writeSpanIndex.load()].beginInterval(
+            lc->xmitEnabled.load());
+      }
+    }
+    wasInJam = gate.inJam;
+
     // With the host driving, IntervalClock is never advanced -- so it never
     // reaches an interval start, and setTempo only applies a change there. A
     // BPI change would sit pending for the rest of the session. Resetting it
