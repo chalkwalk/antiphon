@@ -131,8 +131,8 @@ public:
 
     beginTest("chord progressions are recognised, using Jamtaba's own vectors");
     {
-      // Taken from
-      // references/JamTaba/tests/auto/chords/TestChatChordsProgressionParser.cpp
+      // Taken from elieserdejesus/JamTaba,
+      // tests/auto/chords/TestChatChordsProgressionParser.cpp
       // so we accept what people already type in Ninjam rooms.
       for (const auto *s : {"| C    | F    | G    | F    ", "|C    |F    |G    |F",
                             "|C|F|G|F", "|  C|  F|  G|  F", "|C| F| G |F",

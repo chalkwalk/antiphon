@@ -121,8 +121,10 @@ scripts/testserver.sh                  # builds out of tree on first run
 scripts/testserver.sh --clean-archive  # wipe /tmp/njarchive first
 ```
 
-The build is deliberately out of tree (`/tmp/njbuild`): building in place drops
-object files into the pinned `references/ninjam` submodule.
+The reference server is GPLv2 and is not vendored here. On first run the script
+shallow-clones it to `/tmp/njsrc` at a pinned revision and builds it out of tree
+in `/tmp/njbuild`; nothing it fetches lands in a tracked path. See
+`docs/references/SOURCES.md`.
 
 Config is `test/fixtures/testserver.cfg`. Three settings matter and are easy to
 get wrong:
@@ -190,18 +192,23 @@ What to read:
   all, stable. A constant non-zero offset is a fixed latency worth
   characterising; an offset that drifts interval to interval is a clock bug.
 
-## Layer 4 -- differential tests against the official client (temporary)
+## Layer 4 -- differential comparison against the official client
 
-`test/refclient/` holds a headless harness around the official NINJAM
-reference client, and the interop tests that drive it. Both directions of the
-audio path have been confirmed against it: pitch, level and sample-exact
-interval timing. See `test/refclient/README.md`.
+Parity with the reference client was established by a headless harness that
+linked the official NINJAM client and drove both directions of the audio path:
+pitch, level and sample-exact interval timing. That harness was GPLv2-linking
+and temporary by design, and has been removed.
 
-It is deliberately self-contained and **meant to be deleted** once the parity it
-proves is captured as golden fixtures -- `rm -rf test/refclient`, or
-`git filter-repo --path test/refclient --invert-paths` for the published
-history. The build guards `add_subdirectory(refclient)` with an `EXISTS` check,
-so its absence changes nothing else.
+What it proved survives in two durable forms, and neither needs the harness:
+
+- **`ReferenceFixtures`** replays wire captures the official client actually
+  produced (`test/fixtures/reference/`) against our parsers and builders. Fast,
+  hermetic, no server and no timing. Do not hand-edit those files -- their whole
+  value is that no code of ours produced them.
+- **`docs/PARITY.md`** records the measurements, with the method and the
+  instrument calibration for each number.
+
+The manual comparison below still works, and is how a new claim gets checked.
 
 ### Comparing against a known-good client
 
@@ -221,9 +228,10 @@ This is what the rig is for.
 Do **not** expect byte-identical Ogg between different encoders -- compare
 decoded PCM, declared rate, frame counts and impulse offsets.
 
-`references/ninjam/ninjam/cliplogcvt/` (build with `make`, needs libogg and
-libvorbis headers) reassembles a user's channel to WAV with `-concat -decode`,
-which is useful for listening to a whole session.
+`ninjam/cliplogcvt/` in the reference sources -- which `scripts/testserver.sh`
+has already fetched to `/tmp/njsrc` -- builds with `make`, needs libogg and
+libvorbis headers, and reassembles a user's channel to WAV with
+`-concat -decode`, which is useful for listening to a whole session.
 
 ### What the automated RealServer test does and does not prove
 

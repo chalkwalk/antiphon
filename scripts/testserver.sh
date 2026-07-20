@@ -2,9 +2,10 @@
 #
 # Builds (once) and runs a local Ninjam server for integration testing.
 #
-# The server is built OUT OF TREE. Building in place would drop .o files into
-# references/ninjam/WDL/ and references/ninjam/ninjam/, dirtying a pinned
-# read-only submodule.
+# The reference server is GPLv2 and is deliberately NOT vendored here: this
+# script shallow-clones it on first use into a scratch directory outside the
+# repository, and builds it there. Nothing it fetches or produces ever lands in
+# a tracked path. See docs/references/SOURCES.md.
 #
 # Usage:
 #   scripts/testserver.sh                 # build if needed, then run
@@ -14,7 +15,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$REPO_ROOT/references/ninjam"
+NINJAM_URL="${NINJAM_SERVER_URL:-https://github.com/justinfrankel/ninjam}"
+NINJAM_REV="${NINJAM_SERVER_REV:-f4c0eff3a1d8d5f3ead470d0c7405c3ee37da24e}"
+SRC="${NINJAM_SERVER_SRC:-/tmp/njsrc}"
 BUILD_DIR="${NINJAM_SERVER_BUILD:-/tmp/njbuild}"
 ARCHIVE_DIR="${NINJAM_ARCHIVE:-/tmp/njarchive}"
 CFG="$REPO_ROOT/test/fixtures/testserver.cfg"
@@ -31,10 +34,10 @@ for arg in "$@"; do
 done
 
 if [ ! -d "$SRC/ninjam/server" ]; then
-  echo "error: $SRC/ninjam/server not found." >&2
-  echo "The ninjam reference submodule is not checked out. Run:" >&2
-  echo "  git submodule update --init references/ninjam" >&2
-  exit 1
+  echo "==> fetching the reference server into $SRC (not part of this repo)"
+  rm -rf "$SRC"
+  git clone --quiet "$NINJAM_URL" "$SRC"
+  git -C "$SRC" checkout --quiet "$NINJAM_REV"
 fi
 
 if [ "$REBUILD" = 1 ]; then

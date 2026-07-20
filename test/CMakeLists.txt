@@ -93,14 +93,6 @@ add_test(NAME no-build-standalone-macro
                  -DSRC_DIR=${CMAKE_SOURCE_DIR}/src
                  -P ${CMAKE_SOURCE_DIR}/cmake/CheckNoStandaloneMacro.cmake)
 
-# Temporary interop harness around the official reference client, plus the
-# interop tests that drive it. Everything to do with it lives in refclient/ so
-# that deleting that one directory removes it completely -- the guard below is
-# what makes the rest of the build survive its absence. See test/README.md.
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/refclient/CMakeLists.txt)
-  add_subdirectory(refclient)
-endif()
-
 # ---------------------------------------------------------------------------
 # Accessibility audit over the real component tree.
 #

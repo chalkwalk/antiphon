@@ -115,7 +115,7 @@ VoteState parseVote(const juce::String &text) {
 
   // Both formats are fixed in the server and are the only contract we have --
   // there is no structured vote message on the wire, so this is parsing English
-  // on purpose (references/libninjam/ninjam/server/usercon.cpp:1054, :1074,
+  // on purpose (libninjam/libninjam server/usercon.cpp:1054, :1074,
   // :1089, :1107):
   //
   //   [voting system] leading candidate: %d/%d votes for %d BPM [each vote

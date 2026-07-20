@@ -15,7 +15,8 @@
 // Parsed ONLY from that tagged form, never from free chat text. Jamtaba's chord
 // parser treats "I" and "l" as measure separators and consequently reads
 // "I AM TIRED ..." as a chord progression -- that is a real entry in their test
-// suite (references/JamTaba/tests/auto/chords/TestChatChordsProgressionParser.cpp).
+// suite (elieserdejesus/JamTaba,
+// tests/auto/chords/TestChatChordsProgressionParser.cpp).
 // Guessing at prose is how you get a header that lies.
 //
 // JUCE-light and free of juce_gui_basics, so it is unit-testable in the headless

@@ -39,7 +39,7 @@ void IntervalClock::recomputeGrid() {
     return;
 
   // Deliberately identical arithmetic to the reference client
-  // (references/ninjam/ninjam/njclient.cpp:794-810): samples per interval is
+  // (justinfrankel/ninjam njclient.cpp:794-810): samples per interval is
   // truncated, not rounded, and the beat grid is a whole number of samples
   // obtained by integer division. Matching this keeps our interval boundaries
   // aligned with every other Ninjam client on the server.

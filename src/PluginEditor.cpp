@@ -364,7 +364,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
                  text.startsWithIgnoreCase("/bpi ")) {
         // The server's own list, from the error it returns for a bad one:
         // "ADMIN requires valid parameter, i.e. topic, kick, bpm, bpi"
-        // (references/libninjam/ninjam/server/usercon.cpp:1192). bpm and bpi
+        // (libninjam/libninjam server/usercon.cpp:1192). bpm and bpi
         // were missing here, so an admin typing /bpm 120 got "Unknown command"
         // from us and the server never saw it. Each needs the matching
         // privilege; the server replies "No BPM permission" if you lack it.

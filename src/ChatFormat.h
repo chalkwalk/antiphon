@@ -65,7 +65,8 @@ VoteState parseVote(const juce::String &text);
 // Deliberately stricter than Jamtaba's parser, which also accepts "!", "I" and
 // "l" as separators and consequently reads "I AM TIRED ..." and "LETS TAKE A
 // BREAK" as progressions -- both are real cases in their own test suite
-// (references/JamTaba/tests/auto/chords/TestChatChordsProgressionParser.cpp).
+// (elieserdejesus/JamTaba,
+// tests/auto/chords/TestChatChordsProgressionParser.cpp).
 // Only "|" is a separator here, and at least two measures are required.
 bool isChordProgression(const juce::String &text);
 

@@ -11,7 +11,7 @@
 // here.
 //
 // All multi-byte integers in the Ninjam protocol are LITTLE-ENDIAN
-// (references/ninjam/ninjam/mpb.cpp:192-195 for bpm/bpi, :281-282 for volume).
+// (justinfrankel/ninjam mpb.cpp:192-195 for bpm/bpi, :281-282 for volume).
 
 namespace NinjamProtocol {
 
@@ -99,7 +99,7 @@ struct AuthReply {
   juce::String errorMessage;
   // Maximum local channel index the server will accept. The reference client
   // refuses to transmit on any channel at or above this
-  // (references/ninjam/ninjam/njclient.cpp:1096, :1476), so a server that
+  // (justinfrankel/ninjam njclient.cpp:1096, :1476), so a server that
   // omits it gets no audio at all from a stock client. Absent on older
   // servers, in which case it stays 0.
   int maxChannels = 0;

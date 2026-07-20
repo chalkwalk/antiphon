@@ -132,7 +132,7 @@ public:
   // This matches the reference client, which is what ReaNINJAM and the other
   // canonical clients are built on: RemoteUser_Channel defaults to volume 0.25
   // and RemoteUser to 1.0, and they are multiplied at mix time
-  // (references/ninjam/ninjam/njclient.cpp:2948 and :1967). Remote players are
+  // (justinfrankel/ninjam njclient.cpp:2948 and :1967). Remote players are
   // deliberately quieter than your own signal. Confirmed by measurement
   // against the real reference client, which plays our transmitted tone back
   // at 0.253 of the level we sent.

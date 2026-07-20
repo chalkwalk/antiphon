@@ -19,7 +19,7 @@ public:
   // of only 3 before the interval wraps, which reads as the click losing time
   // even though the grid is exact. The reference client sidesteps this by
   // having no bar concept at all -- it accents beat 0 and nothing else
-  // (references/libninjam/ninjam/njclient.cpp:1478) -- and that is what we fall
+  // (libninjam/libninjam njclient.cpp:1478) -- and that is what we fall
   // back to for a BPI that is not whole bars.
   void setBeatsPerInterval(int bpi);
 
