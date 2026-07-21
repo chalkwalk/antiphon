@@ -3,14 +3,21 @@
 What we checked against the official client, how, and what the numbers were.
 
 This document exists because the evidence has to outlive the instrument. The
-harness in `test/refclient/` is temporary and will be removed before release;
-everything it established is recorded here so a future change can be judged
-against it without rebuilding the rig.
+harness that produced these numbers was temporary by design and has been
+removed; everything it established is recorded here so a future change can be
+judged against it without rebuilding the rig.
 
-**Reference implementation:** `references/ninjam/` `NJClient`, driven headless by
-`test/refclient/NinjamRefClient` (see `test/refclient/README.md`). It is a
-library, not an app, so it runs with no audio backend and takes an explicit
-sample rate -- which is what makes a differential test possible at all.
+**Reference implementation:** `NJClient` from justinfrankel/ninjam (see
+`docs/references/SOURCES.md` for the revision), driven headless by a harness
+that linked it directly. It is a library, not an app, so it runs with no audio
+backend and takes an explicit sample rate -- which is what made a differential
+test possible at all.
+
+**What outlived it.** The wire captures in `test/fixtures/reference/` are bytes
+the official client actually produced; the `ReferenceFixtures` suite replays
+them against our parsers and builders on every run, with no server, no timing
+and no GPL linkage. Those are the standing regression tests. The numbers below
+are one-time measurements, kept with their method.
 
 ---
 

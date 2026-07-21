@@ -126,8 +126,9 @@ reference client driven headless, with two independent clocks and never ours on
 both sides. Six defects have been found this way that were invisible to our own
 suite *and* to listening -- including a hardcoded 48 kHz encoder that detuned us
 by 8.8% at 44.1 kHz. The measured record is `docs/PARITY.md`; it is deliberately
-durable, because the harness in `test/refclient/` is temporary and will be
-excised before release.
+durable, because the harness that produced it was temporary by design and has
+since been removed. What still runs on every build is `ReferenceFixtures`,
+replaying wire captures the official client produced.
 
 The most load-bearing instance of this principle is `IntervalClock::
 samplesPerInterval()`, which reproduces `njclient.cpp:806` **verbatim, including
@@ -162,9 +163,10 @@ total.
 
 **Consequence.** The whole client fits in your head, which is what makes the
 differential testing in §4 tractable: when a byte on the wire is wrong we can
-find it. The reference implementations under `references/` are read-only
-protocol documentation, not dependencies, and nothing from them is linked into
-the product.
+find it. The reference implementations were read as protocol documentation, not
+taken as dependencies: nothing from them is vendored in this repository and
+nothing from them is linked into the product. `docs/references/SOURCES.md`
+records what was read, and at which revision.
 
 This principle rejects the obvious shortcut. Wrapping `NJClient` would have been
 faster and would have inherited a decade of correctness -- along with WDL, a
@@ -202,9 +204,10 @@ been written out two or three times and the copies had drifted.
   meters ignored the flag entirely.
 - `GainUtils` exists so the faders and the meters share one dB scale, and so
   they agree with each other.
-- `IntervalProbe` is shared by the plugin's Test Tone, the test suite and the
-  reference-client harness, because two definitions of the probe would drift and
-  a timing test would then be comparing an implementation against itself.
+- `IntervalProbe` is shared by the plugin's Test Tone and the test suite -- and
+  was shared with the reference-client harness for as long as that existed --
+  because two definitions of the probe would drift and a timing test would then
+  be comparing an implementation against itself.
 - `NinjamClient::kDefaultRemoteChannelVolume` is the single source for both the
   audio path and the fader's initial position.
 

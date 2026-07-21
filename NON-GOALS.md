@@ -40,7 +40,7 @@ same desire that fits.
 | 1 | **Video** | Jamtaba, the only client with it | §2, §6, §10 | `JTBv` intervals are filtered on fourCC and ignored, so a Jamtaba user in the room costs us nothing. Their video simply does not appear. See "Notes on the close calls". |
 | 2 | **Being a plugin host or a DAW** | Jamtaba and the original Ninjam client grew mixers, recorders and effect racks around the jam | §2 | The Standalone build is a **supported secondary use case** -- one input, one output, straight into an audio interface. What it does not do is grow a DAW inside itself: no plugin hosting, no recorder, no effects, no arrangement. When you want those, run the plugin in the host that already has them. |
 | 3 | **Replacing the DAW's mixer or recorder** | Every standalone client ships its own mixer, meters, recorder and effects | §2 | Per-channel **output bus routing**: each remote channel goes to a stereo bus of your choosing, so the DAW records the jam as stems and processes them with plugins you already own. Per-channel **input bus routing** does the same on the way in. |
-| 4 | **Hosting a Ninjam server** | `ninjamsrv` is in `references/`, and "why not both" is a natural question | §2 | The **server browser** (live room list from ninbot.com) and a private-server host/port field. Running a server is a separate job with a separate operational story; `scripts/testserver.sh` drives one for testing and that is the extent of it. |
+| 4 | **Hosting a Ninjam server** | `ninjamsrv` is a short build away, and "why not both" is a natural question | §2 | The **server browser** (live room list from ninbot.com) and a private-server host/port field. Running a server is a separate job with a separate operational story; `scripts/testserver.sh` drives one for testing and that is the extent of it. |
 | 5 | **Wrapping `NJClient`** | The obvious shortcut -- a decade of proven correctness, available as a library | §6 | First-party protocol, SHA1 and Ogg/Vorbis layers, **differentially tested against `NJClient`** (`docs/PARITY.md`). We get the correctness by measurement rather than by inheritance, and we do not get WDL, a GPLv2 dependency in the audio path, or an architecture built around owning an audio device. |
 | 6 | **Timeline / loop-point integration** | The reference client integrates with REAPER's timeline and loop points | §1, §2 | Lock to the **transport start** instead, armed explicitly with the Sync button. In a session/clip view the timeline advances but is musically meaningless, and jogging the playhead during a live jam is not a real use case. Transport-start covers both common setups -- clip launching and a loop sized to the interval -- without knowing anything about the timeline. |
 | 7 | **Pushing tempo into the DAW** | `abNinjam` sends `/tempo/raw {bpm}` over OSC when the server tempo changes | §10 | The **BPM mismatch warning**, which clears itself when you match the tempo manually. There is no host-agnostic way for a plugin to set the DAW's tempo; the OSC route works for one DAW with one configuration and would be a support burden disguised as a feature. Parked in `ROADMAP.md`, not planned. |
@@ -95,8 +95,8 @@ about *mechanism*, not desire: wanting the DAW to follow the server tempo is
 entirely reasonable, and the mismatch warning is a workaround, not a solution.
 If a host-agnostic route appears -- a standard the plugin formats agree on -- the
 fence comes down. Until then, `abNinjam`'s localhost-OSC approach is documented
-in `references/abNinjam.md` and remains what someone should copy if they want it
-for their own setup.
+in `docs/references/abNinjam.md` and remains what someone should copy if they
+want it for their own setup.
 
 ---
 

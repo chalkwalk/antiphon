@@ -286,6 +286,13 @@ block, which is why it outlived the rest.
 Everything here comes from the "Not covered" section of `docs/PARITY.md`. These
 are honest gaps in what we have proven, not suspected bugs.
 
+**These all need the live harness back.** It was GPLv2-linking and was removed
+before publication, so any item below starts with rebuilding it out of tree --
+against `justinfrankel/ninjam` at the revision in `docs/references/SOURCES.md`,
+in a scratch directory, the way `scripts/testserver.sh` now fetches the server.
+Whatever it proves must land as fixtures in `test/fixtures/reference/` and
+numbers in `docs/PARITY.md` before it is torn down again.
+
 ### Multi-channel differential test
 
 Every parity run so far used a **single channel**. Multi-channel transmit is a
@@ -427,18 +434,6 @@ work is currently unexercised.
       look for it.
 - [ ] Install instructions in the README for people who do not build from source.
 - [ ] Decide on a release/versioning scheme.
-
-### Excise the reference-client harness
-
-`test/refclient/` links GPLv2 reference sources and is temporary by design. Its
-findings are captured in `docs/PARITY.md`, which is why that file exists.
-
-- [ ] Capture anything still only provable by the live harness as golden
-      fixtures (`test/fixtures/`).
-- [ ] `rm -rf test/refclient` -- the build guards `add_subdirectory` with an
-      `EXISTS` check, so nothing else changes.
-- [ ] Decide whether to scrub it from published history
-      (`git filter-repo --path test/refclient --invert-paths`).
 
 ### Documentation upkeep
 

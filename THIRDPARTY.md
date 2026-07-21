@@ -20,7 +20,27 @@ required -- but that constraint binds anyone who re-generates or subsets them.
 | **JUCE** | `JUCE/` (submodule) | AGPLv3 or commercial | Patched at configure time from `patches/`; see `AGENTS.md`. |
 | **libogg / libvorbis** | `modules/ogg`, `modules/vorbis` (submodules) | BSD-style (Xiph) | Ogg/Vorbis encode and decode. |
 | **clap-juce-extensions** | `modules/clap-juce-extensions` (submodule) | MIT | CLAP plugin format support. |
-| **WDL** | `utils/` | zlib-style (Cockos) | Remaining vendored headers (`heapbuf`, `queue`, `wdlstring`). `sha1` and `vorbisencdec` were replaced by first-party code and are no longer used. |
-| **NINJAM reference sources** | `references/` (submodules) | GPLv2 | Read-only protocol reference. Not linked into the product; `test/refclient/` links the reference client for interoperability testing only and is excised before release. |
 
-The product itself is intended to be GPLv3.
+That table is the whole list. In particular:
+
+- **No WDL.** Antiphon began by vendoring two Cockos WDL headers, `sha1` and
+  `vorbisencdec`. Both were replaced by first-party code -- `src/Sha1.{h,cpp}`
+  and `src/VorbisCodec.{h,cpp}` -- and the rest of WDL was never used. Nothing
+  from it remains in the tree or in the build.
+- **No NINJAM reference source.** The GPLv2 reference client, the reference
+  server and the other clients were **read** as protocol documentation and were
+  never vendored; the harness that once linked the reference client for
+  differential testing has been removed, along with any trace of it in the
+  published history. `docs/references/SOURCES.md` records what was read and at
+  which revision; `docs/PARITY.md` records what was measured.
+
+## Licence
+
+Antiphon is **GPLv3** (`LICENSE`).
+
+This is not a free choice. JUCE is offered under AGPLv3 or a commercial licence,
+and the open-source route obliges any work built on it to be released under a
+compatible copyleft licence. GPLv3 satisfies that and is compatible with the
+BSD-style Xiph libraries and the MIT CLAP extensions. Anyone shipping a binary
+must therefore also make the corresponding source available -- which for this
+project is the intent anyway, not a constraint being tolerated.

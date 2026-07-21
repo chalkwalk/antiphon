@@ -343,11 +343,12 @@ session archive is measured by `scripts/analyze_archive.py`. Operational guide i
 
 ### The differential rig
 
-`test/refclient/` -- the official `NJClient` driven headless, which is possible at
-all because it is a library rather than an app and takes an explicit sample rate.
-Deliberately self-contained and meant to be deleted before release; the build
-guards its `add_subdirectory` with an `EXISTS` check. Everything it established is
-recorded in `docs/PARITY.md`.
+The official `NJClient` driven headless, which was possible at all because it is
+a library rather than an app and takes an explicit sample rate. Deliberately
+self-contained, GPLv2-linking, and always meant to be deleted before release --
+which it since has been. Everything it established is recorded in
+`docs/PARITY.md`, and the wire captures it took are replayed hermetically by the
+`ReferenceFixtures` suite.
 
 ### Bugs the suite found
 
@@ -385,6 +386,39 @@ Ogg emits a page only every ~4 kB, so a short or tonal interval produces **no**
 decodable audio until the end-of-stream flush. Interval delivery is therefore
 all-or-nothing, and a receiver cannot start playing an interval early just
 because some `WRITE` chunks arrived. Pinned by a test so nobody "fixes" it.
+
+---
+
+## Release engineering
+
+### Excise the reference-client harness
+
+The harness linked GPLv2 reference sources and was temporary by construction --
+`docs/PARITY.md` exists because that was always the plan. It has been removed,
+along with the six reference submodules and the copy of the original client that
+sat in `references/`, and the removal was applied to the whole published history
+rather than only the tip: nothing in this repository has ever contained a
+reference source.
+
+What replaced it, and why the loss is smaller than it looks:
+
+- **`test/fixtures/reference/`** holds bytes the official client actually
+  produced, captured before the harness went. `ReferenceFixtures` replays them
+  against our parsers and builders on every run -- hermetic, fast, no server, no
+  timing, no GPL linkage. This is the durable half, and it was built for exactly
+  this moment.
+- **`docs/PARITY.md`** keeps the one-time measurements with their methods.
+- **`docs/references/SOURCES.md`** records every repository that was read and the
+  revision it was read at, so a citation in `src/` can still be followed. Source
+  comments now cite upstream (`justinfrankel/ninjam njclient.cpp:806`) rather
+  than a path that no longer resolves.
+- **`scripts/testserver.sh`** still runs a real `ninjamsrv`; it now shallow-clones
+  the reference sources to a scratch directory on first use instead of expecting
+  a submodule.
+
+What genuinely went with it is the ability to make a *new* differential claim
+without rebuilding the rig. The interoperability items still open in
+`ROADMAP.md` say so explicitly.
 
 ---
 

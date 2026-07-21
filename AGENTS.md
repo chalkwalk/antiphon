@@ -73,7 +73,8 @@ src/
   ClipsortLog.{h,cpp}       # session archive manifest: read and write
   StemRender.h              # one clip into one interval, resampled and aligned
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
-  IntervalProbe.h           # shared test signal: plugin Test Tone + tests + refclient
+  IntervalProbe.h           # shared test signal: plugin Test Tone and the tests
+  ChatFormat.{h,cpp}        # chat rendering: vote lines, chord progressions
   # --- UI ---
   LocalChannelStrip.{h,cpp} # 90px vertical strip per local input channel
   RemoteUserStrip.{h,cpp}   # card per remote player, channels arranged horizontally
@@ -92,16 +93,14 @@ test/
   README.md                 # the operational testing guide
   FakeNinjamServer.{h,cpp}  # in-process loopback server
   AuditMain.cpp             # AntiphonAudit: accessibility gate over the real UI
-  refclient/                # differential rig; TEMPORARY, excised before release
-  fixtures/                 # golden wire captures, testserver.cfg
+  fixtures/reference/       # wire captures the OFFICIAL client produced
+  fixtures/testserver.cfg   # config for the local ninjamsrv
 tools/
   StemsMain.cpp             # antiphon-stems: session archive -> WAV stems
 scripts/
-  testserver.sh             # builds and runs a local ninjamsrv out of tree
+  testserver.sh             # fetches, builds and runs a local ninjamsrv out of tree
   analyze_archive.py        # measures a server session archive
-  refclient_console.py      # interactive driver for the refclient harness
-references/                 # read-only protocol reference submodules + summaries
-utils/                      # remaining vendored WDL headers (heapbuf, queue, ...)
+docs/references/            # what was read to write this, and at which revision
 modules/                    # ogg, vorbis, clap-juce-extensions submodules
 ```
 
@@ -314,8 +313,8 @@ Learned the hard way; each of these cost real time.
   a number. Three "failures" in this project have been measurement error, one of
   them all the way through a fix (`docs/COMPLETED.md`, Withdrawn).
 
-- **Kill strays.** Interop runs leave `ninjamsrv` processes behind when the test
-  is killed: `pkill -f njinterop; rm -rf /tmp/njinterop_*`.
+- **Kill strays.** A killed `RealServer` run leaves `ninjamsrv` behind:
+  `pkill -f ninjamsrv; rm -rf /tmp/njarchive`.
 
 ---
 
@@ -326,7 +325,9 @@ Learned the hard way; each of these cost real time.
 - **2-space indent, braces on same line, members lowerCamelCase.**
 - **No comments except for non-obvious invariants or protocol workarounds.** No
   narration. When a comment is warranted it explains *why*, and often cites a
-  line in `references/`.
+  line in a reference implementation by upstream repository and file --
+  `(justinfrankel/ninjam njclient.cpp:806)`. `docs/references/SOURCES.md` maps
+  each prefix to a repository and the revision it was read at.
 - **ASCII only in source files** -- no non-ASCII characters anywhere (comments,
   string literals, or identifiers). Use `--` for an em dash, `->` for arrows. In
   UI string literals use plain ASCII equivalents. Reason:
@@ -345,9 +346,14 @@ Learned the hard way; each of these cost real time.
 - **Text entry belongs in a `juce::DialogWindow`,** not a child overlay, even
   with the focus patch: a dialog is a real top-level window with its own peer and
   takes focus normally. See `DESIGN.md` §10.8.
-- **`references/` and `modules/` are read-only.** Don't build or modify the
-  reference submodules; read `references/<name>.md` first and dip into source
-  only for specifics. `utils/` is near-third-party WDL; edit only if necessary.
+- **`modules/` is read-only** -- ogg, vorbis and clap-juce-extensions are
+  upstream submodules. Same rule as `JUCE/`: change a patch, not the submodule.
+- **No reference source enters this repository.** The NINJAM sources are GPLv2
+  and Antiphon is a first-party implementation (`PRINCIPLES §6`); they were read,
+  never vendored, and the published history has never contained them. Read
+  `docs/references/<name>.md` first and fetch the upstream repository into a
+  scratch directory if you need specifics -- `scripts/testserver.sh` shows the
+  shape. If you find yourself adding a submodule under `references/`, stop.
 
 ### Before claiming a change works
 

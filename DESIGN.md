@@ -853,7 +853,7 @@ the shape and the reasoning.
 | 1. Unit | `juce::UnitTest` suites over the JUCE-free modules and the parsers | yes |
 | 2. Loopback | `FakeNinjamServer` on `127.0.0.1`, real socket path, real handshake, uploads echoed back as downloads | yes |
 | 3. Real server | Opt-in via `NINJAM_TEST_SERVER`; a local `ninjamsrv` whose session archive is measured by `scripts/analyze_archive.py` | no |
-| 4. Differential | `test/refclient/` -- the official `NJClient` driven headless, both directions | no, temporary |
+| 4. Differential | `ReferenceFixtures` -- wire captures the official client produced, replayed against our parsers | yes |
 
 Two structural decisions worth knowing:
 
@@ -867,10 +867,13 @@ Two structural decisions worth knowing:
   the `AccessibilityAudit` rules exist as separate modules (`PRINCIPLES §7`).
   Logic left in `PluginProcessor` is logic that can never be tested.
 
-**Layer 4 is temporary by design.** `test/refclient/` links GPLv2 reference
-sources and is meant to be deleted before release; the build guards its
-`add_subdirectory` with an `EXISTS` check so its absence changes nothing. What it
-established is recorded in `docs/PARITY.md`, which is the durable artefact.
+**Layer 4 was once a live harness, and deliberately is not any more.** Parity was
+established by driving the official `NJClient` headless in both directions, which
+meant linking GPLv2 sources; that harness was temporary by construction and has
+been removed. It left two durable artefacts, and layer 4 is now made of them:
+`test/fixtures/reference/`, bytes the official client actually produced, replayed
+hermetically on every run; and `docs/PARITY.md`, the measurements with their
+method. Evidence outliving the instrument is the point (`PRINCIPLES §4`).
 
 ---
 
@@ -882,7 +885,7 @@ decision can be revisited on evidence rather than re-researched.
 Video is a **Jamtaba-proprietary extension**. ReaNINJAM and abNinjam do not
 support it; they ignore the extra channel data, and so do we.
 
-How Jamtaba does it (`references/JamTaba/src/Common/`):
+How Jamtaba does it (elieserdejesus/JamTaba, `src/Common/`):
 
 - **Capture**: Qt `QCamera` + `CameraFrameGrabber`.
 - **Encode**: FFmpeg, `AV_CODEC_ID_H264`, max 320x240, 64-400 kbps, emitting raw
@@ -908,18 +911,24 @@ video-less.
 
 ## 15. Reference implementations
 
-`references/` holds read-only submodules. Each has a sibling summary at
-`references/<name>.md` -- **read the summary first**, dip into source only for
-specifics. Nothing here is linked into the product.
+The NINJAM wire format is under-documented, so the other clients and the
+reference server were read as protocol documentation. **None of them is vendored
+in this repository and none is linked into the product** -- they were checked out
+alongside it while the work was done. `docs/references/SOURCES.md` records each
+repository, the revision that was read, and how to fetch it to follow a
+citation; the notes beside it are what was taken away.
 
-| Submodule | Primary use |
+Comments in `src/` cite these by repository and file, e.g.
+`(justinfrankel/ninjam njclient.cpp:794-810)`.
+
+| Repository | Primary use |
 |---|---|
-| `ninjam/` | Authoritative protocol reference. `njclient.cpp`, `netmsg.cpp`, `mpb.cpp`, `server/usercon.cpp`. |
-| `old_client/` | Context for the vendored WDL code in `utils/`. |
-| `abNinjam/` | OSC tempo sync reference (`fence #7`); headless properties-file approach. |
-| `ninjam-next-plugin/` | Modern JUCE VST3/AU wrapping `NJClient`. Useful for `AudioPlayHead` phase sync patterns. |
-| `JamTaba/` | Rich UI reference; the only client with video (§14). Cautionary tale on Qt-plus-plugin complexity. |
-| `libninjam/`, `JamWide/` | Additional implementations, lower priority. |
+| `justinfrankel/ninjam` | Authoritative protocol reference. `njclient.cpp`, `netmsg.cpp`, `mpb.cpp`, `server/usercon.cpp`. Also the server `scripts/testserver.sh` builds. |
+| The original client | Context for WDL's `vorbisencdec.h` and `sha1`, both of which we started from and then replaced (`src/VorbisCodec`, `src/Sha1`). |
+| `antanasbruzas/abNinjam` | OSC tempo sync reference (`fence #7`); headless properties-file approach. |
+| `nykwil/ninjam-next-plugin` | Modern JUCE VST3/AU wrapping `NJClient`. Useful for `AudioPlayHead` phase sync patterns. |
+| `elieserdejesus/JamTaba` | Rich UI reference; the only client with video (§14). Cautionary tale on Qt-plus-plugin complexity. Its chord-parser test suite is borrowed as test vectors. |
+| `libninjam/libninjam`, `mkschulze/JamWide` | Additional implementations, lower priority. |
 
 ---
 

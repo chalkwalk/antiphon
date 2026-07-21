@@ -5,10 +5,11 @@ only -- no dispatch, no state. The code that owns it is
 `src/NinjamProtocol.{h,cpp}`, which is pure by design (no sockets, no threads, no
 shared state) so it can be exercised directly with deliberately malformed input.
 
-**Authoritative sources**: `references/ninjam/ninjam/mpb.{h,cpp}` for message
-constants and layouts, `references/ninjam/ninjam/server/usercon.cpp` for
-server-side behaviour, `references/ninjam/ninjam/njclient.cpp` for client-side
-flows. Read `references/ninjam.md` first.
+**Authoritative sources**, all in the reference client (justinfrankel/ninjam --
+`docs/references/SOURCES.md` records the revision read and how to fetch it):
+`ninjam/mpb.{h,cpp}` for message constants and layouts,
+`ninjam/server/usercon.cpp` for server-side behaviour, `ninjam/njclient.cpp` for
+client-side flows. Read `docs/references/ninjam.md` first.
 
 ---
 
