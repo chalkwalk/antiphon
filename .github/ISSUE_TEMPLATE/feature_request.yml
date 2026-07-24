@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose something Antiphon should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please skim [`NON-GOALS.md`](../blob/main/NON-GOALS.md) first. Antiphon
+        refuses a number of reasonable-sounding things on purpose -- video, being
+        a plugin host, replacing the DAW's mixer, pushing tempo into the DAW, a
+        low-latency mode -- and each refusal is written up with the alternative
+        offered instead.
+
+        If your request matches a fence, say so and argue with it. A fence that
+        survives an argument is stronger; one that does not should come down.
+        That is a better conversation than a request that gets closed as a
+        duplicate of a decision.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        Describe the musical or workflow problem, not the feature. The solution
+        that fits this codebase is often not the one that first comes to mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations:
+      required: true
+  - type: textarea
+    id: fences
+    attributes:
+      label: Does this touch a non-goal?
+      description: >
+        If it does, which fence, and why should it not apply here? "I do not
+        think so" is a fine answer.
+  - type: textarea
+    id: prior-art
+    attributes:
+      label: Does another NINJAM client do this?
+      description: >
+        Jamtaba, ReaNINJAM, abNinjam. Knowing that one of them already solved it
+        is genuinely useful, including as evidence that it is worth doing.

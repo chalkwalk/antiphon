@@ -34,17 +34,18 @@ cannot be expressed within the principles, it is not ready for the roadmap.
 ## Status
 
 `ROADMAP.md` is the live source; update that file, not this one, when focus
-changes. As of 2026-08-08:
+changes. As of 2026-08-10:
 
 - The client **works**: connects to real servers, transmits and receives in time
   with other clients, verified differentially against the reference client at two
   tempos (`docs/PARITY.md`).
 - The accessibility pass has landed -- every control named, header readable,
   audit running headlessly.
-- Next: **Audio-thread hygiene**, then the **GitHub move**, then
-  **cross-platform builds**. Everything so far is Linux and CLAP only, which
-  matters most for accessibility: JUCE has screen-reader backends on macOS and
-  Windows and **none** on Linux, so that work is currently unexercised.
+- The **GitHub move** has landed: GPLv3, `CONTRIBUTING.md`, and a history with
+  no reference sources in it at any point.
+- Next: **cross-platform builds**. Everything so far is Linux and CLAP only,
+  which matters most for accessibility: JUCE has screen-reader backends on macOS
+  and Windows and **none** on Linux, so that work is currently unexercised.
 
 ## Layout map
 
@@ -370,7 +371,7 @@ actual output** -- "tests pass" without having run them is how the hardcoded
 
 ## Documentation maintenance
 
-Seven files at root, each with one job. Put a fact in exactly one of them.
+Eight files at root, each with one job. Put a fact in exactly one of them.
 
 | File | Owns |
 |---|---|
@@ -380,7 +381,12 @@ Seven files at root, each with one job. Put a fact in exactly one of them.
 | `DESIGN.md` | What the software is. Stable `§N` anchors. |
 | `ROADMAP.md` | What it is becoming. Named work areas, checkboxes. |
 | `README.md` | The user manual. |
+| `CONTRIBUTING.md` | How an outside contributor works here, and what is most needed. |
 | `THIRDPARTY.md` | Component licences and their obligations. |
+
+`CONTRIBUTING.md` is the outward-facing subset of this file plus the project's
+priorities for outside help. When a rule here changes and a contributor would
+need to know, change both -- but keep the detail here and the summary there.
 
 `CLAUDE.md` and `GEMINI.md` are **symlinks** to this file; they are tracked, and
 should stay symlinks.

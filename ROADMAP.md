@@ -409,12 +409,19 @@ deliberate "read me the levels now" gesture is the missing half of that decision
 
 The project is going public as an open-source repository.
 
-- [ ] `LICENSE` -- GPLv3. (The product is intended to be GPLv3; `THIRDPARTY.md`
-      records the component licences that constrain this.)
-- [ ] `CONTRIBUTING.md`.
-- [ ] Confirm the README quick start works from a genuinely fresh clone,
+- [x] `LICENSE` -- GPLv3. `THIRDPARTY.md` records the component licences that
+      constrain this, and why GPLv3 is the only real option under JUCE.
+- [x] `CONTRIBUTING.md`.
+- [x] Issue templates (bug, accessibility, feature) and a PR template.
+- [x] Remove the reference sources from the published history entirely, rather
+      than only from the tip. See `docs/COMPLETED.md`.
+- [x] Confirm the README quick start works from a genuinely fresh clone,
       including submodule init.
-- [ ] Repo description, topics, issue templates.
+- [ ] Repo description and topics -- set on GitHub, not in the tree.
+- [ ] A documentation site at `antiphon.chalkwalkmusic.com`, and a wiki synced
+      from it.
+- [ ] A logo, favicon and social card. The README badge and the site currently
+      run without one.
 
 ### Cross-platform builds
 

@@ -1,0 +1,47 @@
+name: Accessibility report
+description: Something is unreachable, unnamed, or badly announced
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These reports are wanted more than any other kind.
+
+        JUCE has screen-reader backends on macOS and Windows and **none on
+        Linux**, where this project is developed. That means the accessibility
+        work here is largely unexercised on the platforms where it would be
+        used, and it is a real gap rather than a suspected one -- see
+        `docs/ACCESSIBILITY.md`, which says so plainly.
+
+        You do not need to diagnose anything. "The transmit button says nothing
+        when I tab to it" is a complete and useful report.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What you encountered
+      description: >
+        What you were trying to do, what your screen reader said (or did not
+        say), and what you expected.
+    validations:
+      required: true
+  - type: input
+    id: reader
+    attributes:
+      label: Screen reader and version
+      placeholder: "e.g. NVDA 2024.4, VoiceOver on macOS 14, Orca 45"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and plugin format
+      placeholder: "e.g. Windows 11, VST3 in Reaper"
+    validations:
+      required: true
+  - type: textarea
+    id: navigation
+    attributes:
+      label: How you got there
+      description: >
+        The keyboard route to the control, if you can retrace it -- which panel,
+        how many tabs, whether a dialog was open.

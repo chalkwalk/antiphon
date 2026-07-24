@@ -1,0 +1,67 @@
+name: Bug report
+description: Something does not work, or works wrongly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antiphon is a networked audio plugin, so the environment matters more
+        than usual. The fields below are the ones that have actually mattered
+        when diagnosing past bugs.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "e.g. Ubuntu 24.04, Windows 11, macOS 14 (Apple silicon)"
+    validations:
+      required: true
+  - type: dropdown
+    id: format
+    attributes:
+      label: Plugin format
+      options:
+        - Standalone
+        - CLAP
+        - VST3
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: DAW and version
+      placeholder: "e.g. Bitwig 5.2, Reaper 7.x, n/a for standalone"
+  - type: input
+    id: audio
+    attributes:
+      label: Sample rate and buffer size
+      description: A surprising number of audio bugs live only at one of these.
+      placeholder: "e.g. 48000 Hz, 256 samples"
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server, and who else was in the room
+      description: >
+        If the problem involves other players, say which clients they were
+        running -- Jamtaba, ReaNINJAM, the reference client. Interoperability
+        bugs are the highest-severity kind here.
+      placeholder: "e.g. ninbot.com:2049, one Jamtaba user"
+  - type: input
+    id: version
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD`.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output, if any
+      render: shell

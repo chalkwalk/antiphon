@@ -1,5 +1,9 @@
 # Antiphon
 
+[![Build](https://github.com/chalkwalk/antiphon/actions/workflows/build.yml/badge.svg)](https://github.com/chalkwalk/antiphon/actions/workflows/build.yml)
+[![Licence: GPLv3](https://img.shields.io/badge/licence-GPLv3-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-antiphon.chalkwalkmusic.com-00b4d8.svg)](https://antiphon.chalkwalkmusic.com)
+
 **Jam with strangers, from inside your DAW.**
 
 Antiphon is a [NINJAM](https://www.cockos.com/ninjam/) client shaped as an audio
@@ -19,6 +23,9 @@ limitation worth knowing up front: standalone gives you a single input and a
 single output, so the multi-channel transmit and per-player stem recording below
 are plugin-only features.
 
+![The Antiphon window: local channel strips on the left, remote players in the
+centre, chat on the right](docs/images/antiphon.png)
+
 ---
 
 ## Table of contents
@@ -32,6 +39,8 @@ are plugin-only features.
 7. [Accessibility](#accessibility)
 8. [Troubleshooting](#troubleshooting)
 9. [Licensing](#licensing)
+10. [How this was built](#how-this-was-built)
+11. [Contributing](#contributing)
 
 ---
 
@@ -58,7 +67,7 @@ waiting for a download, that is [on the roadmap](ROADMAP.md).
 You need CMake, a C++17 compiler, and git.
 
 ```bash
-git clone --recurse-submodules <repo-url> antiphon
+git clone --recurse-submodules https://github.com/chalkwalk/antiphon.git
 cd antiphon
 cmake -B build
 cmake --build build -j $(nproc)
@@ -437,16 +446,48 @@ If you still see it, that is a bug worth reporting.
 
 ## Licensing
 
-Antiphon is intended to be **GPLv3**.
+Antiphon is **GPLv3** ([`LICENSE`](LICENSE)). JUCE is AGPLv3-or-commercial, and
+the open-source route obliges anything built on it to be copyleft; GPLv3
+satisfies that and is compatible with the Xiph and CLAP components.
 
-Third-party components and their licence obligations -- JUCE, libogg/libvorbis,
-clap-juce-extensions, WDL, the Inter typeface -- are documented in
-[`THIRDPARTY.md`](THIRDPARTY.md).
+Third-party components and their obligations -- JUCE, libogg/libvorbis,
+clap-juce-extensions, the Inter typeface -- are documented in
+[`THIRDPARTY.md`](THIRDPARTY.md). No NINJAM reference source is vendored here;
+those were read as protocol documentation, and
+[`docs/references/SOURCES.md`](docs/references/SOURCES.md) records what was read
+and at which revision.
+
+---
+
+## How this was built
+
+Antiphon was written by [ChalkWalk](https://github.com/chalkwalk) in
+collaboration with **Claude Opus 5**, working against the constraints in
+[`PRINCIPLES.md`](PRINCIPLES.md) and the standing instructions in
+[`AGENTS.md`](AGENTS.md) -- which is checked in, and is the honest record of how
+the work is actually done.
+
+That is worth stating plainly rather than leaving to be inferred, and it is also
+why this repository is unusually strict about evidence. Interoperability claims
+are measured against the official client and written down with their method
+([`docs/PARITY.md`](docs/PARITY.md)); the sanitiser baseline is zero warnings
+with no remembered exceptions; every UI control is checked for a screen-reader
+name by a test that fails the build. Those gates exist because a claim is only
+worth what was done to check it.
+
+---
+
+## Contributing
+
+Bug reports, cross-platform testing and screen-reader feedback are all wanted --
+see [`CONTRIBUTING.md`](CONTRIBUTING.md). The most useful thing right now is
+running it somewhere that is not Linux.
 
 ---
 
 ## For developers
 
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) -- how to contribute, and what is needed most
 - [`AGENTS.md`](AGENTS.md) -- how to work in this repo
 - [`PRINCIPLES.md`](PRINCIPLES.md) -- the twelve principles behind every decision
 - [`NON-GOALS.md`](NON-GOALS.md) -- what Antiphon deliberately refuses to be
@@ -454,4 +495,5 @@ clap-juce-extensions, WDL, the Inter typeface -- are documented in
 - [`ROADMAP.md`](ROADMAP.md) -- what is next
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md) -- the NINJAM wire format
 - [`docs/PARITY.md`](docs/PARITY.md) -- interoperability, measured
+- [`docs/references/SOURCES.md`](docs/references/SOURCES.md) -- what was read to write this
 - [`test/README.md`](test/README.md) -- the test suite
