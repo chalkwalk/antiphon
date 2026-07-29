@@ -1,0 +1,27 @@
+---
+# Advisory for now: CI runs clang-tidy without failing the build while the
+# existing backlog is worked down (see ROADMAP.md, "Clear the clang-tidy
+# backlog"). Do not add new findings. WarningsAsErrors is deliberately empty
+# until the backlog is zero, at which point it becomes '*' and the gate turns
+# blocking -- the same rule the sanitisers already follow: a baseline with a
+# remembered exception is one nobody reads carefully.
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  bugprone-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-auto,
+  -readability-implicit-bool-conversion,
+  -readability-magic-numbers,
+  -bugprone-branch-clone,
+  -readability-identifier-length,
+  -readability-uppercase-literal-suffix,
+  -readability-braces-around-statements,
+  -readability-function-cognitive-complexity
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^.*/(src|test|tools)/[^/]*\.h$'
+...

@@ -1,0 +1,18 @@
+---
+# LLVM's defaults already are this project's house style: 2-space indent, 80
+# columns, braces attached, `Type &name`, and short if-bodies kept on their own
+# line. Adopting the base style wholesale rather than hand-listing it keeps this
+# file short and leaves fewer settings to drift.
+BasedOnStyle: LLVM
+
+# Include order is hand-maintained. JuceHeader.h has to come first in the files
+# that use it, and sorting moves it.
+SortIncludes: false
+
+# Comments here carry the reasoning -- protocol citations, invariants, the
+# occasional measured number -- and they are wrapped by hand so the emphasis
+# falls where it was meant to. Reflowing them produces things like a citation
+# broken after "tagged form," and gains nothing. The formatter owns the code;
+# the prose is the author's.
+ReflowComments: false
+...
