@@ -53,12 +53,14 @@ public:
       }
     }
 
-    beginTest("minor and Aeolian stay distinct even though they are the same scale");
+    beginTest(
+        "minor and Aeolian stay distinct even though they are the same scale");
     {
       // Someone who typed "D minor" should be told "D minor" back. The scales
       // are identical; the words are not.
       expectEquals(displayName(parseName("D minor")), juce::String("D minor"));
-      expectEquals(displayName(parseName("D Aeolian")), juce::String("D Aeolian"));
+      expectEquals(displayName(parseName("D Aeolian")),
+                   juce::String("D Aeolian"));
       expectEquals(scaleNotes(parseName("D minor")),
                    scaleNotes(parseName("D Aeolian")),
                    "the notes must be the same even if the names are not");
@@ -88,8 +90,8 @@ public:
       // "I AM TIRED ..." as a progression because it treats I and l as measure
       // separators -- that is in their own test suite. Guessing at prose gives
       // you a header that lies.
-      for (const auto *s : {"I AM TIRED ...", "LETS TAKE A BREAK", "hello",
-                            "", "   ", "H minor", "D quantum", "8", "Dmm"})
+      for (const auto *s : {"I AM TIRED ...", "LETS TAKE A BREAK", "hello", "",
+                            "   ", "H minor", "D quantum", "8", "Dmm"})
         expect(!parseName(s).valid,
                juce::String("wrongly read as a key: ") + s);
     }
@@ -108,8 +110,9 @@ public:
     beginTest("a tag is found wherever it sits in the line");
     {
       // It arrives inside a topic that may say other things too.
-      for (const auto *s : {"[key: Dm]", "jam night -- [key: Dm] -- all welcome",
-                            "trailing [key: Dm]", "[KEY: Dm]"})
+      for (const auto *s :
+           {"[key: Dm]", "jam night -- [key: Dm] -- all welcome",
+            "trailing [key: Dm]", "[KEY: Dm]"})
         expectEquals(displayName(parseTagged(s)), juce::String("D minor"),
                      juce::String("failed on: ") + s);
     }

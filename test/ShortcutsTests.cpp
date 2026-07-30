@@ -41,7 +41,8 @@ public:
 
     beginTest("both modifiers are required");
     {
-      expect(Shortcuts::match('A', false, false) == A::None, "bare A types text");
+      expect(Shortcuts::match('A', false, false) == A::None,
+             "bare A types text");
       expect(Shortcuts::match('A', true, false) == A::None,
              "Ctrl+A alone is select-all in a text field");
       expect(Shortcuts::match('A', false, true) == A::None,

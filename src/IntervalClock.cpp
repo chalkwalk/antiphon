@@ -96,10 +96,10 @@ void IntervalClock::splitAtIntervalStarts(const std::vector<Event> &events,
   for (const auto &e : events) {
     if (e.type != Event::Type::IntervalStart)
       continue;
-    const int at = e.sampleOffset < 0
-                       ? 0
-                       : (e.sampleOffset > numSamples ? numSamples
-                                                      : e.sampleOffset);
+    const int at =
+        e.sampleOffset < 0
+            ? 0
+            : (e.sampleOffset > numSamples ? numSamples : e.sampleOffset);
     if (at < cursor)
       continue; // events are ordered; defensive
     // A zero-length piece is still emitted: the interval may have been
@@ -139,9 +139,9 @@ void IntervalClock::advance(int numSamples, std::vector<Event> &out) {
 
     // Advance to whichever comes first: the next beat, the end of the
     // interval, or the end of the block.
-    const int64_t nextEdge =
-        (nextBeat < bpi) ? (int64_t)beatOffsets[(size_t)nextBeat]
-                         : (int64_t)intervalSamples;
+    const int64_t nextEdge = (nextBeat < bpi)
+                                 ? (int64_t)beatOffsets[(size_t)nextBeat]
+                                 : (int64_t)intervalSamples;
     const int step =
         (int)std::min<int64_t>(nextEdge - posInInterval, numSamples - consumed);
     if (step <= 0)

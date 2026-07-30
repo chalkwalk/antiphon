@@ -30,7 +30,8 @@ public:
       // every stem would slip against the others a little more each time.
       const int frames = 100;
       auto clip = makeClip(60, 2, 0.5f, -0.5f);
-      std::vector<float> l((std::size_t)frames, 0.0f), r((std::size_t)frames, 0.0f);
+      std::vector<float> l((std::size_t)frames, 0.0f),
+          r((std::size_t)frames, 0.0f);
 
       StemRender::placeClip(clip.data(), 60, 2, 48000.0, l.data(), r.data(),
                             frames, 48000.0);
@@ -47,7 +48,8 @@ public:
     {
       const int frames = 50;
       auto clip = makeClip(200, 2, 0.5f, -0.5f);
-      std::vector<float> l((std::size_t)frames, 0.0f), r((std::size_t)frames, 0.0f);
+      std::vector<float> l((std::size_t)frames, 0.0f),
+          r((std::size_t)frames, 0.0f);
 
       StemRender::placeClip(clip.data(), 200, 2, 48000.0, l.data(), r.data(),
                             frames, 48000.0);
@@ -63,7 +65,8 @@ public:
     {
       const int frames = 32;
       auto clip = makeClip(frames, 1, 0.25f, 0.0f);
-      std::vector<float> l((std::size_t)frames, 0.0f), r((std::size_t)frames, 0.0f);
+      std::vector<float> l((std::size_t)frames, 0.0f),
+          r((std::size_t)frames, 0.0f);
 
       StemRender::placeClip(clip.data(), frames, 1, 48000.0, l.data(), r.data(),
                             frames, 48000.0);
@@ -79,7 +82,8 @@ public:
     {
       const int frames = 16;
       auto clip = makeClip(frames, 2, 1.0f, -1.0f);
-      std::vector<float> l((std::size_t)frames, 0.0f), r((std::size_t)frames, 0.0f);
+      std::vector<float> l((std::size_t)frames, 0.0f),
+          r((std::size_t)frames, 0.0f);
 
       StemRender::placeClip(clip.data(), frames, 2, 48000.0, l.data(), r.data(),
                             frames, 48000.0);
@@ -95,7 +99,8 @@ public:
       // 44100 -> 48000 stretches, so 44100 source frames become about 48000.
       const int frames = 48000;
       auto clip = makeClip(44100, 1, 0.5f, 0.0f);
-      std::vector<float> l((std::size_t)frames, 0.0f), r((std::size_t)frames, 0.0f);
+      std::vector<float> l((std::size_t)frames, 0.0f),
+          r((std::size_t)frames, 0.0f);
 
       StemRender::placeClip(clip.data(), 44100, 1, 44100.0, l.data(), r.data(),
                             frames, 48000.0);
@@ -103,8 +108,9 @@ public:
       // A constant input stays constant through the interpolator, away from the
       // very start where its filter is still filling.
       expectWithinAbsoluteError(l[1000], 0.5f, 0.01f);
-      expectWithinAbsoluteError(l[47000], 0.5f, 0.01f,
-                                "resampling must reach the end of the interval");
+      expectWithinAbsoluteError(
+          l[47000], 0.5f, 0.01f,
+          "resampling must reach the end of the interval");
     }
 
     beginTest("downsampling does not run past the end of the interval");
@@ -114,7 +120,8 @@ public:
       // beyond `frames`.
       const int frames = 1000;
       auto clip = makeClip(96000, 1, 0.5f, 0.0f);
-      std::vector<float> l((std::size_t)frames, 0.0f), r((std::size_t)frames, 0.0f);
+      std::vector<float> l((std::size_t)frames, 0.0f),
+          r((std::size_t)frames, 0.0f);
 
       StemRender::placeClip(clip.data(), 96000, 1, 96000.0, l.data(), r.data(),
                             frames, 48000.0);
@@ -142,7 +149,8 @@ public:
       // The click this exists to prevent. A player who sat an interval out
       // leaves a step from full amplitude straight to zero.
       const int frames = 1000, fade = 240;
-      std::vector<float> l((std::size_t)frames, 1.0f), r((std::size_t)frames, 1.0f);
+      std::vector<float> l((std::size_t)frames, 1.0f),
+          r((std::size_t)frames, 1.0f);
 
       StemRender::fadeEdges(l.data(), r.data(), frames, fade, true, true);
 
@@ -163,7 +171,8 @@ public:
     beginTest("fading only one end leaves the other alone");
     {
       const int frames = 1000, fade = 240;
-      std::vector<float> l((std::size_t)frames, 1.0f), r((std::size_t)frames, 1.0f);
+      std::vector<float> l((std::size_t)frames, 1.0f),
+          r((std::size_t)frames, 1.0f);
       StemRender::fadeEdges(l.data(), r.data(), frames, fade, false, true);
       expectWithinAbsoluteError(l[0], 1.0f, 1.0e-6f,
                                 "the start joins audio and must not be faded");
@@ -173,7 +182,8 @@ public:
     beginTest("a fade longer than the interval cannot overrun or overlap");
     {
       const int frames = 10;
-      std::vector<float> l((std::size_t)frames, 1.0f), r((std::size_t)frames, 1.0f);
+      std::vector<float> l((std::size_t)frames, 1.0f),
+          r((std::size_t)frames, 1.0f);
       StemRender::fadeEdges(l.data(), r.data(), frames, 10000, true, true);
       expectEquals((int)l.size(), frames);
       for (int i = 0; i < frames; ++i)
@@ -189,14 +199,20 @@ public:
       StemRender::fadeEdges(nullptr, r.data(), 8, 4, true, true);
       StemRender::fadeEdges(l.data(), r.data(), 0, 4, true, true);
       StemRender::fadeEdges(l.data(), r.data(), 8, 0, true, true);
-      StemRender::placeClip(nullptr, 8, 2, 48000.0, l.data(), r.data(), 8, 48000.0);
-      StemRender::placeClip(clip.data(), 0, 2, 48000.0, l.data(), r.data(), 8, 48000.0);
-      StemRender::placeClip(clip.data(), 8, 0, 48000.0, l.data(), r.data(), 8, 48000.0);
-      StemRender::placeClip(clip.data(), 8, 2, 48000.0, l.data(), r.data(), 0, 48000.0);
-      StemRender::placeClip(clip.data(), 8, 2, 48000.0, l.data(), r.data(), 8, 0.0);
+      StemRender::placeClip(nullptr, 8, 2, 48000.0, l.data(), r.data(), 8,
+                            48000.0);
+      StemRender::placeClip(clip.data(), 0, 2, 48000.0, l.data(), r.data(), 8,
+                            48000.0);
+      StemRender::placeClip(clip.data(), 8, 0, 48000.0, l.data(), r.data(), 8,
+                            48000.0);
+      StemRender::placeClip(clip.data(), 8, 2, 48000.0, l.data(), r.data(), 0,
+                            48000.0);
+      StemRender::placeClip(clip.data(), 8, 2, 48000.0, l.data(), r.data(), 8,
+                            0.0);
 
       for (int i = 0; i < 8; ++i)
-        expectEquals(l[(std::size_t)i], 0.0f, "nothing should have been written");
+        expectEquals(l[(std::size_t)i], 0.0f,
+                     "nothing should have been written");
     }
   }
 };

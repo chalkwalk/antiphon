@@ -13,21 +13,21 @@
 // ---------------------------------------------------------------------------
 
 struct VorbisDecoder::Impl {
-  ogg_sync_state   oy;
+  ogg_sync_state oy;
   ogg_stream_state os;
-  ogg_page         og;
-  ogg_packet       op;
-  vorbis_info      vi;
-  vorbis_comment   vc;
+  ogg_page og;
+  ogg_packet op;
+  vorbis_info vi;
+  vorbis_comment vc;
   vorbis_dsp_state vd;
-  vorbis_block     vb;
+  vorbis_block vb;
 
-  int  packetsSeen  = 0;
+  int packetsSeen = 0;
   bool streamInited = false;
-  bool dspInited    = false;
+  bool dspInited = false;
 
   std::vector<float> outBuf;
-  size_t             readOffset = 0;
+  size_t readOffset = 0;
 
   Impl() {
     memset(&oy, 0, sizeof(oy));
@@ -61,9 +61,10 @@ struct VorbisDecoder::Impl {
     }
   }
 
-  void decode(const void* data, int len) {
-    char* buf = ogg_sync_buffer(&oy, len);
-    if (!buf) return;
+  void decode(const void *data, int len) {
+    char *buf = ogg_sync_buffer(&oy, len);
+    if (!buf)
+      return;
     memcpy(buf, data, static_cast<size_t>(len));
     ogg_sync_wrote(&oy, len);
 
@@ -88,7 +89,7 @@ struct VorbisDecoder::Impl {
             dspInited = true;
           }
         } else {
-          float** pcm;
+          float **pcm;
           if (vorbis_synthesis(&vb, &op) == 0)
             vorbis_synthesis_blockin(&vd, &vb);
           int samples;
@@ -96,7 +97,7 @@ struct VorbisDecoder::Impl {
             int ch = vi.channels;
             size_t base = outBuf.size();
             outBuf.resize(base + static_cast<size_t>(samples * ch));
-            float* dst = outBuf.data() + base;
+            float *dst = outBuf.data() + base;
             for (int n = 0; n < samples; ++n)
               for (int c = 0; c < ch; ++c)
                 *dst++ = pcm[c][n];
@@ -112,24 +113,26 @@ struct VorbisDecoder::Impl {
 VorbisDecoder::VorbisDecoder() : p(std::make_unique<Impl>()) {}
 VorbisDecoder::~VorbisDecoder() = default;
 
-void VorbisDecoder::decode(const void* data, int len) { p->decode(data, len); }
+void VorbisDecoder::decode(const void *data, int len) { p->decode(data, len); }
 
 int VorbisDecoder::available() const {
   return static_cast<int>(p->outBuf.size() - p->readOffset);
 }
 
-const float* VorbisDecoder::pcm() const {
+const float *VorbisDecoder::pcm() const {
   return p->outBuf.data() + p->readOffset;
 }
 
 void VorbisDecoder::skip(int count) {
-  p->readOffset = std::min(p->readOffset + static_cast<size_t>(count),
-                           p->outBuf.size());
+  p->readOffset =
+      std::min(p->readOffset + static_cast<size_t>(count), p->outBuf.size());
   p->compact();
 }
 
-int VorbisDecoder::sampleRate() const  { return p->vi.rate; }
-int VorbisDecoder::numChannels() const { return p->vi.channels ? p->vi.channels : 1; }
+int VorbisDecoder::sampleRate() const { return p->vi.rate; }
+int VorbisDecoder::numChannels() const {
+  return p->vi.channels ? p->vi.channels : 1;
+}
 
 // ---------------------------------------------------------------------------
 // VorbisEncoder
@@ -138,34 +141,42 @@ int VorbisDecoder::numChannels() const { return p->vi.channels ? p->vi.channels 
 // Piecewise-linear kbps -> VBR quality mapping ported from WDL vorbisencdec.h.
 static float bitrateToQuality(int kbps) {
   float qv;
-  if      (kbps < 40)  qv = -0.1f;
-  else if (kbps < 64)  qv = -0.10f + (kbps - 40) * (0.10f / 24.0f);
-  else if (kbps < 75)  qv = (kbps - 64) * (0.1f / 9.0f);
-  else if (kbps < 95)  qv = 0.1f  + (kbps - 75)  * (0.2f / 20.0f);
-  else if (kbps < 110) qv = 0.3f  + (kbps - 95)  * (0.2f / 15.0f);
-  else if (kbps < 140) qv = 0.5f  + (kbps - 110) * (0.25f / 30.0f);
-  else                 qv = 0.75f + (kbps - 140) * (0.25f / 100.0f);
-  if (qv < -0.1f) qv = -0.1f;
-  if (qv >  1.0f) qv =  1.0f;
+  if (kbps < 40)
+    qv = -0.1f;
+  else if (kbps < 64)
+    qv = -0.10f + (kbps - 40) * (0.10f / 24.0f);
+  else if (kbps < 75)
+    qv = (kbps - 64) * (0.1f / 9.0f);
+  else if (kbps < 95)
+    qv = 0.1f + (kbps - 75) * (0.2f / 20.0f);
+  else if (kbps < 110)
+    qv = 0.3f + (kbps - 95) * (0.2f / 15.0f);
+  else if (kbps < 140)
+    qv = 0.5f + (kbps - 110) * (0.25f / 30.0f);
+  else
+    qv = 0.75f + (kbps - 140) * (0.25f / 100.0f);
+  if (qv < -0.1f)
+    qv = -0.1f;
+  if (qv > 1.0f)
+    qv = 1.0f;
   return qv;
 }
 
 struct VorbisEncoder::Impl {
   ogg_stream_state os;
-  vorbis_info      vi;
-  vorbis_comment   vc;
+  vorbis_info vi;
+  vorbis_comment vc;
   vorbis_dsp_state vd;
-  vorbis_block     vb;
+  vorbis_block vb;
 
-  int    nch;
-  bool   ok = false;
+  int nch;
+  bool ok = false;
 
   std::vector<uint8_t> outBuf;
-  size_t               readOffset = 0;
+  size_t readOffset = 0;
 
   Impl(int sampleRate, int numChannels, int bitrateKbps, int serialNumber)
-    : nch(numChannels)
-  {
+      : nch(numChannels) {
     memset(&os, 0, sizeof(os));
     memset(&vi, 0, sizeof(vi));
     memset(&vc, 0, sizeof(vc));
@@ -193,7 +204,7 @@ struct VorbisEncoder::Impl {
     ogg_page og;
     while (ogg_stream_flush(&os, &og)) {
       outBuf.insert(outBuf.end(), og.header, og.header + og.header_len);
-      outBuf.insert(outBuf.end(), og.body,   og.body   + og.body_len);
+      outBuf.insert(outBuf.end(), og.body, og.body + og.body_len);
     }
   }
 
@@ -217,13 +228,14 @@ struct VorbisEncoder::Impl {
     }
   }
 
-  void encode(const float* interleaved, int numFrames) {
-    if (!ok) return;
+  void encode(const float *interleaved, int numFrames) {
+    if (!ok)
+      return;
 
     if (!interleaved || numFrames == 0) {
       vorbis_analysis_wrote(&vd, 0);
     } else {
-      float** buf = vorbis_analysis_buffer(&vd, numFrames);
+      float **buf = vorbis_analysis_buffer(&vd, numFrames);
       for (int i = 0; i < numFrames; ++i)
         for (int c = 0; c < nch; ++c)
           buf[c][i] = interleaved[i * nch + c];
@@ -231,7 +243,7 @@ struct VorbisEncoder::Impl {
     }
 
     ogg_packet op;
-    ogg_page   og;
+    ogg_page og;
     while (vorbis_analysis_blockout(&vd, &vb) == 1) {
       vorbis_analysis(&vb, nullptr);
       vorbis_bitrate_addblock(&vb);
@@ -239,7 +251,7 @@ struct VorbisEncoder::Impl {
         ogg_stream_packetin(&os, &op);
         while (ogg_stream_pageout(&os, &og)) {
           outBuf.insert(outBuf.end(), og.header, og.header + og.header_len);
-          outBuf.insert(outBuf.end(), og.body,   og.body   + og.body_len);
+          outBuf.insert(outBuf.end(), og.body, og.body + og.body_len);
         }
       }
     }
@@ -248,10 +260,10 @@ struct VorbisEncoder::Impl {
 };
 
 VorbisEncoder::VorbisEncoder(int sr, int nch, int brkbps, int serno)
-  : p(std::make_unique<Impl>(sr, nch, brkbps, serno)) {}
+    : p(std::make_unique<Impl>(sr, nch, brkbps, serno)) {}
 VorbisEncoder::~VorbisEncoder() = default;
 
-void VorbisEncoder::encode(const float* interleaved, int numFrames) {
+void VorbisEncoder::encode(const float *interleaved, int numFrames) {
   p->encode(interleaved, numFrames);
 }
 
@@ -259,12 +271,12 @@ int VorbisEncoder::available() const {
   return static_cast<int>(p->outBuf.size() - p->readOffset);
 }
 
-const void* VorbisEncoder::data() const {
+const void *VorbisEncoder::data() const {
   return p->outBuf.data() + p->readOffset;
 }
 
 void VorbisEncoder::advance(int count) {
-  p->readOffset = std::min(p->readOffset + static_cast<size_t>(count),
-                           p->outBuf.size());
+  p->readOffset =
+      std::min(p->readOffset + static_cast<size_t>(count), p->outBuf.size());
   p->compact();
 }

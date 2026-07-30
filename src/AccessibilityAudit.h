@@ -26,8 +26,8 @@ struct Node {
   // *which* one when there is no accessible name -- "juce::TextEditor" is no
   // help in a dialog holding four of them.
   juce::String locator;
-  bool focusable = false;   // reachable by keyboard, so a reader will land here
-  bool ignored = false;     // explicitly hidden from the accessibility tree
+  bool focusable = false; // reachable by keyboard, so a reader will land here
+  bool ignored = false;   // explicitly hidden from the accessibility tree
   std::vector<Node> children;
 };
 
@@ -39,7 +39,7 @@ enum class Issue {
 
 struct Finding {
   Issue issue = Issue::MissingName;
-  juce::String path;   // "Editor / LocalChannelStrip / TextButton"
+  juce::String path; // "Editor / LocalChannelStrip / TextButton"
   juce::String detail;
 };
 
@@ -48,8 +48,10 @@ struct Finding {
 // in before any of this existed.
 inline bool isUninformativeName(const juce::String &name) {
   const auto trimmed = name.trim();
-  if (trimmed.isEmpty()) return true;
-  if (trimmed.length() <= 2) return true;
+  if (trimmed.isEmpty())
+    return true;
+  if (trimmed.length() <= 2)
+    return true;
   return trimmed == "..." || trimmed == "Connect...";
 }
 
@@ -61,9 +63,9 @@ inline bool isUninformativeName(const juce::String &name) {
 // number can be checked rather than trusted (PRINCIPLES section 5).
 struct Coverage {
   int roots = 0;
-  int nodes = 0;      // every component walked
-  int focusable = 0;  // the ones a reader can actually land on
-  int ignored = 0;    // explicitly hidden from the accessibility tree
+  int nodes = 0;     // every component walked
+  int focusable = 0; // the ones a reader can actually land on
+  int ignored = 0;   // explicitly hidden from the accessibility tree
 };
 
 // Accumulates into `out`, so several roots sum into one figure.

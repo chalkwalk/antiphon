@@ -94,10 +94,10 @@ bool NinjamClient::startSessionRecording(const juce::File &parentDir) {
   juce::String tidyHost;
   for (int i = 0; i < host.length(); ++i) {
     const auto c = host[i];
-    tidyHost += juce::CharacterFunctions::isLetterOrDigit(c) || c == '.' ||
-                        c == '-'
-                    ? juce::String::charToString(c)
-                    : juce::String("_");
+    tidyHost +=
+        juce::CharacterFunctions::isLetterOrDigit(c) || c == '.' || c == '-'
+            ? juce::String::charToString(c)
+            : juce::String("_");
   }
   if (tidyHost.isEmpty())
     tidyHost = "offline";
@@ -485,10 +485,9 @@ bool NinjamClient::handleMessage(juce::uint8 type,
             channelName = cit->second.channelName;
         }
       }
-      sessionWriter.beginClip(begin.guidHex, begin.username,
-                              begin.channelIndex, channelName,
-                              sessionIntervalIndex.load(), serverBpm,
-                              serverBpi);
+      sessionWriter.beginClip(begin.guidHex, begin.username, begin.channelIndex,
+                              channelName, sessionIntervalIndex.load(),
+                              serverBpm, serverBpi);
     }
 
     // Signal the audio thread that a new server interval has started.
@@ -558,7 +557,8 @@ bool NinjamClient::handleMessage(juce::uint8 type,
                 if (!needsResample) {
                   for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
                     float *writePtr = interval.channelWritePtr[(size_t)ch];
-                    if (writePtr == nullptr) continue;
+                    if (writePtr == nullptr)
+                      continue;
                     writePtr += writePos;
                     for (int s = 0; s < toCopy; ++s)
                       writePtr[s] = decodedBlock[s * out_nch + ch];
@@ -579,8 +579,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
                     for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
                       for (int s = 0; s < toCopy; ++s)
                         srcBuf[s] = decodedBlock[s * out_nch + ch];
-                      auto &interp =
-                          (ch == 0) ? pd.resamplerL : pd.resamplerR;
+                      auto &interp = (ch == 0) ? pd.resamplerL : pd.resamplerR;
                       interp.process(speedRatio, srcBuf.getData(),
                                      dstBuf.getData(), numOut);
                       if (auto *dst = interval.channelWritePtr[(size_t)ch])
@@ -664,11 +663,10 @@ bool NinjamClient::handleMessage(juce::uint8 type,
           chatLog.remove(0); // keep history bounded
       }
 
-      callAsyncIfAlive(
-          [this, type = msg.type, user = msg.username, text = msg.text]() {
-            listeners.call(&NinjamClientListener::onChatMessage, type, user,
-                           text);
-          });
+      callAsyncIfAlive([this, type = msg.type, user = msg.username,
+                        text = msg.text]() {
+        listeners.call(&NinjamClientListener::onChatMessage, type, user, text);
+      });
     }
   }
   return true;
@@ -695,15 +693,15 @@ void NinjamClient::sendChannelInfo() {
 void NinjamClient::updateChannelInfo(const juce::StringArray &names) {
   {
     juce::ScopedLock sl(channelInfoMutex);
-    storedChannelNames = names.isEmpty() ? juce::StringArray{"Local Instrument"} : names;
+    storedChannelNames =
+        names.isEmpty() ? juce::StringArray{"Local Instrument"} : names;
   }
   if (isConnected())
     sendChannelInfo();
 }
 
 void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
-                                        int numSamples,
-                                        int channelIndex,
+                                        int numSamples, int channelIndex,
                                         bool mono) {
   if (!isConnected())
     return;
@@ -864,9 +862,8 @@ int NinjamClient::acquireStreamSlot(const juce::String &username,
     // Starts wherever the channel should already be, so claiming a slot for a
     // channel you had muted does not fade it in.
     {
-      const bool mutedNow =
-          seed.isMuted || !seed.recvEnabled ||
-          (isAnySoloActive() && !seed.isSoloed);
+      const bool mutedNow = seed.isMuted || !seed.recvEnabled ||
+                            (isAnySoloActive() && !seed.isSoloed);
       slot.muteRamp.jumpTo(mutedNow ? 0.0f : 1.0f);
     }
     // Everything above must be visible to the audio thread before it sees the
@@ -997,12 +994,10 @@ void NinjamClient::dumpDiagnostics() {
   int lastExpected = diagLastIntervalExpected.load();
   if (swaps == 0 && earlySwaps == 0 && underruns == 0)
     return;
-  juce::Logger::writeToLog(
-      juce::String::formatted(
-          "[diag] swaps=%d early=%d droppedSmp=%d underrunBlocks=%d "
-          "lastInterval=%d/%d",
-          swaps, earlySwaps, dropped, underruns,
-          lastSamples, lastExpected));
+  juce::Logger::writeToLog(juce::String::formatted(
+      "[diag] swaps=%d early=%d droppedSmp=%d underrunBlocks=%d "
+      "lastInterval=%d/%d",
+      swaps, earlySwaps, dropped, underruns, lastSamples, lastExpected));
 }
 
 std::map<juce::String, NinjamClient::RemoteUser>
@@ -1033,7 +1028,8 @@ NinjamClient::getRemoteUsers() const {
 // usersMutex; the audio thread never does.
 template <typename ApplyToChannel, typename ApplyToSlot>
 void NinjamClient::updateChannelParam(const juce::String &username,
-                                      int channelIndex, ApplyToChannel toChannel,
+                                      int channelIndex,
+                                      ApplyToChannel toChannel,
                                       ApplyToSlot toSlot) {
   juce::ScopedLock sl(usersMutex);
   auto uit = remoteUsers.find(username);
@@ -1055,7 +1051,8 @@ std::vector<NinjamClient::RoomMember> NinjamClient::getRoomMembers() const {
     RoomMember m;
     m.username = name;
     auto it = remoteUsers.find(name);
-    m.channelCount = it != remoteUsers.end() ? (int)it->second.channels.size() : 0;
+    m.channelCount =
+        it != remoteUsers.end() ? (int)it->second.channels.size() : 0;
     out.push_back(m);
   }
   return out;
@@ -1086,7 +1083,8 @@ void NinjamClient::setRemoteUserPan(const juce::String &username,
 void NinjamClient::setRemoteUserMute(const juce::String &username,
                                      int channelIndex, bool mute) {
   updateChannelParam(
-      username, channelIndex, [mute](RemoteUserChannel &c) { c.isMuted = mute; },
+      username, channelIndex,
+      [mute](RemoteUserChannel &c) { c.isMuted = mute; },
       [mute](StreamSlot &s) {
         s.muted.store(mute, std::memory_order_relaxed);
       });
@@ -1095,7 +1093,8 @@ void NinjamClient::setRemoteUserMute(const juce::String &username,
 void NinjamClient::setRemoteUserSolo(const juce::String &username,
                                      int channelIndex, bool solo) {
   updateChannelParam(
-      username, channelIndex, [solo](RemoteUserChannel &c) { c.isSoloed = solo; },
+      username, channelIndex,
+      [solo](RemoteUserChannel &c) { c.isSoloed = solo; },
       [solo](StreamSlot &s) {
         s.soloed.store(solo, std::memory_order_relaxed);
       });
@@ -1115,14 +1114,21 @@ void NinjamClient::recomputeRemoteSolo() {
     juce::ScopedLock sl(usersMutex);
     for (const auto &[uname, user] : remoteUsers) {
       for (const auto &[chIdx, ch] : user.channels)
-        if (ch.isSoloed) { anySolo = true; break; }
-      if (anySolo) break;
+        if (ch.isSoloed) {
+          anySolo = true;
+          break;
+        }
+      if (anySolo)
+        break;
     }
   }
   if (!anySolo && practiceActive.load()) {
     juce::ScopedLock sl(echoMutex);
     for (const auto &tap : echoTaps)
-      if (tap.channel.isSoloed) { anySolo = true; break; }
+      if (tap.channel.isSoloed) {
+        anySolo = true;
+        break;
+      }
   }
 
   const int bits = soloMask.load(std::memory_order_relaxed);
@@ -1209,8 +1215,8 @@ void NinjamClient::mixSlotRange(int first, int last,
     // sending a channel there is no signal to un-mute, so not even solo can
     // recover it. The reference reaches the same place by deleting the decode
     // state outright (njclient.cpp:1710).
-    bool isMuted = anySolo ? !isSoloed
-                           : slot.muted.load(std::memory_order_relaxed);
+    bool isMuted =
+        anySolo ? !isSoloed : slot.muted.load(std::memory_order_relaxed);
     if (!slot.recvEnabled.load(std::memory_order_relaxed))
       isMuted = true;
 
@@ -1230,111 +1236,115 @@ void NinjamClient::mixSlotRange(int first, int last,
     // with the clock, and mute would take longer than 5 ms whenever a stream
     // underran.
     [&] {
-    if (slot.current == nullptr && slot.fadeOut == nullptr)
-      return;
+      if (slot.current == nullptr && slot.fadeOut == nullptr)
+        return;
 
-    float lGain = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
-    float rGain = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
-    int maxBus = std::max(0, dstChannels / 2 - 1);
-    int busIdx = juce::jlimit(0, maxBus, outBusIdx);
+      float lGain = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
+      float rGain = vol * (pan >= 0.0f ? 1.0f : 1.0f + pan);
+      int maxBus = std::max(0, dstChannels / 2 - 1);
+      int busIdx = juce::jlimit(0, maxBus, outBusIdx);
 
-    // Crossfade region: mix the old interval's tail (fade-out) with the new
-    // interval's head (fade-in) for the first fadeCopy samples of this block.
-    int fadeCopy = 0;
-    if (slot.fadeOut && slot.fadeRemaining > 0) {
-      fadeCopy = std::min(numSamples, slot.fadeRemaining);
-      int elapsed = slot.fadeTotal - slot.fadeRemaining;
+      // Crossfade region: mix the old interval's tail (fade-out) with the new
+      // interval's head (fade-in) for the first fadeCopy samples of this block.
+      int fadeCopy = 0;
+      if (slot.fadeOut && slot.fadeRemaining > 0) {
+        fadeCopy = std::min(numSamples, slot.fadeRemaining);
+        int elapsed = slot.fadeTotal - slot.fadeRemaining;
 
-      {
-        int oldChannels = slot.fadeOut->buffer.getNumChannels();
-        for (int ch = 0; ch < std::min(oldChannels, 2); ++ch) {
-          int dstCh = busIdx * 2 + ch;
-          if (dstCh >= dstChannels) continue;
-          float chGain = (ch == 0) ? lGain : rGain;
-          const float *src =
-              slot.fadeOut->buffer.getReadPointer(ch, slot.fadeOutPos);
-          float *dst = buffer.getWritePointer(dstCh);
-          for (int s = 0; s < fadeCopy; ++s) {
-            float g = (float)(slot.fadeRemaining - s) / slot.fadeTotal;
-            dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
-          }
-        }
-
-        if (slot.current) {
-          int newAvail = slot.current->writePos.load() - slot.readPos;
-          int newFadeCopy = std::min(fadeCopy, newAvail);
-          if (newFadeCopy > 0) {
-            int newChannels = slot.current->buffer.getNumChannels();
-            for (int ch = 0; ch < std::min(newChannels, 2); ++ch) {
-              int dstCh = busIdx * 2 + ch;
-              if (dstCh >= dstChannels) continue;
-              float chGain = (ch == 0) ? lGain : rGain;
-              const float *src =
-                  slot.current->buffer.getReadPointer(ch, slot.readPos);
-              float *dst = buffer.getWritePointer(dstCh);
-              for (int s = 0; s < newFadeCopy; ++s) {
-                float g = (float)(elapsed + s) / slot.fadeTotal;
-                dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
-              }
+        {
+          int oldChannels = slot.fadeOut->buffer.getNumChannels();
+          for (int ch = 0; ch < std::min(oldChannels, 2); ++ch) {
+            int dstCh = busIdx * 2 + ch;
+            if (dstCh >= dstChannels)
+              continue;
+            float chGain = (ch == 0) ? lGain : rGain;
+            const float *src =
+                slot.fadeOut->buffer.getReadPointer(ch, slot.fadeOutPos);
+            float *dst = buffer.getWritePointer(dstCh);
+            for (int s = 0; s < fadeCopy; ++s) {
+              float g = (float)(slot.fadeRemaining - s) / slot.fadeTotal;
+              dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
             }
-            // readPos advances whatever the mute gain is, so a muted stream
-            // stays in time and un-muting lands where it should.
-            slot.readPos += newFadeCopy;
           }
+
+          if (slot.current) {
+            int newAvail = slot.current->writePos.load() - slot.readPos;
+            int newFadeCopy = std::min(fadeCopy, newAvail);
+            if (newFadeCopy > 0) {
+              int newChannels = slot.current->buffer.getNumChannels();
+              for (int ch = 0; ch < std::min(newChannels, 2); ++ch) {
+                int dstCh = busIdx * 2 + ch;
+                if (dstCh >= dstChannels)
+                  continue;
+                float chGain = (ch == 0) ? lGain : rGain;
+                const float *src =
+                    slot.current->buffer.getReadPointer(ch, slot.readPos);
+                float *dst = buffer.getWritePointer(dstCh);
+                for (int s = 0; s < newFadeCopy; ++s) {
+                  float g = (float)(elapsed + s) / slot.fadeTotal;
+                  dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
+                }
+              }
+              // readPos advances whatever the mute gain is, so a muted stream
+              // stays in time and un-muting lands where it should.
+              slot.readPos += newFadeCopy;
+            }
+          }
+        }
+
+        slot.fadeOutPos += fadeCopy;
+        slot.fadeRemaining -= fadeCopy;
+        if (slot.fadeRemaining <= 0) {
+          slot.retired.push(slot.fadeOut);
+          slot.fadeOut = nullptr;
+          slot.fadeRemaining = 0;
         }
       }
 
-      slot.fadeOutPos += fadeCopy;
-      slot.fadeRemaining -= fadeCopy;
-      if (slot.fadeRemaining <= 0) {
-        slot.retired.push(slot.fadeOut);
-        slot.fadeOut = nullptr;
-        slot.fadeRemaining = 0;
+      // Post-fade region: normal mix from current at full gain.
+      if (!slot.current)
+        return;
+
+      auto &iv = *slot.current;
+      int avail = iv.writePos.load() - slot.readPos;
+      int remainingSamples = numSamples - fadeCopy;
+      if (remainingSamples <= 0)
+        return;
+      if (avail <= 0) {
+        if (!iv.finalReceived.load())
+          diagUnderrunBlocks.fetch_add(1);
+        return;
       }
-    }
 
-    // Post-fade region: normal mix from current at full gain.
-    if (!slot.current)
-      return;
+      int toCopy = std::min(remainingSamples, avail);
+      int srcChannels = slot.current->buffer.getNumChannels();
 
-    auto &iv = *slot.current;
-    int avail = iv.writePos.load() - slot.readPos;
-    int remainingSamples = numSamples - fadeCopy;
-    if (remainingSamples <= 0)
-      return;
-    if (avail <= 0) {
-      if (!iv.finalReceived.load())
-        diagUnderrunBlocks.fetch_add(1);
-      return;
-    }
+      // Metered before the mute gain, so the meter keeps showing that a player is
+      // playing even while you have them muted.
+      for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
+        float chGain = (ch == 0) ? lGain : rGain;
+        const float *src =
+            slot.current->buffer.getReadPointer(ch, slot.readPos);
+        for (int s = 0; s < toCopy; ++s)
+          peak = std::max(peak, std::abs(src[s]) * chGain);
+      }
 
-    int toCopy = std::min(remainingSamples, avail);
-    int srcChannels = slot.current->buffer.getNumChannels();
+      // addFrom took a constant gain, which is why mute used to be a branch and
+      // therefore a click. The ramp has to be read per sample, at the offset
+      // within the block that this region occupies.
+      for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
+        int dstCh = busIdx * 2 + ch;
+        if (dstCh >= dstChannels)
+          continue;
+        const float chGain = (ch == 0) ? lGain : rGain;
+        const float *src =
+            slot.current->buffer.getReadPointer(ch, slot.readPos);
+        float *dst = buffer.getWritePointer(dstCh) + fadeCopy;
+        for (int s = 0; s < toCopy; ++s)
+          dst[s] += src[s] * chGain * slot.muteRamp.gainAt(fadeCopy + s);
+      }
 
-    // Metered before the mute gain, so the meter keeps showing that a player is
-    // playing even while you have them muted.
-    for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
-      float chGain = (ch == 0) ? lGain : rGain;
-      const float *src =
-          slot.current->buffer.getReadPointer(ch, slot.readPos);
-      for (int s = 0; s < toCopy; ++s)
-        peak = std::max(peak, std::abs(src[s]) * chGain);
-    }
-
-    // addFrom took a constant gain, which is why mute used to be a branch and
-    // therefore a click. The ramp has to be read per sample, at the offset
-    // within the block that this region occupies.
-    for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
-      int dstCh = busIdx * 2 + ch;
-      if (dstCh >= dstChannels) continue;
-      const float chGain = (ch == 0) ? lGain : rGain;
-      const float *src = slot.current->buffer.getReadPointer(ch, slot.readPos);
-      float *dst = buffer.getWritePointer(dstCh) + fadeCopy;
-      for (int s = 0; s < toCopy; ++s)
-        dst[s] += src[s] * chGain * slot.muteRamp.gainAt(fadeCopy + s);
-    }
-
-    slot.readPos += toCopy;
+      slot.readPos += toCopy;
     }();
 
     slot.peakLevel.store(peak, std::memory_order_relaxed);
@@ -1403,8 +1413,8 @@ bool NinjamClient::setPracticeEnabled(bool enabled, int intervalSamples,
     deepest = juce::jmax(deepest, echoTaps[i].delayIntervals);
   }
 
-  const int allowed =
-      EchoSchedule::maxDelayForBudget(kEchoMemoryBudgetBytes, intervalSamples, 2);
+  const int allowed = EchoSchedule::maxDelayForBudget(kEchoMemoryBudgetBytes,
+                                                      intervalSamples, 2);
   // Below the handoff there is no tap that can be heard at all, so a budget
   // that cannot buy one is a refusal rather than a degraded mode.
   if (allowed < EchoSchedule::kMinDelayIntervals)
@@ -1494,12 +1504,12 @@ void NinjamClient::reclaimRetiredEchoRings() {
   // Until then it simply waits -- correctness is worth more than the megabytes,
   // and the wait is one block long whenever audio is running at all.
   const unsigned seen = echoRingSeen.load(std::memory_order_acquire);
-  retiredEchoRings.erase(
-      std::remove_if(retiredEchoRings.begin(), retiredEchoRings.end(),
-                     [seen](const RetiredEchoRing &r) {
-                       return seen >= r.generation;
-                     }),
-      retiredEchoRings.end());
+  retiredEchoRings.erase(std::remove_if(retiredEchoRings.begin(),
+                                        retiredEchoRings.end(),
+                                        [seen](const RetiredEchoRing &r) {
+                                          return seen >= r.generation;
+                                        }),
+                         retiredEchoRings.end());
 }
 
 void NinjamClient::drainEchoRetired() {
@@ -1606,8 +1616,8 @@ void NinjamClient::setEchoTapDelay(int tap, int intervals) {
   juce::ScopedLock sl(echoMutex);
   if (tap < 0 || tap >= kMaxEchoTaps || maxEchoDelayIntervals < 1)
     return;
-  echoTaps[tap].delayIntervals = juce::jlimit(
-      EchoSchedule::kMinDelayIntervals, maxEchoDelayIntervals, intervals);
+  echoTaps[tap].delayIntervals = juce::jlimit(EchoSchedule::kMinDelayIntervals,
+                                              maxEchoDelayIntervals, intervals);
   // The name carries the delay, so it has to follow it. A strip still reading
   // "Echo 4" while its picker says 6 is the kind of disagreement that gets
   // believed over the picker.
@@ -1619,21 +1629,24 @@ void NinjamClient::setEchoTapDelay(int tap, int intervals) {
 
 void NinjamClient::setEchoTapVolume(int tap, float volume) {
   juce::ScopedLock sl(echoMutex);
-  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  if (tap < 0 || tap >= kMaxEchoTaps)
+    return;
   echoTaps[tap].channel.volume = volume;
   streamSlots[(std::size_t)(kFirstEchoSlot + tap)].volume.store(volume);
 }
 
 void NinjamClient::setEchoTapPan(int tap, float pan) {
   juce::ScopedLock sl(echoMutex);
-  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  if (tap < 0 || tap >= kMaxEchoTaps)
+    return;
   echoTaps[tap].channel.pan = pan;
   streamSlots[(std::size_t)(kFirstEchoSlot + tap)].pan.store(pan);
 }
 
 void NinjamClient::setEchoTapMute(int tap, bool mute) {
   juce::ScopedLock sl(echoMutex);
-  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  if (tap < 0 || tap >= kMaxEchoTaps)
+    return;
   echoTaps[tap].channel.isMuted = mute;
   streamSlots[(std::size_t)(kFirstEchoSlot + tap)].muted.store(mute);
 }
@@ -1641,7 +1654,8 @@ void NinjamClient::setEchoTapMute(int tap, bool mute) {
 void NinjamClient::setEchoTapSolo(int tap, bool solo) {
   {
     juce::ScopedLock sl(echoMutex);
-    if (tap < 0 || tap >= kMaxEchoTaps) return;
+    if (tap < 0 || tap >= kMaxEchoTaps)
+      return;
     echoTaps[tap].channel.isSoloed = solo;
     streamSlots[(std::size_t)(kFirstEchoSlot + tap)].soloed.store(solo);
   }
@@ -1650,7 +1664,8 @@ void NinjamClient::setEchoTapSolo(int tap, bool solo) {
 
 void NinjamClient::setEchoTapOutputBus(int tap, int busIdx) {
   juce::ScopedLock sl(echoMutex);
-  if (tap < 0 || tap >= kMaxEchoTaps) return;
+  if (tap < 0 || tap >= kMaxEchoTaps)
+    return;
   echoTaps[tap].channel.outputBusIndex = busIdx;
   streamSlots[(std::size_t)(kFirstEchoSlot + tap)].outputBus.store(busIdx);
 }

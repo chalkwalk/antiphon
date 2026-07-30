@@ -1,13 +1,12 @@
 #include "ServerBrowserDialog.h"
 
 static const ServerBrowserDialog::ServerEntry kStaticServers[] = {
-    {"ninbot.com",  2049},
-    {"ninjam.com",  2049},
+    {"ninbot.com", 2049},
+    {"ninjam.com", 2049},
     {"autojam.com", 2049},
 };
 
-ServerBrowserDialog::ServerBrowserDialog()
-    : table("Servers", this) {
+ServerBrowserDialog::ServerBrowserDialog() : table("Servers", this) {
   // The dialog is an overlay child of the editor, not a modal window. It must
   // both accept keyboard focus itself and swallow clicks, or focus and mouse
   // events leak through to the mixer behind it.
@@ -17,15 +16,14 @@ ServerBrowserDialog::ServerBrowserDialog()
   setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
   setInterceptsMouseClicks(true, true);
 
-
   closeButton.onClick = [this]() { dismiss(); };
   closeButton.setTitle("Close");
   closeButton.setDescription("Close this dialog");
   addAndMakeVisible(closeButton);
 
-  table.getHeader().addColumn("Server",  1, 230);
-  table.getHeader().addColumn("BPM",     2,  55);
-  table.getHeader().addColumn("BPI",     3,  55);
+  table.getHeader().addColumn("Server", 1, 230);
+  table.getHeader().addColumn("BPM", 2, 55);
+  table.getHeader().addColumn("BPI", 3, 55);
   table.getHeader().addColumn("Players", 4, 310);
   table.setHeaderHeight(28);
   table.setRowHeight(24);
@@ -67,13 +65,15 @@ ServerBrowserDialog::ServerBrowserDialog()
     passwordInput.setVisible(!anonymousToggle.getToggleState());
   };
   anonymousToggle.setTitle("Anonymous");
-  anonymousToggle.setDescription("Connect without a password, where the server allows it");
+  anonymousToggle.setDescription(
+      "Connect without a password, where the server allows it");
   addAndMakeVisible(anonymousToggle);
 
   connectButton.onClick = [this]() {
     juce::String host = hostInput.getText().trim();
     int port = portInput.getText().getIntValue();
-    if (port <= 0) port = 2049;
+    if (port <= 0)
+      port = 2049;
     juce::String nick = usernameInput.getText().trim();
     juce::String user, pass;
     if (anonymousToggle.getToggleState()) {
@@ -147,8 +147,8 @@ ServerBrowserDialog::parseServersJSON(const juce::String &json) {
     ServerEntry e;
     e.host = obj["host"].toString();
     e.port = obj["port"].toString().getIntValue();
-    e.bpm  = obj["bpm"].toString().getIntValue();
-    e.bpi  = obj["bpi"].toString().getIntValue();
+    e.bpm = obj["bpm"].toString().getIntValue();
+    e.bpi = obj["bpi"].toString().getIntValue();
 
     const auto &users = obj["users"];
     if (users.isArray() && users.size() > 0) {
@@ -189,10 +189,13 @@ void ServerBrowserDialog::doFetch() {
   char buf[4096];
   while (!stopFetch.load()) {
     int ready = fetchSocket.waitUntilReady(true, 200);
-    if (ready < 0) break;
-    if (ready == 0) continue;
+    if (ready < 0)
+      break;
+    if (ready == 0)
+      continue;
     int n = fetchSocket.read(buf, sizeof(buf), false);
-    if (n <= 0) break;
+    if (n <= 0)
+      break;
     response.append(buf, n);
   }
 
@@ -210,11 +213,11 @@ void ServerBrowserDialog::doFetch() {
   juce::MessageManager::callAsync(
       [safe = juce::Component::SafePointer<ServerBrowserDialog>(this),
        entries = std::move(entries)]() mutable {
-        if (!safe) return;
+        if (!safe)
+          return;
         if (entries.isEmpty()) {
-          safe->statusLabel.setText(
-              "No live data -- showing known servers.",
-              juce::dontSendNotification);
+          safe->statusLabel.setText("No live data -- showing known servers.",
+                                    juce::dontSendNotification);
         } else {
           safe->servers = entries;
           safe->table.updateContent();
@@ -234,7 +237,8 @@ void ServerBrowserDialog::paint(juce::Graphics &g) {
   g.setColour(juce::Colour(0xff111122));
   g.fillRect(titleBar);
   g.setColour(juce::Colour(0xff00b4d8));
-  g.drawLine(0.0f, (float)kTitleBarH, (float)getWidth(), (float)kTitleBarH, 1.0f);
+  g.drawLine(0.0f, (float)kTitleBarH, (float)getWidth(), (float)kTitleBarH,
+             1.0f);
 
   g.setFont(juce::FontOptions{}.withHeight(14.0f).withStyle("Bold"));
   g.setColour(juce::Colours::white);
@@ -293,20 +297,31 @@ void ServerBrowserDialog::paintRowBackground(juce::Graphics &g, int /*row*/,
                      : juce::Colour(0xff111122));
 }
 
-void ServerBrowserDialog::paintCell(juce::Graphics &g, int row, int col,
-                                    int w, int h, bool /*selected*/) {
-  if (row >= servers.size()) return;
+void ServerBrowserDialog::paintCell(juce::Graphics &g, int row, int col, int w,
+                                    int h, bool /*selected*/) {
+  if (row >= servers.size())
+    return;
   const auto &s = servers.getReference(row);
   juce::String text;
   switch (col) {
-  case 1: text = s.host + ":" + juce::String(s.port); break;
-  case 2: text = s.bpm > 0 ? juce::String(s.bpm) : "-"; break;
-  case 3: text = s.bpi > 0 ? juce::String(s.bpi) : "-"; break;
-  case 4: text = s.players; break;
-  default: break;
+  case 1:
+    text = s.host + ":" + juce::String(s.port);
+    break;
+  case 2:
+    text = s.bpm > 0 ? juce::String(s.bpm) : "-";
+    break;
+  case 3:
+    text = s.bpi > 0 ? juce::String(s.bpi) : "-";
+    break;
+  case 4:
+    text = s.players;
+    break;
+  default:
+    break;
   }
   int textW = w - 8;
-  if (textW <= 0) return;
+  if (textW <= 0)
+    return;
   g.setColour(juce::Colours::white);
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
   g.drawFittedText(text, 4, 0, textW, h, juce::Justification::centredLeft, 1);
@@ -314,7 +329,8 @@ void ServerBrowserDialog::paintCell(juce::Graphics &g, int row, int col,
 
 void ServerBrowserDialog::cellClicked(int row, int /*col*/,
                                       const juce::MouseEvent &) {
-  if (row >= servers.size()) return;
+  if (row >= servers.size())
+    return;
   const auto &s = servers.getReference(row);
   hostInput.setText(s.host, juce::dontSendNotification);
   portInput.setText(juce::String(s.port), juce::dontSendNotification);

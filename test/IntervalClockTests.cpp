@@ -219,9 +219,8 @@ public:
                 matched = true;
             expect(matched, "legacy beat " + juce::String(h.beat) + " at " +
                                 juce::String(h.sample) + " unmatched (" +
-                                juce::String(bpm) + "bpm/" +
-                                juce::String(bpi) + "bpi/" +
-                                juce::String(sr) + ")");
+                                juce::String(bpm) + "bpm/" + juce::String(bpi) +
+                                "bpi/" + juce::String(sr) + ")");
           }
         }
 
@@ -259,8 +258,8 @@ public:
       // measured as roughly +1.3 ms of stretch at every seam against the real
       // reference client (work item #27). Splitting makes it exact for any
       // block size, including ones that do not divide the interval.
-      const std::vector<std::pair<int, int>> tempos{{137, 16}, {120, 8},
-                                                    {90, 16}};
+      const std::vector<std::pair<int, int>> tempos{
+          {137, 16}, {120, 8}, {90, 16}};
       for (const auto &[bpm, bpi] : tempos)
         for (double sr : {44100.0, 48000.0})
           for (int block : {64, 127, 512, 1024}) {
@@ -295,9 +294,8 @@ public:
             for (size_t i = 1; i < transmitted.size(); ++i)
               expectEquals(transmitted[i], len,
                            "interval " + juce::String((int)i) + " at " +
-                               juce::String(bpm) + "bpm/" +
-                               juce::String(bpi) + "bpi/" +
-                               juce::String(sr, 0) + "Hz block " +
+                               juce::String(bpm) + "bpm/" + juce::String(bpi) +
+                               "bpi/" + juce::String(sr, 0) + "Hz block " +
                                juce::String(block));
           }
     }

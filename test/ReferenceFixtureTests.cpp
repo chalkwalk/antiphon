@@ -180,8 +180,7 @@ public:
     // Our builder must produce the same 25 bytes.
     auto ours = NinjamProtocol::buildIntervalBegin(
         begin.guid, begin.estimatedSize, begin.fourcc, begin.channelIndex);
-    expect(ours == raw,
-           "our UPLOAD_INTERVAL_BEGIN differs from the reference");
+    expect(ours == raw, "our UPLOAD_INTERVAL_BEGIN differs from the reference");
   }
 
   void testUsermaskPacket() {

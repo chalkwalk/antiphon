@@ -25,7 +25,8 @@ inline juce::String speakable(const juce::String &labelText) {
 
 inline void adoptLabelNames(juce::Component &root) {
   for (auto *child : root.getChildren()) {
-    if (child == nullptr) continue;
+    if (child == nullptr)
+      continue;
 
     if (auto *label = dynamic_cast<juce::Label *>(child)) {
       if (auto *target = label->getAttachedComponent()) {

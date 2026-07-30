@@ -78,7 +78,8 @@ void SessionWriter::beginClip(const juce::String &guidHex,
   clip.username = username;
   clip.channelIndex = channelIndex;
   clip.channelName = channelName;
-  manifest->writeText(ClipsortLog::userLine(clip) + "\n", false, false, nullptr);
+  manifest->writeText(ClipsortLog::userLine(clip) + "\n", false, false,
+                      nullptr);
   manifest->flush();
 
   // Clips are filed under the first character of their guid, which is how the

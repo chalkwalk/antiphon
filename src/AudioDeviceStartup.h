@@ -20,10 +20,10 @@
 class AudioDeviceStartup {
 public:
   enum class State {
-    Opening,  // probe running, still inside its budget
-    Ready,    // device open, audio running
-    Failed,   // the backend answered, and the answer was no
-    TimedOut  // the budget expired with no answer; presumed wedged
+    Opening, // probe running, still inside its budget
+    Ready,   // device open, audio running
+    Failed,  // the backend answered, and the answer was no
+    TimedOut // the budget expired with no answer; presumed wedged
   };
 
   struct Inputs {
@@ -41,7 +41,8 @@ public:
     // reached the user has been told the device did not respond and handed the
     // settings dialog, and a wedged probe thread that finally returns minutes
     // later must not yank the app out from under them.
-    if (isTerminal()) return false;
+    if (isTerminal())
+      return false;
 
     if (in.probeFinished) {
       state = in.probeSucceeded ? State::Ready : State::Failed;

@@ -22,7 +22,8 @@ public:
   // actually change, so a reader is not told the same thing thirty times a
   // second.
   void setStatus(const juce::String &text) {
-    if (text == current) return;
+    if (text == current)
+      return;
     current = text;
     setDescription(text);
     setHelpText(text);
@@ -32,7 +33,8 @@ public:
 
   const juce::String &getStatus() const { return current; }
 
-  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+  std::unique_ptr<juce::AccessibilityHandler>
+  createAccessibilityHandler() override {
     return std::make_unique<juce::AccessibilityHandler>(
         *this, juce::AccessibilityRole::staticText);
   }

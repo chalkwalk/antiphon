@@ -40,7 +40,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   browseButton.onClick = [this]() { openServerBrowser(); };
   browseButton.setRepaintsOnMouseActivity(true);
   browseButton.setTitle("Connect");
-  browseButton.setDescription("Open the server browser to choose a server and connect");
+  browseButton.setDescription(
+      "Open the server browser to choose a server and connect");
   addAndMakeVisible(browseButton);
 
   disconnectButton.setButtonText("Disconnect");
@@ -86,8 +87,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       audioProcessor.ninjamClient.stopSessionRecording();
       statusReadout.setStatus("Saved " + juce::String(clips) + " clips to " +
                               dir.getFullPathName());
-      announcer.say("Recording stopped, " + juce::String(clips) + " clips saved",
-                    true);
+      announcer.say(
+          "Recording stopped, " + juce::String(clips) + " clips saved", true);
     }
   };
   recordToggle.setRepaintsOnMouseActivity(true);
@@ -114,7 +115,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   };
   testToneToggle.setRepaintsOnMouseActivity(true);
   testToneToggle.setTitle("Test tone");
-  testToneToggle.setDescription("Debug: replace all local input with a timing probe");
+  testToneToggle.setDescription(
+      "Debug: replace all local input with a timing probe");
   addAndMakeVisible(testToneToggle);
 
   syncButton.setButtonText("Sync");
@@ -126,7 +128,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   syncButton.onClick = [this]() { audioProcessor.requestSync(); };
   syncButton.setRepaintsOnMouseActivity(true);
   syncButton.setTitle("Sync");
-  syncButton.setDescription("Lock the interval grid to the next start of the DAW transport");
+  syncButton.setDescription(
+      "Lock the interval grid to the next start of the DAW transport");
   addAndMakeVisible(syncButton);
 
   transportButton.onClick = [this]() {
@@ -140,9 +143,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   refreshTransportButton();
 
   practiceToggle.setButtonText("Practice");
-  practiceToggle.setToggleState(
-      audioProcessor.ninjamClient.isPracticeEnabled(),
-      juce::dontSendNotification);
+  practiceToggle.setToggleState(audioProcessor.ninjamClient.isPracticeEnabled(),
+                                juce::dontSendNotification);
   practiceToggle.onClick = [this]() {
     const bool on = practiceToggle.getToggleState();
     const bool ok = audioProcessor.setPracticeEnabled(on);
@@ -172,11 +174,13 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   // Compact toolbar groups
   channelGroupLabel.setText("Channel:", juce::dontSendNotification);
   channelGroupLabel.setJustificationType(juce::Justification::centredRight);
-  channelGroupLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  channelGroupLabel.setColour(juce::Label::textColourId,
+                              juce::Colours::lightgrey);
   addAndMakeVisible(channelGroupLabel);
 
   addChannelButton.setButtonText("+");
-  addChannelButton.setTooltip("Add a local channel strip (routes to Input Bus 1 by default)");
+  addChannelButton.setTooltip(
+      "Add a local channel strip (routes to Input Bus 1 by default)");
   addChannelButton.onClick = [this]() { audioProcessor.addLocalChannel(); };
   addChannelButton.setRepaintsOnMouseActivity(true);
   addChannelButton.setTitle("Add channel");
@@ -185,28 +189,34 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
 
   inputBusGroupLabel.setText("Input bus:", juce::dontSendNotification);
   inputBusGroupLabel.setJustificationType(juce::Justification::centredRight);
-  inputBusGroupLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  inputBusGroupLabel.setColour(juce::Label::textColourId,
+                               juce::Colours::lightgrey);
   addAndMakeVisible(inputBusGroupLabel);
 
   addInBusButton.setButtonText("+");
-  addInBusButton.setTooltip("Add a new stereo input bus (for DAW to route another track into)");
+  addInBusButton.setTooltip(
+      "Add a new stereo input bus (for DAW to route another track into)");
   addInBusButton.onClick = [this]() { audioProcessor.addInputBus(); };
   addInBusButton.setRepaintsOnMouseActivity(true);
   addInBusButton.setTitle("Add input bus");
-  addInBusButton.setDescription("Add a stereo input bus for the DAW to route a track into");
+  addInBusButton.setDescription(
+      "Add a stereo input bus for the DAW to route a track into");
   addAndMakeVisible(addInBusButton);
 
   removeInBusButton.setButtonText("-");
-  removeInBusButton.setTooltip("Remove the last input bus (channels using it revert to bus 1)");
+  removeInBusButton.setTooltip(
+      "Remove the last input bus (channels using it revert to bus 1)");
   removeInBusButton.onClick = [this]() { audioProcessor.removeLastInputBus(); };
   removeInBusButton.setRepaintsOnMouseActivity(true);
   removeInBusButton.setTitle("Remove input bus");
-  removeInBusButton.setDescription("Remove the last input bus; channels using it revert to bus 1");
+  removeInBusButton.setDescription(
+      "Remove the last input bus; channels using it revert to bus 1");
   addAndMakeVisible(removeInBusButton);
 
   outputBusGroupLabel.setText("Output bus:", juce::dontSendNotification);
   outputBusGroupLabel.setJustificationType(juce::Justification::centredRight);
-  outputBusGroupLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  outputBusGroupLabel.setColour(juce::Label::textColourId,
+                                juce::Colours::lightgrey);
   addAndMakeVisible(outputBusGroupLabel);
 
   dawOnlyNote.setText("DAW only", juce::dontSendNotification);
@@ -216,7 +226,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   addChildComponent(dawOnlyNote);
 
   addOutBusButton.setButtonText("+");
-  addOutBusButton.setTooltip("Add a new stereo output bus (for DAW stem recording)");
+  addOutBusButton.setTooltip(
+      "Add a new stereo output bus (for DAW stem recording)");
   addOutBusButton.onClick = [this]() { audioProcessor.addOutputBus(); };
   addOutBusButton.setRepaintsOnMouseActivity(true);
   addOutBusButton.setTitle("Add output bus");
@@ -224,11 +235,15 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   addAndMakeVisible(addOutBusButton);
 
   removeOutBusButton.setButtonText("-");
-  removeOutBusButton.setTooltip("Remove the last output bus (remote channels using it revert to bus 1)");
-  removeOutBusButton.onClick = [this]() { audioProcessor.removeLastOutputBus(); };
+  removeOutBusButton.setTooltip(
+      "Remove the last output bus (remote channels using it revert to bus 1)");
+  removeOutBusButton.onClick = [this]() {
+    audioProcessor.removeLastOutputBus();
+  };
   removeOutBusButton.setRepaintsOnMouseActivity(true);
   removeOutBusButton.setTitle("Remove output bus");
-  removeOutBusButton.setDescription("Remove the last output bus; channels using it revert to bus 1");
+  removeOutBusButton.setDescription(
+      "Remove the last output bus; channels using it revert to bus 1");
   addAndMakeVisible(removeOutBusButton);
 
   metronomeToggle.setRepaintsOnMouseActivity(true);
@@ -250,7 +265,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         GainUtils::dbToGain(metronomeVolumeSlider.getValue()));
   };
   metronomeVolumeSlider.setTitle("Metronome volume");
-  metronomeVolumeSlider.setDescription("Level of the metronome click in decibels");
+  metronomeVolumeSlider.setDescription(
+      "Level of the metronome click in decibels");
   addAndMakeVisible(metronomeVolumeSlider);
 
   chatToggle.setButtonText("Chat");
@@ -273,7 +289,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
 
   roomMembersLabel.setText("In room (0)", juce::dontSendNotification);
   roomMembersLabel.setJustificationType(juce::Justification::centredLeft);
-  roomMembersLabel.setColour(juce::Label::textColourId, juce::Colour(0xffb0b6c0));
+  roomMembersLabel.setColour(juce::Label::textColourId,
+                             juce::Colour(0xffb0b6c0));
   roomMembersLabel.setTitle("Players in the room");
   roomMembersLabel.setDescription(
       "Everyone on the server, including listeners with no audio channels");
@@ -286,7 +303,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
 
   chipActionButton.setButtonText("Vote");
   chipActionButton.setTitle("Cast vote");
-  chipActionButton.setDescription("Send your vote for this tempo to the server");
+  chipActionButton.setDescription(
+      "Send your vote for this tempo to the server");
   chipActionButton.onClick = [this]() {
     // A vote is only ever sent from here -- never as a side effect of the DAW
     // tempo changing.
@@ -355,8 +373,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
           audioProcessor.ninjamClient.sendChatMessage(
               MusicalKey::buildTagged(key));
         } else {
-          chatDisplay.insertTextAtCaret(
-              "Local: not a key. Try /key Dm, /key F# Dorian, /key Bb major.\n");
+          chatDisplay.insertTextAtCaret("Local: not a key. Try /key Dm, /key "
+                                        "F# Dorian, /key Bb major.\n");
         }
       } else if (text.startsWithIgnoreCase("/topic ") ||
                  text.startsWithIgnoreCase("/kick ") ||
@@ -382,7 +400,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         }
       } else if (text.startsWithChar('/')) {
         chatDisplay.insertTextAtCaret(
-            "Local: unknown command. Try /key, /topic, /kick, /bpm, /bpi, /msg, "
+            "Local: unknown command. Try /key, /topic, /kick, /bpm, /bpi, "
+            "/msg, "
             "/me, or /admin <anything> to pass a command straight to the "
             "server.\n");
       } else {
@@ -392,7 +411,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
     }
   };
   chatInput.setTitle("Chat message");
-  chatInput.setDescription("Type a message or a command and press return to send");
+  chatInput.setDescription(
+      "Type a message or a command and press return to send");
   addAndMakeVisible(chatInput);
 
   remoteUsersViewport.setViewedComponent(&remoteUsersContainer, false);
@@ -413,7 +433,8 @@ void AntiphonEditor::refreshTransportButton() {
   const bool playing = audioProcessor.localTransportPlaying.load();
   transportButton.setButtonText(playing ? "Stop" : "Play");
   transportButton.setToggleState(playing, juce::dontSendNotification);
-  transportButton.setTitle(playing ? "Stop the transport" : "Start the transport");
+  transportButton.setTitle(playing ? "Stop the transport"
+                                   : "Start the transport");
   transportButton.setDescription(
       playing ? "Stop the interval clock, the metronome and transmission"
               : "Start the interval clock, so the metronome runs and, when "
@@ -433,8 +454,7 @@ void AntiphonEditor::applyHostContextToControls() {
   if (!audioProcessor.isStandaloneApp())
     return;
 
-  const juce::String why =
-      "Available when Antiphon runs as a plugin in a DAW";
+  const juce::String why = "Available when Antiphon runs as a plugin in a DAW";
 
   for (auto *b : {&addChannelButton, &addInBusButton, &removeInBusButton,
                   &addOutBusButton, &removeOutBusButton, &syncButton}) {
@@ -445,7 +465,8 @@ void AntiphonEditor::applyHostContextToControls() {
     b->setDescription(b->getDescription() + ". " + why);
   }
 
-  for (auto *l : {&channelGroupLabel, &inputBusGroupLabel, &outputBusGroupLabel})
+  for (auto *l :
+       {&channelGroupLabel, &inputBusGroupLabel, &outputBusGroupLabel})
     l->setColour(juce::Label::textColourId,
                  juce::Colour(AntiphonTheme::kDisabledText));
 
@@ -474,27 +495,36 @@ AntiphonEditor::~AntiphonEditor() {
 juce::Colour AntiphonEditor::colourForChatCategory(ChatFormat::Category c) {
   using C = ChatFormat::Category;
   switch (c) {
-  case C::Topic:          return juce::Colour(0xffb0b6c0);
-  case C::JoinPart:       return juce::Colour(0xff6f7787);
-  case C::SelfMessage:    return juce::Colour(AntiphonTheme::kAccent);
-  case C::OtherMessage:   return juce::Colour(0xffe6e6ea);
-  case C::PrivateMessage: return juce::Colour(0xffcf6fd8);
-  case C::Action:         return juce::Colour(0xffd8c46a);
-  case C::Voting:         return juce::Colour(0xffe0a030);
+  case C::Topic:
+    return juce::Colour(0xffb0b6c0);
+  case C::JoinPart:
+    return juce::Colour(0xff6f7787);
+  case C::SelfMessage:
+    return juce::Colour(AntiphonTheme::kAccent);
+  case C::OtherMessage:
+    return juce::Colour(0xffe6e6ea);
+  case C::PrivateMessage:
+    return juce::Colour(0xffcf6fd8);
+  case C::Action:
+    return juce::Colour(0xffd8c46a);
+  case C::Voting:
+    return juce::Colour(0xffe0a030);
   // Musical facts about the session get their own green, distinct from the
   // amber the voting system uses -- they are settled, not under discussion.
   case C::Key:
-  case C::ChordProgression: return juce::Colour(0xff6fd88a);
+  case C::ChordProgression:
+    return juce::Colour(0xff6fd88a);
   case C::ServerNotice:
-  default:                return juce::Colour(0xff9aa1ad);
+  default:
+    return juce::Colour(0xff9aa1ad);
   }
 }
 
 void AntiphonEditor::onChatMessage(const juce::String &type,
-                                               const juce::String &username,
-                                               const juce::String &text) {
-  const auto line = ChatFormat::render(type, username, text,
-                                       audioProcessor.ninjamClient.getSelfUsername());
+                                   const juce::String &username,
+                                   const juce::String &text) {
+  const auto line = ChatFormat::render(
+      type, username, text, audioProcessor.ninjamClient.getSelfUsername());
 
   // juce::TextEditor keeps a colour per inserted run, so setting the colour
   // before each insert gives per-message colour with no new widget -- and a
@@ -521,9 +551,8 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   if (vote.valid) {
     if (vote.settled) {
       pendingVote = {};
-    } else if (!(vote.settled) &&
-               !(vote.target == dismissedVoteTarget &&
-                 vote.isBpm == dismissedVoteIsBpm)) {
+    } else if (!(vote.settled) && !(vote.target == dismissedVoteTarget &&
+                                    vote.isBpm == dismissedVoteIsBpm)) {
       pendingVote = vote;
     }
     updateTempoChip();
@@ -537,14 +566,17 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   auto area = getLocalBounds().reduced(10);
   auto header = area.removeFromTop(80);
 
-  const bool connected      = audioProcessor.ninjamClient.isConnected();
-  const bool connectFailed  = audioProcessor.lastConnectFailed.load();
-  const bool mismatch = !audioProcessor.isStandaloneApp() && connected &&
-      std::abs(audioProcessor.hostBpm - (double)audioProcessor.internalBpm.load()) > 0.5;
+  const bool connected = audioProcessor.ninjamClient.isConnected();
+  const bool connectFailed = audioProcessor.lastConnectFailed.load();
+  const bool mismatch =
+      !audioProcessor.isStandaloneApp() && connected &&
+      std::abs(audioProcessor.hostBpm -
+               (double)audioProcessor.internalBpm.load()) > 0.5;
   const bool headerWarning = connectFailed || mismatch;
-  juce::Colour headerBg = connected      ? juce::Colour(0xff0d0d1a)   // navy -- normal
-                        : headerWarning  ? juce::Colour(0xff2a1a0a)   // amber -- failed/mismatch
-                                         : juce::Colour(0xff111111);  // dark grey -- idle
+  juce::Colour headerBg =
+      connected       ? juce::Colour(0xff0d0d1a)  // navy -- normal
+      : headerWarning ? juce::Colour(0xff2a1a0a)  // amber -- failed/mismatch
+                      : juce::Colour(0xff111111); // dark grey -- idle
   g.setColour(headerBg);
   g.fillRect(header);
 
@@ -583,7 +615,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
     g.drawFittedText(tempoText, row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
-    g.drawFittedText("Not connected", row2, juce::Justification::centredLeft, 1);
+    g.drawFittedText("Not connected", row2, juce::Justification::centredLeft,
+                     1);
   }
 
   header.removeFromTop(4);
@@ -640,14 +673,14 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   if (audioProcessor.isStandaloneApp()) {
     g.setColour(juce::Colours::lightgrey);
     g.drawFittedText(
-        "Phase: " +
-            juce::String(audioProcessor.publishedPhaseBeats.load(), 2) + " / " +
-            juce::String(audioProcessor.publishedActiveBpi.load()),
+        "Phase: " + juce::String(audioProcessor.publishedPhaseBeats.load(), 2) +
+            " / " + juce::String(audioProcessor.publishedActiveBpi.load()),
         row3, juce::Justification::centredLeft, 1);
   } else {
     // Driven by the sync state machine rather than re-derived here, so the text
     // and the audio gating can never disagree about what is happening.
-    const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
+    const auto sync =
+        (SyncState::State)audioProcessor.publishedSyncState.load();
     if (connected && sync != SyncState::State::Disconnected) {
       juce::Colour c = juce::Colours::grey;
       juce::String msg = SyncState::describe(sync);
@@ -676,7 +709,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       g.drawFittedText(msg, row3, juce::Justification::centredLeft, 1);
     } else {
       g.setColour(juce::Colours::darkgrey);
-      g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) + " BPM",
+      g.drawFittedText("DAW: " + juce::String(audioProcessor.hostBpm, 1) +
+                           " BPM",
                        row3, juce::Justification::centredLeft, 1);
     }
   }
@@ -696,8 +730,9 @@ void AntiphonEditor::paint(juce::Graphics &g) {
                      juce::Justification::left, 1);
     labelRow.removeFromRight(10);
   }
-  g.drawFittedText("Local Channels:", labelRow.removeFromLeft(channelAreaLocalW),
-                   juce::Justification::left, 1);
+  g.drawFittedText(
+      "Local Channels:", labelRow.removeFromLeft(channelAreaLocalW),
+      juce::Justification::left, 1);
   labelRow.removeFromLeft(10);
   g.drawFittedText("Remote Players:", labelRow, juce::Justification::left, 1);
 }
@@ -832,12 +867,14 @@ void AntiphonEditor::resized() {
 }
 
 void AntiphonEditor::openServerBrowser() {
-  if (serverBrowser) return;
+  if (serverBrowser)
+    return;
 
   serverBrowser = std::make_unique<ServerBrowserDialog>();
 
   serverBrowser->hostInput.setText(audioProcessor.lastHost, false);
-  serverBrowser->portInput.setText(juce::String(audioProcessor.lastPort), false);
+  serverBrowser->portInput.setText(juce::String(audioProcessor.lastPort),
+                                   false);
   serverBrowser->usernameInput.setText(audioProcessor.lastUsername, false);
   serverBrowser->passwordInput.setText(audioProcessor.lastPassword, false);
   serverBrowser->anonymousToggle.setToggleState(audioProcessor.lastAnonymous,
@@ -847,11 +884,12 @@ void AntiphonEditor::openServerBrowser() {
   serverBrowser->onConnect = [this](const juce::String &host, int port,
                                     const juce::String &user,
                                     const juce::String &pass) {
-    audioProcessor.lastHost      = host;
-    audioProcessor.lastPort      = port;
-    audioProcessor.lastUsername  = serverBrowser->usernameInput.getText().trim();
-    audioProcessor.lastPassword  = serverBrowser->passwordInput.getText();
-    audioProcessor.lastAnonymous = serverBrowser->anonymousToggle.getToggleState();
+    audioProcessor.lastHost = host;
+    audioProcessor.lastPort = port;
+    audioProcessor.lastUsername = serverBrowser->usernameInput.getText().trim();
+    audioProcessor.lastPassword = serverBrowser->passwordInput.getText();
+    audioProcessor.lastAnonymous =
+        serverBrowser->anonymousToggle.getToggleState();
     audioProcessor.lastConnectFailed.store(false);
     audioProcessor.ninjamClient.connectToServer(host, port, user, pass);
   };
@@ -883,8 +921,8 @@ void AntiphonEditor::openServerBrowser() {
   if (auto *w = serverBrowserWindow.getComponent())
     juce::ModalComponentManager::getInstance()->attachCallback(
         w, juce::ModalCallbackFunction::create(
-               [safeThis = juce::Component::SafePointer<AntiphonEditor>(this)](
-                   int) {
+               [safeThis =
+                    juce::Component::SafePointer<AntiphonEditor>(this)](int) {
                  if (safeThis != nullptr)
                    safeThis->closeServerBrowser();
                }));
@@ -921,9 +959,7 @@ void AntiphonEditor::closeServerBrowser() {
   focusBeforeDialog = nullptr;
 }
 
-void AntiphonEditor::mouseExit(const juce::MouseEvent &) {
-  repaint();
-}
+void AntiphonEditor::mouseExit(const juce::MouseEvent &) { repaint(); }
 
 // A shortcut must not depend on which of our descendants happens to hold focus.
 // JUCE delivers a key press to the focused component and then bubbles it to its
@@ -944,8 +980,7 @@ void AntiphonEditor::parentHierarchyChanged() {
   }
 }
 
-bool AntiphonEditor::keyPressed(const juce::KeyPress &key,
-                                juce::Component *) {
+bool AntiphonEditor::keyPressed(const juce::KeyPress &key, juce::Component *) {
   return handleShortcut(key);
 }
 
@@ -960,10 +995,9 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   // Match the key CODE, never the text character: with Ctrl held, X11 hands
   // JUCE a control character, so Ctrl+Alt+A arrives as 0x01 and comparing
   // against 'A' silently never fires. See Shortcuts.h.
-  const auto action = Shortcuts::match(key.getKeyCode(),
-                                       key.getModifiers().isCtrlDown(),
-                                       key.getModifiers().isAltDown(),
-                                       key.getModifiers().isShiftDown());
+  const auto action = Shortcuts::match(
+      key.getKeyCode(), key.getModifiers().isCtrlDown(),
+      key.getModifiers().isAltDown(), key.getModifiers().isShiftDown());
   if (action == Shortcuts::Action::None)
     return false;
 
@@ -993,7 +1027,10 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
     // elsewhere, which is the common single-channel case.
     LocalChannelStrip *target = nullptr;
     for (auto *strip : localChannelStrips)
-      if (strip->hasKeyboardFocus(true)) { target = strip; break; }
+      if (strip->hasKeyboardFocus(true)) {
+        target = strip;
+        break;
+      }
     if (target == nullptr && !localChannelStrips.isEmpty())
       target = localChannelStrips[0];
 
@@ -1024,7 +1061,7 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
                            f.getFullPathName(),
                   true);
     statusReadout.setStatus(ok ? "Accessibility audit written to " +
-                                    f.getFullPathName()
+                                     f.getFullPathName()
                                : "Could not write the accessibility audit");
     return true;
   }
@@ -1038,9 +1075,7 @@ void AntiphonEditor::updateRoomMembers() {
   if (!members.empty()) {
     juce::StringArray names;
     for (const auto &m : members)
-      names.add(m.channelCount > 0
-                    ? m.username
-                    : m.username + " (no audio)");
+      names.add(m.channelCount > 0 ? m.username : m.username + " (no audio)");
     text += ": " + names.joinIntoString(", ");
   }
 
@@ -1107,13 +1142,12 @@ void AntiphonEditor::updateTempoChip() {
   // offers the vote -- changing your DAW tempo never casts one.
   const int serverBpm = audioProcessor.publishedActiveBpm.load();
   const int hostBpm = (int)std::lround(audioProcessor.hostBpm);
-  const bool worthProposing = !audioProcessor.isStandaloneApp() &&
-                              hostBpm > 0 && serverBpm > 0 &&
-                              hostBpm != serverBpm && hostBpm != dismissedDawBpm;
+  const bool worthProposing =
+      !audioProcessor.isStandaloneApp() && hostBpm > 0 && serverBpm > 0 &&
+      hostBpm != serverBpm && hostBpm != dismissedDawBpm;
   if (worthProposing) {
     chipDawBpm = hostBpm;
-    const juce::String t =
-        "Your DAW is at " + juce::String(hostBpm) + " BPM";
+    const juce::String t = "Your DAW is at " + juce::String(hostBpm) + " BPM";
     chipLabel.setText(t, juce::dontSendNotification);
     chipLabel.setTitle(t);
     chipActionButton.setButtonText("Propose");
@@ -1132,9 +1166,9 @@ void AntiphonEditor::setChatConnectedState(bool connected) {
   // invisible rather than dimmed -- it read as a rendering fault, not as a
   // disabled control. It now uses the same disabled treatment as every other
   // control in the window, and says in words why it is unavailable.
-  const juce::Colour bg =
-      connected ? juce::Colour(0xff0a0a0a)
-                : juce::Colour(AntiphonTheme::kDisabledFill);
+  const juce::Colour bg = connected
+                              ? juce::Colour(0xff0a0a0a)
+                              : juce::Colour(AntiphonTheme::kDisabledFill);
   const juce::Colour text = connected
                                 ? juce::Colour(0xffe0e0e0)
                                 : juce::Colour(AntiphonTheme::kDisabledText);
@@ -1157,8 +1191,9 @@ void AntiphonEditor::setChatConnectedState(bool connected) {
   chatInput.setColour(juce::TextEditor::outlineColourId,
                       juce::Colour(AntiphonTheme::kDisabledEdge));
   chatInput.setTextToShowWhenEmpty(
-      connected ? "Message, or a command: /key Dm, /bpm 120, /bpi 16, /msg user text"
-                : "Not connected -- join a server to chat",
+      connected
+          ? "Message, or a command: /key Dm, /bpm 120, /bpi 16, /msg user text"
+          : "Not connected -- join a server to chat",
       juce::Colour(connected ? 0xff8a8a8a : AntiphonTheme::kDisabledText));
   chatInput.repaint();
 }
@@ -1192,7 +1227,7 @@ void AntiphonEditor::updateToolbarStates() {
   practiceToggle.setEnabled(!connected);
   practiceToggle.setTooltip(
       connected ? juce::String("Practice is offline only -- disconnect to use "
-                              "it. Nothing you play in practice is ever sent.")
+                               "it. Nothing you play in practice is ever sent.")
                 : juce::String("A duet with your past self: what you play "
                                "comes back a chosen number of intervals "
                                "later. Offline only, never transmitted."));
@@ -1209,7 +1244,7 @@ void AntiphonEditor::updateToolbarStates() {
   if (audioProcessor.isStandaloneApp())
     return;
 
-  const int inBuses  = audioProcessor.getBusCount(true);
+  const int inBuses = audioProcessor.getBusCount(true);
   const int outBuses = audioProcessor.getBusCount(false);
 
   const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
@@ -1222,7 +1257,8 @@ void AntiphonEditor::updateToolbarStates() {
 }
 
 void AntiphonEditor::relayoutChannelArea() {
-  if (cachedChannelPanelBounds.isEmpty()) return;
+  if (cachedChannelPanelBounds.isEmpty())
+    return;
 
   auto bounds = cachedChannelPanelBounds;
   const int gap = 10;
@@ -1233,28 +1269,29 @@ void AntiphonEditor::relayoutChannelArea() {
   int local_need = numLocal > 0 ? numLocal * 94 - 4 : 0;
 
   int remote_need = 0;
-  for (auto *s : remoteUserStrips) remote_need += s->getPreferredWidth() + 8;
-  if (!remoteUserStrips.isEmpty()) remote_need -= 8;
+  for (auto *s : remoteUserStrips)
+    remote_need += s->getPreferredWidth() + 8;
+  if (!remoteUserStrips.isEmpty())
+    remote_need -= 8;
 
   // Hard allocations: 40/60 split with 200 px floor, capped at half
-  int local_hard = juce::jlimit(std::min(200, panel_w / 2),
-                                panel_w / 2,
+  int local_hard = juce::jlimit(std::min(200, panel_w / 2), panel_w / 2,
                                 (int)(panel_w * 0.4f));
   int remote_hard = panel_w - local_hard;
 
   // Elastic four-case split
   int local_w, remote_w;
   if (local_need <= local_hard && remote_need <= remote_hard) {
-    local_w  = local_hard;
+    local_w = local_hard;
     remote_w = remote_hard;
   } else if (local_need > local_hard && remote_need <= remote_hard) {
     remote_w = remote_need;
-    local_w  = panel_w - remote_w;
+    local_w = panel_w - remote_w;
   } else if (remote_need > remote_hard && local_need <= local_hard) {
-    local_w  = local_need;
+    local_w = local_need;
     remote_w = panel_w - local_w;
   } else {
-    local_w  = local_hard;
+    local_w = local_hard;
     remote_w = remote_hard;
   }
 
@@ -1271,8 +1308,8 @@ void AntiphonEditor::relayoutChannelArea() {
     s->setBounds(x, 0, 90, h);
     x += 94;
   }
-  localChannelsContainer.setSize(
-      std::max(x, localChannelsViewport.getWidth()), h);
+  localChannelsContainer.setSize(std::max(x, localChannelsViewport.getWidth()),
+                                 h);
 
   // Position remote strips: right-flush within container
   int rh = remoteUsersViewport.getHeight();
@@ -1289,8 +1326,10 @@ void AntiphonEditor::relayoutChannelArea() {
     strips.push_back(echoStrip.get());
 
   int total_remote = 0;
-  for (auto *s : strips) total_remote += s->getPreferredWidth() + 8;
-  if (!strips.empty()) total_remote -= 8;
+  for (auto *s : strips)
+    total_remote += s->getPreferredWidth() + 8;
+  if (!strips.empty())
+    total_remote -= 8;
 
   int container_w = std::max(total_remote, remoteUsersViewport.getWidth());
   int right_offset = container_w - total_remote;
@@ -1358,7 +1397,8 @@ void AntiphonEditor::timerCallback() {
 
   auto decay = [](std::atomic<float> &v) {
     float f = v.load();
-    if (f > 0.0f) v.store(std::max(0.0f, f - (1.0f / 12.0f)));
+    if (f > 0.0f)
+      v.store(std::max(0.0f, f - (1.0f / 12.0f)));
   };
   decay(audioProcessor.intervalFlashIntensity);
   decay(audioProcessor.beatFlashIntensity);
@@ -1440,7 +1480,10 @@ void AntiphonEditor::timerCallback() {
 
       RemoteUserStrip *strip = nullptr;
       for (auto *s : remoteUserStrips) {
-        if (s->getName() == username) { strip = s; break; }
+        if (s->getName() == username) {
+          strip = s;
+          break;
+        }
       }
 
       if (!strip) {
@@ -1473,7 +1516,8 @@ void AntiphonEditor::timerCallback() {
         echoStrip->setName("Echo");
         remoteUsersContainer.addAndMakeVisible(echoStrip.get());
       }
-      echoStrip->updateEchoTaps(taps, audioProcessor.ninjamClient.maxEchoDelay());
+      echoStrip->updateEchoTaps(taps,
+                                audioProcessor.ninjamClient.maxEchoDelay());
       echoStrip->updateOutputBusCount(audioProcessor.getBusCount(false));
     }
   } else if (!remoteUserStrips.isEmpty() || echoStrip != nullptr) {

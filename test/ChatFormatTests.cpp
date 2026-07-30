@@ -41,7 +41,8 @@ public:
 
     beginTest("actions, private messages, topic and join/part are separated");
     {
-      expect(render("MSG", "sam", "/me waves", "me").category == Category::Action);
+      expect(render("MSG", "sam", "/me waves", "me").category ==
+             Category::Action);
       expectEquals(render("MSG", "sam", "/me waves", "me").text,
                    juce::String("* sam waves"));
       expect(render("PRIVMSG", "sam", "psst", "me").category ==
@@ -77,9 +78,9 @@ public:
     {
       // The exact wording is the only contract the server offers -- there is no
       // structured vote message on the wire (usercon.cpp:1074).
-      const auto v = parseVote(
-          "[voting system] leading candidate: 3/5 votes for 137 BPM "
-          "[each vote expires in 60s]");
+      const auto v =
+          parseVote("[voting system] leading candidate: 3/5 votes for 137 BPM "
+                    "[each vote expires in 60s]");
       expect(v.valid);
       expect(!v.settled);
       expect(v.isBpm);
@@ -91,9 +92,9 @@ public:
 
     beginTest("a BPI vote is told apart from a BPM vote");
     {
-      const auto v = parseVote(
-          "[voting system] leading candidate: 1/2 votes for 11 BPI "
-          "[each vote expires in 60s]");
+      const auto v =
+          parseVote("[voting system] leading candidate: 1/2 votes for 11 BPI "
+                    "[each vote expires in 60s]");
       expect(v.valid);
       expect(!v.isBpm, "11 BPI must not be read as a BPM proposal");
       expectEquals(v.target, 11);
@@ -134,12 +135,11 @@ public:
       // Taken from elieserdejesus/JamTaba,
       // tests/auto/chords/TestChatChordsProgressionParser.cpp
       // so we accept what people already type in Ninjam rooms.
-      for (const auto *s : {"| C    | F    | G    | F    ", "|C    |F    |G    |F",
-                            "|C|F|G|F", "|  C|  F|  G|  F", "|C| F| G |F",
-                            "|C|F||G|F",
-                            "|C |Fmaj7 |G7 |Am7 |Am7/G |F#m7(b5) |Fmaj9"})
-        expect(isChordProgression(s),
-               juce::String("not recognised: ") + s);
+      for (const auto *s :
+           {"| C    | F    | G    | F    ", "|C    |F    |G    |F", "|C|F|G|F",
+            "|  C|  F|  G|  F", "|C| F| G |F", "|C|F||G|F",
+            "|C |Fmaj7 |G7 |Am7 |Am7/G |F#m7(b5) |Fmaj9"})
+        expect(isChordProgression(s), juce::String("not recognised: ") + s);
     }
 
     beginTest("prose with pipes is not a chord progression");
@@ -149,8 +149,8 @@ public:
       // suite. Only "|" separates here, so they cannot reach us; the rest guard
       // the cases that could.
       for (const auto *s : {"I AM TIRED ...", "LETS TAKE A BREAK", "|C",
-                            "| lets play something", "hello", "", "|",
-                            "|| ||", "| C | and then something else"})
+                            "| lets play something", "hello", "", "|", "|| ||",
+                            "| C | and then something else"})
         expect(!isChordProgression(s),
                juce::String("wrongly read as a progression: ") + s);
     }
@@ -175,9 +175,11 @@ public:
 
     beginTest("a voting line is categorised as voting, whoever sends it");
     {
-      const auto l = render(
-          "MSG", "", "[voting system] leading candidate: 1/2 votes for 137 BPM "
-                     "[each vote expires in 60s]", "me");
+      const auto l =
+          render("MSG", "",
+                 "[voting system] leading candidate: 1/2 votes for 137 BPM "
+                 "[each vote expires in 60s]",
+                 "me");
       expect(l.category == Category::Voting);
       expect(l.text.startsWith("~~"));
     }

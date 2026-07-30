@@ -22,12 +22,13 @@ public:
         const bool transport = (bits & 4) != 0;
         const bool practice = (bits & 8) != 0;
 
-        const auto g = computeRunGate(connected, syncRunning, transport, practice);
+        const auto g =
+            computeRunGate(connected, syncRunning, transport, practice);
         expect(runGateIsSafe(g),
                "unsafe for connected=" + juce::String((int)connected) +
-                   " sync=" + juce::String((int)syncRunning) + " transport=" +
-                   juce::String((int)transport) + " practice=" +
-                   juce::String((int)practice));
+                   " sync=" + juce::String((int)syncRunning) +
+                   " transport=" + juce::String((int)transport) +
+                   " practice=" + juce::String((int)practice));
       }
     }
 
@@ -67,8 +68,7 @@ public:
              "connected but not in step is still connected");
       expect(!computeRunGate(false, false, false, true).echoOn,
              "no transport, no grid, no echo");
-      expect(!computeRunGate(false, false, true, false).echoOn,
-             "practice off");
+      expect(!computeRunGate(false, false, true, false).echoOn, "practice off");
     }
 
     beginTest("connecting while practising stops the practice on its own");

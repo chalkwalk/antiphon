@@ -6,7 +6,8 @@ namespace {
 
 using S = AudioDeviceStartup::State;
 
-AudioDeviceStartup::Inputs in(bool finished, bool succeeded, int64_t elapsedMs) {
+AudioDeviceStartup::Inputs in(bool finished, bool succeeded,
+                              int64_t elapsedMs) {
   AudioDeviceStartup::Inputs i;
   i.probeFinished = finished;
   i.probeSucceeded = succeeded;

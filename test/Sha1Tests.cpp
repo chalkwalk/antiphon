@@ -29,8 +29,9 @@ public:
     beginTest("FIPS 180-1 vectors");
     expectEquals(hashOf("abc"),
                  juce::String("a9993e364706816aba3e25717850c26c9cd0d89d"));
-    expectEquals(hashOf("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
-                 juce::String("84983e441c3bd26ebaae4aa1f95129e5e54670f1"));
+    expectEquals(
+        hashOf("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+        juce::String("84983e441c3bd26ebaae4aa1f95129e5e54670f1"));
     expectEquals(hashOf(std::string(1000000, 'a')),
                  juce::String("34aa973cd4c4daa4f61eeb2bdbad27316534016f"));
 

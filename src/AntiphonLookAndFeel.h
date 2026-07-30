@@ -17,9 +17,9 @@
 //    "you cannot use this yet" always looks the same wherever it appears.
 namespace AntiphonTheme {
 
-constexpr juce::uint32 kAccent = 0xff00b4d8;    // teal: the product accent
-constexpr juce::uint32 kOnText = 0xff05202b;    // near-black, for use on kAccent
-constexpr juce::uint32 kControl = 0xff16213e;   // a control at rest
+constexpr juce::uint32 kAccent = 0xff00b4d8;  // teal: the product accent
+constexpr juce::uint32 kOnText = 0xff05202b;  // near-black, for use on kAccent
+constexpr juce::uint32 kControl = 0xff16213e; // a control at rest
 
 // One disabled treatment, shared by buttons, text editors and the chat.
 //

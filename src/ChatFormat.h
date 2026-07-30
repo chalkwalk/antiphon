@@ -23,9 +23,9 @@ enum class Category {
   SelfMessage,  // something you said
   OtherMessage, // something another player said
   PrivateMessage,
-  Action,       // "/me waves"
-  Voting,       // the voting system, including tempo changes
-  Key,          // "[key: D minor]" -- see MusicalKey.h
+  Action,          // "/me waves"
+  Voting,          // the voting system, including tempo changes
+  Key,             // "[key: D minor]" -- see MusicalKey.h
   ChordProgression // "| Dm7 | G7 |" -- Jamtaba's convention, display only
 };
 
@@ -43,10 +43,10 @@ Line render(const juce::String &type, const juce::String &username,
 // exact formats are fixed in the server source and quoted at the parser.
 struct VoteState {
   bool valid = false;
-  bool isBpm = true;  // false means BPI
-  int target = 0;     // the value being voted for
-  int votes = 0;      // votes so far
-  int needed = 0;     // votes required to carry
+  bool isBpm = true; // false means BPI
+  int target = 0;    // the value being voted for
+  int votes = 0;     // votes so far
+  int needed = 0;    // votes required to carry
   int timeoutSeconds = 0;
   bool settled = false; // "setting BPM to N" -- the vote carried
 };

@@ -22,7 +22,7 @@ namespace ninjam {
 constexpr double kProbePi = 3.14159265358979323846;
 
 struct IntervalProbe {
-  double burstHz = 3000.0;   // well clear of the 440 Hz bed tone
+  double burstHz = 3000.0; // well clear of the 440 Hz bed tone
   double burstSeconds = 0.008;
   float burstAmp = 0.9f;
   double bedHz = 440.0;
@@ -43,15 +43,16 @@ struct IntervalProbe {
         // Raised-cosine envelope: no click, so the codec has an easy time and
         // the burst stays narrow-band.
         const double env =
-            0.5 * (1.0 - std::cos(2.0 * kProbePi * (double)k / (double)burstLen));
-        return (float)(burstAmp * env *
-                       std::sin(2.0 * kProbePi * burstHz * (double)k / sampleRate));
+            0.5 *
+            (1.0 - std::cos(2.0 * kProbePi * (double)k / (double)burstLen));
+        return (
+            float)(burstAmp * env *
+                   std::sin(2.0 * kProbePi * burstHz * (double)k / sampleRate));
       }
     }
-    return (float)(bedAmp * std::sin(2.0 * kProbePi * bedHz * (double)globalSample /
-                                     sampleRate));
+    return (float)(bedAmp * std::sin(2.0 * kProbePi * bedHz *
+                                     (double)globalSample / sampleRate));
   }
 };
-
 
 } // namespace ninjam

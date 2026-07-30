@@ -43,9 +43,9 @@ inline int placeClip(const float *interleaved, int numFrames, int numChannels,
   std::vector<float> srcR((std::size_t)numFrames);
   for (int i = 0; i < numFrames; ++i) {
     srcL[(std::size_t)i] = interleaved[(std::size_t)(i * numChannels)];
-    srcR[(std::size_t)i] =
-        numChannels > 1 ? interleaved[(std::size_t)(i * numChannels + 1)]
-                        : srcL[(std::size_t)i];
+    srcR[(std::size_t)i] = numChannels > 1
+                               ? interleaved[(std::size_t)(i * numChannels + 1)]
+                               : srcL[(std::size_t)i];
   }
 
   const bool needsResample = srcRate > 0.0 && srcRate != outRate;

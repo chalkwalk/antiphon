@@ -32,10 +32,11 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "-12 dB, matching the reference client.");
   volumeSlider.onValueChange = [this]() {
     if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapVolume(echoTap, GainUtils::dbToGain(volumeSlider.getValue()));
+      audioProcessor.ninjamClient.setEchoTapVolume(
+          echoTap, GainUtils::dbToGain(volumeSlider.getValue()));
     else
-    audioProcessor.ninjamClient.setRemoteUserVolume(
-        username, channelIndex, GainUtils::dbToGain(volumeSlider.getValue()));
+      audioProcessor.ninjamClient.setRemoteUserVolume(
+          username, channelIndex, GainUtils::dbToGain(volumeSlider.getValue()));
   };
   addAndMakeVisible(volumeSlider);
 
@@ -45,7 +46,8 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   panSlider.setValue(0.0, juce::dontSendNotification);
   panSlider.textFromValueFunction = [](double v) {
     const int pct = (int)std::round(std::abs(v) * 100.0);
-    if (pct == 0) return juce::String("centre");
+    if (pct == 0)
+      return juce::String("centre");
     return juce::String(v < 0 ? "left " : "right ") + juce::String(pct);
   };
   panSlider.setTitle("Pan");
@@ -54,47 +56,54 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
     if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapPan(echoTap, (float)panSlider.getValue());
+      audioProcessor.ninjamClient.setEchoTapPan(echoTap,
+                                                (float)panSlider.getValue());
     else
-    audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
-                                                 (float)panSlider.getValue());
+      audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
+                                                   (float)panSlider.getValue());
   };
   addAndMakeVisible(panSlider);
 
   muteButton.setTitle("Mute");
   muteButton.setDescription(
       "Silence this remote channel in your mix. Audio is still received.");
-  muteButton.setTooltip("Mute: silence this player in your mix (audio still downloads)");
+  muteButton.setTooltip(
+      "Mute: silence this player in your mix (audio still downloads)");
   muteButton.onClick = [this]() {
     if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapMute(echoTap, muteButton.getToggleState());
+      audioProcessor.ninjamClient.setEchoTapMute(echoTap,
+                                                 muteButton.getToggleState());
     else
-    audioProcessor.ninjamClient.setRemoteUserMute(username, channelIndex,
-                                                  muteButton.getToggleState());
+      audioProcessor.ninjamClient.setRemoteUserMute(
+          username, channelIndex, muteButton.getToggleState());
   };
   addAndMakeVisible(muteButton);
 
   soloButton.setTitle("Solo");
-  soloButton.setDescription(
-      "Hear only soloed remote channels");
+  soloButton.setDescription("Hear only soloed remote channels");
   soloButton.setTooltip("Solo: hear only soloed remote channels");
   soloButton.onClick = [this]() {
     if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapSolo(echoTap, soloButton.getToggleState());
+      audioProcessor.ninjamClient.setEchoTapSolo(echoTap,
+                                                 soloButton.getToggleState());
     else
-    audioProcessor.ninjamClient.setRemoteUserSolo(username, channelIndex,
-                                                  soloButton.getToggleState());
+      audioProcessor.ninjamClient.setRemoteUserSolo(
+          username, channelIndex, soloButton.getToggleState());
   };
   addAndMakeVisible(soloButton);
 
   recvButton.setTitle("Receive");
-  recvButton.setDescription(
-      "Ask the server to send this channel at all. Turning it off saves bandwidth, unlike Mute.");
-  recvButton.setTooltip("Receive: download this player's audio from the server");
-  recvButton.setColour(juce::TextButton::buttonOnColourId,  juce::Colour(0xff0d5c2a)); // green = receiving
-  recvButton.setColour(juce::TextButton::buttonColourId,    juce::Colour(0xff5a1515)); // red = not receiving
-  recvButton.setColour(juce::TextButton::textColourOnId,    juce::Colours::white);
-  recvButton.setColour(juce::TextButton::textColourOffId,   juce::Colour(0xffcc6666));
+  recvButton.setDescription("Ask the server to send this channel at all. "
+                            "Turning it off saves bandwidth, unlike Mute.");
+  recvButton.setTooltip(
+      "Receive: download this player's audio from the server");
+  recvButton.setColour(juce::TextButton::buttonOnColourId,
+                       juce::Colour(0xff0d5c2a)); // green = receiving
+  recvButton.setColour(juce::TextButton::buttonColourId,
+                       juce::Colour(0xff5a1515)); // red = not receiving
+  recvButton.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+  recvButton.setColour(juce::TextButton::textColourOffId,
+                       juce::Colour(0xffcc6666));
   recvButton.setToggleState(true, juce::dontSendNotification);
   recvButton.onClick = [this]() {
     audioProcessor.ninjamClient.setRemoteUserRecv(username, channelIndex,
@@ -112,9 +121,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   delayBox.setTitle("Echo delay");
   delayBox.setDescription(
       "How many intervals late this echo plays your own audio back");
-  delayBox.setTooltip(
-      "How far behind this echo follows you, in intervals. A longer delay makes "
-      "a wider canon.");
+  delayBox.setTooltip("How far behind this echo follows you, in intervals. A "
+                      "longer delay makes "
+                      "a wider canon.");
   addChildComponent(delayBox);
 
   if (isEcho()) {
@@ -125,7 +134,8 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   outputBusBox.setTitle("Output bus");
   outputBusBox.setDescription(
       "Which plugin output bus this channel is routed to, for recording stems");
-  outputBusBox.setTooltip("Output bus: which plugin output bus receives this channel");
+  outputBusBox.setTooltip(
+      "Output bus: which plugin output bus receives this channel");
   outputBusBox.onChange = [this]() {
     int sel = outputBusBox.getSelectedId() - 1;
     if (sel >= 0)

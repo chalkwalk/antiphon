@@ -46,8 +46,9 @@ struct AudioSession {
     intervalSamples = clock.samplesPerInterval();
 
     server.sendUserInfo(peerName, 0, "gtr");
-    return waitUntil(
-        [this, peerName] { return client.getRemoteUsers().count(peerName) > 0; });
+    return waitUntil([this, peerName] {
+      return client.getRemoteUsers().count(peerName) > 0;
+    });
   }
 
   // Sends one interval of audio and waits for the echo to be fully decoded.
@@ -59,8 +60,8 @@ struct AudioSession {
     if (!waitUntil([&] { return server.completedUploads() > before; }, 5000))
       return false;
     // The final 0x05 must have been handled before the interval is playable.
-    return waitUntil(
-        [&] { return client.diagLastIntervalSamples.load() > 0; }, 5000);
+    return waitUntil([&] { return client.diagLastIntervalSamples.load() > 0; },
+                     5000);
   }
 
   // Pops the queued interval and renders `numSamples` of it in blocks.
@@ -261,9 +262,8 @@ public:
 
       auto out = s.render(s.intervalSamples);
       expect(analyse(out, 0, 48000.0).rms > 0.0, "left channel silent");
-      expectEquals(
-          TestSignal::peak(out.getReadPointer(1), out.getNumSamples()), 0.0,
-          "right channel not silenced by hard-left pan");
+      expectEquals(TestSignal::peak(out.getReadPointer(1), out.getNumSamples()),
+                   0.0, "right channel not silenced by hard-left pan");
     }
 
     beginTest("output bus routing sends audio to the chosen stereo pair");
@@ -276,17 +276,16 @@ public:
       expect(s.sendInterval(pcm));
 
       auto out = s.render(s.intervalSamples, 512, /*numChannels*/ 4);
-      expectEquals(TestSignal::peak(out.getReadPointer(0),
-                                    out.getNumSamples()),
+      expectEquals(TestSignal::peak(out.getReadPointer(0), out.getNumSamples()),
                    0.0, "bus 0 left should be silent");
-      expectEquals(TestSignal::peak(out.getReadPointer(1),
-                                    out.getNumSamples()),
+      expectEquals(TestSignal::peak(out.getReadPointer(1), out.getNumSamples()),
                    0.0, "bus 0 right should be silent");
       expect(analyse(out, 2, 48000.0).rms > 0.0, "bus 1 left silent");
       expect(analyse(out, 3, 48000.0).rms > 0.0, "bus 1 right silent");
     }
 
-    beginTest("out-of-range output bus clamps instead of writing out of bounds");
+    beginTest(
+        "out-of-range output bus clamps instead of writing out of bounds");
     {
       AudioSession s;
       expect(s.start(48000.0, 120, 8));
@@ -318,8 +317,7 @@ public:
                    "audio played before the interval boundary swap");
 
       auto out = s.render(s.intervalSamples);
-      expect(analyse(out, 0, 48000.0).rms > 0.0,
-             "no audio after the swap");
+      expect(analyse(out, 0, 48000.0).rms > 0.0, "no audio after the swap");
     }
 
     beginTest("recovered interval has no interior dropouts");
@@ -375,9 +373,8 @@ public:
       // the same reader that reads a server's archive, or the recording is
       // worthless. Writer and parser live in one module so they cannot drift,
       // and this is the test that proves it end to end over a real socket.
-      const auto tmp =
-          juce::File::getSpecialLocation(juce::File::tempDirectory)
-              .getChildFile("antiphon-session-test");
+      const auto tmp = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                           .getChildFile("antiphon-session-test");
       tmp.deleteRecursively();
       tmp.createDirectory();
 
@@ -396,9 +393,13 @@ public:
       juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
 
       // One session directory, named for the time and the server.
-      auto dirs = tmp.findChildFiles(juce::File::findDirectories, false, "*.ninjam");
+      auto dirs =
+          tmp.findChildFiles(juce::File::findDirectories, false, "*.ninjam");
       expectEquals(dirs.size(), 1, "expected exactly one session directory");
-      if (dirs.size() != 1) { tmp.deleteRecursively(); return; }
+      if (dirs.size() != 1) {
+        tmp.deleteRecursively();
+        return;
+      }
 
       const auto dir = dirs[0];
       const auto log = dir.getChildFile("clipsort.log");
@@ -464,15 +465,16 @@ public:
                "channel never returned on cycle " + juce::String(i));
 
         s.client.setRemoteUserVolume("peer", 0, 1.0f);
-        expect(s.sendInterval(pcm), "upload stalled on cycle " +
-                                        juce::String(i));
+        expect(s.sendInterval(pcm),
+               "upload stalled on cycle " + juce::String(i));
         s.render(512);
       }
 
       expect(s.sendInterval(pcm));
       const auto again = analyse(s.render(s.intervalSamples), 0, 48000.0);
       expect(again.rms > 0.05, "silent after " + juce::String(kCycles) +
-                                   " cycles, rms " + juce::String(again.rms, 4));
+                                   " cycles, rms " +
+                                   juce::String(again.rms, 4));
       expect(std::fabs(again.freq - 440.0) / 440.0 < 0.03,
              "measured " + juce::String(again.freq, 1) + " Hz after cycling");
     }
@@ -496,26 +498,27 @@ public:
 
       const float peak =
           s.client.getRemoteUsers()["peer"].channels[0].peakLevel;
-      expect(peak > 0.1f && peak <= 1.0f,
-             "meter read " + juce::String(peak, 4) + " for a 0.5 amplitude tone");
+      expect(peak > 0.1f && peak <= 1.0f, "meter read " +
+                                              juce::String(peak, 4) +
+                                              " for a 0.5 amplitude tone");
     }
   }
 
   void checkRoundTrip(double sr) {
     AudioSession s;
-    expect(s.start(sr, 120, 8), "session failed to start at " +
-                                    juce::String(sr));
+    expect(s.start(sr, 120, 8),
+           "session failed to start at " + juce::String(sr));
     s.client.setRemoteUserVolume("peer", 0, 1.0f);
 
     auto pcm = makeSineBuffer(s.intervalSamples, 440.0, sr, 0.5f);
-    expect(s.sendInterval(pcm), "interval never completed at " +
-                                    juce::String(sr));
+    expect(s.sendInterval(pcm),
+           "interval never completed at " + juce::String(sr));
 
     const int decoded = s.client.diagLastIntervalSamples.load();
     const double lengthRatio = (double)decoded / (double)s.intervalSamples;
     expect(lengthRatio > 0.98 && lengthRatio < 1.02,
-           juce::String(sr) + " Hz: decoded " + juce::String(decoded) +
-               " of " + juce::String(s.intervalSamples) + " samples (" +
+           juce::String(sr) + " Hz: decoded " + juce::String(decoded) + " of " +
+               juce::String(s.intervalSamples) + " samples (" +
                juce::String(lengthRatio * 100.0, 1) + "%)");
 
     auto out = s.render(s.intervalSamples);
@@ -524,12 +527,11 @@ public:
            juce::String(sr) + " Hz: recovered " + juce::String(a.freq, 1) +
                " Hz, expected 440");
 
-    const double inRms = TestSignal::rms(pcm.getReadPointer(0),
-                                         pcm.getNumSamples());
+    const double inRms =
+        TestSignal::rms(pcm.getReadPointer(0), pcm.getNumSamples());
     const double deltaDb = TestSignal::toDb(a.rms) - TestSignal::toDb(inRms);
-    expect(std::fabs(deltaDb) < 1.5,
-           juce::String(sr) + " Hz: level moved by " +
-               juce::String(deltaDb, 2) + " dB");
+    expect(std::fabs(deltaDb) < 1.5, juce::String(sr) + " Hz: level moved by " +
+                                         juce::String(deltaDb, 2) + " dB");
   }
 };
 

@@ -15,9 +15,9 @@
 class ServerBrowserDialog;
 
 class AntiphonEditor : public juce::AudioProcessorEditor,
-                                   public juce::Timer,
-                                   public juce::KeyListener,
-                                   public NinjamClientListener {
+                       public juce::Timer,
+                       public juce::KeyListener,
+                       public NinjamClientListener {
 public:
   AntiphonEditor(AntiphonAudioProcessor &);
   ~AntiphonEditor() override;
@@ -183,7 +183,7 @@ private:
   int dismissedVoteTarget = 0;
   bool dismissedVoteIsBpm = true;
   int dismissedDawBpm = 0;
-  int chipDawBpm = 0;      // non-zero when the chip is offering a DAW tempo
+  int chipDawBpm = 0; // non-zero when the chip is offering a DAW tempo
   juce::String lastRoomMembersText;
   // How many lines the room list currently needs, so resized() can give it the
   // height rather than cramming every player into one.

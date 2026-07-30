@@ -23,7 +23,8 @@ AntiphonAudioProcessor::AntiphonAudioProcessor()
   // in practice, but "it happens to be published later" is not a rule anyone
   // can follow.
   publishLocalChannels();
-  if (!isStandaloneApp()) metronomeEnabled = false;
+  if (!isStandaloneApp())
+    metronomeEnabled = false;
 }
 
 AntiphonAudioProcessor::~AntiphonAudioProcessor() {
@@ -49,8 +50,7 @@ void AntiphonAudioProcessor::publishLocalChannels() {
   // count released afterwards, so the audio thread -- which reads the count
   // with acquire and then indexes below it -- never sees a slot that has not
   // been filled in.
-  const int n =
-      juce::jmin((int)localChannels.size(), kMaxLocalChannels);
+  const int n = juce::jmin((int)localChannels.size(), kMaxLocalChannels);
   for (int i = 0; i < n; ++i)
     audioChannels[(std::size_t)i] = localChannels[(std::size_t)i].get();
   audioChannelCount.store(n, std::memory_order_release);
@@ -91,7 +91,8 @@ int AntiphonAudioProcessor::addLocalChannel() {
 
 void AntiphonAudioProcessor::removeLastLocalChannel() {
   juce::ScopedLock sl(localChannelMutex);
-  if (localChannels.size() <= 1) return;
+  if (localChannels.size() <= 1)
+    return;
   localChannels.back()->isValid.store(false);
   // Kept alive rather than destroyed: the audio thread may be holding the raw
   // pointer for the rest of this block, and freeing an 11 MB ring underneath it
@@ -104,7 +105,10 @@ void AntiphonAudioProcessor::removeLastLocalChannel() {
   // else stays silent with nothing on screen explaining why.
   bool anyLocalSolo = false;
   for (const auto &lc : localChannels)
-    if (lc->monitorSolo.load()) { anyLocalSolo = true; break; }
+    if (lc->monitorSolo.load()) {
+      anyLocalSolo = true;
+      break;
+    }
   ninjamClient.setLocalSoloActive(anyLocalSolo);
 }
 
@@ -115,17 +119,20 @@ void AntiphonAudioProcessor::removeLastLocalChannel() {
 // flag and maps it to VST3's kIoChanged; patches/clap-bus-layout-rescan.patch
 // maps it to CLAP's audio-ports rescan.
 static juce::AudioProcessorListener::ChangeDetails busLayoutChange() {
-  return juce::AudioProcessorListener::ChangeDetails{}.withBusLayoutChanged(true);
+  return juce::AudioProcessorListener::ChangeDetails{}.withBusLayoutChanged(
+      true);
 }
 
 int AntiphonAudioProcessor::addInputBus() {
-  if (!addBus(true)) return -1;
+  if (!addBus(true))
+    return -1;
   updateHostDisplay(busLayoutChange());
   return getBusCount(true) - 1;
 }
 
 void AntiphonAudioProcessor::removeLastInputBus() {
-  if (getBusCount(true) <= 1) return;
+  if (getBusCount(true) <= 1)
+    return;
   int removedIdx = getBusCount(true) - 1;
   {
     juce::ScopedLock sl(localChannelMutex);
@@ -138,13 +145,15 @@ void AntiphonAudioProcessor::removeLastInputBus() {
 }
 
 int AntiphonAudioProcessor::addOutputBus() {
-  if (!addBus(false)) return -1;
+  if (!addBus(false))
+    return -1;
   updateHostDisplay(busLayoutChange());
   return getBusCount(false) - 1;
 }
 
 void AntiphonAudioProcessor::removeLastOutputBus() {
-  if (getBusCount(false) <= 1) return;
+  if (getBusCount(false) <= 1)
+    return;
   int removedIdx = getBusCount(false) - 1;
   auto users = ninjamClient.getRemoteUsers();
   for (auto &[uname, user] : users)
@@ -155,8 +164,8 @@ void AntiphonAudioProcessor::removeLastOutputBus() {
   updateHostDisplay(busLayoutChange());
 }
 
-void AntiphonAudioProcessor::setRemoteUserOutputBus(const juce::String &username,
-                                                  int channelIndex, int busIdx) {
+void AntiphonAudioProcessor::setRemoteUserOutputBus(
+    const juce::String &username, int channelIndex, int busIdx) {
   ninjamClient.setRemoteUserOutputBus(username, channelIndex, busIdx);
   savedRemoteRoutings[{username, channelIndex}] = busIdx;
 }
@@ -173,7 +182,7 @@ void AntiphonAudioProcessor::onUserInfoChange() {
 }
 
 void AntiphonAudioProcessor::prepareToPlay(double sampleRate,
-                                         int samplesPerBlock) {
+                                           int samplesPerBlock) {
   juce::ScopedLock sl(localChannelMutex);
   int ringSize = (int)sampleRate * 30;
   // The spares are sized here too. A recycled channel must never resize its own
@@ -213,7 +222,8 @@ void AntiphonAudioProcessor::prepareToPlay(double sampleRate,
 void AntiphonAudioProcessor::injectTestTone(int numSamples) {
   const double sr = getSampleRate();
   const int intervalLen = intervalClock.samplesPerInterval();
-  if (sr <= 0.0 || intervalLen <= 0 || inputSnapshot.getNumSamples() < numSamples)
+  if (sr <= 0.0 || intervalLen <= 0 ||
+      inputSnapshot.getNumSamples() < numSamples)
     return;
 
   const auto &probe = testProbe;
@@ -223,8 +233,7 @@ void AntiphonAudioProcessor::injectTestTone(int numSamples) {
   // see it exactly as if it had arrived on every input bus.
   for (int i = 0; i < numSamples; ++i) {
     const int64_t pos = (startPos + i) % intervalLen;
-    const float v =
-        probe.sampleAt(pos, intervalLen, testToneSample + i, sr);
+    const float v = probe.sampleAt(pos, intervalLen, testToneSample + i, sr);
     for (int ch = 0; ch < inputSnapshot.getNumChannels(); ++ch)
       inputSnapshot.setSample(ch, i, v);
   }
@@ -267,10 +276,9 @@ void AntiphonAudioProcessor::captureEchoRange(int startSample, int count) {
   };
 
   const auto gains = ChannelMix::panGains(lc.volume.load(), lc.pan.load());
-  ninjamClient.writeEchoBlock(sourcePointer(offset),
-                              busCh > 1 ? sourcePointer(offset + 1) : nullptr,
-                              lc.isMono.load(), startSample, count, gains.left,
-                              gains.right);
+  ninjamClient.writeEchoBlock(
+      sourcePointer(offset), busCh > 1 ? sourcePointer(offset + 1) : nullptr,
+      lc.isMono.load(), startSample, count, gains.left, gains.right);
 }
 
 void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
@@ -299,8 +307,7 @@ void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
 
     // Gain is vol*pan only -- mute and solo are monitor-only and must not
     // affect what other players hear.
-    const auto gains =
-        ChannelMix::panGains(lc.volume.load(), lc.pan.load());
+    const auto gains = ChannelMix::panGains(lc.volume.load(), lc.pan.load());
     const bool mono = lc.isMono.load();
 
     if (lc.fifo.getFreeSpace() < count)
@@ -331,9 +338,9 @@ void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
 }
 
 void AntiphonAudioProcessor::renderMetronome(juce::AudioBuffer<float> &buffer,
-                                           int startSample, int count,
-                                           float gain,
-                                           int totalNumOutputChannels) {
+                                             int startSample, int count,
+                                             float gain,
+                                             int totalNumOutputChannels) {
   if (count <= 0 || gain <= 0.0f || !metronomeVoice.isActive())
     return;
   if (metronomeScratch.getNumSamples() < count)
@@ -357,9 +364,11 @@ void AntiphonAudioProcessor::releaseResources() {
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool AntiphonAudioProcessor::isBusesLayoutSupported(
     const BusesLayout &layouts) const {
-  if (layouts.outputBuses.isEmpty()) return false;
+  if (layouts.outputBuses.isEmpty())
+    return false;
   for (auto &ch : layouts.outputBuses)
-    if (ch != juce::AudioChannelSet::stereo()) return false;
+    if (ch != juce::AudioChannelSet::stereo())
+      return false;
   for (auto &ch : layouts.inputBuses)
     if (ch != juce::AudioChannelSet::stereo() &&
         ch != juce::AudioChannelSet::mono())
@@ -369,9 +378,10 @@ bool AntiphonAudioProcessor::isBusesLayoutSupported(
 #endif
 
 void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
-                                        juce::MidiBuffer &) {
+                                          juce::MidiBuffer &) {
   juce::ScopedNoDenormals noDenormals;
-  auto totalNumOutputChannels = std::min(getTotalNumOutputChannels(), buffer.getNumChannels());
+  auto totalNumOutputChannels =
+      std::min(getTotalNumOutputChannels(), buffer.getNumChannels());
   int ns = buffer.getNumSamples();
 
   // 1. Host Sync
@@ -379,9 +389,11 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     auto info = ph->getPosition();
     if (info.hasValue()) {
       hostIsPlaying = info->getIsPlaying();
-      if (info->getBpm().hasValue()) hostBpm = *info->getBpm();
+      if (info->getBpm().hasValue())
+        hostBpm = *info->getBpm();
       hostHasPpq = info->getPpqPosition().hasValue();
-      if (hostHasPpq) hostPpqPosition = *info->getPpqPosition();
+      if (hostHasPpq)
+        hostPpqPosition = *info->getPpqPosition();
     }
   }
 
@@ -427,7 +439,8 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       auto &lc = *audioChannels[(std::size_t)ci];
       int busIdx = juce::jlimit(0, numInBuses - 1, lc.inputBusIndex.load());
       auto *bus = getBus(true, busIdx);
-      if (!bus) continue;
+      if (!bus)
+        continue;
       int offset = bus->getChannelIndexInProcessBlockBuffer(0);
       int busCh = bus->getNumberOfChannels();
 
@@ -456,11 +469,10 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       // Metered after mono summing, so a mono channel shows the single signal
       // it actually transmits rather than an unrelated stereo pair. Scaled by
       // monitor gain, so the VU shows what you hear.
-      const ChannelMix::Frame monGains{
-          txGains.left * lc.monitorRamp.current(),
-          txGains.right * lc.monitorRamp.current()};
-      const auto p =
-          ChannelMix::peaks(srcL, srcR, mono, 0, ns, monGains);
+      const ChannelMix::Frame monGains{txGains.left * lc.monitorRamp.current(),
+                                       txGains.right *
+                                           lc.monitorRamp.current()};
+      const auto p = ChannelMix::peaks(srcL, srcR, mono, 0, ns, monGains);
       lc.peakL.store(p.left);
       lc.peakR.store(p.right);
 
@@ -522,21 +534,24 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         // A raw pointer is as safe here as the shared_ptr used to be: the
         // channel outlives the processor's audio path, and the lambda already
         // captures `this`, so it cannot outlive the processor either.
-        juce::MessageManager::callAsync(
-            [this, lc, length, ci, mono, handoff, rampSamples, postInJam]() {
-          if (!lc->isValid.load()) return;
+        juce::MessageManager::callAsync([this, lc, length, ci, mono, handoff,
+                                         rampSamples, postInJam]() {
+          if (!lc->isValid.load())
+            return;
           juce::AudioBuffer<float> buf(2, length);
           int s1, n1, s2, n2;
           lc->fifo.prepareToRead(length, s1, n1, s2, n2);
           for (int ch = 0; ch < 2; ++ch) {
-            if (n1 > 0) buf.copyFrom(ch, 0,  lc->ring, ch, s1, n1);
-            if (n2 > 0) buf.copyFrom(ch, n1, lc->ring, ch, s2, n2);
+            if (n1 > 0)
+              buf.copyFrom(ch, 0, lc->ring, ch, s1, n1);
+            if (n2 > 0)
+              buf.copyFrom(ch, n1, lc->ring, ch, s2, n2);
           }
           lc->fifo.finishedRead(n1 + n2);
           // Silence the stretches transmit was off for, ramping each edge so
           // switching it cannot click in what the other players hear.
-          lc->spans[(std::size_t)handoff].applyTo(
-              buf.getArrayOfWritePointers(), 2, length, rampSamples);
+          lc->spans[(std::size_t)handoff].applyTo(buf.getArrayOfWritePointers(),
+                                                  2, length, rampSamples);
           if (postInJam)
             ninjamClient.processCapturedAudio(buf, length, ci, mono);
         });
@@ -656,7 +671,8 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
     // The grid actually in force this block, whichever owns it.
     const int activeBpi = intervalClock.getBpi();
-    const double activeBpm = useHostGrid ? hostBpm : (double)intervalClock.getBpm();
+    const double activeBpm =
+        useHostGrid ? hostBpm : (double)intervalClock.getBpm();
     const double hostBeatsPerSample =
         HostGrid::beatsPerSample(hostBpm, sampleRate);
     const double ppqAtBlockEnd =
@@ -762,7 +778,6 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     ninjamClient.getDecodedAudio(buffer);
   else
     ninjamClient.getEchoAudio(buffer);
-
 }
 
 void AntiphonAudioProcessor::applyDebugCaptureSettings() {
@@ -781,116 +796,117 @@ juce::AudioProcessorEditor *AntiphonAudioProcessor::createEditor() {
 }
 
 // XOR-based obfuscation so passwords aren't plain text in DAW project state.
-static const uint8_t kObfKey[] = {
-    0x4e, 0x6a, 0x6d, 0x50, 0x77, 0x64, 0x21, 0x38,
-    0x2a, 0x5e, 0x71, 0x33, 0x2f, 0x56, 0x9c, 0xb1
-};
+static const uint8_t kObfKey[] = {0x4e, 0x6a, 0x6d, 0x50, 0x77, 0x64,
+                                  0x21, 0x38, 0x2a, 0x5e, 0x71, 0x33,
+                                  0x2f, 0x56, 0x9c, 0xb1};
 
 static juce::String obfuscate(const juce::String &s) {
-    auto utf8 = s.toRawUTF8();
-    int len = (int)s.getNumBytesAsUTF8();
-    juce::MemoryBlock buf(len);
-    for (int i = 0; i < len; ++i)
-        static_cast<uint8_t *>(buf.getData())[i] =
-            static_cast<uint8_t>(utf8[i]) ^ kObfKey[i % sizeof(kObfKey)];
-    return juce::Base64::toBase64(buf.getData(), buf.getSize());
+  auto utf8 = s.toRawUTF8();
+  int len = (int)s.getNumBytesAsUTF8();
+  juce::MemoryBlock buf(len);
+  for (int i = 0; i < len; ++i)
+    static_cast<uint8_t *>(buf.getData())[i] =
+        static_cast<uint8_t>(utf8[i]) ^ kObfKey[i % sizeof(kObfKey)];
+  return juce::Base64::toBase64(buf.getData(), buf.getSize());
 }
 
 static juce::String deobfuscate(const juce::String &b64) {
-    juce::MemoryOutputStream out;
-    if (!juce::Base64::convertFromBase64(out, b64))
-        return {};
-    auto *data = static_cast<const uint8_t *>(out.getData());
-    int len = (int)out.getDataSize();
-    juce::HeapBlock<char> buf(len + 1);
-    for (int i = 0; i < len; ++i)
-        buf[i] = static_cast<char>(data[i] ^ kObfKey[i % sizeof(kObfKey)]);
-    buf[len] = 0;
-    return juce::String::fromUTF8(buf, len);
+  juce::MemoryOutputStream out;
+  if (!juce::Base64::convertFromBase64(out, b64))
+    return {};
+  auto *data = static_cast<const uint8_t *>(out.getData());
+  int len = (int)out.getDataSize();
+  juce::HeapBlock<char> buf(len + 1);
+  for (int i = 0; i < len; ++i)
+    buf[i] = static_cast<char>(data[i] ^ kObfKey[i % sizeof(kObfKey)]);
+  buf[len] = 0;
+  return juce::String::fromUTF8(buf, len);
 }
 
 void AntiphonAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
-    juce::XmlElement xml("NinjamState");
-    xml.setAttribute("metronome",     metronomeEnabled.load());
-    xml.setAttribute("metronomeVol",  (double)metronomeVolume.load());
-    xml.setAttribute("chatVisible",   chatVisible.load());
-    xml.setAttribute("lastHost",      lastHost);
-    xml.setAttribute("lastPort",      lastPort);
-    xml.setAttribute("lastUsername",  lastUsername);
-    xml.setAttribute("lastPassword",  obfuscate(lastPassword));
-    xml.setAttribute("lastAnonymous", lastAnonymous);
+  juce::XmlElement xml("NinjamState");
+  xml.setAttribute("metronome", metronomeEnabled.load());
+  xml.setAttribute("metronomeVol", (double)metronomeVolume.load());
+  xml.setAttribute("chatVisible", chatVisible.load());
+  xml.setAttribute("lastHost", lastHost);
+  xml.setAttribute("lastPort", lastPort);
+  xml.setAttribute("lastUsername", lastUsername);
+  xml.setAttribute("lastPassword", obfuscate(lastPassword));
+  xml.setAttribute("lastAnonymous", lastAnonymous);
 
-    {
-      juce::ScopedLock sl(localChannelMutex);
-      for (int i = 0; i < (int)localChannels.size(); ++i) {
-          auto &lc = *localChannels[i];
-          auto *ch = xml.createNewChildElement("LocalChannel");
-          ch->setAttribute("idx",      i);
-          ch->setAttribute("name",     lc.name);
-          ch->setAttribute("mono",     lc.isMono.load());
-          ch->setAttribute("volume",   (double)lc.volume.load());
-          ch->setAttribute("pan",      (double)lc.pan.load());
-          ch->setAttribute("muted",    lc.muted.load());
-          ch->setAttribute("solo",     lc.monitorSolo.load());
-          ch->setAttribute("xmit",     lc.xmitEnabled.load());
-          ch->setAttribute("inputBus", lc.inputBusIndex.load());
-      }
+  {
+    juce::ScopedLock sl(localChannelMutex);
+    for (int i = 0; i < (int)localChannels.size(); ++i) {
+      auto &lc = *localChannels[i];
+      auto *ch = xml.createNewChildElement("LocalChannel");
+      ch->setAttribute("idx", i);
+      ch->setAttribute("name", lc.name);
+      ch->setAttribute("mono", lc.isMono.load());
+      ch->setAttribute("volume", (double)lc.volume.load());
+      ch->setAttribute("pan", (double)lc.pan.load());
+      ch->setAttribute("muted", lc.muted.load());
+      ch->setAttribute("solo", lc.monitorSolo.load());
+      ch->setAttribute("xmit", lc.xmitEnabled.load());
+      ch->setAttribute("inputBus", lc.inputBusIndex.load());
     }
-    for (auto &[key, busIdx] : savedRemoteRoutings) {
-        auto *rr = xml.createNewChildElement("RemoteRouting");
-        rr->setAttribute("username", key.first);
-        rr->setAttribute("ch",       key.second);
-        rr->setAttribute("outputBus", busIdx);
-    }
-    copyXmlToBinary(xml, destData);
+  }
+  for (auto &[key, busIdx] : savedRemoteRoutings) {
+    auto *rr = xml.createNewChildElement("RemoteRouting");
+    rr->setAttribute("username", key.first);
+    rr->setAttribute("ch", key.second);
+    rr->setAttribute("outputBus", busIdx);
+  }
+  copyXmlToBinary(xml, destData);
 }
 
 void AntiphonAudioProcessor::setStateInformation(const void *data,
-                                               int sizeInBytes) {
-    auto xml = getXmlFromBinary(data, sizeInBytes);
-    if (!xml || !xml->hasTagName("NinjamState")) return;
+                                                 int sizeInBytes) {
+  auto xml = getXmlFromBinary(data, sizeInBytes);
+  if (!xml || !xml->hasTagName("NinjamState"))
+    return;
 
-    chatVisible.store(xml->getBoolAttribute("chatVisible", true));
-    metronomeVolume.store((float)xml->getDoubleAttribute("metronomeVol", 1.0));
-    metronomeEnabled.store(
-        xml->getBoolAttribute("metronome", isStandaloneApp()));
-    lastHost      = xml->getStringAttribute("lastHost",      "ninbot.com");
-    lastPort      = xml->getIntAttribute   ("lastPort",      2049);
-    lastUsername  = xml->getStringAttribute("lastUsername",  "");
-    lastPassword  = deobfuscate(xml->getStringAttribute("lastPassword", ""));
-    lastAnonymous = xml->getBoolAttribute  ("lastAnonymous", true);
+  chatVisible.store(xml->getBoolAttribute("chatVisible", true));
+  metronomeVolume.store((float)xml->getDoubleAttribute("metronomeVol", 1.0));
+  metronomeEnabled.store(xml->getBoolAttribute("metronome", isStandaloneApp()));
+  lastHost = xml->getStringAttribute("lastHost", "ninbot.com");
+  lastPort = xml->getIntAttribute("lastPort", 2049);
+  lastUsername = xml->getStringAttribute("lastUsername", "");
+  lastPassword = deobfuscate(xml->getStringAttribute("lastPassword", ""));
+  lastAnonymous = xml->getBoolAttribute("lastAnonymous", true);
 
-    savedRemoteRoutings.clear();
-    for (auto *child : xml->getChildIterator()) {
-        if (child->hasTagName("RemoteRouting")) {
-            juce::String uname = child->getStringAttribute("username");
-            int chIdx = child->getIntAttribute("ch", 0);
-            int bus   = child->getIntAttribute("outputBus", 0);
-            savedRemoteRoutings[{uname, chIdx}] = bus;
-        }
+  savedRemoteRoutings.clear();
+  for (auto *child : xml->getChildIterator()) {
+    if (child->hasTagName("RemoteRouting")) {
+      juce::String uname = child->getStringAttribute("username");
+      int chIdx = child->getIntAttribute("ch", 0);
+      int bus = child->getIntAttribute("outputBus", 0);
+      savedRemoteRoutings[{uname, chIdx}] = bus;
     }
+  }
 
-    // Restore per-channel settings; create channels if needed
-    juce::ScopedLock sl(localChannelMutex);
-    for (auto *ch : xml->getChildIterator()) {
-        if (!ch->hasTagName("LocalChannel")) continue;
-        int idx = ch->getIntAttribute("idx", 0);
-        // Clamped: a corrupt or hostile state must not be able to grow this
-        // past what the published audio-thread view can hold.
-        if (idx < 0 || idx >= kMaxLocalChannels) continue;
-        while (idx >= (int)localChannels.size())
-            localChannels.push_back(std::make_shared<LocalChannel>());
-        auto &lc = *localChannels[idx];
-        lc.name = ch->getStringAttribute("name", "Instrument");
-        lc.isMono.store(ch->getBoolAttribute("mono", false));
-        lc.volume.store((float)ch->getDoubleAttribute("volume", 1.0));
-        lc.pan.store((float)ch->getDoubleAttribute("pan", 0.0));
-        lc.muted.store(ch->getBoolAttribute("muted", false));
-        lc.monitorSolo.store(ch->getBoolAttribute("solo", false));
-        lc.xmitEnabled.store(ch->getBoolAttribute("xmit", true));
-        lc.inputBusIndex.store(ch->getIntAttribute("inputBus", 0));
-    }
-    publishLocalChannels();
+  // Restore per-channel settings; create channels if needed
+  juce::ScopedLock sl(localChannelMutex);
+  for (auto *ch : xml->getChildIterator()) {
+    if (!ch->hasTagName("LocalChannel"))
+      continue;
+    int idx = ch->getIntAttribute("idx", 0);
+    // Clamped: a corrupt or hostile state must not be able to grow this
+    // past what the published audio-thread view can hold.
+    if (idx < 0 || idx >= kMaxLocalChannels)
+      continue;
+    while (idx >= (int)localChannels.size())
+      localChannels.push_back(std::make_shared<LocalChannel>());
+    auto &lc = *localChannels[idx];
+    lc.name = ch->getStringAttribute("name", "Instrument");
+    lc.isMono.store(ch->getBoolAttribute("mono", false));
+    lc.volume.store((float)ch->getDoubleAttribute("volume", 1.0));
+    lc.pan.store((float)ch->getDoubleAttribute("pan", 0.0));
+    lc.muted.store(ch->getBoolAttribute("muted", false));
+    lc.monitorSolo.store(ch->getBoolAttribute("solo", false));
+    lc.xmitEnabled.store(ch->getBoolAttribute("xmit", true));
+    lc.inputBusIndex.store(ch->getIntAttribute("inputBus", 0));
+  }
+  publishLocalChannels();
 }
 
 bool AntiphonAudioProcessor::applyRetroactiveTransmit(
@@ -947,7 +963,10 @@ void AntiphonAudioProcessor::refreshLocalSoloState() {
   {
     juce::ScopedLock sl(localChannelMutex);
     for (const auto &lc : localChannels)
-      if (lc->monitorSolo.load()) { anyLocalSolo = true; break; }
+      if (lc->monitorSolo.load()) {
+        anyLocalSolo = true;
+        break;
+      }
   }
   ninjamClient.setLocalSoloActive(anyLocalSolo);
 }
@@ -981,7 +1000,8 @@ void AntiphonAudioProcessor::onDisconnected(const juce::String &error) {
   if (!hasConnectedSinceLastAttempt)
     lastConnectFailed.store(true);
   hasConnectedSinceLastAttempt = false;
-  connectionStatus = error.isEmpty() ? "Disconnected" : "Disconnected: " + error;
+  connectionStatus =
+      error.isEmpty() ? "Disconnected" : "Disconnected: " + error;
   phaseResetPending.store(true);
 }
 

@@ -7,7 +7,8 @@ namespace AccessibilityAudit {
 namespace {
 
 juce::String describeNode(const Node &n) {
-  if (n.name.isNotEmpty()) return n.name;
+  if (n.name.isNotEmpty())
+    return n.name;
   return n.locator.isNotEmpty() ? n.kind + " '" + n.locator + "'" : n.kind;
 }
 
@@ -21,12 +22,14 @@ juce::String join(const juce::String &path, const Node &n) {
 // two "Mute" buttons inside the SAME strip are genuinely ambiguous.
 void walk(const Node &node, const juce::String &path,
           std::vector<Finding> &out) {
-  if (node.ignored) return;
+  if (node.ignored)
+    return;
 
   std::map<juce::String, int> siblingNames;
 
   for (const auto &child : node.children) {
-    if (child.ignored) continue;
+    if (child.ignored)
+      continue;
 
     const juce::String childPath = join(path, child);
 
@@ -40,14 +43,16 @@ void walk(const Node &node, const juce::String &path,
                            : "name \"" + child.name +
                                  "\" says nothing when spoken alone"});
       } else if (++siblingNames[child.name] > 1) {
-        out.push_back({Issue::DuplicateName, childPath,
-                       "a sibling already announces as \"" + child.name + "\""});
+        out.push_back(
+            {Issue::DuplicateName, childPath,
+             "a sibling already announces as \"" + child.name + "\""});
       }
 
       if (child.description.trim().isEmpty() &&
           !isUninformativeName(child.name)) {
-        out.push_back({Issue::MissingDescription, childPath,
-                       "reachable and named, but nothing explains what it does"});
+        out.push_back(
+            {Issue::MissingDescription, childPath,
+             "reachable and named, but nothing explains what it does"});
       }
     }
 
@@ -61,7 +66,8 @@ std::vector<Finding> run(const Node &root) {
   std::vector<Finding> out;
   // The root itself is checked too, so a nameless top-level editor is caught.
   if (root.focusable && !root.ignored && isUninformativeName(root.name))
-    out.push_back({Issue::MissingName, describeNode(root), "no accessible name"});
+    out.push_back(
+        {Issue::MissingName, describeNode(root), "no accessible name"});
   walk(root, join({}, root), out);
   return out;
 }
@@ -80,14 +86,15 @@ juce::String describe(Issue issue) {
 
 void measure(const Node &root, Coverage &out) {
   ++out.nodes;
-  if (root.focusable) ++out.focusable;
-  if (root.ignored) ++out.ignored;
+  if (root.focusable)
+    ++out.focusable;
+  if (root.ignored)
+    ++out.ignored;
   for (const auto &child : root.children)
     measure(child, out);
 }
 
-juce::String format(const std::vector<Finding> &findings,
-                    const Coverage &cov) {
+juce::String format(const std::vector<Finding> &findings, const Coverage &cov) {
   juce::String s = format(findings);
   s << "\nExamined " << cov.roots << " root(s), " << cov.nodes
     << " component(s), " << cov.focusable << " reachable by keyboard, "
@@ -101,9 +108,12 @@ juce::String format(const std::vector<Finding> &findings) {
 
   int names = 0, dupes = 0, descs = 0;
   for (const auto &f : findings) {
-    if (f.issue == Issue::MissingName) ++names;
-    else if (f.issue == Issue::DuplicateName) ++dupes;
-    else ++descs;
+    if (f.issue == Issue::MissingName)
+      ++names;
+    else if (f.issue == Issue::DuplicateName)
+      ++dupes;
+    else
+      ++descs;
   }
 
   juce::String s;

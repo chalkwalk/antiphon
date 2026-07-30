@@ -36,9 +36,11 @@ inline Frame panGains(float volume, float pan) {
 // source at its original level instead of doubling it.
 inline Frame sourceFrame(const float *srcL, const float *srcR, bool mono,
                          int index) {
-  if (srcL == nullptr) return {};
+  if (srcL == nullptr)
+    return {};
   const float l = srcL[index];
-  if (srcR == nullptr) return {l, l};
+  if (srcR == nullptr)
+    return {l, l};
   if (mono) {
     const float summed = 0.5f * (l + srcR[index]);
     return {summed, summed};
@@ -81,8 +83,10 @@ inline void write(float *dstL, float *dstR, const float *srcL,
                   Frame gains) {
   for (int i = 0; i < count; ++i) {
     const Frame f = sourceFrame(srcL, srcR, mono, srcStart + i);
-    if (dstL != nullptr) dstL[i] = f.left * gains.left;
-    if (dstR != nullptr) dstR[i] = f.right * gains.right;
+    if (dstL != nullptr)
+      dstL[i] = f.left * gains.left;
+    if (dstR != nullptr)
+      dstR[i] = f.right * gains.right;
   }
 }
 
@@ -92,8 +96,10 @@ inline void addInto(float *dstL, float *dstR, const float *srcL,
                     const float *srcR, bool mono, int count, Frame gains) {
   for (int i = 0; i < count; ++i) {
     const Frame f = sourceFrame(srcL, srcR, mono, i);
-    if (dstL != nullptr) dstL[i] += f.left * gains.left;
-    if (dstR != nullptr) dstR[i] += f.right * gains.right;
+    if (dstL != nullptr)
+      dstL[i] += f.left * gains.left;
+    if (dstR != nullptr)
+      dstR[i] += f.right * gains.right;
   }
 }
 

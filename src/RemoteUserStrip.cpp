@@ -1,6 +1,7 @@
 #include "RemoteUserStrip.h"
 
-RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p, const juce::String &u)
+RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p,
+                                 const juce::String &u)
     : audioProcessor(p), username(u) {
 
   // A reader navigates player by player; the nickname is the useful identity,
@@ -10,7 +11,8 @@ RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p, const juce::String &
   setDescription("Remote player " + username);
 
   usernameLabel.setText(username, juce::dontSendNotification);
-  usernameLabel.setFont(juce::FontOptions{}.withHeight(13.0f).withStyle("Bold"));
+  usernameLabel.setFont(
+      juce::FontOptions{}.withHeight(13.0f).withStyle("Bold"));
   addAndMakeVisible(usernameLabel);
 }
 
@@ -18,7 +20,8 @@ RemoteUserStrip::~RemoteUserStrip() {}
 
 int RemoteUserStrip::getPreferredWidth() const {
   int n = channelRows.size();
-  if (n == 0) return 98;
+  if (n == 0)
+    return 98;
   return 8 + n * 90 + (n - 1) * 4;
 }
 
@@ -75,7 +78,10 @@ void RemoteUserStrip::updateChannels(
   for (const auto &[chIdx, ch] : channels) {
     bool found = false;
     for (int i = 0; i < (int)channelIndices.size(); ++i) {
-      if (channelIndices[i] == chIdx) { found = true; break; }
+      if (channelIndices[i] == chIdx) {
+        found = true;
+        break;
+      }
     }
     if (!found) {
       auto *row = new RemoteChannelRow(audioProcessor, username, chIdx);

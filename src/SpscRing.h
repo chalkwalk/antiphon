@@ -26,8 +26,7 @@
 // Exactly one thread may push and exactly one may pop. With more of either the
 // index arithmetic is wrong, and nothing here will tell you.
 
-template <typename T, int Capacity>
-class SpscRing {
+template <typename T, int Capacity> class SpscRing {
 public:
   static_assert(Capacity > 1, "a one-slot ring is always either full or empty");
 

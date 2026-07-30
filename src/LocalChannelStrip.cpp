@@ -11,8 +11,8 @@ void LocalChannelStrip::TransmitButton::mouseDown(const juce::MouseEvent &e) {
 }
 
 void LocalChannelStrip::TransmitButton::mouseUp(const juce::MouseEvent &e) {
-  const bool held =
-      juce::Time::getMillisecondCounter() - pressedAtMs >= (juce::uint32)kHoldMs;
+  const bool held = juce::Time::getMillisecondCounter() - pressedAtMs >=
+                    (juce::uint32)kHoldMs;
   juce::ToggleButton::mouseUp(e);
   if (held && isMouseOver() && onHold)
     onHold();
@@ -47,7 +47,8 @@ LocalChannelStrip::LocalChannelStrip(
   monoButton.setTitle("Mono");
   monoButton.setDescription(
       "Sum the stereo input to mono before monitoring and transmitting");
-  monoButton.setTooltip("Sum stereo input to mono before encoding and monitoring");
+  monoButton.setTooltip(
+      "Sum stereo input to mono before encoding and monitoring");
   monoButton.setToggleState(channel->isMono.load(), juce::dontSendNotification);
   monoButton.onClick = [this]() {
     channel->isMono.store(monoButton.getToggleState());
@@ -86,7 +87,8 @@ LocalChannelStrip::LocalChannelStrip(
   panSlider.setDescription("Stereo position of this channel");
   panSlider.textFromValueFunction = [](double v) {
     const int pct = (int)std::round(std::abs(v) * 100.0);
-    if (pct == 0) return juce::String("centre");
+    if (pct == 0)
+      return juce::String("centre");
     return juce::String(v < 0 ? "left " : "right ") + juce::String(pct);
   };
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
@@ -100,7 +102,8 @@ LocalChannelStrip::LocalChannelStrip(
   muteButton.setDescription(
       "Silence this channel in your own monitor mix. Other players still hear "
       "you.");
-  muteButton.setTooltip("Mute: silence this channel in your monitor mix (others still hear you)");
+  muteButton.setTooltip(
+      "Mute: silence this channel in your monitor mix (others still hear you)");
   muteButton.setToggleState(channel->muted.load(), juce::dontSendNotification);
   muteButton.onClick = [this]() {
     channel->muted.store(muteButton.getToggleState());
@@ -113,7 +116,8 @@ LocalChannelStrip::LocalChannelStrip(
       "Hear only soloed channels in your own monitor mix. Does not affect what "
       "other players hear.");
   soloButton.setTooltip("Solo: hear only soloed channels in your monitor mix");
-  soloButton.setToggleState(channel->monitorSolo.load(), juce::dontSendNotification);
+  soloButton.setToggleState(channel->monitorSolo.load(),
+                            juce::dontSendNotification);
   soloButton.onClick = [this]() {
     channel->monitorSolo.store(soloButton.getToggleState());
     // Solo is one bus across local and remote, so the client has to be told.
@@ -132,11 +136,15 @@ LocalChannelStrip::LocalChannelStrip(
       "Hold to apply the change to the whole of the interval so far -- "
       "retroactively transmitting what you have played, or taking it back "
       "before anyone hears it.");
-  xmitButton.setColour(juce::TextButton::buttonOnColourId,  juce::Colour(0xff0d5c2a)); // green = live
-  xmitButton.setColour(juce::TextButton::buttonColourId,    juce::Colour(0xff5a1515)); // red = silent
-  xmitButton.setColour(juce::TextButton::textColourOnId,    juce::Colours::white);
-  xmitButton.setColour(juce::TextButton::textColourOffId,   juce::Colour(0xffcc6666));
-  xmitButton.setToggleState(channel->xmitEnabled.load(), juce::dontSendNotification);
+  xmitButton.setColour(juce::TextButton::buttonOnColourId,
+                       juce::Colour(0xff0d5c2a)); // green = live
+  xmitButton.setColour(juce::TextButton::buttonColourId,
+                       juce::Colour(0xff5a1515)); // red = silent
+  xmitButton.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+  xmitButton.setColour(juce::TextButton::textColourOffId,
+                       juce::Colour(0xffcc6666));
+  xmitButton.setToggleState(channel->xmitEnabled.load(),
+                            juce::dontSendNotification);
   xmitButton.onClick = [this]() {
     channel->xmitEnabled.store(xmitButton.getToggleState());
   };
@@ -147,9 +155,7 @@ LocalChannelStrip::LocalChannelStrip(
   removeButton.setTitle("Remove channel");
   removeButton.setDescription("Delete this channel strip");
   removeButton.setTooltip("Remove this channel");
-  removeButton.onClick = [this]() {
-    audioProcessor.removeLastLocalChannel();
-  };
+  removeButton.onClick = [this]() { audioProcessor.removeLastLocalChannel(); };
   removeButton.setVisible(false);
   addAndMakeVisible(removeButton);
 
@@ -158,7 +164,8 @@ LocalChannelStrip::LocalChannelStrip(
   inputBusBox.setTooltip("Input bus: which DAW input bus feeds this channel");
   inputBusBox.onChange = [this]() {
     int sel = inputBusBox.getSelectedId() - 1;
-    if (sel >= 0) channel->inputBusIndex.store(sel);
+    if (sel >= 0)
+      channel->inputBusIndex.store(sel);
   };
   addAndMakeVisible(inputBusBox);
   updateInputBusCount(1);
@@ -167,8 +174,9 @@ LocalChannelStrip::LocalChannelStrip(
 LocalChannelStrip::~LocalChannelStrip() {}
 
 void LocalChannelStrip::refreshAccessibleName() {
-  const juce::String n =
-      channel->name.isNotEmpty() ? channel->name : juce::String("Local channel");
+  const juce::String n = channel->name.isNotEmpty()
+                             ? channel->name
+                             : juce::String("Local channel");
   setTitle(n);
   setDescription("Local input channel " + n);
 }
@@ -183,9 +191,8 @@ void LocalChannelStrip::updateInputBusCount(int numBuses) {
   for (int i = 0; i < numBuses; ++i)
     inputBusBox.addItem("In " + juce::String(i + 1), i + 1);
   int stored = channel->inputBusIndex.load() + 1;
-  inputBusBox.setSelectedId(
-      (stored >= 1 && stored <= numBuses) ? stored : 1,
-      juce::dontSendNotification);
+  inputBusBox.setSelectedId((stored >= 1 && stored <= numBuses) ? stored : 1,
+                            juce::dontSendNotification);
   (void)current;
 }
 

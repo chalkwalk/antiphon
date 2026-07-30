@@ -17,7 +17,8 @@ public:
 
     beginTest("mono sums both sides rather than discarding one");
     {
-      const auto f = ChannelMix::sourceFrame(left.data(), right.data(), true, 0);
+      const auto f =
+          ChannelMix::sourceFrame(left.data(), right.data(), true, 0);
       expectWithinAbsoluteError(f.left, expectedSum, 1.0e-6f);
       expectWithinAbsoluteError(f.right, expectedSum, 1.0e-6f);
       // The bug this replaced: mono selected the left channel, throwing the
@@ -108,8 +109,8 @@ public:
     beginTest("write fills a destination segment with gained frames");
     {
       std::vector<float> dl(8, -1.0f), dr(8, -1.0f);
-      ChannelMix::write(dl.data(), dr.data(), left.data(), right.data(), true, 4,
-                        8, {2.0f, 0.5f});
+      ChannelMix::write(dl.data(), dr.data(), left.data(), right.data(), true,
+                        4, 8, {2.0f, 0.5f});
       for (int i = 0; i < 8; ++i) {
         expectWithinAbsoluteError(dl[(size_t)i], expectedSum * 2.0f, 1.0e-6f);
         expectWithinAbsoluteError(dr[(size_t)i], expectedSum * 0.5f, 1.0e-6f);
@@ -121,7 +122,8 @@ public:
       // The transmit ring is written in up to two segments, so the source
       // offset has to be honoured or the second segment repeats the first.
       std::vector<float> ramp(16);
-      for (int i = 0; i < 16; ++i) ramp[(size_t)i] = (float)i;
+      for (int i = 0; i < 16; ++i)
+        ramp[(size_t)i] = (float)i;
       std::vector<float> dst(4, 0.0f);
       ChannelMix::write(dst.data(), nullptr, ramp.data(), nullptr, false, 12, 4,
                         {1.0f, 1.0f});
@@ -132,8 +134,8 @@ public:
     beginTest("addInto accumulates rather than overwriting");
     {
       std::vector<float> dl(4, 0.25f), dr(4, 0.25f);
-      ChannelMix::addInto(dl.data(), dr.data(), left.data(), right.data(), false,
-                          4, {1.0f, 1.0f});
+      ChannelMix::addInto(dl.data(), dr.data(), left.data(), right.data(),
+                          false, 4, {1.0f, 1.0f});
       for (int i = 0; i < 4; ++i) {
         expectWithinAbsoluteError(dl[(size_t)i], 0.25f + L, 1.0e-6f);
         expectWithinAbsoluteError(dr[(size_t)i], 0.25f + R, 1.0e-6f);

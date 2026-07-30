@@ -41,7 +41,7 @@ enum class Mode {
 
 struct Key {
   bool valid = false;
-  int tonic = 0;    // semitones above C, 0-11
+  int tonic = 0;     // semitones above C, 0-11
   bool flat = false; // spell the tonic with a flat rather than a sharp
   Mode mode = Mode::Major;
 

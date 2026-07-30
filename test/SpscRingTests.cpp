@@ -58,7 +58,8 @@ public:
     {
       SpscRing<int, 4> ring;
       std::vector<int> vals(64);
-      for (int i = 0; i < 64; ++i) vals[(size_t)i] = i;
+      for (int i = 0; i < 64; ++i)
+        vals[(size_t)i] = i;
       // Far more traffic than the ring holds, one in one out, so the indices
       // wrap many times.
       for (int i = 0; i < 64; ++i) {
@@ -90,7 +91,8 @@ public:
       constexpr int kCount = 20000;
       SpscRing<int, 64> ring;
       std::vector<int> source((size_t)kCount);
-      for (int i = 0; i < kCount; ++i) source[(size_t)i] = i;
+      for (int i = 0; i < kCount; ++i)
+        source[(size_t)i] = i;
 
       std::atomic<bool> producerDone{false};
       std::vector<int> received;
@@ -99,7 +101,7 @@ public:
       std::thread producer([&] {
         for (int i = 0; i < kCount;) {
           if (ring.push(&source[(size_t)i]))
-            ++i;            // only advance when it was accepted
+            ++i; // only advance when it was accepted
           else
             std::this_thread::yield();
         }
@@ -115,7 +117,10 @@ public:
       expectEquals((int)received.size(), kCount, "nothing was dropped");
       bool ordered = true;
       for (int i = 0; i < (int)received.size(); ++i)
-        if (received[(size_t)i] != i) { ordered = false; break; }
+        if (received[(size_t)i] != i) {
+          ordered = false;
+          break;
+        }
       expect(ordered, "and nothing was reordered or duplicated");
     }
   }

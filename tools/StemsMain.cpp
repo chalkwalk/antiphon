@@ -167,13 +167,18 @@ int usage() {
          "written by a Ninjam server, an archive bot, or Antiphon itself.\n"
          "One WAV per player per channel is written, all the same length and\n"
          "sample-aligned, so they line up when dropped into a DAW.\n\n"
-         "A session is usually several directories, because the server rotates\n"
-         "every half hour and restarts interval numbering in each. Point this at\n"
+         "A session is usually several directories, because the server "
+         "rotates\n"
+         "every half hour and restarts interval numbering in each. Point this "
+         "at\n"
          "the parent and they are laid end to end automatically.\n\n"
          "  -o <out-dir>   where to write (default: <session-dir>/stems)\n"
-         "  --rate <hz>    output rate (default: the highest any clip declares)\n"
-         "  --bits <n>     16 (default), 24 or 32. Vorbis decodes to float and\n"
-         "                 carries no bit depth; 16 is all the decode justifies,\n"
+         "  --rate <hz>    output rate (default: the highest any clip "
+         "declares)\n"
+         "  --bits <n>     16 (default), 24 or 32. Vorbis decodes to float "
+         "and\n"
+         "                 carries no bit depth; 16 is all the decode "
+         "justifies,\n"
          "                 and 24 costs 50% more disk for no more detail.\n";
   return 1;
 }
@@ -222,8 +227,7 @@ int main(int argc, char *argv[]) {
 
   if (sessionArgs.size() > 1) {
     for (const auto &arg : sessionArgs) {
-      const auto f =
-          juce::File::getCurrentWorkingDirectory().getChildFile(arg);
+      const auto f = juce::File::getCurrentWorkingDirectory().getChildFile(arg);
       if (!f.getChildFile("clipsort.log").existsAsFile()) {
         std::cerr << "No clipsort.log in " << f.getFullPathName() << "\n";
         return 2;
@@ -327,14 +331,13 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "Session: " << sessionDir.getFullPathName() << "\n"
-            << "Segments: " << segments.size() << "   Intervals: "
-            << totalIntervals << "   Clips: " << totalClips
+            << "Segments: " << segments.size()
+            << "   Intervals: " << totalIntervals << "   Clips: " << totalClips
             << "   Stems: " << byStem.size() << "   Rate: " << (int)outRate
             << " Hz\n";
   for (const auto &seg : segments)
-    std::cout << "  " << seg.dir.getFileName() << "  intervals "
-              << seg.base << ".." << (seg.base + seg.session.intervalCount - 1)
-              << "\n";
+    std::cout << "  " << seg.dir.getFileName() << "  intervals " << seg.base
+              << ".." << (seg.base + seg.session.intervalCount - 1) << "\n";
   std::cout << "\n";
 
   if (bitDepth != 16 && bitDepth != 24 && bitDepth != 32) {
@@ -439,7 +442,8 @@ int main(int argc, char *argv[]) {
       metadata.set(juce::WavAudioFormat::acidDenominator, "4");
     }
 
-    metadata.set(juce::WavAudioFormat::riffInfoSoftware, "Antiphon antiphon-stems");
+    metadata.set(juce::WavAudioFormat::riffInfoSoftware,
+                 "Antiphon antiphon-stems");
     metadata.set(juce::WavAudioFormat::riffInfoComment,
                  "Ninjam session " + sessionDir.getFileName() + ", " +
                      juce::String((int)segments.size()) + " segment(s), " +
@@ -471,9 +475,8 @@ int main(int argc, char *argv[]) {
       std::cerr << "Could not write " << outFile.getFullPathName() << "\n";
       return 2;
     }
-    std::unique_ptr<juce::AudioFormatWriter> writer(
-        wav.createWriterFor(stream.release(), outRate, 2,
-                            (unsigned int)bitDepth, metadata, 0));
+    std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(
+        stream.release(), outRate, 2, (unsigned int)bitDepth, metadata, 0));
     if (writer == nullptr) {
       std::cerr << "Could not create a WAV writer for "
                 << outFile.getFullPathName() << "\n";
@@ -556,10 +559,9 @@ int main(int argc, char *argv[]) {
 
     writer.reset(); // destroying the writer is what writes the WAV header
 
-    std::cout << "  " << name << "   " << clipsPlaced << "/"
-              << totalIntervals << " intervals, "
-              << juce::String(framesThisStem / outRate, 1) << " s, "
-              << faded << " faded edge(s)\n";
+    std::cout << "  " << name << "   " << clipsPlaced << "/" << totalIntervals
+              << " intervals, " << juce::String(framesThisStem / outRate, 1)
+              << " s, " << faded << " faded edge(s)\n";
     ++written;
     if (totalFrames == 0)
       totalFrames = framesThisStem;
@@ -568,7 +570,8 @@ int main(int argc, char *argv[]) {
                 << " is a different length from the first stem\n";
   }
 
-  std::cout << "\n" << written << " stem(s) written to "
-            << outDir.getFullPathName() << "\n";
+  std::cout << "\n"
+            << written << " stem(s) written to " << outDir.getFullPathName()
+            << "\n";
   return 0;
 }

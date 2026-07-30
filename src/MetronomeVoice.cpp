@@ -45,7 +45,8 @@ void MetronomeVoice::render(float *dst, int numSamples, float gain) {
   const int n = numSamples < samplesRemaining ? numSamples : samplesRemaining;
   for (int i = 0; i < n; ++i) {
     // Linear decay to zero across the click, so it never runs into the next.
-    const double envelope = (double)(samplesRemaining - i) / (double)samplesTotal;
+    const double envelope =
+        (double)(samplesRemaining - i) / (double)samplesTotal;
     dst[i] += (float)(std::sin(phase) * envelope) * amplitude * gain;
     phase += phaseIncrement;
     if (phase >= kTwoPi)

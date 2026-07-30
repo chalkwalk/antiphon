@@ -19,11 +19,11 @@ public:
       // The one structural rule of the format: the interval number is carried
       // forward while scanning, so a run of user lines all belong to the most
       // recent interval.
-      const juce::String log =
-          juce::String("interval 0 120 16\n") + "user " + kGuidA +
-          " \"daniel\" 0 \"Guitar\"\n" + "user " + kGuidB +
-          " \"sam\" 1 \"Kit\"\n" + "interval 1 120 16\n" + "user " + kGuidA +
-          " \"daniel\" 0 \"Guitar\"\n";
+      const juce::String log = juce::String("interval 0 120 16\n") + "user " +
+                               kGuidA + " \"daniel\" 0 \"Guitar\"\n" + "user " +
+                               kGuidB + " \"sam\" 1 \"Kit\"\n" +
+                               "interval 1 120 16\n" + "user " + kGuidA +
+                               " \"daniel\" 0 \"Guitar\"\n";
 
       const auto s = parse(log);
       expectEquals((int)s.clips.size(), 3);
@@ -55,10 +55,10 @@ public:
     {
       // Interval lengths are not constant across a session, so a stem laid out
       // with one length throughout would drift after any vote.
-      const juce::String log =
-          juce::String("interval 0 120 16\n") + "user " + kGuidA +
-          " \"a\" 0 \"c\"\n" + "interval 1 137 11\n" + "user " + kGuidA +
-          " \"a\" 0 \"c\"\n";
+      const juce::String log = juce::String("interval 0 120 16\n") + "user " +
+                               kGuidA + " \"a\" 0 \"c\"\n" +
+                               "interval 1 137 11\n" + "user " + kGuidA +
+                               " \"a\" 0 \"c\"\n";
       const auto s = parse(log);
       expectEquals((int)s.clips.size(), 2);
       expectEquals(s.clips[0].bpm, 120);
@@ -70,16 +70,16 @@ public:
     beginTest("a malformed line is counted and skipped, not guessed at");
     {
       const juce::String log =
-          juce::String("interval 0 120 16\n")
-          + "user notahexguid \"a\" 0 \"c\"\n"     // guid wrong length
+          juce::String("interval 0 120 16\n") +
+          "user notahexguid \"a\" 0 \"c\"\n"         // guid wrong length
           + "user " + kGuidA + " noquotes 0 \"c\"\n" // unquoted name
-          + "user " + kGuidA + " \"a\" notanumber \"c\"\n"
-          + "interval x 120 16\n"
-          + "banana 1 2 3\n"
-          + "user " + kGuidA + " \"a\" 0 \"c\"\n";  // this one is fine
+          + "user " + kGuidA + " \"a\" notanumber \"c\"\n" +
+          "interval x 120 16\n" + "banana 1 2 3\n" + "user " + kGuidA +
+          " \"a\" 0 \"c\"\n"; // this one is fine
 
       const auto s = parse(log);
-      expectEquals((int)s.clips.size(), 1, "only the well-formed clip survives");
+      expectEquals((int)s.clips.size(), 1,
+                   "only the well-formed clip survives");
       expectEquals(s.malformedLines, 5);
     }
 
@@ -90,9 +90,9 @@ public:
       // upload already in progress is logged before the first boundary.
       // Rejecting it -- which is what this module did until a real archive
       // showed otherwise -- silently drops audio from the front of a session.
-      const juce::String log =
-          juce::String("user ") + kGuidA + " \"a\" 0 \"c\"\n" +
-          "interval 1 120 16\n" + "user " + kGuidB + " \"b\" 0 \"c\"\n";
+      const juce::String log = juce::String("user ") + kGuidA +
+                               " \"a\" 0 \"c\"\n" + "interval 1 120 16\n" +
+                               "user " + kGuidB + " \"b\" 0 \"c\"\n";
       const auto s = parse(log);
       expectEquals((int)s.clips.size(), 2);
       expectEquals(s.clips[0].guid, juce::String(kGuidA));
@@ -140,14 +140,16 @@ public:
 
     beginTest("blank lines and stray whitespace are ignored");
     {
-      const juce::String log = juce::String("\n  interval 0 120 16  \n\n  user ") +
-                               kGuidA + " \"a\" 0 \"c\"  \n\n";
+      const juce::String log =
+          juce::String("\n  interval 0 120 16  \n\n  user ") + kGuidA +
+          " \"a\" 0 \"c\"  \n\n";
       const auto s = parse(log);
       expectEquals((int)s.clips.size(), 1);
       expectEquals(s.malformedLines, 0);
     }
 
-    beginTest("an empty or clipless manifest yields nothing rather than failing");
+    beginTest(
+        "an empty or clipless manifest yields nothing rather than failing");
     {
       expectEquals((int)parse("").clips.size(), 0);
       expectEquals((int)parse("interval 0 120 16\n").clips.size(), 0);

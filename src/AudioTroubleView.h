@@ -33,12 +33,16 @@ public:
     useButton.setTitle("Use this device");
     useButton.setDescription(
         "Start Antiphon with the device selected above, and remember it");
-    useButton.onClick = [this] { if (accept) accept(); };
+    useButton.onClick = [this] {
+      if (accept)
+        accept();
+    };
     addAndMakeVisible(useButton);
   }
 
   void paint(juce::Graphics &g) override {
-    g.fillAll(getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
+    g.fillAll(
+        getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
   }
 
   void resized() override {

@@ -88,9 +88,9 @@ public:
       const int truncated = (int)exact;
       const double truncationErr =
           (exact - (double)truncated) * (halfAnHour / exact);
-      expect(truncationErr > 1.0,
-             "truncation should be measurable, got " +
-                 juce::String(truncationErr, 1) + " samples");
+      expect(truncationErr > 1.0, "truncation should be measurable, got " +
+                                      juce::String(truncationErr, 1) +
+                                      " samples");
 
       // First term, and the one that is actually audible: Ninjam's tempo is an
       // integer and the host's is not, so the free-running grid runs at the

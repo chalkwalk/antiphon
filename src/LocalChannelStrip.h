@@ -6,9 +6,10 @@
 
 class LocalChannelStrip : public juce::Component {
 public:
-  LocalChannelStrip(AntiphonAudioProcessor &processor,
-                    std::shared_ptr<AntiphonAudioProcessor::LocalChannel> channel,
-                    int channelIndex);
+  LocalChannelStrip(
+      AntiphonAudioProcessor &processor,
+      std::shared_ptr<AntiphonAudioProcessor::LocalChannel> channel,
+      int channelIndex);
   ~LocalChannelStrip() override;
 
   // Toggles transmit and applies it to the whole interval so far, as though it

@@ -176,8 +176,7 @@ public:
       }
       client.processCapturedAudio(buf, intervalSamples, 0, false);
       expect(client.isConnected(),
-             "connection dropped while uploading interval " +
-                 juce::String(n));
+             "connection dropped while uploading interval " + juce::String(n));
       juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
     }
 

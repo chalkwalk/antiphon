@@ -97,8 +97,7 @@ bool isChordProgression(const juce::String &text) {
       // A chord starts with a note letter, optionally with an accidental. The
       // rest -- m, 7, maj7, sus4, /G -- is not worth validating: this only
       // decides how to colour a line.
-      const auto letter =
-          juce::CharacterFunctions::toUpperCase(chord[0]);
+      const auto letter = juce::CharacterFunctions::toUpperCase(chord[0]);
       if (letter < 'A' || letter > 'G')
         return false; // a word in the middle means this is prose with pipes
       anyChord = true;
@@ -137,11 +136,13 @@ VoteState parseVote(const juce::String &text) {
     return v;
 
   // "3/5 votes for 137 BPM [each vote expires in 60s]"
-  const auto tail = text.fromFirstOccurrenceOf("leading candidate:", false, false).trim();
+  const auto tail =
+      text.fromFirstOccurrenceOf("leading candidate:", false, false).trim();
   v.votes = tail.getIntValue();
   v.needed = tail.fromFirstOccurrenceOf("/", false, false).getIntValue();
 
-  const auto forPart = tail.fromFirstOccurrenceOf("votes for ", false, false).trim();
+  const auto forPart =
+      tail.fromFirstOccurrenceOf("votes for ", false, false).trim();
   v.target = forPart.getIntValue();
   v.isBpm = forPart.containsIgnoreCase("BPM");
 

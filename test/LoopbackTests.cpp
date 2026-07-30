@@ -186,9 +186,9 @@ public:
       // Stated in dB as well, because that is how the intent is expressed:
       // remote players sit 12 dB below your own signal.
       const double db = TestSignal::toDb(vol);
-      expect(std::fabs(db - (-12.04)) < 0.1,
-             "default remote gain is " + juce::String(db, 2) +
-                 " dB, expected -12.04 dB");
+      expect(std::fabs(db - (-12.04)) < 0.1, "default remote gain is " +
+                                                 juce::String(db, 2) +
+                                                 " dB, expected -12.04 dB");
     }
 
     beginTest("recv toggle clears the channel bit in the usermask");
@@ -262,16 +262,16 @@ public:
       expect(waitUntil([&] { return s.server.countReceived(0xC0) > 0; }));
 
       NinjamProtocol::Chat parsed;
-      expect(NinjamProtocol::parseChat(s.server.lastPayloadOfType(0xC0),
-                                       parsed));
+      expect(
+          NinjamProtocol::parseChat(s.server.lastPayloadOfType(0xC0), parsed));
       expectEquals(parsed.type, juce::String("MSG"));
       expectEquals(parsed.p1, juce::String("hi from the client"));
 
       s.server.clearReceived();
       s.client.sendPrivateMessage("bob", "secret");
       expect(waitUntil([&] { return s.server.countReceived(0xC0) > 0; }));
-      expect(NinjamProtocol::parseChat(s.server.lastPayloadOfType(0xC0),
-                                       parsed));
+      expect(
+          NinjamProtocol::parseChat(s.server.lastPayloadOfType(0xC0), parsed));
       expectEquals(parsed.type, juce::String("PRIVMSG"));
       expectEquals(parsed.p1, juce::String("bob"));
       expectEquals(parsed.p2, juce::String("secret"));
@@ -288,8 +288,7 @@ public:
       // Give any stragglers a moment, then assert the cap holds.
       waitUntil([] { return false; }, 200);
       auto log = s.client.getChatLog();
-      expect(log.size() <= 100,
-             "chat log grew to " + juce::String(log.size()));
+      expect(log.size() <= 100, "chat log grew to " + juce::String(log.size()));
       expectEquals(log[log.size() - 1].text, juce::String("m129"));
     }
 
@@ -302,9 +301,8 @@ public:
       expect(waitUntil([&] { return s.server.countReceived(0xFD) >= 2; }, 9000),
              "fewer than two keep-alives in nine seconds");
       const auto elapsed = juce::Time::getMillisecondCounter() - start;
-      expect(elapsed >= 2500,
-             "two keep-alives arrived in only " + juce::String((int)elapsed) +
-                 " ms");
+      expect(elapsed >= 2500, "two keep-alives arrived in only " +
+                                  juce::String((int)elapsed) + " ms");
 
       for (const auto &m : s.server.messagesOfType(0xFD))
         expectEquals((int)m.payload.getSize(), 0,

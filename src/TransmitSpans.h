@@ -40,9 +40,7 @@ public:
     overflow = false;
   }
 
-  bool stateAtEnd() const {
-    return (count % 2 == 0) ? baseState : !baseState;
-  }
+  bool stateAtEnd() const { return (count % 2 == 0) ? baseState : !baseState; }
 
   // Records that transmit became `on` at `samplePos` samples into the interval.
   // Returns false only when the list is full, in which case the change is

@@ -15,7 +15,7 @@
 #include <vector>
 
 class AntiphonAudioProcessor : public juce::AudioProcessor,
-                             public NinjamClientListener {
+                               public NinjamClientListener {
 public:
   struct LocalChannel {
     juce::String name{"Instrument"};
@@ -84,9 +84,7 @@ public:
   // link against -- so the macro is 1 in every format. Using it here compiled
   // the DAW sync flow out of the plugin entirely: hasTransport was forced
   // false, tempo was never compared, and the state machine ran on connect.
-  bool isStandaloneApp() const {
-    return wrapperType == wrapperType_Standalone;
-  }
+  bool isStandaloneApp() const { return wrapperType == wrapperType_Standalone; }
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   void releaseResources() override;
@@ -216,9 +214,9 @@ public:
   // DAW sync. We lock the interval grid to the transport START rather than the
   // timeline: a clip/session view advances a timeline that is musically
   // meaningless, and jogging during a live jam is not a real use case.
-  SyncState syncState;                      // audio thread only
-  std::atomic<int> publishedSyncState{0};   // SyncState::State, for the UI
-  std::atomic<bool> syncRequested{false};   // set by the Sync button
+  SyncState syncState;                    // audio thread only
+  std::atomic<int> publishedSyncState{0}; // SyncState::State, for the UI
+  std::atomic<bool> syncRequested{false}; // set by the Sync button
 
   void requestSync() { syncRequested.store(true); }
 
@@ -262,10 +260,10 @@ public:
 
   // Last-used connection settings (persisted via getStateInformation)
   juce::String lastHost{"ninbot.com"};
-  int          lastPort{2049};
+  int lastPort{2049};
   juce::String lastUsername{""};
   juce::String lastPassword{""};
-  bool         lastAnonymous{true};
+  bool lastAnonymous{true};
 
   // Debug / Integration Testing Features
   std::atomic<bool> metronomeEnabled{true};

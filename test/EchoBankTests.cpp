@@ -158,9 +158,9 @@ public:
         // which is one less: see playingInterval.
         const long long played = h.playingInterval() - 4;
         const float expected = played >= 0 ? levelFor((int)played) : 0.0f;
-        expectWithinAbsoluteError(
-            steadyValue(out), expected, 1.0e-4f,
-            "at interval " + juce::String((int)h.playingInterval()));
+        expectWithinAbsoluteError(steadyValue(out), expected, 1.0e-4f,
+                                  "at interval " +
+                                      juce::String((int)h.playingInterval()));
       }
     }
 
@@ -273,7 +273,8 @@ public:
       }
     }
 
-    beginTest("the meter falls back to silence instead of holding its last peak");
+    beginTest(
+        "the meter falls back to silence instead of holding its last peak");
     {
       // The peak was only stored on the path that actually copies audio, so
       // every early return -- underrun, drained, nothing playing -- left the

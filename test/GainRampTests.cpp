@@ -78,9 +78,8 @@ public:
                       r.next());
 
       const double stepped = largestStep(out);
-      expect(stepped < 0.1,
-             "largest step was " + juce::String(stepped, 4) +
-                 " -- that is a click");
+      expect(stepped < 0.1, "largest step was " + juce::String(stepped, 4) +
+                                " -- that is a click");
 
       // ...and it really did mute.
       expectWithinAbsoluteError(out.back(), 0.0f, 1.0e-6f);
@@ -94,11 +93,11 @@ public:
       const double freq = 440.0, sr = 48000.0;
       for (int n = 0; n < 1440; ++n) {
         const float g = n < 480 ? 1.0f : 0.0f;
-        out.push_back((float)std::sin(2.0 * 3.14159265358979 * freq * n / sr) * g);
+        out.push_back((float)std::sin(2.0 * 3.14159265358979 * freq * n / sr) *
+                      g);
       }
-      expect(largestStep(out) > 0.1,
-             "a hard cut should step hard; measured " +
-                 juce::String(largestStep(out), 4));
+      expect(largestStep(out) > 0.1, "a hard cut should step hard; measured " +
+                                         juce::String(largestStep(out), 4));
     }
 
     beginTest("the ramp is monotonic and stays within its endpoints");

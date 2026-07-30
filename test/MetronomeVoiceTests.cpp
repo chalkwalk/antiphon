@@ -28,8 +28,7 @@ public:
     // Measure over the first 60% of the click, where the envelope is still
     // high enough for the hysteresis gate to track cleanly.
     const int n = (int)((double)buf.size() * 0.6);
-    const double f =
-        TestSignal::dominantFrequency(buf.data(), n, sampleRate);
+    const double f = TestSignal::dominantFrequency(buf.data(), n, sampleRate);
     expect(std::fabs(f - expectedHz) / expectedHz < 0.03,
            what + ": measured " + juce::String(f, 1) + " Hz, expected " +
                juce::String(expectedHz, 1));
@@ -77,8 +76,10 @@ public:
     beginTest("the downbeat is always the loudest click, whatever the BPI");
     {
       for (int bpi : {4, 7, 11, 12, 16}) {
-        const double down = TestSignal::peak(renderClick(48000.0, 0, 1.0f, bpi).data(), 64);
-        const double beat = TestSignal::peak(renderClick(48000.0, 1, 1.0f, bpi).data(), 64);
+        const double down =
+            TestSignal::peak(renderClick(48000.0, 0, 1.0f, bpi).data(), 64);
+        const double beat =
+            TestSignal::peak(renderClick(48000.0, 1, 1.0f, bpi).data(), 64);
         expect(down > beat, "downbeat must lead at BPI " + juce::String(bpi));
       }
     }
@@ -87,8 +88,7 @@ public:
     for (double sr : {44100.0, 48000.0, 88200.0, 96000.0}) {
       expectPitch(renderClick(sr, 0), sr, 880.0,
                   "downbeat at " + juce::String(sr));
-      expectPitch(renderClick(sr, 1), sr, 440.0,
-                  "beat at " + juce::String(sr));
+      expectPitch(renderClick(sr, 1), sr, 440.0, "beat at " + juce::String(sr));
     }
 
     beginTest("nominal frequency is reported correctly");
@@ -103,7 +103,8 @@ public:
       expect(v.currentFrequency() == 440.0);
     }
 
-    beginTest("downbeat is louder than a bar start, which is louder than a beat");
+    beginTest(
+        "downbeat is louder than a bar start, which is louder than a beat");
     {
       const double p0 = TestSignal::peak(renderClick(48000.0, 0).data(),
                                          (int)renderClick(48000.0, 0).size());

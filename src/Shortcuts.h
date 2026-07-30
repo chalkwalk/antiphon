@@ -20,9 +20,9 @@ namespace Shortcuts {
 
 enum class Action {
   None,
-  FocusChat,          // Ctrl+Alt+C
-  ArmSync,            // Ctrl+Alt+S
-  WriteAudit,         // Ctrl+Alt+A
+  FocusChat,  // Ctrl+Alt+C
+  ArmSync,    // Ctrl+Alt+S
+  WriteAudit, // Ctrl+Alt+A
   // Ctrl+Alt+Shift+T. The keyboard equivalent of holding the TX button:
   // toggles transmit and applies it to the whole interval so far. A gesture
   // available only to the mouse would be unreachable for a screen-reader user
@@ -32,12 +32,13 @@ enum class Action {
 
 inline Action match(int keyCode, bool ctrlDown, bool altDown,
                     bool shiftDown = false) {
-  if (!ctrlDown || !altDown) return Action::None;
+  if (!ctrlDown || !altDown)
+    return Action::None;
 
   // Fold case rather than trusting the platform. Guarded so a control
   // character or a non-letter key code can never land on a letter.
-  const int c = (keyCode >= 'a' && keyCode <= 'z') ? keyCode - ('a' - 'A')
-                                                   : keyCode;
+  const int c =
+      (keyCode >= 'a' && keyCode <= 'z') ? keyCode - ('a' - 'A') : keyCode;
 
   switch (c) {
   case 'T':

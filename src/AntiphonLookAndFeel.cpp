@@ -76,10 +76,11 @@ AntiphonLookAndFeel::AntiphonLookAndFeel() {
 }
 
 void AntiphonLookAndFeel::drawRotarySlider(juce::Graphics &g, int x, int y,
-                                         int width, int height, float sliderPos,
-                                         const float rotaryStartAngle,
-                                         const float rotaryEndAngle,
-                                         juce::Slider &slider) {
+                                           int width, int height,
+                                           float sliderPos,
+                                           const float rotaryStartAngle,
+                                           const float rotaryEndAngle,
+                                           juce::Slider &slider) {
   auto radius = (float)juce::jmin(width / 2, height / 2) - 4.0f;
   auto centreX = (float)x + (float)width * 0.5f;
   auto centreY = (float)y + (float)height * 0.5f;
@@ -106,9 +107,9 @@ void AntiphonLookAndFeel::drawRotarySlider(juce::Graphics &g, int x, int y,
 }
 
 void AntiphonLookAndFeel::paintControlSurface(juce::Graphics &g,
-                                             juce::Button &button,
-                                             juce::Colour fill, bool isOn,
-                                             bool highlighted, bool down) {
+                                              juce::Button &button,
+                                              juce::Colour fill, bool isOn,
+                                              bool highlighted, bool down) {
   auto bounds = button.getLocalBounds().toFloat().reduced(0.5f, 0.5f);
 
   if (!button.isEnabled()) {
@@ -164,9 +165,9 @@ void AntiphonLookAndFeel::drawButtonText(juce::Graphics &g,
 }
 
 void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
-                                         juce::ToggleButton &button,
-                                         bool shouldDrawButtonAsHighlighted,
-                                         bool shouldDrawButtonAsDown) {
+                                           juce::ToggleButton &button,
+                                           bool shouldDrawButtonAsHighlighted,
+                                           bool shouldDrawButtonAsDown) {
   auto fontSize = juce::jmin(15.0f, (float)button.getHeight() * 0.75f);
   auto tickWidth = fontSize * 1.1f;
 
@@ -176,11 +177,11 @@ void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
     // A labelled toggle is drawn as a lit button, which is the convention for
     // an engaged control in audio software -- Mute, Solo, Transmit, Metronome.
     const bool on = button.getToggleState();
-    paintControlSurface(g, button,
-                        button.findColour(on ? juce::TextButton::buttonOnColourId
-                                             : juce::TextButton::buttonColourId),
-                        on, shouldDrawButtonAsHighlighted,
-                        shouldDrawButtonAsDown);
+    paintControlSurface(
+        g, button,
+        button.findColour(on ? juce::TextButton::buttonOnColourId
+                             : juce::TextButton::buttonColourId),
+        on, shouldDrawButtonAsHighlighted, shouldDrawButtonAsDown);
 
     juce::Colour textColour =
         button.findColour(on ? juce::TextButton::textColourOnId
@@ -214,8 +215,8 @@ void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
 }
 
 void AntiphonLookAndFeel::drawTextEditorOutline(juce::Graphics &g, int width,
-                                              int height,
-                                              juce::TextEditor &textEditor) {
+                                                int height,
+                                                juce::TextEditor &textEditor) {
   g.setColour(textEditor.findColour(juce::TextEditor::outlineColourId));
   g.drawRoundedRectangle(0.5f, 0.5f, width - 1.0f, height - 1.0f, 3.0f, 1.0f);
 }

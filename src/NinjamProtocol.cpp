@@ -116,8 +116,8 @@ bool Reader::cstr(juce::String &out) noexcept {
     failed = true;
     return false;
   }
-  out = juce::String::fromUTF8(reinterpret_cast<const char *>(p),
-                               (int)(nul - p));
+  out =
+      juce::String::fromUTF8(reinterpret_cast<const char *>(p), (int)(nul - p));
   p = nul + 1;
   return true;
 }

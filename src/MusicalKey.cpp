@@ -12,50 +12,65 @@ struct ModeName {
 // Longest-first within each family does not matter here because the whole
 // remainder of the string is matched, not a prefix.
 const ModeName kModeNames[] = {
-    {"major", Mode::Major},      {"maj", Mode::Major},
-    {"minor", Mode::Minor},      {"min", Mode::Minor},
-    {"m", Mode::Minor},          {"ionian", Mode::Ionian},
-    {"dorian", Mode::Dorian},    {"phrygian", Mode::Phrygian},
-    {"lydian", Mode::Lydian},    {"mixolydian", Mode::Mixolydian},
-    {"mixo", Mode::Mixolydian},  {"aeolian", Mode::Aeolian},
+    {"major", Mode::Major},     {"maj", Mode::Major},
+    {"minor", Mode::Minor},     {"min", Mode::Minor},
+    {"m", Mode::Minor},         {"ionian", Mode::Ionian},
+    {"dorian", Mode::Dorian},   {"phrygian", Mode::Phrygian},
+    {"lydian", Mode::Lydian},   {"mixolydian", Mode::Mixolydian},
+    {"mixo", Mode::Mixolydian}, {"aeolian", Mode::Aeolian},
     {"locrian", Mode::Locrian},
 };
 
 // Semitones above C for the natural notes.
 int naturalSemitone(juce_wchar letter) {
   switch (letter) {
-  case 'C': return 0;
-  case 'D': return 2;
-  case 'E': return 4;
-  case 'F': return 5;
-  case 'G': return 7;
-  case 'A': return 9;
-  case 'B': return 11;
-  default:  return -1;
+  case 'C':
+    return 0;
+  case 'D':
+    return 2;
+  case 'E':
+    return 4;
+  case 'F':
+    return 5;
+  case 'G':
+    return 7;
+  case 'A':
+    return 9;
+  case 'B':
+    return 11;
+  default:
+    return -1;
   }
 }
 
 // Steps of each mode from its tonic. Major and Ionian coincide, as do Minor and
 // Aeolian -- they are kept separate only so the name you typed comes back.
 const int *modeSteps(Mode mode) {
-  static const int major[]      = {0, 2, 4, 5, 7, 9, 11};
-  static const int dorian[]     = {0, 2, 3, 5, 7, 9, 10};
-  static const int phrygian[]   = {0, 1, 3, 5, 7, 8, 10};
-  static const int lydian[]     = {0, 2, 4, 6, 7, 9, 11};
+  static const int major[] = {0, 2, 4, 5, 7, 9, 11};
+  static const int dorian[] = {0, 2, 3, 5, 7, 9, 10};
+  static const int phrygian[] = {0, 1, 3, 5, 7, 8, 10};
+  static const int lydian[] = {0, 2, 4, 6, 7, 9, 11};
   static const int mixolydian[] = {0, 2, 4, 5, 7, 9, 10};
-  static const int aeolian[]    = {0, 2, 3, 5, 7, 8, 10};
-  static const int locrian[]    = {0, 1, 3, 5, 6, 8, 10};
+  static const int aeolian[] = {0, 2, 3, 5, 7, 8, 10};
+  static const int locrian[] = {0, 1, 3, 5, 6, 8, 10};
 
   switch (mode) {
   case Mode::Major:
-  case Mode::Ionian:     return major;
+  case Mode::Ionian:
+    return major;
   case Mode::Minor:
-  case Mode::Aeolian:    return aeolian;
-  case Mode::Dorian:     return dorian;
-  case Mode::Phrygian:   return phrygian;
-  case Mode::Lydian:     return lydian;
-  case Mode::Mixolydian: return mixolydian;
-  case Mode::Locrian:    return locrian;
+  case Mode::Aeolian:
+    return aeolian;
+  case Mode::Dorian:
+    return dorian;
+  case Mode::Phrygian:
+    return phrygian;
+  case Mode::Lydian:
+    return lydian;
+  case Mode::Mixolydian:
+    return mixolydian;
+  case Mode::Locrian:
+    return locrian;
   }
   return major;
 }
@@ -91,8 +106,8 @@ bool usesFlats(int tonic, Mode mode) {
 
 const char *kSharpNames[] = {"C",  "C#", "D",  "D#", "E",  "F",
                              "F#", "G",  "G#", "A",  "A#", "B"};
-const char *kFlatNames[]  = {"C",  "Db", "D",  "Eb", "E",  "F",
-                             "Gb", "G",  "Ab", "A",  "Bb", "B"};
+const char *kFlatNames[] = {"C",  "Db", "D",  "Eb", "E",  "F",
+                            "Gb", "G",  "Ab", "A",  "Bb", "B"};
 
 juce::String noteName(int semitone, bool flat) {
   const int s = ((semitone % 12) + 12) % 12;
@@ -103,15 +118,24 @@ juce::String noteName(int semitone, bool flat) {
 
 juce::String modeName(Mode mode) {
   switch (mode) {
-  case Mode::Major:      return "major";
-  case Mode::Minor:      return "minor";
-  case Mode::Ionian:     return "Ionian";
-  case Mode::Dorian:     return "Dorian";
-  case Mode::Phrygian:   return "Phrygian";
-  case Mode::Lydian:     return "Lydian";
-  case Mode::Mixolydian: return "Mixolydian";
-  case Mode::Aeolian:    return "Aeolian";
-  case Mode::Locrian:    return "Locrian";
+  case Mode::Major:
+    return "major";
+  case Mode::Minor:
+    return "minor";
+  case Mode::Ionian:
+    return "Ionian";
+  case Mode::Dorian:
+    return "Dorian";
+  case Mode::Phrygian:
+    return "Phrygian";
+  case Mode::Lydian:
+    return "Lydian";
+  case Mode::Mixolydian:
+    return "Mixolydian";
+  case Mode::Aeolian:
+    return "Aeolian";
+  case Mode::Locrian:
+    return "Locrian";
   }
   return "major";
 }

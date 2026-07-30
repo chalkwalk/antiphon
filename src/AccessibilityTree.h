@@ -17,7 +17,8 @@ namespace AccessibilityAudit {
 inline juce::String classNameOf(const juce::Component &c) {
 #if defined(__GNUC__) || defined(__clang__)
   int status = 0;
-  if (char *d = abi::__cxa_demangle(typeid(c).name(), nullptr, nullptr, &status)) {
+  if (char *d =
+          abi::__cxa_demangle(typeid(c).name(), nullptr, nullptr, &status)) {
     juce::String s(d);
     std::free(d);
     return s;
@@ -63,7 +64,8 @@ auditReport(const std::vector<const juce::Component *> &roots) {
   std::vector<Finding> all;
   Coverage cov;
   for (const auto *c : roots) {
-    if (c == nullptr) continue;
+    if (c == nullptr)
+      continue;
     const auto tree = buildAuditTree(*c);
     ++cov.roots;
     measure(tree, cov);

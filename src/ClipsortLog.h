@@ -60,7 +60,7 @@ struct Session {
   // stem drifts against the others.
   int firstInterval = 0;
   int lastInterval = -1;
-  int intervalCount = 0; // lastInterval - firstInterval + 1, or 0
+  int intervalCount = 0;  // lastInterval - firstInterval + 1, or 0
   int malformedLines = 0; // reported rather than swallowed
 };
 

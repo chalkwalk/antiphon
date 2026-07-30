@@ -19,7 +19,8 @@ Node control(const juce::String &name, const juce::String &kind,
 int countOf(const std::vector<Finding> &f, Issue issue) {
   int n = 0;
   for (const auto &x : f)
-    if (x.issue == issue) ++n;
+    if (x.issue == issue)
+      ++n;
   return n;
 }
 
@@ -69,7 +70,8 @@ public:
       root.children.push_back(field);
 
       const auto findings = AccessibilityAudit::run(root);
-      expectEquals((int)findings.size(), 1, "still unnamed as far as a reader is concerned");
+      expectEquals((int)findings.size(), 1,
+                   "still unnamed as far as a reader is concerned");
       expect(findings[0].issue == AccessibilityAudit::Issue::MissingName);
     }
 

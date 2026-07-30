@@ -160,7 +160,7 @@ public:
     {
       juce::MemoryBlock p;
       const juce::uint8 head[6] = {1, 2, 0xFF, 0xFF, 0x80, 0x00};
-      p.append(head, 6);        // active, chIdx=2, volume=-1, pan=-128, flags=0
+      p.append(head, 6); // active, chIdx=2, volume=-1, pan=-128, flags=0
       p.append("alice\0", 6);
       p.append("gtr\0", 4);
 
@@ -321,48 +321,55 @@ public:
     userInfo.append("bob\0", 4);
     userInfo.append("bass\0", 5);
 
-    truncationSweep(mb({1, 2, 3, 4, 5, 6, 7, 8}),
-                    [](const juce::MemoryBlock &p) {
-                      AuthChallenge c;
-                      parseAuthChallenge(p, c);
-                    },
-                    "0x00");
-    truncationSweep(mb({1}),
-                    [](const juce::MemoryBlock &p) {
-                      AuthReply r;
-                      parseAuthReply(p, r);
-                    },
-                    "0x01");
-    truncationSweep(mb({0x78, 0x00, 0x10, 0x00}),
-                    [](const juce::MemoryBlock &p) {
-                      ServerConfig c;
-                      parseServerConfig(p, c);
-                    },
-                    "0x02");
-    truncationSweep(userInfo,
-                    [](const juce::MemoryBlock &p) {
-                      std::vector<UserInfoEntry> e;
-                      parseUserInfo(p, e);
-                    },
-                    "0x03");
-    truncationSweep(buildIntervalBegin(guid, 1234, fourcc, 2, "alice"),
-                    [](const juce::MemoryBlock &p) {
-                      IntervalBegin b;
-                      parseIntervalBegin(p, b);
-                    },
-                    "0x04");
-    truncationSweep(buildIntervalWrite(guid, true, audio, 8),
-                    [](const juce::MemoryBlock &p) {
-                      IntervalWrite w;
-                      parseIntervalWrite(p, w);
-                    },
-                    "0x05");
-    truncationSweep(buildChat("PRIVMSG", "alice", "hello", "x", "y"),
-                    [](const juce::MemoryBlock &p) {
-                      Chat c;
-                      parseChat(p, c);
-                    },
-                    "0xC0");
+    truncationSweep(
+        mb({1, 2, 3, 4, 5, 6, 7, 8}),
+        [](const juce::MemoryBlock &p) {
+          AuthChallenge c;
+          parseAuthChallenge(p, c);
+        },
+        "0x00");
+    truncationSweep(
+        mb({1}),
+        [](const juce::MemoryBlock &p) {
+          AuthReply r;
+          parseAuthReply(p, r);
+        },
+        "0x01");
+    truncationSweep(
+        mb({0x78, 0x00, 0x10, 0x00}),
+        [](const juce::MemoryBlock &p) {
+          ServerConfig c;
+          parseServerConfig(p, c);
+        },
+        "0x02");
+    truncationSweep(
+        userInfo,
+        [](const juce::MemoryBlock &p) {
+          std::vector<UserInfoEntry> e;
+          parseUserInfo(p, e);
+        },
+        "0x03");
+    truncationSweep(
+        buildIntervalBegin(guid, 1234, fourcc, 2, "alice"),
+        [](const juce::MemoryBlock &p) {
+          IntervalBegin b;
+          parseIntervalBegin(p, b);
+        },
+        "0x04");
+    truncationSweep(
+        buildIntervalWrite(guid, true, audio, 8),
+        [](const juce::MemoryBlock &p) {
+          IntervalWrite w;
+          parseIntervalWrite(p, w);
+        },
+        "0x05");
+    truncationSweep(
+        buildChat("PRIVMSG", "alice", "hello", "x", "y"),
+        [](const juce::MemoryBlock &p) {
+          Chat c;
+          parseChat(p, c);
+        },
+        "0xC0");
 
     beginTest("parsers survive random garbage");
     {
@@ -443,7 +450,9 @@ public:
     }
 
     beginTest("0x82 with no channels is just the mpisize header");
-    { expectEquals((int)buildChannelInfo({}).getSize(), 2); }
+    {
+      expectEquals((int)buildChannelInfo({}).getSize(), 2);
+    }
   }
 
   void runAuthTests() {

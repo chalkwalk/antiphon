@@ -178,7 +178,8 @@ public:
     {
       expect(historyDepth(0) >= 3);
       expect(historyDepth(-5) >= 3);
-      expectEquals(writeSlotFor(5, 0), 0, "a zero-depth ring cannot be indexed");
+      expectEquals(writeSlotFor(5, 0), 0,
+                   "a zero-depth ring cannot be indexed");
       expectEquals(readSlotFor(5, 0, 6), -1, "a zero delay is not a tap");
       expectEquals(readSlotForPush(5, 0, 6), -1, "nor at the push");
       expectEquals(readSlotForPush(5, 4, 0), -1, "nor with no ring");

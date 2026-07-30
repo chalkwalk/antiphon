@@ -222,8 +222,8 @@ void FakeNinjamServer::sendUserInfo(const juce::String &user, int chIdx,
   const juce::uint8 head[6] = {(juce::uint8)(active ? 1 : 0),
                                (juce::uint8)chIdx,
                                0,
-                               0, // volume, LE int16
-                               0, // pan
+                               0,  // volume, LE int16
+                               0,  // pan
                                0}; // flags
   p.append(head, 6);
   p.append(user.toRawUTF8(), (size_t)user.getNumBytesAsUTF8() + 1);
@@ -257,8 +257,7 @@ FakeNinjamServer::messagesOfType(juce::uint8 type) const {
   return out;
 }
 
-juce::MemoryBlock
-FakeNinjamServer::lastPayloadOfType(juce::uint8 type) const {
+juce::MemoryBlock FakeNinjamServer::lastPayloadOfType(juce::uint8 type) const {
   juce::ScopedLock sl(stateMutex);
   for (int i = received.size() - 1; i >= 0; --i)
     if (received.getReference(i).type == type)

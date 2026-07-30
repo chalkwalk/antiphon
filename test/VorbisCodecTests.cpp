@@ -100,8 +100,7 @@ public:
 
       const double inRms = TestSignal::rms(pcm.data(), frames, 2);
       const double outRms = TestSignal::rms(left, n, 2);
-      const double deltaDb =
-          TestSignal::toDb(outRms) - TestSignal::toDb(inRms);
+      const double deltaDb = TestSignal::toDb(outRms) - TestSignal::toDb(inRms);
       expect(std::fabs(deltaDb) < 1.0,
              "level moved by " + juce::String(deltaDb, 2) + " dB");
 
@@ -131,8 +130,8 @@ public:
 
       const int skip = d.numFrames() / 10;
       const int n = d.numFrames() - 2 * skip;
-      const double freq = TestSignal::dominantFrequency(
-          d.interleaved.data() + skip, n, sr, 1);
+      const double freq =
+          TestSignal::dominantFrequency(d.interleaved.data() + skip, n, sr, 1);
       expect(std::fabs(freq - 440.0) / 440.0 < 0.02,
              "measured " + juce::String(freq, 1) + " Hz");
     }
@@ -177,8 +176,7 @@ public:
       auto truncated = bytes;
       truncated.resize(truncated.size() * 99 / 100);
       auto d = decodeAll(truncated);
-      expectEquals(d.numFrames(), 0,
-                   "expected no audio before the final page");
+      expectEquals(d.numFrames(), 0, "expected no audio before the final page");
 
       expectEquals(decodeAll(bytes).numFrames(), frames);
     }
@@ -236,9 +234,8 @@ public:
       for (int i = 0; i < d.numFrames(); ++i)
         left[(size_t)i] = d.interleaved[(size_t)i * 2];
 
-      auto found = TestSignal::findBursts(left.data(), (int)left.size(),
-                                          probe.burstHz, probe.burstSeconds,
-                                          sr);
+      auto found = TestSignal::findBursts(
+          left.data(), (int)left.size(), probe.burstHz, probe.burstSeconds, sr);
       expectEquals((int)found.size(), (int)probe.positions.size(),
                    "expected one detected burst per probe position");
 
@@ -263,9 +260,9 @@ public:
       auto d = decodeAll(bytes, 1);
       expectEquals(d.sampleRate, sr);
       const double ratio = (double)d.numFrames() / (double)frames;
-      expect(ratio > 0.98 && ratio < 1.02,
-             "byte-at-a-time decode gave " + juce::String(d.numFrames()) +
-                 " frames");
+      expect(ratio > 0.98 && ratio < 1.02, "byte-at-a-time decode gave " +
+                                               juce::String(d.numFrames()) +
+                                               " frames");
     }
   }
 };

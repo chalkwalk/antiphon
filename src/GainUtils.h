@@ -26,8 +26,9 @@ inline float dbToGain(double db) {
 inline double gainToDb(float gain) {
   if (gain <= 0.0f)
     return kMinDb;
-  return juce::jlimit(kMinDb, kMaxDb,
-                      (double)juce::Decibels::gainToDecibels(gain, (float)kMinDb));
+  return juce::jlimit(
+      kMinDb, kMaxDb,
+      (double)juce::Decibels::gainToDecibels(gain, (float)kMinDb));
 }
 
 // "-12.0 dB", or "-inf" at the bottom of the range.
@@ -83,8 +84,8 @@ inline bool meterNeedsRepaint(float shown, float next) {
 
 inline float meterFraction(float peak) {
   const double db = peakToDb(peak);
-  return (float)juce::jlimit(
-      0.0, 1.0, (db - kMeterMinDb) / (kMeterMaxDb - kMeterMinDb));
+  return (float)juce::jlimit(0.0, 1.0,
+                             (db - kMeterMinDb) / (kMeterMaxDb - kMeterMinDb));
 }
 
 // Peak-hold release rate. Digital peak meters typically fall at 20-25 dB/s

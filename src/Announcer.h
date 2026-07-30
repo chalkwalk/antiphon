@@ -21,13 +21,18 @@ public:
   // `important` marks the events worth interrupting for at the default level:
   // connection, sync, tempo and votes. Chat traffic is All-only.
   void say(const juce::String &message, bool important) {
-    if (verbosity == Verbosity::Off) return;
-    if (!important && verbosity != Verbosity::All) return;
-    if (message.isEmpty()) return;
+    if (verbosity == Verbosity::Off)
+      return;
+    if (!important && verbosity != Verbosity::All)
+      return;
+    if (message.isEmpty())
+      return;
 
     const auto now = juce::Time::getMillisecondCounter();
-    if (message == lastMessage && now - lastTimeMs < kRepeatSuppressMs) return;
-    if (now - lastTimeMs < kMinGapMs) return;
+    if (message == lastMessage && now - lastTimeMs < kRepeatSuppressMs)
+      return;
+    if (now - lastTimeMs < kMinGapMs)
+      return;
 
     lastMessage = message;
     lastTimeMs = now;

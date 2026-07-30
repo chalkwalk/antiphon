@@ -5,13 +5,13 @@ class VorbisDecoder {
 public:
   VorbisDecoder();
   ~VorbisDecoder();
-  VorbisDecoder(const VorbisDecoder&) = delete;
-  VorbisDecoder& operator=(const VorbisDecoder&) = delete;
+  VorbisDecoder(const VorbisDecoder &) = delete;
+  VorbisDecoder &operator=(const VorbisDecoder &) = delete;
 
-  void decode(const void* data, int len);
+  void decode(const void *data, int len);
 
   int available() const;
-  const float* pcm() const;
+  const float *pcm() const;
   void skip(int count);
 
   int sampleRate() const;
@@ -24,16 +24,17 @@ private:
 
 class VorbisEncoder {
 public:
-  VorbisEncoder(int sampleRate, int numChannels, int bitrateKbps, int serialNumber);
+  VorbisEncoder(int sampleRate, int numChannels, int bitrateKbps,
+                int serialNumber);
   ~VorbisEncoder();
-  VorbisEncoder(const VorbisEncoder&) = delete;
-  VorbisEncoder& operator=(const VorbisEncoder&) = delete;
+  VorbisEncoder(const VorbisEncoder &) = delete;
+  VorbisEncoder &operator=(const VorbisEncoder &) = delete;
 
   // Pass nullptr/0 to flush end-of-stream.
-  void encode(const float* interleaved, int numFrames);
+  void encode(const float *interleaved, int numFrames);
 
   int available() const;
-  const void* data() const;
+  const void *data() const;
   void advance(int count);
 
 private:

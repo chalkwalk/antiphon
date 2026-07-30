@@ -58,9 +58,7 @@ public:
   juce::File sessionRecordingDirectory() const {
     return sessionWriter.directory();
   }
-  int sessionRecordingClipCount() const {
-    return sessionWriter.clipCount();
-  }
+  int sessionRecordingClipCount() const { return sessionWriter.clipCount(); }
 
   // Which local interval transfers are happening in. Incremented by the audio
   // thread at each boundary. Uploads and downloads for the same musical
@@ -233,7 +231,6 @@ public:
   // Audio thread, at the interval boundary and before swapEchoBuffers: hands
   // each tap the entry it is now due and moves the write on to the next.
   void closeEchoInterval();
-
 
   // Whether anything, anywhere, is soloed -- a bitmask, exactly as the
   // reference client keeps it (`m_issoloactive`, njclient.cpp:1750 and :1886).

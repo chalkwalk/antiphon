@@ -52,7 +52,8 @@ public:
         numOuts(outs), savedState(std::move(state)) {}
 
   void run() override {
-    auto err = deviceManager.initialise(numIns, numOuts, savedState.get(), true);
+    auto err =
+        deviceManager.initialise(numIns, numOuts, savedState.get(), true);
     // Written before the flag, read after it, so the flag publishes it.
     error = err;
     finished.store(true);
@@ -137,7 +138,8 @@ private:
     std::unique_ptr<juce::XmlElement> saved;
     if (settings != nullptr) {
       auto xml = settings->getValue("audioSetup");
-      if (xml.isNotEmpty()) saved = juce::parseXML(xml);
+      if (xml.isNotEmpty())
+        saved = juce::parseXML(xml);
     }
 
     openStartedMs = juce::Time::getMillisecondCounter();
@@ -154,7 +156,8 @@ private:
     in.elapsedMs =
         (int64_t)(juce::Time::getMillisecondCounter() - openStartedMs);
 
-    if (!startup.update(in)) return;
+    if (!startup.update(in))
+      return;
 
     stopTimer();
 
@@ -190,8 +193,10 @@ private:
   }
 
   juce::String currentDeviceName() const {
-    if (deviceManager == nullptr) return "(none)";
-    if (auto *d = deviceManager->getCurrentAudioDevice()) return d->getName();
+    if (deviceManager == nullptr)
+      return "(none)";
+    if (auto *d = deviceManager->getCurrentAudioDevice())
+      return d->getName();
     return "(none)";
   }
 
@@ -210,7 +215,8 @@ private:
   void showTrouble(const juce::String &reason) {
     report(reason);
     clearContentComponent();
-    setContentOwned(new AudioTroubleView(*deviceManager, numIns, numOuts, reason,
+    setContentOwned(new AudioTroubleView(*deviceManager, numIns, numOuts,
+                                         reason,
                                          [this] { acceptChosenDevice(); }),
                     true);
     centreWithSize(560, 420);
@@ -219,7 +225,8 @@ private:
   // The selector has already opened whatever the user picked, so there is
   // nothing to retry -- only to confirm, remember, and get on with it.
   void acceptChosenDevice() {
-    if (deviceManager->getCurrentAudioDevice() == nullptr) return;
+    if (deviceManager->getCurrentAudioDevice() == nullptr)
+      return;
     startup.reset();
     AudioDeviceStartup::Inputs done;
     done.probeFinished = true;
@@ -229,13 +236,15 @@ private:
   }
 
   void saveAudioSetup() {
-    if (settings == nullptr || deviceManager == nullptr) return;
+    if (settings == nullptr || deviceManager == nullptr)
+      return;
     if (auto xml = deviceManager->createStateXml())
       settings->setValue("audioSetup", xml->toString());
   }
 
   void restoreProcessorState() {
-    if (settings == nullptr) return;
+    if (settings == nullptr)
+      return;
     juce::MemoryBlock data;
     if (data.fromBase64Encoding(settings->getValue("filterState")) &&
         data.getSize() > 0)
@@ -243,7 +252,8 @@ private:
   }
 
   void saveProcessorState() {
-    if (settings == nullptr) return;
+    if (settings == nullptr)
+      return;
     juce::MemoryBlock data;
     processor->getStateInformation(data);
     settings->setValue("filterState", data.toBase64Encoding());
@@ -255,7 +265,10 @@ private:
     if (settings != nullptr) {
       const int x = settings->getIntValue("windowX", -100);
       const int y = settings->getIntValue("windowY", -100);
-      if (x != -100 && y != -100) { setBoundsConstrained(getBounds().withPosition(x, y)); return; }
+      if (x != -100 && y != -100) {
+        setBoundsConstrained(getBounds().withPosition(x, y));
+        return;
+      }
     }
     centreWithSize(getWidth(), getHeight());
   }

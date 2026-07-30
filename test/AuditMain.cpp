@@ -59,7 +59,8 @@ StateResult auditState(const juce::String &name,
   r.name = name;
   std::vector<AccessibilityAudit::Finding> all;
   for (const auto *c : roots) {
-    if (c == nullptr) continue;
+    if (c == nullptr)
+      continue;
     const auto tree = AccessibilityAudit::buildAuditTree(*c);
     ++r.coverage.roots;
     AccessibilityAudit::measure(tree, r.coverage);
@@ -207,8 +208,8 @@ int main() {
     pump(600);
     settle(*editor);
 
-    results.push_back(auditState("two remote players, three channels",
-                                 {editor}));
+    results.push_back(
+        auditState("two remote players, three channels", {editor}));
 
     processor.ninjamClient.disconnectFromServer();
     pump(200);

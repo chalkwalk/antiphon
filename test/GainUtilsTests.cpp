@@ -71,8 +71,8 @@ public:
       const float gain = GainUtils::dbToGain(db);
       const double back = GainUtils::gainToDb(gain);
       expectWithinAbsoluteError(back, db, 0.01,
-                                "round trip drifted at " +
-                                    juce::String(db, 1) + " dB");
+                                "round trip drifted at " + juce::String(db, 1) +
+                                    " dB");
     }
 
     beginTest("out-of-range gains are clamped into the fader range");
@@ -156,10 +156,10 @@ public:
         float p = 1.0f;
         for (int i = 0; i < steps; ++i)
           p = GainUtils::decayMeterPeak(p, 0.0f, total / (double)steps);
-        expectWithinAbsoluteError(
-            GainUtils::peakToDb(p), GainUtils::peakToDb(oneStep), 0.05,
-            "release differed when applied in " + juce::String(steps) +
-                " steps");
+        expectWithinAbsoluteError(GainUtils::peakToDb(p),
+                                  GainUtils::peakToDb(oneStep), 0.05,
+                                  "release differed when applied in " +
+                                      juce::String(steps) + " steps");
       }
     }
 

@@ -45,8 +45,8 @@ public:
     beginTest("only the rising edge of the transport counts");
     {
       SyncState s;
-      s.update(in(true, true, true));            // already playing when armed
-      s.update(in(true, true, true, true));      // press Sync mid-playback
+      s.update(in(true, true, true));       // already playing when armed
+      s.update(in(true, true, true, true)); // press Sync mid-playback
       expect(s.get() == S::WaitingForPlay,
              "arming while the transport runs must wait for a fresh start");
 
@@ -54,7 +54,7 @@ public:
              "a continuing transport is not a start edge");
       expect(s.get() == S::WaitingForPlay);
 
-      expect(!s.update(in(true, true, false)));  // stop
+      expect(!s.update(in(true, true, false))); // stop
       expect(s.update(in(true, true, true)), "now it should fire");
       expect(s.get() == S::Running);
     }
