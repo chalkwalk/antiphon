@@ -5,6 +5,13 @@
 # until the backlog is zero, at which point it becomes '*' and the gate turns
 # blocking -- the same rule the sanitisers already follow: a baseline with a
 # remembered exception is one nobody reads carefully.
+#
+# The disabled checks below are switched off for a reason, not to flatter the
+# number. Everything in the first group is stylistic preference that would fight
+# JUCE and audio idiom -- C arrays are how you address a sample buffer, and
+# `[[nodiscard]]` on 261 accessors is noise, not safety. Everything kept can
+# point at a real defect: narrowing conversions and misplaced widening casts
+# matter a great deal in code that does sample arithmetic.
 Checks: >
   clang-diagnostic-*,
   clang-analyzer-*,
@@ -20,7 +27,13 @@ Checks: >
   -readability-identifier-length,
   -readability-uppercase-literal-suffix,
   -readability-braces-around-statements,
-  -readability-function-cognitive-complexity
+  -readability-function-cognitive-complexity,
+  -modernize-use-nodiscard,
+  -modernize-avoid-c-arrays,
+  -bugprone-easily-swappable-parameters,
+  -performance-enum-size,
+  -readability-math-missing-parentheses,
+  -readability-named-parameter
 
 WarningsAsErrors: ''
 HeaderFilterRegex: '^.*/(src|test|tools)/[^/]*\.h$'

@@ -442,6 +442,35 @@ work is currently unexercised.
 - [ ] Install instructions in the README for people who do not build from source.
 - [ ] Decide on a release/versioning scheme.
 
+### Clear the clang-tidy backlog
+
+`clang-format` is enforced. `clang-tidy` is configured but **advisory**: it runs
+in CI without failing the build, because adopting it on an existing codebase
+produced a backlog, and a gate with a remembered exception is one nobody reads
+carefully (the same argument as the sanitiser baseline).
+
+Measured at adoption, over the 33 first-party translation units: **142
+findings.** That is after switching off six checks that are stylistic preference
+fighting JUCE and audio idiom -- the raw number was 756, of which 261 were
+`modernize-use-nodiscard` and 122 `modernize-avoid-c-arrays`. The reasoning is
+in `.clang-tidy`; the point of disabling them was to leave a backlog worth
+clearing rather than a number worth flattering.
+
+The three most alarming-sounding findings were checked at adoption and are all
+false positives, recorded here so they are not re-investigated: the
+`bugprone-signed-char-misuse` in `NinjamProtocol.cpp` is a `juce::int8` field,
+which is exactly the right type for a signed protocol byte; the
+`bugprone-incorrect-roundings` in `HostGrid.h` cannot see a negative value
+because the loop starts at `ceil(ppqStart)`; the `dangling-else` in
+`RemoteChannelRow.cpp` binds as the indentation says it does.
+
+- [ ] Work down the 142, largest categories first: 21 `bugprone-narrowing-conversions`
+      (worth real attention -- this is sample arithmetic), 18 `readability-use-std-min-max`,
+      16 `readability-isolate-declaration`, 12 `readability-avoid-const-params-in-decls`.
+- [ ] Brace the `dangling-else` anyway. It is not a bug and it is one line.
+- [ ] When the count reaches zero, set `WarningsAsErrors: '*'` in `.clang-tidy`
+      and drop `continue-on-error` from the CI step. Both halves in one commit.
+
 ### Documentation upkeep
 
 - [ ] A current screenshot for the README.
