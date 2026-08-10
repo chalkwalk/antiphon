@@ -1,3 +1,5 @@
+<img src="docs/images/logo.png" alt="" width="140" align="right">
+
 # Antiphon
 
 [![Build](https://github.com/chalkwalk/antiphon/actions/workflows/build.yml/badge.svg)](https://github.com/chalkwalk/antiphon/actions/workflows/build.yml)

@@ -1,9 +1,17 @@
+; JUCE and clap-juce-extensions are patched in place at configure time from
+; patches/, which leaves their work trees permanently modified. `ignore = dirty`
+; keeps that expected state out of `git status` and `git diff` so it cannot be
+; committed by accident, while still reporting a change to the recorded commit
+; -- so a genuine submodule bump is still visible. The other two submodules are
+; untouched and are left reporting normally.
 [submodule "JUCE"]
 	path = JUCE
 	url = https://github.com/juce-framework/JUCE.git
+	ignore = dirty
 [submodule "modules/clap-juce-extensions"]
 	path = modules/clap-juce-extensions
 	url = https://github.com/free-audio/clap-juce-extensions.git
+	ignore = dirty
 [submodule "modules/ogg"]
 	path = modules/ogg
 	url = https://github.com/xiph/ogg.git

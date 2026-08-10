@@ -168,6 +168,14 @@ twice is a no-op and a fresh clone gets them once.
 **Do not hand-edit a submodule.** Change the `.patch` file, revert the
 submodule, and reconfigure.
 
+**Both patched submodules carry `ignore = dirty` in `.gitmodules`,** because a
+configured tree leaves them permanently modified and that noise sat in every
+`git status` waiting to be committed by mistake. It is committed rather than
+kept in `.git/config` or `.git/info/exclude`, so it holds for every clone. It
+hides the work tree only: a change to the *recorded commit* is still reported,
+so deliberately bumping JUCE still appears as ` M JUCE` and can be committed
+normally. `modules/ogg` and `modules/vorbis` are unpatched and report as usual.
+
 **When writing a patch, preserve line endings.** JUCE sources are CRLF. Editing
 one through a tool that normalises newlines rewrites every line and produces an
 8000-line diff instead of a six-line one.
