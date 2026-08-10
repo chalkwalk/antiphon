@@ -56,18 +56,42 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
-      - name: Configure
+      - name: Configure (Linux and macOS)
+        if: runner.os != 'Windows'
         run: >
           cmake -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DJUCE_BUILD_EXAMPLES=OFF -DJUCE_BUILD_EXTRAS=OFF
         shell: bash
+
+      # Deliberately no -G here. With Ninja on a Windows runner, CMake picks up
+      # whichever compiler is on PATH, which is MinGW g++ -- and JUCE refuses to
+      # build under MinGW outright ("MinGW is not supported"). Letting CMake
+      # choose its default generator gets Visual Studio and MSVC instead.
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DJUCE_BUILD_EXAMPLES=OFF -DJUCE_BUILD_EXTRAS=OFF
 
       - name: Build
         run: cmake --build build --config Release -j 4
 
+      # The accessibility audit drives a real JUCE component tree. That works
+      # headlessly on Linux, but on a macOS runner there is no WindowServer to
+      # attach to and it dies in the window peer. Excluded there rather than
+      # left to segfault, so the macOS job reports the thing it can actually
+      # tell us about -- whether the audio, protocol and codec suites pass.
+      # Auditing on macOS needs a runner with a session; see ROADMAP.md.
       - name: Test
+        if: runner.os != 'macOS'
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Test (macOS, without the GUI audit)
+        if: runner.os == 'macOS'
+        run: ctest --test-dir build -C Release --output-on-failure -E accessibility-audit
 
       # ctest already runs this as `accessibility-audit`; running it again here
       # is for the report, which names every state examined and every control
@@ -108,14 +132,25 @@ jobs:
             libasound2-dev libx11-dev libxcomposite-dev libxcursor-dev \
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
             libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev \
-            libgl1-mesa-dev libglu1-mesa-dev ninja-build clang-format clang-tidy
+            libgl1-mesa-dev libglu1-mesa-dev ninja-build clang-tidy
+
+      # Pinned, and installed from PyPI rather than apt, because clang-format
+      # is not stable across major versions: v18 and v20 disagree about `({})`
+      # as a call argument, which is enough to fail a gate on code neither
+      # author nor reviewer touched. apt gives whatever the runner image ships
+      # (18 on ubuntu-latest today), so the version has to be stated. Keep this
+      # in step with CONTRIBUTING.md, which tells contributors to install the
+      # same one.
+      - name: Install clang-format
+        run: pip install "clang-format==20.1.8"
 
       # Blocking. The configuration is LLVM's defaults, which is what this
       # codebase was already written in, so a failure here means a file was
       # edited without running clang-format rather than a disagreement about
-      # style.
+      # style -- provided the versions match, which is what the pin is for.
       - name: clang-format
         run: |
+          clang-format --version
           clang-format --dry-run -Werror \
             src/*.cpp src/*.h test/*.cpp test/*.h tools/*.cpp
 

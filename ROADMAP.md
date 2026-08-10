@@ -440,15 +440,41 @@ The project is going public as an open-source repository.
 
 ### Cross-platform builds
 
-Everything so far is Linux. This is the single biggest gap between "works" and
+Everything developed so far has been on Linux. This is the single biggest gap between "works" and
 "released", and it is disproportionately important for accessibility: JUCE has
 screen-reader backends on macOS and Windows and **none** on Linux, so all of that
 work is currently unexercised.
 
-- [ ] Windows build (VST3, CLAP, Standalone).
+- [x] CI that attempts all three platforms. macOS and Windows are marked
+      `continue-on-error` so the gap is visible without blocking; that comes off
+      as each one goes green.
+
+**First measured result, from the CI run on 2026-08-10.** This is better news
+than "everything so far is Linux" suggested, and worth stating precisely:
+
+- **macOS configures, builds, and passes the entire unit suite** -- protocol,
+  codec, interval clock, mixing, loopback, the lot -- on the first attempt, with
+  no source changes. The only failure is `accessibility-audit`, which
+  **segfaults**: it drives a real JUCE component tree, and a headless macOS
+  runner has no WindowServer for the window peer to attach to. It is excluded on
+  macOS in CI rather than left to crash.
+- **Windows does not configure at all.** With `-G Ninja` the runner's PATH gave
+  CMake MinGW g++, and JUCE rejects it outright ("MinGW is not supported").
+  Fixed by dropping the generator flag on Windows so CMake selects Visual Studio
+  and MSVC -- which is what arps-euclidya does, and the reason it never hit this.
+  Whether MSVC then compiles the code is still unknown.
+
+- [ ] Windows build (VST3, CLAP, Standalone) -- now that it reaches the
+      compiler, find out what MSVC makes of the code.
 - [ ] macOS build (VST3, CLAP, AU?, Standalone) -- decide whether AU is in scope.
-- [ ] CI that builds all three platforms.
-- [ ] Run the test suite on each.
+      The build itself already works.
+- [ ] Run the accessibility audit on macOS. It needs a runner with a window
+      session, or an audit path that does not realise peers. This matters more
+      than it looks: macOS is one of the two platforms where the screen-reader
+      work is actually reachable, so leaving it unaudited there defeats the
+      point of the gate.
+- [ ] Drop `continue-on-error` per platform as each goes green, so the badge
+      stops claiming more than it knows.
 
 ### Packaging
 

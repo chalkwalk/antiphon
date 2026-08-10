@@ -58,9 +58,18 @@ and buffer size, plus what the server and the other players were.
 ## 4. Coding standards
 
 - **C++17**, with `juce::` types preferred over `std::` where both exist.
-- **`clang-format` is enforced.** The configuration is `.clang-format` in the
-  root; CI fails on unformatted code. Run `clang-format -i` on what you touched,
-  not on files you did not.
+- **`clang-format` is enforced, at a pinned version.** The configuration is
+  `.clang-format` in the root; CI fails on unformatted code. Run
+  `clang-format -i` on what you touched, not on files you did not.
+
+  **Use version 20.1.8.** Major versions of clang-format disagree with each
+  other -- 18 and 20 format `({})` differently -- so a mismatch produces a
+  failing gate on lines you never edited. Whatever your distribution ships,
+  the pinned one is a `pip install` away and is exactly what CI runs:
+
+  ```bash
+  pip install "clang-format==20.1.8"
+  ```
 - **`clang-tidy`** is configured in `.clang-tidy` and runs in CI as an advisory
   check while an existing backlog is worked down. Do not add new findings.
 - **ASCII only in source files** -- no non-ASCII bytes anywhere, including
