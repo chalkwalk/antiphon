@@ -491,102 +491,63 @@ elsewhere. What CI actually found:
 - [ ] Install instructions in the README for people who do not build from source.
 - [ ] Decide on a release/versioning scheme.
 
-### AntiphonAudit hangs intermittently on CI
+### AntiphonAudit hangs in teardown, on CI only
 
-**A real defect, not a CI annoyance.** The accessibility audit -- the build gate
-that fails when a control arrives unnamed -- wedges on GitHub's ubuntu runners
-often enough to keep `main` red. It has never hung locally, including deliberate
-attempts with `ALSA_CONFIG_PATH=/dev/null`, and with no `XDG_RUNTIME_DIR`, no
-`HOME` and no `DISPLAY`: all finish in about two seconds.
+**Root cause found, not yet fixed.** The accessibility audit -- the gate that
+fails when a control arrives unnamed -- wedges on GitHub's ubuntu runners about
+half the time. It has never once hung on the development machine: 30 consecutive
+runs clean, plus deliberate attempts with `ALSA_CONFIG_PATH=/dev/null` and with
+no `XDG_RUNTIME_DIR`, `HOME` or `DISPLAY`.
 
-The evidence that it is nondeterministic rather than environmental, from run
-31422884752 on 2026-08-10:
-
-```
-success   Test                        19:18:22 -> 19:18:41   (audit passed, ~3s)
-cancelled Accessibility audit report  19:18:41 -> 19:28:26   (same binary, hung)
-```
-
-The same executable passed and then hung **seconds apart, in the same job, on
-the same runner**. A missing sound card is a constant and cannot explain that.
-On the two runs after it, the ctest invocation itself hit its 120s timeout.
-
-**The standing suspicion was wrong.** `test/CMakeLists.txt` blamed the device
-picker -- the audit builds one, and enumerating devices was the reason for the
-`TIMEOUT 120`. The first traced run (31426460693) exonerates it: the trace
-reaches `AudioDeviceManager constructed`, and the trouble-view state after it,
-before hanging. ALSA does complain (`open /dev/snd/seq failed`) but does not
-block.
-
-What the trace narrowed it to is the **teardown of the last state**, which runs
-a real loopback session:
+The stack, from a runner caught mid-hang:
 
 ```
-audit: entering state 'two remote players, three channels'   <- last output
-(then nothing: no report, no findings count)
+Thread 1 (main):
+#0  pthread_cond_destroy ()
+#1  juce::WaitableEvent::~WaitableEvent (juce_WaitableEvent.h:47)
+#2  juce::Thread::~Thread (juce_Thread.cpp:58)
+#3  FakeNinjamServer::~FakeNinjamServer (FakeNinjamServer.cpp)
+#4  main (AuditMain.cpp)
 ```
 
-so the hang is in that state's tree walk, `disconnectFromServer()`, the pump, or
-`FakeNinjamServer::stop()`. Every one of those is *meant* to be bounded --
-`stopThread(3000)` and `stopThread(2000)` respectively -- which is what makes it
-interesting. One candidate worth checking first: JUCE's `stopThread` kills a
-thread that misses its timeout, and a thread killed while holding
-`FakeNinjamServer::clientMutex` would deadlock the `ScopedLock` immediately
-after it in `stop()`.
+`juce::Thread` clears its handle from *inside* the exiting thread
+(`threadEntryPoint` calls `closeThreadHandle()` on its way out), so
+`stopThread()` can report success while that thread is still unwinding.
+`~Thread()` then destroys its `WaitableEvent` members underneath it, and glibc
+2.39 -- the runner's -- blocks in `pthread_cond_destroy`. The development
+machine runs glibc 2.43, which is why it never reproduced locally.
 
-- [x] Remove the second, direct invocation of the audit from CI. It duplicated
-      what ctest had just run and carried no timeout, which is why one hang cost
-      ten minutes rather than two.
-- [x] Make the audit say where it is. It printed everything at the end, so a
-      hang produced no output at all. It now traces each state to stderr,
-      unbuffered, as that state is entered, and brackets the
-      `AudioDeviceManager` construction specifically. The next hang names the
-      state that wedged.
-- [x] First traced run: device enumeration ruled out, hang localised to the
-      teardown of the loopback-session state.
-- [x] Second traced run (31427543113) put it beyond doubt. `audit: server
-      stopped` printed; `audit: teardown complete` did not. Between those two
-      statements there is nothing but a closing brace -- so the hang is in
-      **`~FakeNinjamServer()`**, and neither `disconnectFromServer()` nor
-      `stop()` itself is at fault.
+The audit's own work is unaffected: when it completes it reports `0 finding(s)
+across 6 state(s)`. This is purely a teardown race.
 
-**The mechanism.** `FakeNinjamServer` privately inherits `juce::Thread`, and
-`run()` opened with `listener.waitForNextConnection()`, which waits forever.
-Closing the listener from another thread does not reliably interrupt an accept,
-so the thread could outlive `stop()`'s `stopThread(2000)` -- whose return value
-was ignored. That looks survivable, and is not: `juce::Thread::~Thread()` then
-calls `stopThread(-1)`, waiting on the same thread with **no timeout**. So a
-missed 2-second deadline became a permanent hang, one line after the code that
-had already given up on it. `AGENTS.md` warns about exactly this call; the
-production client had the same trap removed in "Give the socket one owner", and
-the test server kept it.
+**Two fixes were tried and both reverted, recorded so they are not retried
+blind:**
 
-- [x] Poll the listener with `waitUntilReady(true, 50)` and honour
-      `threadShouldExit()` between polls, so the accept is interruptible --
-      mirroring `NinjamClient::readFull`.
-- [x] Check `stopThread`'s return in `stop()` and say so on stderr, so a future
-      missed deadline announces itself instead of hanging silently afterwards.
-- [x] **Confirmed on CI, and the mechanism above is wrong.** Run 31428918866
-      carried the interruptible accept *and* the "thread did not exit within
-      2000ms" warning. Linux still timed out, and **the warning never printed**
-      -- so `stopThread(2000)` returned true, the server thread had exited
-      cleanly, and `~Thread()`'s untimed wait cannot be what blocks. The
-      polling accept is a genuine improvement and worth keeping (the trap it
-      removes is real, and documented in `AGENTS.md`), but it is not this bug.
+- *Interruptible accept.* `run()` polled the listener instead of blocking in
+  `waitForNextConnection()`. A genuine improvement and it was kept, but it is
+  not this bug: the "thread did not exit within 2000ms" warning added alongside
+  it never fired, proving the thread had already exited cleanly.
+- *`std::thread` instead of `juce::Thread`,* so that `join()` gives a real
+  join. Correct in principle -- it removes the mechanism entirely -- but it
+  segfaulted the audit 12 times out of 12 locally, and chasing that was a
+  bigger job than the symptom warranted. Reverted.
+- *Leaking the server* to skip the destructor. Segfaulted about a third of the
+  time locally. Reverted.
 
-      That is two wrong theories in a row -- device enumeration, then the
-      untimed join -- both plausible, both refuted by tracing. The lesson is
-      already in `PRINCIPLES §5` and is being relearned here: instrument first,
-      hypothesise second.
+**Mitigated, not fixed.** CI runs `ctest --repeat after-timeout:3`. That retries
+a *timeout* and nothing else: an unnamed control makes the audit exit with the
+finding count, which is a failure rather than a timeout, so the gate still fails
+on the first attempt. Verified against a purpose-built ctest project -- a
+failing test ran once, a timing-out test ran three times.
 
-- [ ] The hang is still between `stop()` returning and the next statement, a
-      gap containing only `~FakeNinjamServer()`. Its two halves -- our `stop()`,
-      and `juce::Thread`'s destructor immediately after -- are now traced
-      individually, as is every step inside `stop()`. The next red run says
-      which line it is, or shows that the destructor is not involved at all and
-      the model is wrong again.
-- [ ] Consider whether any other `juce::Thread` subclass here can miss its
-      timeout, since the destructor's untimed wait applies to all of them.
+- [ ] Fix the race properly. The `std::thread` route is still the right shape;
+      it needs the segfault it exposed understood first, which is a real bug in
+      its own right and probably a latent one.
+- [ ] Establish whether production is exposed. `NinjamClient` is also a
+      `juce::Thread`, and it is destroyed when a host unloads the plugin --
+      the same pattern, on a machine whose glibc we do not choose. Nothing has
+      been observed, and nothing has been ruled out.
+- [ ] Remove `--repeat after-timeout:3` once the race is gone.
 
 ### Clear the clang-tidy backlog
 

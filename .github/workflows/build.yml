@@ -62,10 +62,10 @@ jobs:
         run: brew install ninja
 
       # -g on top of Release, rather than RelWithDebInfo: the optimisation level
-      # stays exactly what ships, so the timing of the audit hang is not
-      # perturbed by the act of trying to observe it, but a backtrace from the
-      # diagnostic step below has symbols. AGENTS.md is right that gdb on a
-      # build without -g is address soup.
+      # stays exactly what ships, so timing-dependent faults are not perturbed
+      # by the act of observing them, while any core or attached debugger still
+      # has symbols. AGENTS.md is right that gdb on a build without -g is
+      # address soup, and that cost a round trip here.
       - name: Configure (Linux and macOS)
         if: runner.os != 'Windows'
         run: >
@@ -90,66 +90,18 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j 4
 
+      # `after-timeout`, deliberately, and not `until-pass`. The accessibility
+      # audit wedges on these runners about half the time in teardown -- a JUCE
+      # race that has nothing to do with what it audits (ROADMAP.md has the
+      # stack). Retrying on *timeout* survives that. It does not soften the
+      # gate: a control without a name makes the audit exit with the finding
+      # count, which is a failure and not a timeout, so it still fails the build
+      # on the first attempt. Remove this once the race is fixed.
       - name: Test
         if: runner.os == 'Linux'
-        run: ctest --test-dir build -C Release --output-on-failure
-
-      # The audit hangs here and only here: never on this machine, never under
-      # any hostile environment tried locally, and the trace has now cleared
-      # every candidate that static reading suggested. Reasoning has been wrong
-      # twice; a stack is not an opinion. Runs the binary again, gives it 30s
-      # (it takes about 2), and if it is still alive dumps every thread's
-      # backtrace. Only fires when the tests have already failed, so it costs
-      # nothing on a green run. Delete this step once the hang is fixed --
-      # ROADMAP.md tracks it.
-      - name: Dump stacks if the audit hung
-        if: failure() && runner.os == 'Linux'
-        run: |
-          sudo apt-get install -y --no-install-recommends gdb
-          audit=$(find build/test/AntiphonAudit_artefacts -name AntiphonAudit -type f | head -1)
-          # It hangs perhaps half the time, so a single sample is a coin flip --
-          # the first attempt at this caught a run that completed and learned
-          # nothing. Keep launching it until one wedges, then dump that one.
-          # Each healthy run takes about two seconds.
-          pid=""
-          for attempt in $(seq 1 25); do
-            "$audit" > /tmp/audit.out 2>&1 &
-            pid=$!
-            for i in $(seq 1 20); do
-              kill -0 "$pid" 2>/dev/null || break
-              sleep 1
-            done
-            if kill -0 "$pid" 2>/dev/null; then
-              echo "attempt $attempt wedged; dumping"
-              break
-            fi
-            wait "$pid" 2>/dev/null || true
-            pid=""
-            echo "attempt $attempt completed cleanly"
-          done
-          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            # Two layers, because a diagnostic that can itself fail is no
-            # diagnostic. The /proc read needs no privileges and always works;
-            # it names the kernel wait-channel each thread is parked in, which
-            # for a hang is most of the answer. gdb then gives the userspace
-            # frames, if it can attach.
-            echo "=== still running after 30s: per-thread wait channels ==="
-            for t in /proc/"$pid"/task/*; do
-              printf "tid %s state=%s wchan=%s\n" "$(basename "$t")" \
-                "$(awk '/^State:/{print $2}' "$t"/status 2>/dev/null)" \
-                "$(cat "$t"/wchan 2>/dev/null)"
-            done
-            echo "=== backtraces ==="
-            sudo sysctl -w kernel.yama.ptrace_scope=0 >/dev/null 2>&1 || true
-            sudo gdb -p "$pid" -batch -ex "thread apply all bt" 2>&1 | tail -120 \
-              || gdb -p "$pid" -batch -ex "thread apply all bt" 2>&1 | tail -120 \
-              || echo "(could not attach)"
-            kill -9 "$pid" 2>/dev/null || true
-          else
-            echo "=== 25 attempts and none of them hung ==="
-          fi
-          echo "=== its output ==="
-          tail -40 /tmp/audit.out || true
+        run: >
+          ctest --test-dir build -C Release --output-on-failure
+          --repeat after-timeout:3
 
       # The accessibility audit drives a real JUCE component tree and needs a
       # window session to do it. Linux runners give it one well enough to run
