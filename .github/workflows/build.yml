@@ -1,0 +1,133 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # Linux is the only platform Antiphon has been developed and tested on.
+    # macOS and Windows are in the matrix so the gap is visible rather than
+    # unmeasured, and they are allowed to fail until the cross-platform work in
+    # ROADMAP.md lands. A red cross on those two is the current honest state; do
+    # not remove the matrix to make the badge green.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            experimental: false
+          - name: macOS (not yet supported)
+            os: macos-latest
+            experimental: true
+          - name: Windows (not yet supported)
+            os: windows-latest
+            experimental: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libx11-dev libxcomposite-dev libxcursor-dev \
+            libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev \
+            libgl1-mesa-dev libglu1-mesa-dev ninja-build
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        shell: bash
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      # ctest already runs this as `accessibility-audit`; running it again here
+      # is for the report, which names every state examined and every control
+      # found unnamed. The exit code is the finding count.
+      # The artefact directory gains a config subdirectory under a Release
+      # build, so the binary is found rather than assumed.
+      - name: Accessibility audit report
+        if: runner.os == 'Linux'
+        run: |
+          audit=$(find build/test/AntiphonAudit_artefacts -name AntiphonAudit -type f | head -1)
+          test -n "$audit" || { echo "AntiphonAudit not found"; exit 1; }
+          "$audit"
+
+      - name: Upload artefacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Antiphon-${{ matrix.name }}
+          if-no-files-found: warn
+          path: |
+            build/src/Antiphon_artefacts/**/VST3/*.vst3
+            build/src/Antiphon_artefacts/**/CLAP/*.clap
+            build/src/Antiphon_artefacts/**/Standalone/*
+
+  lint:
+    name: Format and tidy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libx11-dev libxcomposite-dev libxcursor-dev \
+            libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev \
+            libgl1-mesa-dev libglu1-mesa-dev ninja-build clang-format clang-tidy
+
+      # Blocking. The configuration is LLVM's defaults, which is what this
+      # codebase was already written in, so a failure here means a file was
+      # edited without running clang-format rather than a disagreement about
+      # style.
+      - name: clang-format
+        run: |
+          clang-format --dry-run -Werror \
+            src/*.cpp src/*.h test/*.cpp test/*.h tools/*.cpp
+
+      - name: Configure (for the compile database)
+        run: cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      # Advisory, deliberately. See ROADMAP.md, "Clear the clang-tidy backlog":
+      # 142 findings at adoption. This becomes blocking -- with
+      # WarningsAsErrors restored in .clang-tidy -- in the same commit that
+      # takes the count to zero, and not before.
+      - name: clang-tidy (advisory)
+        continue-on-error: true
+        run: |
+          clang-tidy -p build --quiet src/*.cpp tools/*.cpp 2>&1 | tee tidy.log
+          echo "findings: $(grep -cE 'warning:|error:' tidy.log || true)"
