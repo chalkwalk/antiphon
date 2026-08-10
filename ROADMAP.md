@@ -544,14 +544,34 @@ after it in `stop()`.
       state that wedged.
 - [x] First traced run: device enumeration ruled out, hang localised to the
       teardown of the loopback-session state.
-- [ ] Second trace, now line by line through that teardown, names the exact
-      call. Read it from the next red run.
-- [ ] Fix the cause. If it is a thread killed while holding a lock, the fix
-      belongs in `FakeNinjamServer::stop()` and possibly in how long
-      `disconnectFromServer()` is willing to wait -- both are test-side, which
-      would be a relief, but `disconnectFromServer` is production code and a
-      shutdown that can miss a 3-second deadline is worth understanding
-      regardless of CI.
+- [x] Second traced run (31427543113) put it beyond doubt. `audit: server
+      stopped` printed; `audit: teardown complete` did not. Between those two
+      statements there is nothing but a closing brace -- so the hang is in
+      **`~FakeNinjamServer()`**, and neither `disconnectFromServer()` nor
+      `stop()` itself is at fault.
+
+**The mechanism.** `FakeNinjamServer` privately inherits `juce::Thread`, and
+`run()` opened with `listener.waitForNextConnection()`, which waits forever.
+Closing the listener from another thread does not reliably interrupt an accept,
+so the thread could outlive `stop()`'s `stopThread(2000)` -- whose return value
+was ignored. That looks survivable, and is not: `juce::Thread::~Thread()` then
+calls `stopThread(-1)`, waiting on the same thread with **no timeout**. So a
+missed 2-second deadline became a permanent hang, one line after the code that
+had already given up on it. `AGENTS.md` warns about exactly this call; the
+production client had the same trap removed in "Give the socket one owner", and
+the test server kept it.
+
+- [x] Poll the listener with `waitUntilReady(true, 50)` and honour
+      `threadShouldExit()` between polls, so the accept is interruptible --
+      mirroring `NinjamClient::readFull`.
+- [x] Check `stopThread`'s return in `stop()` and say so on stderr, so a future
+      missed deadline announces itself instead of hanging silently afterwards.
+- [ ] **Confirm on CI.** Locally this never reproduced -- 25 consecutive audit
+      runs before the fix were clean, as were 25 after -- so the local result
+      shows no regression and cannot show the fix works. Only a green Linux job
+      settles it.
+- [ ] Consider whether any other `juce::Thread` subclass here can miss its
+      timeout, since the destructor's untimed wait applies to all of them.
 
 ### Clear the clang-tidy backlog
 

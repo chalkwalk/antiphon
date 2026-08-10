@@ -37,7 +37,14 @@ void FakeNinjamServer::stop() {
     if (client)
       client->close();
   }
-  stopThread(2000);
+  // The return was ignored, which is how this went unnoticed: when the thread
+  // misses the timeout, stopThread reports it and juce::Thread's destructor
+  // then waits for the same thread with no timeout at all. Say so, loudly,
+  // rather than hanging later with nothing on stdout to explain it.
+  if (!stopThread(2000))
+    std::fprintf(stderr, "FakeNinjamServer: thread did not exit within 2000ms; "
+                         "~Thread() will now wait for it indefinitely\n");
+  std::fflush(stderr);
   juce::ScopedLock sl(clientMutex);
   client.reset();
 }
@@ -88,7 +95,24 @@ bool FakeNinjamServer::readExactly(void *dest, int numBytes) {
 }
 
 void FakeNinjamServer::run() {
-  auto *accepted = listener.waitForNextConnection();
+  // Polled rather than blocking. waitForNextConnection() waits forever, and
+  // closing the listener from another thread does not reliably wake it -- the
+  // same trap the client had, fixed there for the same reason
+  // (NinjamClient::readFull). It matters more than a slow exit: a thread that
+  // outlives stopThread's timeout is then waited on *without* one by
+  // juce::Thread's destructor, so an un-interruptible accept becomes a
+  // permanent hang at teardown. Poll, and honour threadShouldExit between
+  // polls.
+  juce::StreamingSocket *accepted = nullptr;
+  while (!threadShouldExit()) {
+    const int ready = listener.waitUntilReady(true, 50);
+    if (ready < 0)
+      return;
+    if (ready > 0) {
+      accepted = listener.waitForNextConnection();
+      break;
+    }
+  }
   if (accepted == nullptr || threadShouldExit()) {
     delete accepted;
     return;
