@@ -90,18 +90,14 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j 4
 
-      # `after-timeout`, deliberately, and not `until-pass`. The accessibility
-      # audit wedges on these runners about half the time in teardown -- a JUCE
-      # race that has nothing to do with what it audits (ROADMAP.md has the
-      # stack). Retrying on *timeout* survives that. It does not soften the
-      # gate: a control without a name makes the audit exit with the finding
-      # count, which is a failure and not a timeout, so it still fails the build
-      # on the first attempt. Remove this once the race is fixed.
+      # A `--repeat after-timeout:3` was tried here and removed: all three
+      # attempts timed out, costing six minutes to learn nothing. The audit's
+      # teardown hang is near-deterministic under ctest on these runners, not
+      # the coin flip it looked like when run standalone, so retrying cannot
+      # help. ROADMAP.md has the stack and the measurements.
       - name: Test
         if: runner.os == 'Linux'
-        run: >
-          ctest --test-dir build -C Release --output-on-failure
-          --repeat after-timeout:3
+        run: ctest --test-dir build -C Release --output-on-failure
 
       # The accessibility audit drives a real JUCE component tree and needs a
       # window session to do it. Linux runners give it one well enough to run

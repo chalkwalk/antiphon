@@ -493,11 +493,19 @@ elsewhere. What CI actually found:
 
 ### AntiphonAudit hangs in teardown, on CI only
 
-**Root cause found, not yet fixed.** The accessibility audit -- the gate that
-fails when a control arrives unnamed -- wedges on GitHub's ubuntu runners about
-half the time. It has never once hung on the development machine: 30 consecutive
-runs clean, plus deliberate attempts with `ALSA_CONFIG_PATH=/dev/null` and with
-no `XDG_RUNTIME_DIR`, `HOME` or `DISPLAY`.
+**Root cause found, not yet fixed. `main` is red on Linux because of it.** The
+accessibility audit -- the gate that fails when a control arrives unnamed --
+wedges in teardown on GitHub's ubuntu runners. It has never once hung on the
+development machine: 30 consecutive runs clean, plus deliberate attempts with
+`ALSA_CONFIG_PATH=/dev/null` and with no `XDG_RUNTIME_DIR`, `HOME` or `DISPLAY`.
+
+How often it hangs depends on how it is invoked, which is itself a clue:
+
+| Invocation | Result |
+|---|---|
+| Under `ctest`, on a runner | Hung every time -- five separate runs, including three consecutive retries |
+| Standalone, on a runner | Hung once, completed once |
+| Anything, locally | Never hung, in hundreds of runs |
 
 The stack, from a runner caught mid-hang:
 
@@ -534,11 +542,13 @@ blind:**
 - *Leaking the server* to skip the destructor. Segfaulted about a third of the
   time locally. Reverted.
 
-**Mitigated, not fixed.** CI runs `ctest --repeat after-timeout:3`. That retries
-a *timeout* and nothing else: an unnamed control makes the audit exit with the
-finding count, which is a failure rather than a timeout, so the gate still fails
-on the first attempt. Verified against a purpose-built ctest project -- a
-failing test ran once, a timing-out test ran three times.
+**A retry mitigation was tried and removed.** `ctest --repeat after-timeout:3`
+retries a timeout and nothing else, so it would not have softened the gate -- an
+unnamed control exits with the finding count, a failure rather than a timeout,
+and still fails first time. That part was verified against a purpose-built ctest
+project. It was removed anyway because it does not work: all three attempts
+timed out, and six minutes of CI bought nothing. Retrying only helps something
+that is actually intermittent, and under ctest this is not.
 
 - [ ] Fix the race properly. The `std::thread` route is still the right shape;
       it needs the segfault it exposed understood first, which is a real bug in
@@ -547,7 +557,13 @@ failing test ran once, a timing-out test ran three times.
       `juce::Thread`, and it is destroyed when a host unloads the plugin --
       the same pattern, on a machine whose glibc we do not choose. Nothing has
       been observed, and nothing has been ruled out.
-- [ ] Remove `--repeat after-timeout:3` once the race is gone.
+- [ ] Work out why `ctest` makes it near-certain when a bare run does not.
+      Whatever differs -- pipes rather than a terminal, process group,
+      environment -- is likely the same thing that decides the race.
+- [ ] Decide what `main` does meanwhile. Leaving Linux red is honest but trains
+      people to ignore CI; making the audit advisory keeps the badge truthful
+      about everything else but weakens the one gate that protects screen-reader
+      users. This is a judgement call, not a technical one.
 
 ### Clear the clang-tidy backlog
 
