@@ -54,11 +54,14 @@ centre, chat on the right](docs/images/antiphon.png)
 |---|---|
 | **Works** | Connecting, transmitting, receiving, multi-channel, stem routing, chat, voting, the metronome, DAW tempo sync |
 | **Verified** | Interoperability with the official NINJAM reference client, measured -- interval grid, transmit alignment, audio in both directions, chat. See [`docs/PARITY.md`](docs/PARITY.md) |
-| **Tested on** | Linux, CLAP format, one DAW, plus the standalone |
-| **Not yet** | Windows and macOS builds, packaged installers, VST3 testing, a release |
+| **Used on** | Linux, CLAP format, one DAW, plus the standalone |
+| **Builds on** | Linux, macOS and Windows -- all three compile and pass the full unit suite in CI, with no platform-specific source |
+| **Not yet** | Loaded in a host on macOS or Windows: nothing there has opened a window, opened a device or joined a jam. No packaged installers, no release |
 
-If you are on Linux and comfortable with CMake, it works today. If you are
-waiting for a download, that is [on the roadmap](ROADMAP.md).
+If you are on Linux and comfortable with CMake, it works today. macOS and
+Windows build and test clean, but "compiles and passes its tests" is not the
+same as "works in your DAW", and nobody has checked the second thing yet. If you
+are waiting for a download, that is [on the roadmap](ROADMAP.md).
 
 ---
 

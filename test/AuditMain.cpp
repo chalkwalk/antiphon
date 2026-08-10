@@ -55,6 +55,14 @@ void settle(juce::Component &c) {
 
 StateResult auditState(const juce::String &name,
                        const std::vector<const juce::Component *> &roots) {
+  // Announced before the work, on stderr, unbuffered. Findings are printed
+  // together at the end, which reads better but says nothing at all when the
+  // run wedges instead of finishing -- and this has hung on CI runners with no
+  // output to say where. A trace line costs nothing and turns "it hung" into
+  // "it hung in the device picker".
+  std::fprintf(stderr, "audit: entering state '%s'\n", name.toRawUTF8());
+  std::fflush(stderr);
+
   StateResult r;
   r.name = name;
   std::vector<AccessibilityAudit::Finding> all;
@@ -160,7 +168,13 @@ int main() {
   // Enumerating device types is not opening one: the wedge this whole view
   // exists for happens on open, which nothing here does.
   {
+    // Traced separately from the state below because it happens before it, and
+    // because this is the line most likely to be the one that hangs.
+    std::fprintf(stderr, "audit: constructing AudioDeviceManager\n");
+    std::fflush(stderr);
     juce::AudioDeviceManager dm;
+    std::fprintf(stderr, "audit: AudioDeviceManager constructed\n");
+    std::fflush(stderr);
     AudioTroubleView trouble(
         dm, 2, 2,
         AudioDeviceStartup::describe(AudioDeviceStartup::State::TimedOut),

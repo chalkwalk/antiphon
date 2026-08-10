@@ -79,31 +79,29 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j 4
 
-      # The accessibility audit drives a real JUCE component tree. That works
-      # headlessly on Linux, but on a macOS runner there is no WindowServer to
-      # attach to and it dies in the window peer. Excluded there rather than
-      # left to segfault, so the macOS job reports the thing it can actually
-      # tell us about -- whether the audio, protocol and codec suites pass.
-      # Auditing on macOS needs a runner with a session; see ROADMAP.md.
       - name: Test
-        if: runner.os != 'macOS'
+        if: runner.os == 'Linux'
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Test (macOS, without the GUI audit)
-        if: runner.os == 'macOS'
+      # The accessibility audit drives a real JUCE component tree and needs a
+      # window session to do it. Linux runners give it one well enough to run
+      # headless; macOS and Windows runners do not, and it segfaults in the
+      # window peer on both -- an environment limit, not a finding about the
+      # code. Excluded there so these jobs report what they can genuinely
+      # establish: that the audio, protocol and codec suites pass. Auditing on
+      # those two needs a runner with a real session, which matters because they
+      # are the platforms where the screen-reader work is reachable at all.
+      # See ROADMAP.md.
+      - name: Test (without the GUI audit)
+        if: runner.os != 'Linux'
         run: ctest --test-dir build -C Release --output-on-failure -E accessibility-audit
 
-      # ctest already runs this as `accessibility-audit`; running it again here
-      # is for the report, which names every state examined and every control
-      # found unnamed. The exit code is the finding count.
-      # The artefact directory gains a config subdirectory under a Release
-      # build, so the binary is found rather than assumed.
-      - name: Accessibility audit report
-        if: runner.os == 'Linux'
-        run: |
-          audit=$(find build/test/AntiphonAudit_artefacts -name AntiphonAudit -type f | head -1)
-          test -n "$audit" || { echo "AntiphonAudit not found"; exit 1; }
-          "$audit"
+      # There used to be a second, direct invocation of AntiphonAudit here, to
+      # print the report. It ran the same binary ctest had just run, and it had
+      # no timeout -- so when the audit hung, this step sat there for ten
+      # minutes. ctest carries a 120s TIMEOUT on the test and prints the report
+      # under --output-on-failure, which is the same information with a bound on
+      # it. Do not reintroduce an unbounded second run.
 
       - name: Upload artefacts
         if: success()

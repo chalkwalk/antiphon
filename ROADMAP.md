@@ -440,41 +440,49 @@ The project is going public as an open-source repository.
 
 ### Cross-platform builds
 
-Everything developed so far has been on Linux. This is the single biggest gap between "works" and
-"released", and it is disproportionately important for accessibility: JUCE has
-screen-reader backends on macOS and Windows and **none** on Linux, so all of that
-work is currently unexercised.
+Development has been on Linux. This was assumed to be the single biggest gap
+between "works" and "released"; the first CI run on all three platforms says
+otherwise, and the measured result is below.
+
+It remains disproportionately important for accessibility: JUCE has
+screen-reader backends on macOS and Windows and **none** on Linux, so that work
+is still unexercised where it counts.
 
 - [x] CI that attempts all three platforms. macOS and Windows are marked
       `continue-on-error` so the gap is visible without blocking; that comes off
       as each one goes green.
 
-**First measured result, from the CI run on 2026-08-10.** This is better news
-than "everything so far is Linux" suggested, and worth stating precisely:
+**First measured result, 2026-08-10 -- and it is much better than expected.**
+The paragraph above was written when none of this had ever been compiled
+elsewhere. What CI actually found:
 
-- **macOS configures, builds, and passes the entire unit suite** -- protocol,
-  codec, interval clock, mixing, loopback, the lot -- on the first attempt, with
-  no source changes. The only failure is `accessibility-audit`, which
-  **segfaults**: it drives a real JUCE component tree, and a headless macOS
-  runner has no WindowServer for the window peer to attach to. It is excluded on
-  macOS in CI rather than left to crash.
-- **Windows does not configure at all.** With `-G Ninja` the runner's PATH gave
-  CMake MinGW g++, and JUCE rejects it outright ("MinGW is not supported").
-  Fixed by dropping the generator flag on Windows so CMake selects Visual Studio
-  and MSVC -- which is what arps-euclidya does, and the reason it never hit this.
-  Whether MSVC then compiles the code is still unknown.
+- **All three platforms build, and all three pass the entire unit suite** --
+  protocol, codec, interval clock, mixing, loopback, the lot. macOS and Windows
+  needed **no source changes whatsoever**. Whatever cross-platform work remains,
+  "does it compile and is the audio logic correct" is not it.
+- **The one failure everywhere is `accessibility-audit`**, and it is an
+  environment limit rather than a finding about the code. It drives a real JUCE
+  component tree: on macOS and Windows runners there is no window session for
+  the peer to attach to and it segfaults. Excluded on those two in CI.
+- **Windows initially failed to configure at all**, which was a defect in the
+  workflow, not the project: `-G Ninja` made CMake take MinGW g++ off the
+  runner's PATH, and JUCE rejects MinGW outright. Dropping the generator flag on
+  Windows gets Visual Studio and MSVC, which is what arps-euclidya does and why
+  it never hit this. MSVC 19.51 then compiled the tree without complaint.
 
-- [ ] Windows build (VST3, CLAP, Standalone) -- now that it reaches the
-      compiler, find out what MSVC makes of the code.
-- [ ] macOS build (VST3, CLAP, AU?, Standalone) -- decide whether AU is in scope.
-      The build itself already works.
-- [ ] Run the accessibility audit on macOS. It needs a runner with a window
-      session, or an audit path that does not realise peers. This matters more
-      than it looks: macOS is one of the two platforms where the screen-reader
-      work is actually reachable, so leaving it unaudited there defeats the
-      point of the gate.
-- [ ] Drop `continue-on-error` per platform as each goes green, so the badge
+- [ ] Confirm what the plugin does once *loaded* on macOS and Windows. Building
+      and passing headless tests is a long way from a host instantiating it:
+      nothing has yet opened a window, opened a device, or joined a jam there.
+- [ ] macOS: decide whether AU is in scope. The build itself already works.
+- [ ] Run the accessibility audit on macOS and Windows. It needs a runner with a
+      real window session, or an audit path that does not realise peers. This
+      matters more than it looks: those are the two platforms where the
+      screen-reader work is reachable at all, so leaving them unaudited defeats
+      the point of the gate.
+- [ ] Drop `continue-on-error` per platform once each is trusted, so the badge
       stops claiming more than it knows.
+- [ ] Packaged artefacts are uploaded per platform by CI; check that a VST3 and
+      a CLAP built this way actually load in a host on each.
 
 ### Packaging
 
@@ -482,6 +490,44 @@ than "everything so far is Linux" suggested, and worth stating precisely:
       look for it.
 - [ ] Install instructions in the README for people who do not build from source.
 - [ ] Decide on a release/versioning scheme.
+
+### AntiphonAudit hangs intermittently on CI
+
+**A real defect, not a CI annoyance.** The accessibility audit -- the build gate
+that fails when a control arrives unnamed -- wedges on GitHub's ubuntu runners
+often enough to keep `main` red. It has never hung locally, including deliberate
+attempts with `ALSA_CONFIG_PATH=/dev/null`, and with no `XDG_RUNTIME_DIR`, no
+`HOME` and no `DISPLAY`: all finish in about two seconds.
+
+The evidence that it is nondeterministic rather than environmental, from run
+31422884752 on 2026-08-10:
+
+```
+success   Test                        19:18:22 -> 19:18:41   (audit passed, ~3s)
+cancelled Accessibility audit report  19:18:41 -> 19:28:26   (same binary, hung)
+```
+
+The same executable passed and then hung **seconds apart, in the same job, on
+the same runner**. A missing sound card is a constant and cannot explain that.
+On the two runs after it, the ctest invocation itself hit its 120s timeout.
+
+`test/CMakeLists.txt` already suspected this area: the audit builds a device
+picker, which enumerates audio devices, and the `TIMEOUT 120` exists so that a
+build gate fails rather than hangs. Enumeration is the prime suspect, unproven.
+
+- [x] Remove the second, direct invocation of the audit from CI. It duplicated
+      what ctest had just run and carried no timeout, which is why one hang cost
+      ten minutes rather than two.
+- [x] Make the audit say where it is. It printed everything at the end, so a
+      hang produced no output at all. It now traces each state to stderr,
+      unbuffered, as that state is entered, and brackets the
+      `AudioDeviceManager` construction specifically. The next hang names the
+      state that wedged.
+- [ ] Read that trace from the next red run, and fix the actual cause.
+- [ ] If it is device enumeration, choose between giving CI a dummy sound device
+      and making the trouble-view state skippable. Prefer the former: skipping
+      loses audit coverage of the one screen a user only ever meets when
+      something has already gone wrong.
 
 ### Clear the clang-tidy backlog
 

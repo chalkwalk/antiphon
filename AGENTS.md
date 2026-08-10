@@ -43,9 +43,15 @@ changes. As of 2026-08-10:
   audit running headlessly.
 - The **GitHub move** has landed: GPLv3, `CONTRIBUTING.md`, and a history with
   no reference sources in it at any point.
-- Next: **cross-platform builds**. Everything so far is Linux and CLAP only,
-  which matters most for accessibility: JUCE has screen-reader backends on macOS
-  and Windows and **none** on Linux, so that work is currently unexercised.
+- **All three platforms build and pass the unit suite** as of the first CI run,
+  2026-08-10, with no platform-specific source. That was not the expected result
+  and it moves the goalposts: the remaining cross-platform work is getting the
+  plugin *loaded in a host* on macOS and Windows, not making it compile.
+- Next: **cross-platform behaviour**, and the accessibility audit in particular.
+  It is excluded on macOS and Windows in CI because those runners have no window
+  session for it to attach to -- unfortunate, since they are exactly the two
+  platforms with a JUCE screen-reader backend. Linux has none, so that work is
+  still unexercised where it counts.
 
 ## Layout map
 
