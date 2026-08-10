@@ -422,8 +422,13 @@ The project is going public as an open-source repository.
 - [ ] Repo description and topics -- set on GitHub, not in the tree.
 - [ ] Point the `antiphon` CNAME at GitHub Pages, and enable Pages for the
       repository. The site cannot deploy until both are done.
-- [ ] A logo, and a social card built from it. `website/static/img/favicon.svg`
-      is a placeholder mark, not a design.
+- [x] A logo, with the favicon, navbar mark, README mark and social card built
+      from it. **The logo is a placeholder** -- good enough to ship, not final.
+      Every derivative is produced by `scripts/make_logo_assets.py <source.png>`,
+      so replacing the logo is one command rather than a hunt through the tree.
+- [ ] Replace the placeholder logo with the final mark. Check the 16px and 32px
+      cuts specifically: the current one is a three-lobed knot and it gets busy
+      at favicon size.
 - [ ] Fresh screenshots for the guide. Every page currently leans on the one
       README screenshot.
 

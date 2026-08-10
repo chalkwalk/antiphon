@@ -5,7 +5,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'Antiphon',
   tagline: 'Jam with strangers, from inside your DAW',
-  favicon: 'img/favicon.svg',
+  favicon: 'img/favicon.ico',
 
   future: {
     v4: true,
@@ -42,12 +42,18 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/antiphon.png',
+    image: 'img/social-card.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
     navbar: {
       title: 'Antiphon',
+      // Decorative: the title beside it already carries the name, so an alt
+      // text here would only make a screen reader say "Antiphon" twice.
+      logo: {
+        alt: '',
+        src: 'img/logo.png',
+      },
       items: [
         {
           type: 'docSidebar',

@@ -8,6 +8,13 @@
   border-bottom: 1px solid rgba(0, 180, 216, 0.25);
 }
 
+.heroLogo {
+  width: 128px;
+  height: 128px;
+  display: block;
+  margin: 0 auto 1rem;
+}
+
 .heroBanner .hero__title {
   font-weight: 800;
   letter-spacing: -0.02em;
