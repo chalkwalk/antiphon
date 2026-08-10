@@ -55,7 +55,7 @@ jobs:
             libasound2-dev libx11-dev libxcomposite-dev libxcursor-dev \
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
             libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev \
-            libgl1-mesa-dev libglu1-mesa-dev ninja-build
+            libgl1-mesa-dev libglu1-mesa-dev ninja-build xvfb
 
       - name: Install Ninja (macOS)
         if: runner.os == 'macOS'
@@ -90,14 +90,20 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j 4
 
+      # Under xvfb, so the accessibility audit gets a real X server instead of
+      # no display at all. The audit drives a genuine JUCE component tree and
+      # its teardown hang is timing-sensitive; a runner with no DISPLAY is the
+      # clearest environmental difference from the machine where it has never
+      # once hung. This is the last untried explanation.
+      #
       # A `--repeat after-timeout:3` was tried here and removed: all three
-      # attempts timed out, costing six minutes to learn nothing. The audit's
-      # teardown hang is near-deterministic under ctest on these runners, not
-      # the coin flip it looked like when run standalone, so retrying cannot
-      # help. ROADMAP.md has the stack and the measurements.
+      # attempts timed out, costing six minutes to learn nothing. The hang is
+      # near-deterministic under ctest on these runners, not the coin flip it
+      # looked like standalone, so retrying cannot help. ROADMAP.md has the
+      # stack and the measurements.
       - name: Test
         if: runner.os == 'Linux'
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: xvfb-run -a ctest --test-dir build -C Release --output-on-failure
 
       # The accessibility audit drives a real JUCE component tree and needs a
       # window session to do it. Linux runners give it one well enough to run
