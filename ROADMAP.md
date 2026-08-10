@@ -417,11 +417,15 @@ The project is going public as an open-source repository.
       than only from the tip. See `docs/COMPLETED.md`.
 - [x] Confirm the README quick start works from a genuinely fresh clone,
       including submodule init.
-- [ ] Repo description and topics -- set on GitHub, not in the tree.
-- [ ] A documentation site at `antiphon.chalkwalkmusic.com`, and a wiki synced
+- [x] A documentation site at `antiphon.chalkwalkmusic.com`, and a wiki synced
       from it.
-- [ ] A logo, favicon and social card. The README badge and the site currently
-      run without one.
+- [ ] Repo description and topics -- set on GitHub, not in the tree.
+- [ ] Point the `antiphon` CNAME at GitHub Pages, and enable Pages for the
+      repository. The site cannot deploy until both are done.
+- [ ] A logo, and a social card built from it. `website/static/img/favicon.svg`
+      is a placeholder mark, not a design.
+- [ ] Fresh screenshots for the guide. Every page currently leans on the one
+      README screenshot.
 
 ### Cross-platform builds
 

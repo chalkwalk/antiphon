@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Antiphon">
+  <title>Antiphon</title>
+  <rect width="64" height="64" rx="12" fill="#12161a"/>
+  <!-- Call and response: the same phrase twice, the second one an interval
+       behind. Placeholder mark until a real logo lands (ROADMAP). -->
+  <path d="M10 24 q7 -12 14 0 t14 0" fill="none" stroke="#00b4d8" stroke-width="4"
+        stroke-linecap="round"/>
+  <path d="M26 44 q7 -12 14 0 t14 0" fill="none" stroke="#00b4d8" stroke-width="4"
+        stroke-linecap="round" opacity="0.55"/>
+</svg>

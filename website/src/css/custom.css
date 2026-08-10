@@ -1,0 +1,39 @@
+/**
+ * Antiphon -- the teal the plugin surface already uses (#00b4d8), darkened for
+ * light mode so body links clear contrast requirements against white.
+ */
+
+:root {
+  --ifm-color-primary: #00758d;
+  --ifm-color-primary-dark: #006a7f;
+  --ifm-color-primary-darker: #006378;
+  --ifm-color-primary-darkest: #005263;
+  --ifm-color-primary-light: #00809b;
+  --ifm-color-primary-lighter: #0087a2;
+  --ifm-color-primary-lightest: #0098b7;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode uses the product accent unmodified. */
+[data-theme='dark'] {
+  --ifm-color-primary: #00b4d8;
+  --ifm-color-primary-dark: #00a2c2;
+  --ifm-color-primary-darker: #0099b7;
+  --ifm-color-primary-darkest: #007e97;
+  --ifm-color-primary-light: #0ac6ee;
+  --ifm-color-primary-lighter: #1acbf0;
+  --ifm-color-primary-lightest: #4bd7f3;
+  --ifm-background-color: #12161a;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 180, 216, 0.1);
+}
+
+/* The interval is the idea the whole guide turns on, so the callout that
+   explains it gets to look like something rather than like a paragraph. */
+.interval-note {
+  border-left: 4px solid var(--ifm-color-primary);
+  padding: 0.75rem 1rem;
+  margin: 1.5rem 0;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 0 6px 6px 0;
+}

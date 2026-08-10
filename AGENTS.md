@@ -396,6 +396,15 @@ Eight files at root, each with one job. Put a fact in exactly one of them.
 priorities for outside help. When a rule here changes and a contributor would
 need to know, change both -- but keep the detail here and the summary there.
 
+`website/docs/` is the **user-facing** guide, published to
+`antiphon.chalkwalkmusic.com` and mirrored into the GitHub wiki by
+`.github/workflows/wiki-sync.yml`. It is written for someone who wants to play,
+not for someone changing the code, and it is sourced from `README.md` rather
+than from `DESIGN.md`. When behaviour a player can see changes, `README.md` and
+the matching page in `website/docs/` change with it. The site build runs with
+`onBrokenLinks: 'throw'`, so a stale cross-reference fails CI rather than
+shipping.
+
 `CLAUDE.md` and `GEMINI.md` are **symlinks** to this file; they are tracked, and
 should stay symlinks.
 
