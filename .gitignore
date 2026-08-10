@@ -68,6 +68,14 @@ vcpkg_installed/
 Testing/
 .cache/
 
+# AI assistant working directories. The instructions themselves are tracked --
+# AGENTS.md, plus CLAUDE.md and GEMINI.md as symlinks to it -- because how this
+# project is developed is part of its documentation. What is ignored here is the
+# per-machine state a tool writes beside them: local settings, session history,
+# caches. Nobody else needs yours.
+.claude/
+.gemini/
+
 # Editor and Python detritus
 *~
 .vimsupport/
