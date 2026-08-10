@@ -77,6 +77,8 @@ StateResult auditState(const juce::String &name,
   }
   r.findings = (int)all.size();
   r.report = AccessibilityAudit::format(all, r.coverage);
+  std::fprintf(stderr, "audit: left state '%s'\n", name.toRawUTF8());
+  std::fflush(stderr);
   return r;
 }
 
@@ -225,10 +227,27 @@ int main() {
     results.push_back(
         auditState("two remote players, three channels", {editor}));
 
+    // Traced line by line: the audit has hung somewhere in this teardown on CI
+    // and every call in it is meant to be bounded, so the next hang needs to
+    // name the one that is not. See ROADMAP.md.
+    std::fprintf(stderr, "audit: disconnecting\n");
+    std::fflush(stderr);
     processor.ninjamClient.disconnectFromServer();
+
+    std::fprintf(stderr, "audit: disconnected, pumping\n");
+    std::fflush(stderr);
     pump(200);
+
+    std::fprintf(stderr, "audit: stopping the loopback server\n");
+    std::fflush(stderr);
     server.stop();
+
+    std::fprintf(stderr, "audit: server stopped\n");
+    std::fflush(stderr);
   }
+
+  std::fprintf(stderr, "audit: teardown complete, reporting\n");
+  std::fflush(stderr);
 
   int total = 0;
   for (const auto &r : results) {

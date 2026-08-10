@@ -511,9 +511,28 @@ The same executable passed and then hung **seconds apart, in the same job, on
 the same runner**. A missing sound card is a constant and cannot explain that.
 On the two runs after it, the ctest invocation itself hit its 120s timeout.
 
-`test/CMakeLists.txt` already suspected this area: the audit builds a device
-picker, which enumerates audio devices, and the `TIMEOUT 120` exists so that a
-build gate fails rather than hangs. Enumeration is the prime suspect, unproven.
+**The standing suspicion was wrong.** `test/CMakeLists.txt` blamed the device
+picker -- the audit builds one, and enumerating devices was the reason for the
+`TIMEOUT 120`. The first traced run (31426460693) exonerates it: the trace
+reaches `AudioDeviceManager constructed`, and the trouble-view state after it,
+before hanging. ALSA does complain (`open /dev/snd/seq failed`) but does not
+block.
+
+What the trace narrowed it to is the **teardown of the last state**, which runs
+a real loopback session:
+
+```
+audit: entering state 'two remote players, three channels'   <- last output
+(then nothing: no report, no findings count)
+```
+
+so the hang is in that state's tree walk, `disconnectFromServer()`, the pump, or
+`FakeNinjamServer::stop()`. Every one of those is *meant* to be bounded --
+`stopThread(3000)` and `stopThread(2000)` respectively -- which is what makes it
+interesting. One candidate worth checking first: JUCE's `stopThread` kills a
+thread that misses its timeout, and a thread killed while holding
+`FakeNinjamServer::clientMutex` would deadlock the `ScopedLock` immediately
+after it in `stop()`.
 
 - [x] Remove the second, direct invocation of the audit from CI. It duplicated
       what ctest had just run and carried no timeout, which is why one hang cost
@@ -523,11 +542,16 @@ build gate fails rather than hangs. Enumeration is the prime suspect, unproven.
       unbuffered, as that state is entered, and brackets the
       `AudioDeviceManager` construction specifically. The next hang names the
       state that wedged.
-- [ ] Read that trace from the next red run, and fix the actual cause.
-- [ ] If it is device enumeration, choose between giving CI a dummy sound device
-      and making the trouble-view state skippable. Prefer the former: skipping
-      loses audit coverage of the one screen a user only ever meets when
-      something has already gone wrong.
+- [x] First traced run: device enumeration ruled out, hang localised to the
+      teardown of the loopback-session state.
+- [ ] Second trace, now line by line through that teardown, names the exact
+      call. Read it from the next red run.
+- [ ] Fix the cause. If it is a thread killed while holding a lock, the fix
+      belongs in `FakeNinjamServer::stop()` and possibly in how long
+      `disconnectFromServer()` is willing to wait -- both are test-side, which
+      would be a relief, but `disconnectFromServer` is production code and a
+      shutdown that can miss a 3-second deadline is worth understanding
+      regardless of CI.
 
 ### Clear the clang-tidy backlog
 
