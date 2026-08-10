@@ -128,7 +128,8 @@ ctest --test-dir build --output-on-failure
 # Or run the binary directly, filtering by suite name
 ./build/test/NinjamTests_artefacts/NinjamTests IntervalClock
 # Accessibility gate over the real component tree; exit code is the finding
-# count, and the report goes to stdout. Runs headless, no display needed.
+# count, and the report goes to stdout. Runs headless, no display needed --
+# but NOT in CI, where it is excluded on every platform. See ROADMAP.md.
 ./build/test/AntiphonAudit_artefacts/AntiphonAudit
 # Offline: turn a session archive into WAV stems.
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/

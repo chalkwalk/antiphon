@@ -55,7 +55,7 @@ jobs:
             libasound2-dev libx11-dev libxcomposite-dev libxcursor-dev \
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
             libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev \
-            libgl1-mesa-dev libglu1-mesa-dev ninja-build xvfb
+            libgl1-mesa-dev libglu1-mesa-dev ninja-build
 
       - name: Install Ninja (macOS)
         if: runner.os == 'macOS'
@@ -90,32 +90,29 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j 4
 
-      # Under xvfb, so the accessibility audit gets a real X server instead of
-      # no display at all. The audit drives a genuine JUCE component tree and
-      # its teardown hang is timing-sensitive; a runner with no DISPLAY is the
-      # clearest environmental difference from the machine where it has never
-      # once hung. This is the last untried explanation.
+      # THE ACCESSIBILITY AUDIT DOES NOT RUN IN CI ON ANY PLATFORM. Read that
+      # again before trusting a green tick here, and see CONTRIBUTING.md: it is
+      # a gate you run locally, and CI cannot cover for you.
       #
-      # A `--repeat after-timeout:3` was tried here and removed: all three
-      # attempts timed out, costing six minutes to learn nothing. The hang is
-      # near-deterministic under ctest on these runners, not the coin flip it
-      # looked like standalone, so retrying cannot help. ROADMAP.md has the
-      # stack and the measurements.
-      - name: Test
-        if: runner.os == 'Linux'
-        run: xvfb-run -a ctest --test-dir build -C Release --output-on-failure
-
-      # The accessibility audit drives a real JUCE component tree and needs a
-      # window session to do it. Linux runners give it one well enough to run
-      # headless; macOS and Windows runners do not, and it segfaults in the
-      # window peer on both -- an environment limit, not a finding about the
-      # code. Excluded there so these jobs report what they can genuinely
-      # establish: that the audio, protocol and codec suites pass. Auditing on
-      # those two needs a runner with a real session, which matters because they
-      # are the platforms where the screen-reader work is reachable at all.
-      # See ROADMAP.md.
-      - name: Test (without the GUI audit)
-        if: runner.os != 'Linux'
+      # Why, per platform:
+      #   macOS, Windows -- segfaults in the window peer. Those runners have no
+      #     window session for a real JUCE component tree to attach to.
+      #   Linux -- hangs in teardown, near-deterministically under ctest. Not
+      #     the audit's own work, which completes and reports zero findings, but
+      #     ~juce::Thread() destroying a WaitableEvent while the thread it
+      #     belongs to is still unwinding, which blocks in pthread_cond_destroy
+      #     on the runner's glibc 2.39. ROADMAP.md carries the stack.
+      #
+      # Things tried and measured, so they are not tried again blind: retrying
+      # on timeout (three attempts, three timeouts); running under xvfb so the
+      # audit had a real X server (identical hang, so the display was never
+      # involved); replacing juce::Thread with std::thread; and skipping the
+      # destructor. The last two traded a hang for a segfault.
+      #
+      # This exclusion comes off the moment the race is fixed. It is the one
+      # check standing between a screen-reader user and an unnamed control, and
+      # leaving it uncovered is a debt, not a decision we are happy with.
+      - name: Test (the GUI audit is excluded -- see above)
         run: ctest --test-dir build -C Release --output-on-failure -E accessibility-audit
 
       # There used to be a second, direct invocation of AntiphonAudit here, to

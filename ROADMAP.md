@@ -557,13 +557,25 @@ that is actually intermittent, and under ctest this is not.
       `juce::Thread`, and it is destroyed when a host unloads the plugin --
       the same pattern, on a machine whose glibc we do not choose. Nothing has
       been observed, and nothing has been ruled out.
+- [x] Ruled out the display. Running the whole suite under `xvfb-run`, so the
+      audit had a real X server instead of no `DISPLAY` at all, produced a
+      byte-identical hang at the same line. The environment difference that
+      looked most promising is not the cause; glibc version remains the only
+      one that correlates.
+- [x] Ruled out ALSA, which was the original suspicion and the reason the 120s
+      timeout exists. The `snd_seq_hw_open` failure in the log is the MIDI
+      sequencer, is non-fatal, and the trace continues through two more states
+      after it. At the hang only two threads exist -- main, and JUCE's timer
+      thread -- so ALSA has left nothing running.
 - [ ] Work out why `ctest` makes it near-certain when a bare run does not.
       Whatever differs -- pipes rather than a terminal, process group,
       environment -- is likely the same thing that decides the race.
-- [ ] Decide what `main` does meanwhile. Leaving Linux red is honest but trains
-      people to ignore CI; making the audit advisory keeps the badge truthful
-      about everything else but weakens the one gate that protects screen-reader
-      users. This is a judgement call, not a technical one.
+- [x] Decided what `main` does meanwhile: **the audit is excluded from CI on
+      every platform**, and `CONTRIBUTING.md` says so in terms nobody can miss,
+      because a green tick now says nothing about accessibility. It remains a
+      hard gate locally, where it is reliable and takes two seconds. Chosen over
+      leaving `main` permanently red, which teaches people to ignore CI --
+      but it is a debt, and the exclusion comes off with the fix.
 
 ### Clear the clang-tidy backlog
 

@@ -125,10 +125,28 @@ before you call it done.
 ## 6. Accessibility is a build gate, not a nicety
 
 Every control must carry a name a screen reader can announce. `AntiphonAudit`
-walks the real component tree across every UI state and fails the build if one
-does not. **If you add a control, name it; if you add a new surface or state, add
-it to the audit** -- an unaudited state is how the connect dialog went unchecked
-for its whole life.
+walks the real component tree across every UI state and fails if one does not.
+**If you add a control, name it; if you add a new surface or state, add it to the
+audit** -- an unaudited state is how the connect dialog went unchecked for its
+whole life.
+
+> **CI does not run this check. You have to.**
+>
+> The audit is excluded on every CI platform, so a green tick on your pull
+> request says nothing whatsoever about accessibility. On macOS and Windows
+> runners it segfaults for want of a window session; on Linux it hangs in
+> teardown, in a JUCE thread-destruction race that has nothing to do with what
+> it audits. `ROADMAP.md` has the stack trace and the list of fixes already
+> tried.
+>
+> So run it yourself before opening a pull request that touches the UI:
+>
+> ```bash
+> ./build/test/AntiphonAudit_artefacts/AntiphonAudit   # exit code = findings
+> ```
+>
+> It takes about two seconds and is reliable off a runner. This is a debt we
+> intend to pay, not a standard we have dropped.
 
 ## 7. Documentation
 
