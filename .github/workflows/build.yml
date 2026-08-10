@@ -16,11 +16,10 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # Linux is the only platform Antiphon has been developed and tested on.
-    # macOS and Windows are in the matrix so the gap is visible rather than
-    # unmeasured, and they are allowed to fail until the cross-platform work in
-    # ROADMAP.md lands. A red cross on those two is the current honest state; do
-    # not remove the matrix to make the badge green.
+    # macOS and Windows now build and pass their suites, so this flag is no
+    # longer hiding a failure -- it is holding the door open while they are
+    # still unproven in a host. Take it off each platform as that platform earns
+    # it, and never use it to make a genuine breakage look green.
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
@@ -44,7 +43,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -108,14 +107,27 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends gdb
           audit=$(find build/test/AntiphonAudit_artefacts -name AntiphonAudit -type f | head -1)
-          echo "running $audit under a watchdog"
-          "$audit" > /tmp/audit.out 2>&1 &
-          pid=$!
-          for i in $(seq 1 30); do
-            kill -0 "$pid" 2>/dev/null || break
-            sleep 1
+          # It hangs perhaps half the time, so a single sample is a coin flip --
+          # the first attempt at this caught a run that completed and learned
+          # nothing. Keep launching it until one wedges, then dump that one.
+          # Each healthy run takes about two seconds.
+          pid=""
+          for attempt in $(seq 1 25); do
+            "$audit" > /tmp/audit.out 2>&1 &
+            pid=$!
+            for i in $(seq 1 20); do
+              kill -0 "$pid" 2>/dev/null || break
+              sleep 1
+            done
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "attempt $attempt wedged; dumping"
+              break
+            fi
+            wait "$pid" 2>/dev/null || true
+            pid=""
+            echo "attempt $attempt completed cleanly"
           done
-          if kill -0 "$pid" 2>/dev/null; then
+          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             # Two layers, because a diagnostic that can itself fail is no
             # diagnostic. The /proc read needs no privileges and always works;
             # it names the kernel wait-channel each thread is parked in, which
@@ -134,7 +146,7 @@ jobs:
               || echo "(could not attach)"
             kill -9 "$pid" 2>/dev/null || true
           else
-            echo "=== it exited on its own this time ==="
+            echo "=== 25 attempts and none of them hung ==="
           fi
           echo "=== its output ==="
           tail -40 /tmp/audit.out || true
@@ -161,7 +173,7 @@ jobs:
 
       - name: Upload artefacts
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Antiphon-${{ matrix.name }}
           if-no-files-found: warn
@@ -175,7 +187,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
