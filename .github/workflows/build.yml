@@ -61,17 +61,16 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
-      # -g on top of Release, rather than RelWithDebInfo: the optimisation level
-      # stays exactly what ships, so timing-dependent faults are not perturbed
-      # by the act of observing them, while any core or attached debugger still
-      # has symbols. AGENTS.md is right that gdb on a build without -g is
-      # address soup, and that cost a round trip here.
+      # This briefly carried `-g` so a hung run could be inspected with gdb. The
+      # step that did the inspecting is gone, and the flag went with it: on ELF
+      # the debug info is linked into the binary, which took the Linux artefacts
+      # to 129 MB against 12 MB for macOS. Mach-O leaves debug info in the
+      # object files and MSVC puts it in a .pdb, so only Linux ever showed it.
       - name: Configure (Linux and macOS)
         if: runner.os != 'Windows'
         run: >
           cmake -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_FLAGS=-g -DCMAKE_C_FLAGS=-g
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           -DJUCE_BUILD_EXAMPLES=OFF -DJUCE_BUILD_EXTRAS=OFF
         shell: bash
@@ -121,6 +120,21 @@ jobs:
       # minutes. ctest carries a 120s TIMEOUT on the test and prints the report
       # under --output-on-failure, which is the same information with a bound on
       # it. Do not reintroduce an unbounded second run.
+
+      # Even without -g, an ELF binary keeps its symbol table, which is why
+      # Linux artefacts stayed several times the size of the other two. macOS
+      # and Windows already ship their symbols elsewhere by default, so this is
+      # about parity rather than about Linux being special. `--strip-unneeded`
+      # keeps the dynamic symbols a host needs to load the plugin -- verified
+      # that `clap_entry` survives it.
+      - name: Strip Linux artefacts
+        if: runner.os == 'Linux'
+        run: |
+          before=$(du -sh build/src/Antiphon_artefacts | cut -f1)
+          find build/src/Antiphon_artefacts -type f \
+            \( -name '*.so' -o -name '*.clap' -o -name 'Antiphon' \) \
+            -exec strip --strip-unneeded {} +
+          echo "artefacts: $before -> $(du -sh build/src/Antiphon_artefacts | cut -f1)"
 
       - name: Upload artefacts
         if: success()
