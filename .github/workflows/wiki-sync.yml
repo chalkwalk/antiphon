@@ -23,23 +23,46 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # GitHub does not create <repo>.wiki.git until a first page has been saved
+      # by hand in the web UI, so on a repository whose wiki has never been
+      # opened this clone fails with a bare "Repository not found". Say what to
+      # do about it rather than failing the run over something that is setup,
+      # not breakage.
       - name: Clone the wiki
+        id: wiki
         run: |
-          git clone \
-            https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git \
-            wiki-repo
+          if git clone \
+              https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git \
+              wiki-repo 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Wiki not initialised -- nothing synced"
+              echo
+              echo "This repository has no wiki yet, so there was nowhere to sync to."
+              echo
+              echo "Turn on **Settings -> Features -> Wikis**, then create any page"
+              echo "once in the web UI. GitHub only creates the backing"
+              echo '`.wiki.git` repository at that moment. Re-run this workflow'
+              echo "afterwards; the placeholder page is replaced by the generated docs."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # The wiki is generated, never hand-edited, so stale pages are removed
       # rather than left behind when a doc is renamed or deleted.
       - name: Copy the docs across
+        if: steps.wiki.outputs.exists == 'true'
         run: |
           find wiki-repo -maxdepth 1 -name '*.md' -delete
           cp website/docs/*.md wiki-repo/
 
       - name: Transform for the wiki
+        if: steps.wiki.outputs.exists == 'true'
         run: python3 .github/scripts/wiki_transform.py wiki-repo
 
       - name: Commit and push
+        if: steps.wiki.outputs.exists == 'true'
         working-directory: wiki-repo
         run: |
           git config user.name "github-actions[bot]"

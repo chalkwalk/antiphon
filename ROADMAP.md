@@ -420,8 +420,13 @@ The project is going public as an open-source repository.
 - [x] A documentation site at `antiphon.chalkwalkmusic.com`, and a wiki synced
       from it.
 - [ ] Repo description and topics -- set on GitHub, not in the tree.
-- [ ] Point the `antiphon` CNAME at GitHub Pages, and enable Pages for the
-      repository. The site cannot deploy until both are done.
+- [ ] Point the `antiphon` CNAME at GitHub Pages, and set Pages to deploy from
+      GitHub Actions. The site cannot deploy until both are done.
+- [ ] Create the wiki. Turn on **Settings -> Features -> Wikis** and save any
+      one page in the web UI: GitHub does not create the backing `.wiki.git`
+      repository until a page exists, and `wiki-sync.yml` has nowhere to push
+      until it does. The workflow detects this and prints the instruction
+      rather than failing, so the only symptom is a wiki that stays empty.
 - [x] A logo, with the favicon, navbar mark, README mark and social card built
       from it. **The logo is a placeholder** -- good enough to ship, not final.
       Every derivative is produced by `scripts/make_logo_assets.py <source.png>`,
