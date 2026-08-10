@@ -419,14 +419,15 @@ The project is going public as an open-source repository.
       including submodule init.
 - [x] A documentation site at `antiphon.chalkwalkmusic.com`, and a wiki synced
       from it.
-- [ ] Repo description and topics -- set on GitHub, not in the tree.
-- [ ] Point the `antiphon` CNAME at GitHub Pages, and set Pages to deploy from
-      GitHub Actions. The site cannot deploy until both are done.
-- [ ] Create the wiki. Turn on **Settings -> Features -> Wikis** and save any
-      one page in the web UI: GitHub does not create the backing `.wiki.git`
-      repository until a page exists, and `wiki-sync.yml` has nowhere to push
-      until it does. The workflow detects this and prints the instruction
-      rather than failing, so the only symptom is a wiki that stays empty.
+- [x] Repo description, homepage and topics -- set on GitHub, not in the tree.
+- [x] `antiphon.chalkwalkmusic.com` pointed at GitHub Pages, deploying from
+      Actions. Live and serving over HTTPS.
+- [x] Wiki created and syncing. GitHub does not create the backing `.wiki.git`
+      repository until a first page is saved by hand in the web UI, so that had
+      to happen once before `wiki-sync.yml` had anywhere to push.
+      `wiki-sync.yml` detects the missing-wiki case and prints the instruction
+      rather than failing, so if this is ever set up again the symptom is an
+      empty wiki rather than a red run.
 - [x] A logo, with the favicon, navbar mark, README mark and social card built
       from it. **The logo is a placeholder** -- good enough to ship, not final.
       Every derivative is produced by `scripts/make_logo_assets.py <source.png>`,
@@ -487,7 +488,8 @@ because the loop starts at `ceil(ppqStart)`; the `dangling-else` in
 
 ### Documentation upkeep
 
-- [ ] A current screenshot for the README.
+- [x] A current screenshot for the README (`docs/images/antiphon.png`), also
+      used as the site's hero image.
 - [ ] Keep `test/README.md`'s suite list in step with `test/` -- it drifted once
       already.
 
