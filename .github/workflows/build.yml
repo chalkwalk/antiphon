@@ -29,10 +29,16 @@ jobs:
           - name: Linux
             os: ubuntu-latest
             experimental: false
-          - name: macOS (not yet supported)
+          # Both build and pass the full unit suite. They are still marked
+          # experimental because nothing has yet *loaded* the plugin in a host
+          # on either -- no window opened, no device opened, no jam joined --
+          # and because the accessibility audit is excluded on them for want of
+          # a window session. "Builds and tests clean" is a real result and the
+          # name should say so; it is not the same as "supported".
+          - name: macOS (build only, untested in a host)
             os: macos-latest
             experimental: true
-          - name: Windows (not yet supported)
+          - name: Windows (build only, untested in a host)
             os: windows-latest
             experimental: true
 

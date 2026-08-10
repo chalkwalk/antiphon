@@ -566,10 +566,25 @@ the test server kept it.
       mirroring `NinjamClient::readFull`.
 - [x] Check `stopThread`'s return in `stop()` and say so on stderr, so a future
       missed deadline announces itself instead of hanging silently afterwards.
-- [ ] **Confirm on CI.** Locally this never reproduced -- 25 consecutive audit
-      runs before the fix were clean, as were 25 after -- so the local result
-      shows no regression and cannot show the fix works. Only a green Linux job
-      settles it.
+- [x] **Confirmed on CI, and the mechanism above is wrong.** Run 31428918866
+      carried the interruptible accept *and* the "thread did not exit within
+      2000ms" warning. Linux still timed out, and **the warning never printed**
+      -- so `stopThread(2000)` returned true, the server thread had exited
+      cleanly, and `~Thread()`'s untimed wait cannot be what blocks. The
+      polling accept is a genuine improvement and worth keeping (the trap it
+      removes is real, and documented in `AGENTS.md`), but it is not this bug.
+
+      That is two wrong theories in a row -- device enumeration, then the
+      untimed join -- both plausible, both refuted by tracing. The lesson is
+      already in `PRINCIPLES §5` and is being relearned here: instrument first,
+      hypothesise second.
+
+- [ ] The hang is still between `stop()` returning and the next statement, a
+      gap containing only `~FakeNinjamServer()`. Its two halves -- our `stop()`,
+      and `juce::Thread`'s destructor immediately after -- are now traced
+      individually, as is every step inside `stop()`. The next red run says
+      which line it is, or shows that the destructor is not involved at all and
+      the model is wrong again.
 - [ ] Consider whether any other `juce::Thread` subclass here can miss its
       timeout, since the destructor's untimed wait applies to all of them.
 

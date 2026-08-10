@@ -2,7 +2,17 @@
 
 FakeNinjamServer::FakeNinjamServer() : juce::Thread("FakeNinjamServer") {}
 
-FakeNinjamServer::~FakeNinjamServer() { stop(); }
+FakeNinjamServer::~FakeNinjamServer() {
+  // Traced because the accessibility audit hangs here on CI and nowhere else,
+  // and two plausible explanations have already been wrong. These say which
+  // half of the destructor is at fault: our stop(), or juce::Thread's own
+  // destructor running immediately after this body. See ROADMAP.md.
+  std::fprintf(stderr, "FakeNinjamServer: ~dtor entered\n");
+  std::fflush(stderr);
+  stop();
+  std::fprintf(stderr, "FakeNinjamServer: ~dtor body done, ~Thread() next\n");
+  std::fflush(stderr);
+}
 
 void FakeNinjamServer::setChallenge(const juce::uint8 c[8]) {
   juce::ScopedLock sl(stateMutex);
@@ -30,13 +40,21 @@ bool FakeNinjamServer::start(int bpm, int bpi) {
 }
 
 void FakeNinjamServer::stop() {
+  std::fprintf(stderr, "FakeNinjamServer: stop() signalling\n");
+  std::fflush(stderr);
   signalThreadShouldExit();
+  std::fprintf(stderr, "FakeNinjamServer: stop() closing listener\n");
+  std::fflush(stderr);
   listener.close();
+  std::fprintf(stderr, "FakeNinjamServer: stop() closing client\n");
+  std::fflush(stderr);
   {
     juce::ScopedLock sl(clientMutex);
     if (client)
       client->close();
   }
+  std::fprintf(stderr, "FakeNinjamServer: stop() joining thread\n");
+  std::fflush(stderr);
   // The return was ignored, which is how this went unnoticed: when the thread
   // misses the timeout, stopThread reports it and juce::Thread's destructor
   // then waits for the same thread with no timeout at all. Say so, loudly,
@@ -45,8 +63,12 @@ void FakeNinjamServer::stop() {
     std::fprintf(stderr, "FakeNinjamServer: thread did not exit within 2000ms; "
                          "~Thread() will now wait for it indefinitely\n");
   std::fflush(stderr);
+  std::fprintf(stderr, "FakeNinjamServer: stop() taking clientMutex\n");
+  std::fflush(stderr);
   juce::ScopedLock sl(clientMutex);
   client.reset();
+  std::fprintf(stderr, "FakeNinjamServer: stop() done\n");
+  std::fflush(stderr);
 }
 
 bool FakeNinjamServer::hasClient() const {
