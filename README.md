@@ -9,11 +9,13 @@
 **Jam with strangers, from inside your DAW.**
 
 Antiphon is a [NINJAM](https://www.cockos.com/ninjam/) client shaped as an audio
-plugin -- VST3, CLAP and a standalone app. You insert it in your DAW, connect to
-a public server, and play with whoever is in the room. Your own signal passes
-through with no added delay. Everyone else arrives one interval later, locked to
-the beat, and each of them can be routed to its own output bus so your DAW
-records the jam as separate stems.
+plugin -- VST3, CLAP, AU on macOS, and a standalone app. You insert it in your
+DAW, connect to a public server, and play with whoever is in the room. Your own
+signal passes through with no added delay. Everyone else arrives one interval
+later, locked to the beat, and each of them can be routed to its own output bus
+so your DAW records the jam as separate stems. (The AU build is the exception:
+Audio Unit cannot change its bus layout at a plugin's request, so it is one
+stereo in and one stereo out, and stems need the VST3 or CLAP build.)
 
 Every other NINJAM client is a standalone application that owns your sound card.
 Antiphon is the plugin, so the jam happens in the session you were already
@@ -56,7 +58,7 @@ centre, chat on the right](docs/images/antiphon.png)
 | **Verified** | Interoperability with the official NINJAM reference client, measured -- interval grid, transmit alignment, audio in both directions, chat. See [`docs/PARITY.md`](docs/PARITY.md) |
 | **Used on** | Linux, CLAP format, one DAW, plus the standalone |
 | **Builds on** | Linux, macOS and Windows -- all three compile and pass the full unit suite in CI, with no platform-specific source |
-| **Not yet** | Loaded in a host on macOS or Windows: nothing there has opened a window, opened a device or joined a jam. No packaged installers, no release |
+| **Not yet** | Loaded in a host on macOS or Windows: nothing there has opened a window, opened a device or joined a jam. The AU build is newer still -- it has never been compiled on this machine, which is Linux, so CI is the first thing to build it and no host has seen it. No packaged installers, no release |
 
 If you are on Linux and comfortable with CMake, it works today. macOS and
 Windows build and test clean, but "compiles and passes its tests" is not the
@@ -81,13 +83,17 @@ cmake --build build -j $(nproc)
 If you cloned without `--recurse-submodules`:
 `git submodule update --init --recursive`.
 
-This produces three things:
+This produces:
 
 - **Standalone** -- `build/src/Antiphon_artefacts/Standalone/Antiphon`
 - **VST3** -- `build/src/Antiphon_artefacts/VST3/`
 - **CLAP** -- `build/src/Antiphon_artefacts/CLAP/`
+- **AU** -- `build/src/Antiphon_artefacts/AU/`, macOS only
 
-Copy the VST3 or CLAP into wherever your DAW looks for plugins.
+Copy the VST3 or CLAP into wherever your DAW looks for plugins. On macOS the AU
+goes in `~/Library/Audio/Plug-Ins/Components/`; it is there for Logic Pro and
+GarageBand, which load nothing else. Prefer the VST3 or CLAP if your DAW takes
+one, because only those two can give each remote player its own output bus.
 
 ### Your first connection
 

@@ -473,7 +473,24 @@ elsewhere. What CI actually found:
 - [ ] Confirm what the plugin does once *loaded* on macOS and Windows. Building
       and passing headless tests is a long way from a host instantiating it:
       nothing has yet opened a window, opened a device, or joined a jam there.
-- [ ] macOS: decide whether AU is in scope. The build itself already works.
+- [x] macOS: decide whether AU is in scope. **It is, and it is built** --
+      `FORMATS` gains AU under `if(APPLE)`. Logic Pro and GarageBand load no
+      other format, so without it macOS support means "every DAW except the two
+      most common ones".
+- [ ] Confirm the AU actually loads. It has never been compiled: development is
+      on Linux, so CI is the first machine to build it and no host has
+      instantiated it. Until then the format is a claim, not a fact.
+- [ ] AU is one stereo bus in, one stereo out, deliberately. JUCE's AU wrapper
+      drops the `busLayoutChanged` notification our patch adds
+      (`DESIGN.md` §"AU is one bus in, one bus out"), so the bus controls are
+      disabled there and say why. If a route to per-player stems under AU is
+      ever wanted it means patching the AU wrapper to raise
+      `kAudioUnitProperty_ElementCount`, and then finding out whether Logic
+      honours it for an effect -- which it may well not. Not planned.
+- [ ] The audit does not cover the AU-disabled bus state. `AntiphonAudit` builds
+      its own editor, where `wrapperType` is never `wrapperType_AudioUnit`, so
+      the branch that disables the four bus buttons is unreachable from the
+      gate. Every other disabled-control state is audited; this one is not.
 - [ ] Run the accessibility audit on macOS and Windows. It needs a runner with a
       real window session, or an audit path that does not realise peers. This
       matters more than it looks: those are the two platforms where the

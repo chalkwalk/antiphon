@@ -3,11 +3,13 @@
 ## What this project is
 
 **Antiphon** is a Ninjam client shaped as a JUCE audio plugin (VST3 + CLAP +
-Standalone). It lives inside a DAW, typically on the master bus, and injects
-Ninjam's interval-delayed playback model into the host: local audio passes
-through undelayed, remote players arrive one interval late, phase-locked to the
-local metronome, and each remote channel can be routed to its own output bus so
-the DAW records the jam as stems.
+Standalone, plus AU on macOS). It lives inside a DAW, typically on the master
+bus, and injects Ninjam's interval-delayed playback model into the host: local
+audio passes through undelayed, remote players arrive one interval late,
+phase-locked to the local metronome, and each remote channel can be routed to
+its own output bus so the DAW records the jam as stems -- except under AU, which
+cannot change its bus layout at all and is fixed at one stereo in, one stereo
+out (`DESIGN.md`).
 
 Clean modern C++ against JUCE. No `NJClient` wrapper, no Qt, no heavy
 dependencies -- about 6 000 lines in `src/`, and it is meant to fit in your head.
@@ -136,7 +138,18 @@ ctest --test-dir build --output-on-failure
 ```
 
 Targets: `Antiphon_Standalone` (easiest for iteration), `Antiphon_VST3`. CLAP is
-built from the same target via `clap_juce_extensions_plugin`.
+built from the same target via `clap_juce_extensions_plugin`. `Antiphon_AU`
+exists on macOS only, so it cannot be built or run from a Linux checkout -- CI
+is the only thing that compiles it.
+
+**`PLUGIN_CODE` and `PLUGIN_MANUFACTURER_CODE` are pinned in
+`src/CMakeLists.txt` (`Antp` / `Chlk`) and must stay that way.** They are the
+AU's identity in the plugin registry. JUCE's defaults are the placeholder
+`'Manu'` and a `string(RANDOM)` plugin code regenerated on every configure, so
+dropping them would mint a new Audio Unit per build tree and break every saved
+Logic session. `Chlk` is shared with arps-euclidya, which uses plugin code
+`ArpE`; a new Chalkwalk plugin needs its own plugin code, not its own
+manufacturer code.
 
 Sanitiser builds -- keep them around, they are worth more than gdb here:
 

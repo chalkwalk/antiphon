@@ -23,14 +23,17 @@ cmake --build build -j $(nproc)
 If you cloned without `--recurse-submodules`, run
 `git submodule update --init --recursive` before configuring.
 
-That produces three things:
+That produces:
 
 - **Standalone** -- `build/src/Antiphon_artefacts/Standalone/Antiphon`
 - **VST3** -- `build/src/Antiphon_artefacts/VST3/`
 - **CLAP** -- `build/src/Antiphon_artefacts/CLAP/`
+- **AU** -- `build/src/Antiphon_artefacts/AU/`, built on macOS only
 
 Copy the VST3 or CLAP into wherever your DAW looks for plugins. On Linux that is
-usually `~/.vst3/` and `~/.clap/`.
+usually `~/.vst3/` and `~/.clap/`. On macOS the AU goes in
+`~/Library/Audio/Plug-Ins/Components/`, and is only worth using if your DAW is
+Logic Pro or GarageBand -- it cannot do per-player stem routing.
 
 :::note Which platform?
 Everything so far has been built and tested on **Linux**, in the **CLAP**

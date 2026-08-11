@@ -451,6 +451,29 @@ void AntiphonEditor::applyHostContextToControls() {
   // grid to the DAW transport. In the standalone none of that has a
   // counterpart, so the controls stay visible -- the shape of the app should
   // not change under you -- but disabled, and they say why.
+
+  // AU is the same argument with a different reason: the format cannot carry a
+  // bus-topology change at all (AntiphonAudioProcessor::hasFixedBusLayout), so
+  // the bus controls are dead there and must look it. Everything else -- local
+  // channels, Sync -- works under AU exactly as it does under VST3.
+  if (audioProcessor.hasFixedBusLayout()) {
+    const juce::String auWhy =
+        "Fixed under Audio Unit, which cannot be told the bus layout changed. "
+        "Use the VST3 or CLAP build for per-player stems";
+
+    for (auto *b : {&addInBusButton, &removeInBusButton, &addOutBusButton,
+                    &removeOutBusButton}) {
+      b->setEnabled(false);
+      b->setTooltip(auWhy);
+      b->setDescription(b->getDescription() + ". " + auWhy);
+    }
+
+    for (auto *l : {&inputBusGroupLabel, &outputBusGroupLabel})
+      l->setColour(juce::Label::textColourId,
+                   juce::Colour(AntiphonTheme::kDisabledText));
+    return;
+  }
+
   if (!audioProcessor.isStandaloneApp())
     return;
 
@@ -1244,16 +1267,19 @@ void AntiphonEditor::updateToolbarStates() {
   if (audioProcessor.isStandaloneApp())
     return;
 
-  const int inBuses = audioProcessor.getBusCount(true);
-  const int outBuses = audioProcessor.getBusCount(false);
-
   const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
   syncButton.setEnabled(sync == SyncState::State::ReadyToSync ||
                         sync == SyncState::State::WaitingForPlay ||
                         sync == SyncState::State::Running);
 
-  removeInBusButton.setEnabled(inBuses > 1);
-  removeOutBusButton.setEnabled(outBuses > 1);
+  // Under AU the bus buttons were disabled once, with their reason, by
+  // applyHostContextToControls(). Re-enabling them on a tick would undo that
+  // silently -- the same trap the standalone guard above exists to avoid.
+  if (audioProcessor.hasFixedBusLayout())
+    return;
+
+  removeInBusButton.setEnabled(audioProcessor.getBusCount(true) > 1);
+  removeOutBusButton.setEnabled(audioProcessor.getBusCount(false) > 1);
 }
 
 void AntiphonEditor::relayoutChannelArea() {

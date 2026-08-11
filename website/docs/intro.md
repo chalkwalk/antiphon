@@ -8,12 +8,19 @@ slug: /
 # What Antiphon is
 
 Antiphon is a **[NINJAM](https://www.cockos.com/ninjam/) client shaped as an
-audio plugin** -- VST3, CLAP, and a standalone application. You insert it in your
-DAW, connect to a public server, and play with whoever is in the room.
+audio plugin** -- VST3, CLAP, AU on macOS, and a standalone application. You
+insert it in your DAW, connect to a public server, and play with whoever is in
+the room.
 
 Your own signal passes through with no added delay. Everyone else arrives one
 interval later, locked to the beat, and each of them can be routed to its own
 output bus so your DAW records the jam as separate stems.
+
+The AU build is the one exception to that last part. Audio Unit gives a plugin
+no way to tell the host its bus layout changed, so the AU is fixed at one stereo
+input and one stereo output and its bus buttons are disabled. It exists for
+Logic Pro and GarageBand, which load no other format. For stems on macOS, use
+the VST3 or CLAP build.
 
 Every other NINJAM client is a standalone application that owns your sound card.
 Antiphon is the plugin, so the jam happens in the session you were already
@@ -38,7 +45,7 @@ Antiphon is **public beta, built from source.** Honestly:
 | **Works** | Connecting, transmitting, receiving, multi-channel, stem routing, chat, voting, the metronome, DAW tempo sync |
 | **Verified** | Interoperability with the official NINJAM reference client, measured -- interval grid, transmit alignment, audio in both directions, chat |
 | **Tested on** | Linux, CLAP format, one DAW, plus the standalone |
-| **Not yet** | Windows and macOS builds, packaged installers, VST3 testing, a release |
+| **Not yet** | Loading in a host on Windows or macOS, the AU build in any host at all, packaged installers, VST3 testing, a release |
 
 If you are on Linux and comfortable with CMake, it works today. If you are
 waiting for a download, that is still ahead.

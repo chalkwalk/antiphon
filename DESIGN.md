@@ -14,8 +14,8 @@ not here -- see `docs/PARITY.md`. Accessibility detail is not here -- see
 
 ## 1. Vision
 
-Antiphon is a Ninjam client shaped as an audio plugin (VST3 + CLAP +
-Standalone), built on JUCE. It is inserted in a DAW -- typically on the master
+Antiphon is a Ninjam client shaped as an audio plugin (VST3 + CLAP + AU on
+macOS, plus a Standalone), built on JUCE. It is inserted in a DAW -- typically on the master
 bus -- and injects Ninjam's interval-delayed playback model into the host.
 
 The shape follows from two observations. First, Ninjam sessions are already
@@ -583,6 +583,22 @@ room. The UI fader initialises from the same constant so the two cannot drift.
 `busIdx*2+1`. Routing is persisted by `(username, channelIndex)` in
 `savedRemoteRoutings` and reapplied when a player rejoins -- a jam where someone
 drops and reconnects must not scatter your stems.
+
+**AU is one bus in, one bus out.** Adding and removing buses at runtime relies
+on telling the host its cached I/O topology is stale, which
+`patches/juce-bus-layout-change-notification.patch` adds as
+`ChangeDetails::busLayoutChanged` and the VST3 and CLAP wrappers map to
+`kIoChanged` and `audioPortsRescan`. JUCE's AU wrapper has no equivalent: its
+`AudioProcessorChangedUpdater` acts on latency, parameter-info and program
+changes and drops everything else, and AU's own bus-count property is writable
+by the *host* only. So `AntiphonAudioProcessor::hasFixedBusLayout()` is true
+under `wrapperType_AudioUnit`, `canAddBus`/`canRemoveBus` refuse, and the
+editor disables the four bus buttons with that reason in their accessible
+description (`PRINCIPLES §11` -- a control that is dimmed has to say what would
+un-dim it). Remote channels still mix to the single stereo output; a player who
+wants per-player stems on macOS uses the VST3 or CLAP build, which Logic does
+not load but every other macOS DAW does. This is a limit of the format, not a
+decision we are free to revisit.
 
 **Recv vs Mute.** Mute receives and decodes but silences the output. Recv-off
 sends `CLIENT_SET_USERMASK` with that channel's bit cleared, so the server stops

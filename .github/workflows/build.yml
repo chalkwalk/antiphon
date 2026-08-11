@@ -146,6 +146,7 @@ jobs:
             build/src/Antiphon_artefacts/**/VST3/*.vst3
             build/src/Antiphon_artefacts/**/CLAP/*.clap
             build/src/Antiphon_artefacts/**/Standalone/*
+            build/src/Antiphon_artefacts/**/AU/*.component
 
   lint:
     name: Format and tidy

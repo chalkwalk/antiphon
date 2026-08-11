@@ -89,10 +89,25 @@ public:
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   void releaseResources() override;
 
+  // AU cannot be told that our bus topology changed. JUCE's AU wrapper acts on
+  // exactly three ChangeDetails flags -- latency, parameter info and program
+  // (juce_audio_plugin_client_AU_1.mm, AudioProcessorChangedUpdater::update) --
+  // and drops the busLayoutChanged flag that
+  // patches/juce-bus-layout-change-notification.patch adds for VST3 and CLAP.
+  // AU's own bus-count property is host-driven only: a host may call
+  // SetBusCount, but a plugin has no way to announce one. Adding a bus anyway
+  // would succeed internally and route nowhere, so under AU the layout is
+  // fixed at the default one stereo in, one stereo out, and the editor says so.
+  bool hasFixedBusLayout() const {
+    return wrapperType == wrapperType_AudioUnit;
+  }
+
 #ifndef JucePlugin_PreferredChannelConfigurations
   bool isBusesLayoutSupported(const BusesLayout &layouts) const override;
-  bool canAddBus(bool) const override { return true; }
+  bool canAddBus(bool) const override { return !hasFixedBusLayout(); }
   bool canRemoveBus(bool isInput) const override {
+    if (hasFixedBusLayout())
+      return false;
     return isInput ? getBusCount(true) > 1 : getBusCount(false) > 1;
   }
 #endif

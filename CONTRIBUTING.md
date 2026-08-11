@@ -29,7 +29,12 @@ combined.
    [`docs/ACCESSIBILITY.md`](docs/ACCESSIBILITY.md), which is deliberately honest
    about what is unproven.
 3. **Testing in more DAWs and more formats.** VST3 in particular has had far
-   less exercise than CLAP.
+   less exercise than CLAP, and the macOS AU build has had none at all -- it is
+   compiled only by CI and no host has ever loaded it. If you have Logic Pro or
+   GarageBand, simply reporting whether Antiphon appears and passes audio is a
+   real contribution. Note that AU is fixed at one stereo bus in and one out, by
+   a limit of the format, so the per-player stem routing is expected to be
+   unavailable there and its bus buttons are disabled on purpose.
 4. **Interoperability findings.** If Antiphon sounds wrong to somebody running
    Jamtaba or ReaNINJAM in the same room, that is a bug of the highest severity
    here, and the report should say what they heard and what they were running.

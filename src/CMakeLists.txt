@@ -1,10 +1,30 @@
+# AU is macOS-only, and is the only way into Logic Pro and GarageBand, which
+# do not load VST3 or CLAP at all. It is deliberately less capable than the
+# other two formats: the AU wrapper drops our busLayoutChanged notification
+# (see AntiphonAudioProcessor::hasFixedBusLayout), so AU is one stereo bus in,
+# one stereo out, and per-remote-channel stems need VST3 or CLAP.
+set(antiphon_formats VST3 Standalone)
+if(APPLE)
+    list(APPEND antiphon_formats AU)
+endif()
+
 juce_add_plugin(Antiphon
     COMPANY_NAME "Chalkwalk"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
-    FORMATS VST3 Standalone
+    # These two four-character codes are the plugin's identity to an AU host,
+    # and they must be pinned. Left unset, JUCE defaults the manufacturer to
+    # 'Manu' -- shared with every other JUCE plugin whose author never set one --
+    # and generates the plugin code with string(RANDOM) on every configure
+    # (JUCE/extras/Build/CMake/JUCEUtils.cmake:1763). A fresh `cmake -B build`
+    # would then mint a new Audio Unit, and every Logic session referring to the
+    # old one would break. VST3 and CLAP identify by name and CLAP_ID, which is
+    # why this went unnoticed until AU was added.
+    PLUGIN_MANUFACTURER_CODE Chlk
+    PLUGIN_CODE Antp
+    FORMATS ${antiphon_formats}
     # Tells the host the editor needs key events. Defaults to FALSE, which
     # leaves hosts free to keep the keyboard for their own shortcuts and is one
     # half of why no text field could be typed into inside a DAW.
