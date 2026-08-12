@@ -319,6 +319,12 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       dismissedVoteTarget = pendingVote.target;
       dismissedVoteIsBpm = pendingVote.isBpm;
       pendingVote = {};
+    } else if (keyFromChords.confident) {
+      // Exactly what /key sends, so a suggestion accepted and a key typed are
+      // the same message to everyone else in the room.
+      audioProcessor.ninjamClient.sendChatMessage(
+          MusicalKey::buildTagged(keyFromChords.key));
+      dismissedKeyGuess = keyFromChords.key;
     }
     updateTempoChip();
   };
@@ -334,6 +340,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       dismissedVoteTarget = pendingVote.target;
       dismissedVoteIsBpm = pendingVote.isBpm;
       pendingVote = {};
+    } else if (keyFromChords.confident) {
+      dismissedKeyGuess = keyFromChords.key;
     }
     updateTempoChip();
   };
@@ -353,7 +361,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   chatInput.setMultiLine(false);
   chatInput.setReturnKeyStartsNewLine(false);
   chatInput.setTextToShowWhenEmpty(
-      "Message, or a command: /key Dm, /bpm 120, /bpi 16, /msg user text",
+      "Message, or a command: /key Dm, /chords Am F C G, /bpm 120, /msg user text",
       juce::Colours::grey);
   chatInput.onReturnKey = [this]() {
     juce::String text = chatInput.getText().trim();
@@ -375,6 +383,29 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         } else {
           chatDisplay.insertTextAtCaret("Local: not a key. Try /key Dm, /key "
                                         "F# Dorian, /key Bb major.\n");
+        }
+      } else if (text.startsWithIgnoreCase("/chords ")) {
+        // Degrees are resolved here and only here. What goes on the wire is
+        // the absolute chart, so every bot, and every client that is not
+        // Antiphon, sees chords it already understands.
+        juce::String chart = text.substring(8).trim();
+        if (!chart.startsWithChar('|'))
+          chart = "| " + chart.replace(" ", " | ") + " |";
+
+        Harmony::Chart parsed;
+        if (Harmony::parseChart(chart, parsed)) {
+          audioProcessor.ninjamClient.sendChatMessage(
+              Harmony::chartText(parsed, sessionKey.valid && sessionKey.flat));
+        } else if (!sessionKey.valid) {
+          chatDisplay.insertTextAtCaret(
+              "Local: set a key first, and then degrees will work: /key Dm.\n");
+        } else if (Harmony::parseDegreeChart(chart, sessionKey, parsed)) {
+          audioProcessor.ninjamClient.sendChatMessage(
+              Harmony::chartText(parsed, sessionKey.flat));
+        } else {
+          chatDisplay.insertTextAtCaret(
+              "Local: not chords. Try /chords Am F C G, or in degrees, "
+              "/chords ii V I.\n");
         }
       } else if (text.startsWithIgnoreCase("/topic ") ||
                  text.startsWithIgnoreCase("/kick ") ||
@@ -400,8 +431,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         }
       } else if (text.startsWithChar('/')) {
         chatDisplay.insertTextAtCaret(
-            "Local: unknown command. Try /key, /topic, /kick, /bpm, /bpi, "
-            "/msg, "
+            "Local: unknown command. Try /key, /chords, /topic, /kick, /bpm, "
+            "/bpi, /msg, "
             "/me, or /admin <anything> to pass a command straight to the "
             "server.\n");
       } else {
@@ -568,6 +599,22 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
     }
   }
 
+  // A chart arrives the same way, and from anyone. What the room was told is
+  // what gets drawn -- nothing here invents a progression.
+  if (Harmony::Chart chart; Harmony::parseChart(text, chart)) {
+    const auto flat = sessionKey.valid && sessionKey.flat;
+    sessionChart = std::move(chart);
+    announcer.say("Chords: " + Harmony::chartText(sessionChart, flat), true);
+
+    // Chords are evidence about the key, so this is where the guess is made.
+    // It is offered on the chip and never acted on: a suggestion that set the
+    // key by itself would be a client deciding something the room did not.
+    keyFromChords = Harmony::inferKey(Harmony::flatten(sessionChart));
+    updateTempoChip();
+    resized(); // the header grows the first time a chart appears
+    repaint(headerRepaintArea);
+  }
+
   // The voting system talks through chat, so this is also where a vote is
   // noticed. A settled vote clears the chip rather than offering it again.
   const auto vote = ChatFormat::parseVote(text);
@@ -587,7 +634,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
 
   auto area = getLocalBounds().reduced(10);
-  auto header = area.removeFromTop(80);
+  auto header = area.removeFromTop(headerHeight());
 
   const bool connected = audioProcessor.ninjamClient.isConnected();
   const bool connectFailed = audioProcessor.lastConnectFailed.load();
@@ -619,6 +666,20 @@ void AntiphonEditor::paint(juce::Graphics &g) {
 
   auto row2 = header.removeFromTop(18);
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
+
+  // The chart in roman numerals, at the far end of the row the key is on --
+  // laid out from both ends, as the toolbar is. The absolute names go on the
+  // timeline below, where their position carries the timing; here it is the
+  // shape of the progression, which is what a numeral is for.
+  if (connected && showsChartRow() && sessionKey.valid) {
+    const auto roman = Harmony::romanChartText(sessionChart, sessionKey);
+    if (roman.isNotEmpty()) {
+      g.setColour(juce::Colours::white.withAlpha(0.55f));
+      g.drawFittedText(roman, row2.removeFromRight(320),
+                       juce::Justification::centredRight, 1);
+    }
+  }
+
   if (connected) {
     g.setColour(juce::Colours::white);
     // The running tempo, not the pending one. A server change that has not
@@ -643,6 +704,61 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   }
 
   header.removeFromTop(4);
+
+  // The chart, laid along the same axis as the phase bar below it, so each
+  // chord name sits at the point in the interval where it actually starts and
+  // the teal fill sweeps through them. Position is the information here: it is
+  // what lets you see the next change coming rather than read that it exists.
+  if (showsChartRow()) {
+    auto chartRow = header.removeFromTop(14);
+    const int bpi = audioProcessor.publishedActiveBpi.load();
+    const auto layout = Harmony::layoutChart(sessionChart, bpi);
+    if (!layout.empty()) {
+      const float phase = audioProcessor.publishedPhaseBeats.load();
+      const int nowStep = juce::jlimit(
+          0, layout.steps() - 1, (int)(phase * Harmony::kStepsPerBeat));
+      const int nowChord = layout.stepToChord[(size_t)nowStep];
+
+      g.setFont(juce::FontOptions{}.withHeight(12.0f));
+      int previousRight = chartRow.getX();
+      for (int step = 0; step < layout.steps(); ++step) {
+        if (!Harmony::changesAtStep(layout, step))
+          continue;
+
+        const int idx = layout.stepToChord[(size_t)step];
+        const int x = chartRow.getX() +
+                      (int)((float)step / (float)layout.steps() *
+                            (float)chartRow.getWidth());
+
+        // Where the next change is, so a label never runs into its neighbour.
+        int nextStep = layout.steps();
+        for (int s = step + 1; s < layout.steps(); ++s)
+          if (Harmony::changesAtStep(layout, s)) {
+            nextStep = s;
+            break;
+          }
+        const int room = (int)((float)(nextStep - step) / (float)layout.steps() *
+                               (float)chartRow.getWidth());
+
+        const bool isNow = idx == nowChord;
+        // A label that will not fit is dropped rather than overlapped -- except
+        // the one sounding now, which is the one you are actually reading.
+        if (x < previousRight && !isNow)
+          continue;
+
+        g.setColour(isNow ? teal : juce::Colours::white.withAlpha(0.45f));
+        const auto name = Harmony::chordName(layout.chords[(size_t)idx],
+                                             sessionKey.valid && sessionKey.flat);
+        g.drawFittedText(name,
+                         juce::Rectangle<int>(x, chartRow.getY(),
+                                              juce::jmax(24, room - 4),
+                                              chartRow.getHeight()),
+                         juce::Justification::centredLeft, 1);
+        previousRight = x + juce::jmin(room, 6 + name.length() * 7);
+      }
+    }
+    header.removeFromTop(2);
+  }
 
   auto phaseBar = header.removeFromTop(8);
   g.setColour(juce::Colour(0xff1a1a2e));
@@ -764,7 +880,7 @@ void AntiphonEditor::resized() {
   auto area = getLocalBounds().reduced(10);
   // Covers the painted header exactly, so the spoken status and the drawn one
   // describe the same region of the window.
-  const auto header = area.removeFromTop(80);
+  const auto header = area.removeFromTop(headerHeight());
   statusReadout.setBounds(header);
   // What the 30 Hz tick repaints: the header band plus the section-label row
   // just below it, both of which paint() draws.
@@ -1126,6 +1242,20 @@ void AntiphonEditor::updateRoomMembers() {
   }
 }
 
+bool AntiphonEditor::showsChartRow() const {
+  // Only ever a chart somebody announced. In a jam, drawing a progression the
+  // room did not agree to would be a lie -- the other players are not playing
+  // it -- and the practice room's band is the one case where a default chart
+  // is the truth, which is why that case waits for the room to be wired in.
+  return audioProcessor.ninjamClient.isConnected() && !sessionChart.empty() &&
+         audioProcessor.publishedActiveBpi.load() > 0;
+}
+
+int AntiphonEditor::headerHeight() const {
+  // 14 for the labels and 2 to separate them from the bar they belong to.
+  return showsChartRow() ? 96 : 80;
+}
+
 void AntiphonEditor::setChipVisible(bool shouldShow) {
   if (chipLabel.isVisible() == shouldShow)
     return;
@@ -1157,6 +1287,23 @@ void AntiphonEditor::updateTempoChip() {
     chipLabel.setTitle(t);
     chipActionButton.setButtonText("Vote");
     chipActionButton.setDescription("Add your vote for " + t);
+    setChipVisible(true);
+    return;
+  }
+
+  // Then a key the chords imply but nobody has declared. Below a live vote,
+  // because a vote is a decision in progress and this is only an observation;
+  // above the DAW tempo, because it is about the music rather than the setup.
+  if (keyFromChords.confident && keyFromChords.key != sessionKey &&
+      keyFromChords.key != dismissedKeyGuess) {
+    chipDawBpm = 0;
+    const juce::String t = "These chords look like " +
+                           MusicalKey::displayName(keyFromChords.key);
+    chipLabel.setText(t, juce::dontSendNotification);
+    chipLabel.setTitle(t);
+    chipActionButton.setButtonText("Set key");
+    chipActionButton.setDescription("Tell the room the key is " +
+                                    MusicalKey::displayName(keyFromChords.key));
     setChipVisible(true);
     return;
   }
@@ -1215,7 +1362,7 @@ void AntiphonEditor::setChatConnectedState(bool connected) {
                       juce::Colour(AntiphonTheme::kDisabledEdge));
   chatInput.setTextToShowWhenEmpty(
       connected
-          ? "Message, or a command: /key Dm, /bpm 120, /bpi 16, /msg user text"
+          ? "Message, or a command: /key Dm, /chords Am F C G, /bpm 120, /msg user text"
           : "Not connected -- join a server to chat",
       juce::Colour(connected ? 0xff8a8a8a : AntiphonTheme::kDisabledText));
   chatInput.repaint();
@@ -1227,9 +1374,13 @@ void AntiphonEditor::onConnected() {
 }
 
 void AntiphonEditor::onDisconnected(const juce::String &) {
-  // The key belongs to the session, not to us.
+  // The key and the chords belong to the session, not to us.
   sessionKey = {};
+  sessionChart.clear();
+  keyFromChords = {};
+  dismissedKeyGuess = {};
   setChatConnectedState(false);
+  resized(); // the header gives the chart row back
 }
 
 void AntiphonEditor::updateToolbarStates() {
@@ -1386,6 +1537,18 @@ bool AntiphonEditor::updateStatusReadout() {
       << (audioProcessor.lastUsername.isNotEmpty() ? audioProcessor.lastUsername
                                                    : juce::String("anonymous"))
       << ". " << bpm << " BPM, " << bpi << " beats per interval. ";
+
+    // The key and the chart belong in the spoken status because they are drawn
+    // in the header: a reader should get what a viewer gets. The chord SOUNDING
+    // is deliberately not here -- it changes several times a bar, and reading
+    // state that moves on a timer is exactly what PRINCIPLES 11 refuses.
+    if (sessionKey.valid)
+      s << "Key " << MusicalKey::displayName(sessionKey) << ". ";
+    if (showsChartRow()) {
+      s << "Chords " << Harmony::chartText(sessionChart, sessionKey.flat)
+        << ". ";
+    }
+
     s << (audioProcessor.isStandaloneApp()
               ? juce::String("Running.")
               : juce::String(SyncState::describe(sync)) + ".");

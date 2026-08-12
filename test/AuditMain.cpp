@@ -186,21 +186,6 @@ int main() {
     results.push_back(auditState("audio device trouble view", {&trouble}));
   }
 
-  // A state that examines exactly what the previous one did has not been
-  // reached, and its clean verdict means nothing. Fail loudly rather than
-  // bank it.
-  for (size_t i = 1; i < results.size(); ++i) {
-    if (results[i].coverage.nodes == results[i - 1].coverage.nodes &&
-        results[i].coverage.roots == results[i - 1].coverage.roots) {
-      std::fprintf(stderr,
-                   "audit: state '%s' examined the same %d component(s) as "
-                   "'%s' -- it was never reached\n",
-                   results[i].name.toRawUTF8(), results[i].coverage.nodes,
-                   results[i - 1].name.toRawUTF8());
-      return 1;
-    }
-  }
-
   // Remote player strips do not exist until somebody joins, so the whole
   // remote half of the surface -- the per-channel faders, mutes, solos, Recv
   // buttons and bus dropdowns -- had never been audited at all. The loopback
@@ -227,6 +212,17 @@ int main() {
     results.push_back(
         auditState("two remote players, three channels", {editor}));
 
+    // A chart announced in chat grows the header by a row and puts the key
+    // suggestion on the chip, so it is a surface of its own -- and an
+    // unaudited state is how the connect dialog went unchecked for its whole
+    // life. The chart goes in as an ordinary chat message because that is how
+    // one really arrives.
+    server.sendChat("MSG", "guitarist", "| Dm7 | G7 | Cmaj7 |");
+    pump(400);
+    settle(*editor);
+
+    results.push_back(auditState("a chart announced in chat", {editor}));
+
     // Traced line by line: the audit has hung somewhere in this teardown on CI
     // and every call in it is meant to be bounded, so the next hang needs to
     // name the one that is not. See ROADMAP.md.
@@ -248,6 +244,29 @@ int main() {
 
   std::fprintf(stderr, "audit: teardown complete, reporting\n");
   std::fflush(stderr);
+
+  // A state that examines exactly what the previous one did has not been
+  // reached, and its clean verdict means nothing. Fail loudly rather than bank
+  // it.
+  //
+  // Keyboard reach is part of the comparison, not just the component count: a
+  // state whose difference is which controls are OFFERED rather than which
+  // exist -- a chip appearing, say -- has the same tree with two more stops in
+  // it. Counting only nodes would call that state unreached when it is the
+  // whole point of it.
+  for (size_t i = 1; i < results.size(); ++i) {
+    const auto &now = results[i].coverage;
+    const auto &before = results[i - 1].coverage;
+    if (now.nodes == before.nodes && now.roots == before.roots &&
+        now.focusable == before.focusable) {
+      std::fprintf(stderr,
+                   "audit: state '%s' examined the same %d component(s) as "
+                   "'%s' -- it was never reached\n",
+                   results[i].name.toRawUTF8(), now.nodes,
+                   results[i - 1].name.toRawUTF8());
+      return 1;
+    }
+  }
 
   int total = 0;
   for (const auto &r : results) {
