@@ -142,32 +142,132 @@ once, and in a quiet room they say nothing at all.
 
 ---
 
-## 5. Being addressed
+## 5. Being addressed, and understanding what was said
 
-Keyword sets, not parsing. A message is "addressed" if it is a private message,
-or if it is room chat containing the bot's name.
+A message is "addressed" if it is a private message, or room chat containing the
+bot's name.
 
-| You ask | It answers with |
+What it should do with it is the hard part of this document. Exact-match command
+words are what makes a rule-based bot feel like talking to a wall: they work
+when you happen to type the magic phrase and fail flatly otherwise, which
+teaches you that the thing is a vending machine. The goal is not general
+conversation -- it is that **within this narrow domain, indirect phrasing
+works**, and hitting the fallback is rare enough to be measured as a defect.
+
+### The intents
+
+Nine, and they are the whole surface:
+
+| Intent | Answers with |
 |---|---|
-| what / playing / doing | its figure and how it sits: "four on the beat, accents on 1 and 5" |
-| sound / tone / kit | its character name: "deep kick, soft beater" |
-| key | the key it is following, and whether it was told or defaulted |
-| chords / chart | the chart it is following, in letters and degrees |
-| tempo / bpm / bpi | what it has, and that it takes them from the server |
-| shake / new / again | rerolls, and says what changed |
-| quiet / hush | stops all unprompted speech until told otherwise |
-| louder / talk | resumes |
-| help | one line: how to make it leave, and that it takes `quiet` |
-| part / leave / exit / stop | leaves, as now |
-| anything else | one honest line, always the same one |
+| `DESCRIBE_PART` | its figure and how it sits: "five over eight, accents on 1 and 4" |
+| `DESCRIBE_SOUND` | its character: "deep kick, soft beater" |
+| `REPORT_KEY` | the key it follows, and whether it was told or defaulted |
+| `REPORT_CHART` | the chart, in letters and degrees |
+| `REPORT_TEMPO` | tempo and interval length, and that the server owns them |
+| `RESHUFFLE` | rerolls, and says what changed |
+| `SET_QUIET` / `SET_LOUD` | stops or resumes unprompted speech |
+| `EXPLAIN_SELF` | what it is and how to remove it |
+| `LEAVE` | parts, as now |
 
-That last row is the design's spine. The fallback is something like:
+Slots ride along where they make sense: a key, a chord chart, a tempo, an
+instrument name.
 
-> `Kit [bot]: i only know about the music. try "what are you playing", "key",
-> "chords", "shake", "quiet", or "part".`
+### The pipeline
 
-It is not clever, it does not pretend, and it teaches the vocabulary at the exact
-moment somebody is looking for it.
+Seven cheap stages, each independently testable, none of them machine learning
+and none of them needing a data file:
+
+1. **Extract slots from the raw text first**, before anything is lowercased --
+   `MusicalKey::parseName` and `Harmony::parseChart` already do this well, and
+   they need the capitals, since `Am` is a chord and `am` is a verb. This is a
+   real advantage of the domain: the nouns already have robust parsers.
+2. **Normalise**: lowercase, strip punctuation, collapse whitespace, drop a
+   leading vocative (`kit,` / `hey kit` / `@kit`), expand contractions
+   (`what're`, `whats`, `dont`), and drop politeness and filler -- `please`,
+   `sorry`, `just`, `quickly`, `mate`. Half of "indirect" phrasing is padding,
+   and removing it turns a hard sentence into an easy one.
+3. **Stem**, so that `playing`, `plays`, `played` and `play` are one token. The
+   **Porter stemmer** (1980) is the right tool: about 120 lines, purely
+   algorithmic, no dictionary, and specified precisely enough to test against
+   its own published vectors. It generalises to words nobody put in the lexicon,
+   which a hand-written suffix list does not.
+4. **Repair typos**: any token that matches nothing gets a **Damerau-Levenshtein**
+   comparison against the lexicon, with the threshold scaled to length -- one
+   edit up to five characters, two beyond. `chrods`, `tepmo`, `waht` all land.
+   About twenty-five lines.
+5. **Map tokens to concepts**. The lexicon is where the robustness actually
+   lives: perhaps 150 surface words onto twenty concepts. `part`, `pattern`,
+   `groove`, `beat`, `figure`, `rhythm`, `line`, `doing`, `playing` all mean
+   `PART`. `sound`, `tone`, `timbre`, `kit`, `patch`, `voice` all mean `TONE`.
+   This table is the single highest-value artefact in the feature and it is
+   plain data.
+6. **Read the shape of the sentence**, which is where the cheap grammar goes.
+   Not a part-of-speech tagger -- that needs a lexicon or a model, and is not
+   worth it -- but four flags that carry most of the same information:
+   - **question**: leading wh-word, leading auxiliary (`are`, `is`, `do`, `can`,
+     `could`, `will`), or a trailing `?`
+   - **imperative**: leading known verb with no subject
+   - **negation**: `not`, `n't`, `no`, `never`, `stop` -- and this one matters,
+     because "don't be quiet" and "be quiet" share every content word
+   - **second person**: `you`, `your`, `u`, `ur`
+   
+   "could you tell me what you're playing" reduces to `{QUESTION, YOU, PART}`,
+   which is the same as "what are you playing" and the same as "whats ur groove".
+7. **Score the intents and pick, or decline to.** Each intent is a small weighted
+   bag: concepts that count for it, concepts that count against it, and a bonus
+   for the right sentence shape. Best score wins **if it clears the runner-up by
+   a margin**.
+
+### The three outcomes, and why the middle one matters most
+
+That last step is deliberately the same shape as `Harmony::inferKey`: score the
+candidates, require a margin over the second best, and when the margin is not
+there, say so rather than guess. One idea, used twice, and the second use gets
+the first one's reasoning for free.
+
+- **Confident** -- answer.
+- **Ambiguous** -- two intents close together. **Ask a narrow question.** This is
+  the single biggest difference between a bot that feels alive and one that
+  feels like a wall, and it is nearly free: the bot already knows which two
+  things it was torn between, so it can name them.
+  > `you: tell me about your kick`
+  > `Kit [bot]: the part or the sound? "what are you playing" or "what do you sound like".`
+- **Nothing** -- below the floor. Even here it should not be a shrug. Report the
+  concepts it *did* recognise, because that turns a dead end into a hint:
+  > `you: is the snare a bit much on the turnaround`
+  > `Kit [bot]: i caught "snare" but not the question. i can tell you my part, my sound, the key, the chords or the tempo -- and i cannot hear you, so i am no judge of what is too much.`
+
+The last clause of that is worth keeping: it is honest, it is the answer to a
+whole class of questions people will reasonably ask, and it says the limitation
+once rather than pretending.
+
+### One turn of memory
+
+Elliptical follow-ups are most of what makes conversation feel connected, and
+they cost almost nothing: remember the last intent and slot per conversant, for
+a few turns.
+
+> `you: what key are we in`
+> `Bass [bot]: D minor, as announced in chat.`
+> `you: and the chords?`
+> `Bass [bot]: | Dm | Bb | F | C | -- i VI III VII.`
+
+`and the chords?` has no verb, no subject and no question word. It resolves
+because the previous turn established that we are talking about the room's
+harmony. Two fields of state.
+
+### What is deliberately not built
+
+- **A part-of-speech tagger or dependency parser.** Needs a lexicon or a model,
+  and the four flags above capture what we would use it for.
+- **WordNet or embeddings.** A data file, or arithmetic that is machine learning
+  wearing a hat. The 150-word lexicon is smaller, faster and reviewable.
+- **ELIZA-style pattern reflection.** The thing that feels alive for three
+  exchanges. It is the anti-pattern this whole section exists to avoid.
+- **Anything that learns.** Determinism is what makes the transcript testable.
+
+Total: roughly 400 lines of mechanism, most of it table.
 
 ---
 
@@ -197,26 +297,44 @@ not getting here. See §9.
 
 ---
 
-## 7. The teaching thread
+## 7. The tutor is a fifth bot
 
-The tutorial bot, as a special case rather than a separate creature: a `teach`
-cue is one that fires **once ever per room**, in a fixed order, gated on
-something the learner has actually done.
+**Decided: teaching lives on its own bot, and the four players never do it.**
+They are playing the changes; that is their whole job, and a drummer who
+interrupts to explain the interval model is not a drummer.
 
-1. On the first interval you transmit: what just happened, and why nobody heard
+So there is a fifth member of the room with no instrument, no channel and no
+audio at all -- it joins, teaches, and leaves. Three properties follow, and each
+is worth more than it costs:
+
+- **It can be absent.** A room started by somebody who has done this before
+  simply has four bots. Nothing needs to be silenced.
+- **It finishes.** When the thread is done the tutor parts, of its own accord,
+  and the room is left as a band. A tutorial that leaves when you have got it is
+  a rare and good thing.
+- **It is not a player, so it may speak more.** The budget that keeps the
+  instrument bots quiet is about not drowning a jam; the tutor's whole purpose
+  is speech, and it is finite by construction.
+
+The thread: fires **once each, in order**, gated on something you have actually
+done rather than on a timer.
+
+1. On joining: what the room is, and that `part` sends any bot home.
+2. On the first interval you play: what just happened, and why nobody has heard
    it yet.
-2. On the second: why you now hear the band a bar behind you, and that this is
-   the form rather than a fault.
-3. When you first set a key: that the band followed it, and that chords work the
+3. On the second: why the band is a bar behind you, and that this is the form
+   rather than a fault.
+4. When you first set a key: that the band followed it, and that chords work the
    same way.
-4. When you first shake: that the parts changed but the chart did not.
+5. When you first shake: that the parts changed but the chart did not.
+6. Then: "that is the whole of it -- i'll get out of the way. the band will keep
+   playing." And it parts.
 
-Staged, unskippable-in-order, and finished after four lines. A bot that teaches
-the interval model in four lines and then shuts up forever is worth having; one
-with twenty tips is a wizard nobody reads.
+Six lines, and gone. A wizard with twenty tips is one nobody reads.
 
-Open question, flagged below: whether teaching belongs on the instrument bots at
-all, or on a fifth non-playing bot that leaves when it is done.
+Whether it can confirm it hears you before telling you everyone else can -- step
+2 above, honestly the weakest of the six without ears -- is the one place a
+presence-only subscription would earn its keep. Noted in §3, not proposed here.
 
 ---
 
@@ -283,17 +401,17 @@ The most reviewable part. If these read as annoying, the design is wrong.
 *** Bass [bot] joined
 *** Keys [bot] joined
 *** Lead [bot] joined
-Kit [bot]: kit here -- deep, soft beater. "part" sends me home, "quiet" shuts me up.
+*** Tutor [bot] joined
+Tutor [bot]: practice room. four players, all bots. say "part" to any of them
+             and it goes home.
 you: /key Dm
 ~~ [key: D minor]
 Bass [bot]: got it, D minor.
-you: what are you playing
-Kit [bot]: five pulses over eight, accents on 1 and 4. fill every fourth interval.
-Bass [bot]: roots, mostly. i land on every change and follow the kick otherwise.
 ```
 
-Four bots, four lines in the first minute, and every one of them either
-instructional or asked for. Note that only the bass acknowledged the key.
+Five bots, two lines in the first minute, and only the bass acknowledged the
+key. The other three heard it and changed what they were playing without
+mentioning it, which is what a band does.
 
 **Twenty minutes later, playing**
 
@@ -303,20 +421,53 @@ instructional or asked for. Note that only the bass acknowledged the key.
 
 That is the design working.
 
-**Getting it wrong**
+**Indirect phrasing, which is the point of §5**
 
 ```
-you: | Am | F | C | G
-Keys [bot]: i can read "| Am | F | C | G |" -- that one is missing its last bar.
+you: hey kit, whats ur groove?
+Kit [bot]: five over eight, accents on 1 and 4. fill every fourth interval.
+you: could you tell me what key we're supposed to be in
+Bass [bot]: D minor, as announced in chat.
+you: and the chords?
+Bass [bot]: | Dm | Bb | F | C | -- i VI III VII.
+you: bass, giv me somthing else
+Bass [bot]: shook. four onsets now, off the kick rather than on it.
+```
+
+Not one of those is a command word. Vocative and filler stripped, `ur` expanded,
+`groove` and `whats` mapped, `giv`/`somthing` repaired, `and the chords?`
+resolved from the previous turn.
+
+**When it is not sure, and when it is lost**
+
+```
+you: tell me about your kick
+Kit [bot]: the part or the sound? "what are you playing", or "what do you sound like".
+you: the sound
+Kit [bot]: deep kick, soft beater. tuned low, and the beater is soft enough to
+           lose the click.
+you: is the snare a bit much on the turnaround?
+Kit [bot]: i caught "snare" but not the question. i can tell you my part, my
+           sound, the key, the chords or the tempo -- and i cannot hear you, so
+           i am no judge of what is too much.
 you: thanks!
-Keys [bot]: i only know about the music. try "what are you playing", "key",
-            "chords", "shake", "quiet", or "part".
+(nothing)
 ```
 
-The second reply is deliberately flat. It is the honest answer, it is the same
-answer every time, and after you have seen it once you know exactly what the bot
-is. I would rather that than a bot that says "you're welcome!" and thereby
-claims to be something it is not.
+Three things there. The clarification names both candidates rather than
+shrugging. The failure reports what it *did* recognise and volunteers the one
+limitation that makes the question unanswerable in principle. And "thanks!" gets
+**silence, not a fallback** -- the fallback is for something that looks like a
+request, and courtesy is not a request. A bot that answers "thanks" with a menu
+is the wall this design is trying not to be.
+
+**The tutor finishing**
+
+```
+Tutor [bot]: that's the whole of it -- i'll get out of the way. the band will
+             keep playing.
+*** Tutor [bot] left
+```
 
 **In a real room, uninvited**
 
@@ -343,9 +494,27 @@ needs a human to judge.
   it, or the default will rot.
 - **`quiet` is an assertion**: after `quiet`, no cue of `notice` class fires,
   ever, for any bot.
-- **The fallback is an assertion**: a corpus of unmatched lines -- greetings,
-  questions, insults, empty strings, other bots' names -- all produce exactly
-  the one fallback line and never anything else.
+- **Understanding is a corpus and a number.** The claim in §5 is that indirect
+  phrasing works, and a claim like that is worth nothing without a measurement
+  (`PRINCIPLES §5`). So: a file of a few hundred phrasings paired with the
+  intent each should resolve to -- direct, indirect, elliptical, misspelled,
+  negated, padded with politeness -- and the test asserts both the resolution
+  and the **fallback rate**, which is the number to drive down and to quote.
+  Something like:
+
+  ```
+  320 phrasings, 9 intents
+  resolved 308  clarified 7  fell back 5   (fallback 1.6%)
+  ```
+
+  A second corpus of lines that must **not** resolve -- greetings, chat between
+  humans, other bots' names, insults, empty strings -- asserts the opposite: no
+  intent fires, and nothing is invented. Both corpora are plain text a
+  non-programmer can extend, and extending them when a real phrasing misses is
+  how the lexicon grows.
+- **Each stage is testable alone**: the Porter stemmer against its published
+  vectors, the edit distance against known pairs, the normaliser against
+  contraction and vocative cases, the shape flags against negation.
 - **No bot answers room chat that is not addressed to it**, which is the current
   behaviour and must survive.
 
@@ -353,8 +522,33 @@ needs a human to judge.
 
 ## 12. Shape and cost
 
-A new JUCE-light module, `src/BotChat.{h,cpp}`, holding the cue table, the
-budget, the keyword matching and the templates as pure functions:
+Two JUCE-light modules, split where the seam naturally is: understanding what
+was said has nothing to do with deciding whether to speak, and each is much
+easier to test alone.
+
+**`src/BotLanguage.{h,cpp}`** -- text in, intent out, and nothing else. No
+knowledge of bots, rooms or music beyond the slot parsers it borrows.
+
+```cpp
+enum class Intent { None, DescribePart, DescribeSound, ReportKey, ReportChart,
+                    ReportTempo, Reshuffle, SetQuiet, SetLoud, ExplainSelf,
+                    Leave };
+
+struct Reading {
+  Intent intent = Intent::None;
+  Intent alsoConsidered = Intent::None; // set when it wants to clarify
+  double margin = 0.0;
+  bool looksLikeRequest = false;        // courtesy gets silence, not a fallback
+  std::vector<Concept> recognised;      // what to name when it gives up
+  MusicalKey::Key key;                  // slots, when present
+  Harmony::Chart chart;
+};
+
+Reading read(const juce::String &text, const Reading &previousTurn);
+```
+
+**`src/BotChat.{h,cpp}`** -- cues, guards, budgets and templates, deciding what
+to say and whether to say it at all.
 
 ```cpp
 struct Observation { /* what the bot knows, as plain data */ };
@@ -364,25 +558,32 @@ std::vector<Utterance> respond(const Event &, const Observation &,
                                BudgetState &, std::uint32_t seed);
 ```
 
-`PracticeBot` calls it from `onChatMessage` and once per interval, and sends
-whatever comes back. Everything decidable is decided in a function with no
-socket, no clock and no state beyond what it is handed -- so the tests above are
-ordinary unit tests, and the same module is what a future standalone bot runner
-would use.
+`PracticeBot` calls `respond` from `onChatMessage` and once per interval, and
+sends back whatever it returns. Everything decidable is decided in functions
+with no socket, no clock and no state beyond what they are handed, so the tests
+are ordinary unit tests and the same modules serve a standalone bot runner.
 
-Rough size: 200 lines of cue table and templates, 100 of matching and budget,
-250 of tests. The presence-only subscription in §3, if wanted, is a separate and
-smaller change to `NinjamClient`.
+The tutor is a `PracticeBot` with no voice and no channel -- `setRender` is
+already optional, and "silence unless a render is set" is documented as
+deliberate -- plus its own cue table and a `part()` at the end of the thread.
+
+Rough size:
+
+| | lines |
+|---|---|
+| `BotLanguage`: normaliser, stemmer, edit distance, shape flags, scorer | ~400 |
+| the lexicon and the intent table (plain data) | ~200 |
+| `BotChat`: cues, guards, budgets, templates | ~300 |
+| the tutor's thread | ~80 |
+| tests, including the two corpora | ~500 |
 
 ---
 
 ## 13. Open questions
 
-1. **Does teaching live on the instrument bots or on a fifth bot that leaves
-   when it is finished?** A dedicated tutor is cleaner and can be absent from a
-   room where it is not wanted; four bots that occasionally teach is fewer
-   moving parts. I lean to the fifth bot, because "it leaves when done" is a
-   good property and instrument bots should stay about their instruments.
+1. ~~Does teaching live on the instrument bots or a fifth bot?~~ **Decided: a
+   fifth bot, which leaves when it is finished.** See §7. The players play the
+   changes.
 2. ~~Is the presence subscription worth building first?~~ **Decided: no.** The
    bots interact in chat and do not listen. Musical interaction is future work,
    and the only presence question worth reopening later is a tutorial bot
@@ -396,6 +597,19 @@ smaller change to `NinjamClient`.
    is practice-only and replies work anywhere. The alternative -- fully silent
    outside practice, even when asked -- is more conservative and I could be
    argued into it.
-6. **Is the flat fallback too cold?** It is the deliberate choice in §5 and the
-   one most likely to be wrong. A warmer single line would still be honest; I
-   just do not want two.
+6. ~~Is the flat fallback too cold?~~ **Decided: yes, and it is replaced.** §5
+   is now three outcomes rather than two -- answer, clarify, or report what was
+   recognised -- with courtesy getting silence and the fallback rate treated as
+   a defect to measure and drive down.
+
+   What is still open underneath it: **how far the lexicon should reach before
+   it is over-engineered.** 150 words and nine intents is my estimate, and the
+   corpus is what would tell us. My instinct is that the first fifty words buy
+   most of it and the last fifty buy very little, so the honest plan is to build
+   the pipeline, write two hundred phrasings the way a person would actually
+   type them, and let the fallback rate say when to stop.
+7. **Does the tutor need to know you are there?** Step 2 of its thread -- "what
+   just happened when you played" -- is weak without ears. It could be reworded
+   to fire on a timer instead, at the cost of telling you something that might
+   not have happened. This is the only place in the design where the deafness
+   actually hurts.
