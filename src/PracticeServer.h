@@ -88,13 +88,19 @@ private:
   // Control frames are written blocking: they are small, they always fit, and
   // losing one desynchronises the room. Audio frames go through relayAudio,
   // which drops rather than blocks -- see the comment there.
+  // The Locked suffix means the caller already holds clientsMutex. The frame
+  // handler runs with it held and needs to relay from inside that, so these
+  // must not take it again: juce::CriticalSection is recursive and would
+  // permit it, but a lock whose depth depends on the call path is a lock
+  // nobody can reason about -- and TSan does not model the recursion, so it
+  // reports every such acquisition.
   bool sendTo(Client &c, juce::uint8 type, const void *data, int size);
-  void relayAudio(const Client &from, int channelIndex, juce::uint8 type,
-                  const void *data, int size);
+  void relayAudioLocked(const Client &from, int channelIndex, juce::uint8 type,
+                        const void *data, int size);
   static bool subscribed(const Client &to, const juce::String &user,
                          int channelIndex);
-  void broadcastExcept(const Client *skip, juce::uint8 type, const void *data,
-                       int size);
+  void broadcastExceptLocked(const Client *skip, juce::uint8 type,
+                             const void *data, int size);
 
   void sendRoster(Client &to);
   void broadcastChannels(const juce::String &username,

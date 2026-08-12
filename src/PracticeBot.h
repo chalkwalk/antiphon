@@ -99,6 +99,9 @@ private:
   // private messages take the same commands.
   bool handleBandCommand(const juce::String &text);
 
+  // False once the bot has parted because its owner left.
+  bool checkOwnerStillHere();
+
   juce::String botName;
   juce::StringArray channels;
   juce::String owner;

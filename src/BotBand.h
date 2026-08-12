@@ -18,7 +18,17 @@
 
 namespace BotBand {
 
-enum class Voice { Drums, Bass, Keys };
+// A full rhythm section plus a lead, so any one part can be muted or sent home
+// and played by a person instead. That is the point of the band: it supports a
+// drummer or a rhythm guitarist as readily as it supports someone soloing.
+enum class Voice { Drums, Bass, Keys, Lead };
+
+inline constexpr int kNumVoices = 4;
+
+// The shape a melodic phrase traces across an interval. Ported from
+// chalkwalk/seq_play src/core/MelodyGen.h, whose spine is worth having: pitch
+// follows a contour, and metric strength decides which notes may sit where.
+enum class Contour { Rise, Fall, Arch, Walk };
 
 const char *voiceName(Voice v);
 
@@ -51,6 +61,21 @@ struct Figure {
 };
 
 Figure figureFor(Voice voice, const Settings &s);
+
+// How strongly a beat is stressed by the metre: the downbeat of the interval
+// is highest, then the halves, then the quarters, then the beat, and an
+// off-beat subdivision lowest.
+//
+// This is the spine of the melodic writing, and the reason it sounds composed
+// rather than sprinkled: strong beats take strong notes -- chord tones, longer
+// -- and weak beats take passing notes. `step` is in eighths, so twice the
+// beat resolution.
+int metricStrength(int step, int bpi);
+
+// The lead's line for one interval, as MIDI notes with -1 for a rest, one
+// entry per eighth. Exposed so the note choices can be asserted exactly,
+// where the audio can only be measured.
+std::vector<int> leadLine(const Settings &s, int intervalIndex);
 
 // Renders one interval into `out`, which must hold `numSamples` frames and is
 // added to rather than overwritten. Mono: the caller decides how it is placed.

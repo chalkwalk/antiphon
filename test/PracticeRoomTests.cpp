@@ -256,16 +256,19 @@ public:
   }
 
   void runBandFollowingTests() {
-    beginTest("the room brings three voices, each on its own channel");
+    beginTest("the room brings a full band, each voice on its own channel");
     {
+      // A rhythm section and a lead, so any one part can be muted or sent home
+      // and played by a person instead.
       PracticeRoom room;
       expect(room.start(testConfig()));
-      expectEquals(room.botCount(), 3);
+      expectEquals(room.botCount(), BotBand::kNumVoices);
 
       const auto names = room.botNames();
       expect(names.contains("Kit [bot]"));
       expect(names.contains("Bass [bot]"));
       expect(names.contains("Keys [bot]"));
+      expect(names.contains("Lead [bot]"));
     }
 
     beginTest("shake changes the figures");
@@ -370,7 +373,7 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] { return room.botCount() == 3; }));
+      expect(waitUntil([&] { return room.botCount() == BotBand::kNumVoices; }));
 
       room.practiceServer().setConfig(96, 12);
 

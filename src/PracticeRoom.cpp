@@ -33,9 +33,9 @@ bool PracticeRoom::start(const Config &config) {
     juce::ScopedLock sl(botsMutex);
     bots.clear();
 
-    const BotBand::Voice voices[] = {BotBand::Voice::Drums,
-                                     BotBand::Voice::Bass,
-                                     BotBand::Voice::Keys};
+    const BotBand::Voice voices[] = {
+        BotBand::Voice::Drums, BotBand::Voice::Bass, BotBand::Voice::Keys,
+        BotBand::Voice::Lead};
     std::uint32_t seed = cfg.seed;
     for (auto voice : voices) {
       const juce::String instrument = BotBand::voiceName(voice);
@@ -69,7 +69,21 @@ bool PracticeRoom::start(const Config &config) {
 
 void PracticeRoom::stop() {
   running = false;
-  conductor.stopThread(2000);
+
+  // The return is checked, and the budget is generous, because a conductor
+  // that misses the deadline is one whose bots are about to be destroyed
+  // underneath it -- and rendering a whole interval for four bots means four
+  // Vorbis encodes, which under a sanitiser is not fast. run() checks for the
+  // exit between bots so it can leave in the middle of that, but the last one
+  // still has to finish.
+  //
+  // FakeNinjamServer carries the same check for the same reason: ignoring it
+  // once cost this project a day of CI.
+  if (!conductor.stopThread(5000)) {
+    std::fprintf(stderr, "PracticeRoom: conductor did not exit within 5000ms; "
+                         "tearing down the band now is unsafe\n");
+    std::fflush(stderr);
+  }
 
   {
     juce::ScopedLock sl(botsMutex);
@@ -114,10 +128,18 @@ void PracticeRoom::reapPartedBots() {
       bots.erase(bots.begin() + i);
 }
 
-void PracticeRoom::renderOneInterval(int intervalIndex) {
+void PracticeRoom::renderOneInterval(int intervalIndex,
+                                     const std::function<bool()> &shouldStop) {
   juce::ScopedLock sl(botsMutex);
-  for (auto &b : bots)
+  for (auto &b : bots) {
+    // Between bots, not just between intervals. One interval of four bots is
+    // four Vorbis encodes of several seconds of audio each; without a check in
+    // here, stop() waits for all of them however long that takes, and the
+    // budget it allows is not the one that matters.
+    if (shouldStop && shouldStop())
+      return;
     b->renderInterval(intervalSamples, intervalIndex);
+  }
 }
 
 void PracticeRoom::Conductor::run() {
@@ -142,7 +164,9 @@ void PracticeRoom::Conductor::run() {
     }
 
     room.reapPartedBots();
-    room.renderOneInterval(intervalIndex++);
+    room.renderOneInterval(intervalIndex++, [this] {
+      return threadShouldExit() || !room.running.load();
+    });
 
     nextDue += intervalMs;
 
