@@ -444,10 +444,16 @@ checklist.** Chat only: the bots do not listen, and musical interaction is
 separate future work. What makes a bot feel alive here is precision and
 restraint rather than conversation.
 
-- [ ] Decide the open questions at the end of `docs/BOT-CHAT.md`, in particular
-      whether teaching lives on a fifth bot that leaves when it is done.
+- [ ] `src/BotLanguage.{h,cpp}`: normalise, stem, repair typos, map to concepts,
+      read the sentence's shape, score the intents. Indirect phrasing has to
+      work or the bots feel like a vending machine.
+- [ ] A corpus of a few hundred phrasings and their intents, and a second of
+      lines that must resolve to nothing. The **fallback rate** is the number to
+      quote and drive down.
 - [ ] `src/BotChat.{h,cpp}` as pure functions over what a bot knows, so a seed
       and a script of events give a byte-identical transcript.
+- [ ] A fifth, instrument-less tutor bot that teaches six lines and then parts.
+      The players play the changes; they do not teach.
 - [ ] The budget, and a test that asserts a hundred events produce at most N
       lines. The test that keeps it from becoming annoying.
 - [ ] `quiet`, and unprompted speech off outside the practice room.
