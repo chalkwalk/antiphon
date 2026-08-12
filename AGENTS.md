@@ -28,6 +28,8 @@ Authoritative docs (read these before designing anything new):
 - **`docs/PARITY.md`** -- what has been verified against the reference client,
   with the measured numbers.
 - **`docs/ACCESSIBILITY.md`** -- the accessibility story, honestly.
+- **`docs/BOT-CHAT.md`** -- a proposal, not a description: what the practice
+  room's bots would say and what they would never say. Nothing in it is built.
 - **`test/README.md`** -- how to run every test layer.
 
 Ordering for any new work: **PRINCIPLES -> DESIGN -> ROADMAP**. If a proposal
