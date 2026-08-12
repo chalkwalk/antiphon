@@ -238,4 +238,25 @@ juce::String scaleNotes(const Key &key) {
   return notes.joinIntoString(" ");
 }
 
+const int *scaleSteps(Mode mode) { return modeSteps(mode); }
+
+int degreeToMidi(const Key &key, int degree, int octave) {
+  if (!key.valid)
+    return -1;
+
+  // Degrees run on past the seventh into the octaves above, and below zero into
+  // the ones beneath, so a bass line may walk down out of its starting octave
+  // without the caller doing the arithmetic.
+  const int *steps = scaleSteps(key.mode);
+  int octaveShift = degree / kScaleDegrees;
+  int within = degree % kScaleDegrees;
+  if (within < 0) {
+    within += kScaleDegrees;
+    --octaveShift;
+  }
+
+  // MIDI 60 is middle C, and octave 4 is the octave containing it.
+  return 12 * (octave + 1 + octaveShift) + key.tonic + steps[within];
+}
+
 } // namespace MusicalKey

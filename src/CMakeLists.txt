@@ -54,6 +54,7 @@ target_sources(Antiphon
         PluginEditor.cpp
         NinjamClient.cpp
         NinjamProtocol.cpp
+        Harmony.cpp
         PracticeServer.cpp
         PracticeBot.cpp
         PracticeRoom.cpp

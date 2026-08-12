@@ -76,4 +76,18 @@ juce::String scaleNotes(const Key &key);
 
 juce::String modeName(Mode mode);
 
+// The seven scale degrees as semitones above the tonic, for anything that has
+// to make a note rather than name one. `scaleNotes` spells them for a reader;
+// this is the same information for a synthesiser.
+//
+// Always seven entries, and always the mode's own steps -- Major and Ionian
+// coincide here, as do Minor and Aeolian, because the distinction between them
+// is one of naming rather than of pitch.
+static constexpr int kScaleDegrees = 7;
+const int *scaleSteps(Mode mode);
+
+// MIDI note number for a scale degree, where degree 0 is the tonic in `octave`
+// and degrees run on past 6 into the octaves above (or below, if negative).
+int degreeToMidi(const Key &key, int degree, int octave = 4);
+
 } // namespace MusicalKey
