@@ -55,7 +55,8 @@ void PracticeServer::setConfig(int bpmIn, int bpiIn) {
   serverBpm = bpmIn;
   serverBpi = bpiIn;
   auto p = NinjamProtocol::buildServerConfig(bpmIn, bpiIn);
-  broadcastExcept(nullptr, 0x02, p.getData(), (int)p.getSize());
+  juce::ScopedLock sl(clientsMutex);
+  broadcastExceptLocked(nullptr, 0x02, p.getData(), (int)p.getSize());
 }
 
 void PracticeServer::setTopic(const juce::String &topic) {
@@ -64,13 +65,15 @@ void PracticeServer::setTopic(const juce::String &topic) {
     roomTopic = topic;
   }
   auto p = NinjamProtocol::buildChat("TOPIC", {}, topic);
-  broadcastExcept(nullptr, 0xC0, p.getData(), (int)p.getSize());
+  juce::ScopedLock sl(clientsMutex);
+  broadcastExceptLocked(nullptr, 0xC0, p.getData(), (int)p.getSize());
 }
 
 void PracticeServer::broadcastChat(const juce::String &from,
                                    const juce::String &text) {
   auto p = NinjamProtocol::buildChat("MSG", from, text);
-  broadcastExcept(nullptr, 0xC0, p.getData(), (int)p.getSize());
+  juce::ScopedLock sl(clientsMutex);
+  broadcastExceptLocked(nullptr, 0xC0, p.getData(), (int)p.getSize());
 }
 
 int PracticeServer::clientCount() const {
@@ -106,9 +109,8 @@ bool PracticeServer::sendTo(Client &c, juce::uint8 type, const void *data,
   return true;
 }
 
-void PracticeServer::broadcastExcept(const Client *skip, juce::uint8 type,
-                                     const void *data, int size) {
-  juce::ScopedLock sl(clientsMutex);
+void PracticeServer::broadcastExceptLocked(const Client *skip, juce::uint8 type,
+                                           const void *data, int size) {
   for (auto &c : clients) {
     if (c.get() == skip || !c->authenticated)
       continue;
@@ -128,9 +130,9 @@ bool PracticeServer::subscribed(const Client &to, const juce::String &user,
   return (it->second & (1u << channelIndex)) != 0;
 }
 
-void PracticeServer::relayAudio(const Client &from, int channelIndex,
-                                juce::uint8 type, const void *data, int size) {
-  juce::ScopedLock sl(clientsMutex);
+void PracticeServer::relayAudioLocked(const Client &from, int channelIndex,
+                                      juce::uint8 type, const void *data,
+                                      int size) {
   for (auto &c : clients) {
     if (c.get() == &from || !c->authenticated)
       continue;
@@ -440,7 +442,8 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
     auto out = NinjamProtocol::buildIntervalBegin(
         begin.guid, begin.estimatedSize, begin.fourcc, begin.channelIndex,
         c.username);
-    relayAudio(c, begin.channelIndex, 0x04, out.getData(), (int)out.getSize());
+    relayAudioLocked(c, begin.channelIndex, 0x04, out.getData(),
+                     (int)out.getSize());
     return;
   }
 
@@ -459,7 +462,8 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
       c.uploadChannel.erase(it);
 
     // The 0x84 and 0x05 payloads are byte-identical, so this is a forward.
-    relayAudio(c, channelIndex, 0x05, payload.getData(), (int)payload.getSize());
+    relayAudioLocked(c, channelIndex, 0x05, payload.getData(),
+                     (int)payload.getSize());
     return;
   }
 

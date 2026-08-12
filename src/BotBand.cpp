@@ -78,8 +78,30 @@ const char *voiceName(Voice v) {
     return "Bass";
   case Voice::Keys:
     return "Keys";
+  case Voice::Lead:
+    return "Lead";
   }
   return "Bot";
+}
+
+int metricStrength(int step, int bpi) {
+  if (bpi <= 0)
+    return 0;
+
+  const int eighths = bpi * 2;
+  const int s = ((step % eighths) + eighths) % eighths;
+
+  if (s == 0)
+    return 4;      // the downbeat of the interval
+  if (s % 2 != 0)
+    return 0;      // an off-beat eighth
+
+  const int beat = s / 2;
+  if (beat % 4 == 0)
+    return 3;      // the head of a four-beat bar
+  if (beat % 2 == 0)
+    return 2;      // a half bar
+  return 1;        // an ordinary beat
 }
 
 std::uint32_t saltedSeed(Voice voice, std::uint32_t seed) {
@@ -127,8 +149,107 @@ Figure figureFor(Voice voice, const Settings &s) {
     f.accents = 1;
     return f;
   }
+
+  case Voice::Lead: {
+    // Eighths, and denser than anything else: a line has to move to be a line.
+    Rng rng(saltedSeed(Voice::Lead, s.seed));
+    Figure f;
+    f.steps = std::max(1, s.bpi * 2);
+    f.pulses = std::min(f.steps, rng.range(s.bpi, s.bpi + s.bpi / 2));
+    f.rotation = rng.range(0, 3);
+    f.accents = std::max(1, f.pulses / 4);
+    return f;
+  }
   }
   return {};
+}
+
+std::vector<int> leadLine(const Settings &s, int intervalIndex) {
+  const int eighths = std::max(1, s.bpi * 2);
+  std::vector<int> line((size_t)eighths, -1);
+  if (!s.key.valid || s.progression.empty())
+    return line;
+
+  const Figure f = figureFor(Voice::Lead, s);
+  Rng rng(saltedSeed(Voice::Lead, s.seed) + 7919u * (std::uint32_t)intervalIndex);
+
+  // The contour is rerolled per interval, so the line develops across a phrase
+  // instead of repeating verbatim, while the seed still makes the whole
+  // sequence reproducible.
+  const auto contour = (Contour)(rng.next() % 4);
+
+  // Where the line sits: an octave above the keys, so it is heard as a melody
+  // over the chords rather than as part of them.
+  const int centre = 72;
+  const int span = 12;
+
+  for (int step = 0; step < eighths; ++step) {
+    if (!Euclidean::hit(step, f.steps, f.pulses, f.rotation))
+      continue;
+
+    const int strength = metricStrength(step, s.bpi);
+    const auto &chord = chordAtBeat(s, step / 2);
+
+    // Where the contour wants to be, as a fraction of the way through.
+    const double u = (double)step / (double)eighths;
+    double target = 0.0;
+    switch (contour) {
+    case Contour::Rise:
+      target = -0.5 + u;
+      break;
+    case Contour::Fall:
+      target = 0.5 - u;
+      break;
+    case Contour::Arch:
+      target = -0.5 + std::sin(u * 3.14159265358979);
+      break;
+    case Contour::Walk:
+      // A random walk that still has to come home, so it wanders without
+      // drifting off the end of the register.
+      target = 0.35 * std::sin(u * 6.2831853 * 1.5);
+      break;
+    }
+    const int wanted = centre + (int)std::lround(target * span);
+
+    // Metric strength decides WHICH notes are allowed here: a strong beat
+    // takes a chord tone, a weak one may pass through the scale. That coupling
+    // is what makes the result sound intended rather than sprinkled.
+    std::vector<int> allowed;
+    if (strength >= 2) {
+      for (int t = 0; t < chord.toneCount; ++t)
+        for (int octave = -1; octave <= 1; ++octave)
+          allowed.push_back(chord.root + chord.tones[(size_t)t] + 60 +
+                            12 * octave);
+    } else {
+      for (int degree = 0; degree < MusicalKey::kScaleDegrees; ++degree)
+        for (int octave = 4; octave <= 6; ++octave)
+          allowed.push_back(MusicalKey::degreeToMidi(s.key, degree, octave));
+    }
+    if (allowed.empty())
+      continue;
+
+    // The allowed note nearest the contour, with a little seeded deviation so
+    // two intervals with the same contour are not the same line.
+    const int jitter = rng.range(-2, 2);
+    int best = allowed[0];
+    int bestDistance = std::abs(best - (wanted + jitter));
+    for (int note : allowed) {
+      const int d = std::abs(note - (wanted + jitter));
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = note;
+      }
+    }
+
+    // Rests matter as much as notes: a line that never stops is a drone. Weak
+    // beats drop out often enough to leave the phrase somewhere to breathe.
+    if (strength == 0 && rng.range(0, 2) == 0)
+      continue;
+
+    line[(size_t)step] = best;
+  }
+
+  return line;
 }
 
 namespace {
@@ -346,6 +467,43 @@ void renderKeys(const Settings &s, float *out, int numSamples) {
   }
 }
 
+void renderLead(const Settings &s, int intervalIndex, float *out,
+                int numSamples) {
+  const int beatSamples = samplesPerBeat(s);
+  if (beatSamples <= 0)
+    return;
+
+  const auto line = leadLine(s, intervalIndex);
+  const int eighth = beatSamples / 2;
+  if (eighth <= 0)
+    return;
+
+  for (size_t step = 0; step < line.size(); ++step) {
+    if (line[step] < 0)
+      continue;
+
+    const int at = (int)step * eighth;
+    if (at >= numSamples)
+      break;
+
+    // Held until the next note or rest, so a line has phrasing rather than a
+    // uniform stutter of equal-length blips.
+    size_t next = step + 1;
+    while (next < line.size() && line[next] < 0)
+      ++next;
+    const int length =
+        std::min(numSamples - at, (int)(next - step) * eighth);
+    if (length <= 0)
+      continue;
+
+    const int strength = metricStrength((int)step, s.bpi);
+    const float velocity = strength >= 3 ? 0.85f : (strength >= 1 ? 0.7f : 0.5f);
+
+    BotVoice::renderLead(out + at, length, s.sampleRate,
+                         BotVoice::midiToHz((double)line[step]), velocity);
+  }
+}
+
 } // namespace
 
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
@@ -368,6 +526,9 @@ void renderInterval(Voice voice, const Settings &s, int intervalIndex,
     return;
   case Voice::Keys:
     renderKeys(s, out, numSamples);
+    return;
+  case Voice::Lead:
+    renderLead(s, intervalIndex, out, numSamples);
     return;
   }
 }

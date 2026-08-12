@@ -172,35 +172,56 @@ void PracticeBot::onDisconnected(const juce::String &) {
   active = false;
 }
 
-void PracticeBot::onUserInfoChange() {
-  juce::String ownerName, wanted;
-  {
-    juce::ScopedLock sl(stateMutex);
-    ownerName = owner;
-    wanted = listensTo;
-  }
-
-  const auto members = netClient.getRoomMembers();
-
+bool PracticeBot::checkOwnerStillHere() {
   // Leave when the player who brought the bot leaves. On a real server this is
   // the rule that matters most: walking away is enough to clean up after
   // yourself, with nothing to remember.
-  if (ownerName.isNotEmpty()) {
-    bool ownerPresent = false;
-    for (const auto &m : members)
-      if (m.username == ownerName) {
-        ownerPresent = true;
-        break;
-      }
+  //
+  // Called from BOTH the user-info and the chat callbacks, because membership
+  // is maintained from both and the departure order is not the obvious one. A
+  // leaving player produces a USER_INFO_CHANGE marking their channels inactive
+  // and then a PART; only the PART removes the name from roomMembers
+  // (NinjamClient.cpp:652). Checking on user-info alone therefore looks while
+  // the owner is still listed, finds them present, and never looks again --
+  // which is exactly the bug this comment replaces.
+  juce::String ownerName;
+  {
+    juce::ScopedLock sl(stateMutex);
+    ownerName = owner;
+  }
+  if (ownerName.isEmpty())
+    return true;
 
-    if (ownerPresent)
-      sawOwner = true;
-    else if (sawOwner.load()) {
-      part();
-      return;
+  bool ownerPresent = false;
+  for (const auto &m : netClient.getRoomMembers())
+    if (m.username == ownerName) {
+      ownerPresent = true;
+      break;
     }
+
+  if (ownerPresent) {
+    sawOwner = true;
+    return true;
   }
 
+  // Absent is only "left" once they have actually turned up: bots connect
+  // before the player does.
+  if (!sawOwner.load())
+    return true;
+
+  part();
+  return false;
+}
+
+void PracticeBot::onUserInfoChange() {
+  if (!checkOwnerStillHere())
+    return;
+
+  juce::String wanted;
+  {
+    juce::ScopedLock sl(stateMutex);
+    wanted = listensTo;
+  }
   if (wanted.isEmpty())
     return;
 
@@ -226,6 +247,11 @@ void PracticeBot::onServerConfig(int bpm, int bpi) {
 void PracticeBot::onChatMessage(const juce::String &type,
                                 const juce::String &username,
                                 const juce::String &text) {
+  // A PART is a chat message, and it is what actually removes a name from the
+  // room. See checkOwnerStillHere.
+  if (!checkOwnerStillHere())
+    return;
+
   if (username == botName)
     return;
 

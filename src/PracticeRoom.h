@@ -3,6 +3,7 @@
 #include "PracticeBot.h"
 #include "PracticeServer.h"
 #include <JuceHeader.h>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -76,7 +77,8 @@ private:
     PracticeRoom &room;
   };
 
-  void renderOneInterval(int intervalIndex);
+  void renderOneInterval(int intervalIndex,
+                         const std::function<bool()> &shouldStop);
   void reapPartedBots();
 
   PracticeServer server;

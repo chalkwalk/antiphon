@@ -147,6 +147,18 @@ inline void renderHat(float *out, int numSamples, double sampleRate,
 // instrument on a speaker that cannot reproduce its fundamental at all. Most of
 // what a listener hears as "the bass note" on a laptop is the second and third
 // harmonic; the fundamental only fills it in on something that can go low.
+// Saturation, for loudness rather than for grit.
+//
+// A bass part has to be heard in a mix that has headroom to respect, and
+// turning the gain up spends the headroom without helping: the peak rises and
+// the perceived level barely does. tanh flattens the peaks and fills in the
+// harmonics instead, so the note reads louder while its peak goes DOWN -- and
+// the added harmonics are what a small speaker actually reproduces.
+inline constexpr double kBassDrive = 1.7;
+// tanh of the drive times the tone's own peak (0.75+0.55+0.30+0.14), so a note
+// still tops out near 1.0 before the gain below.
+inline constexpr double kBassNormalise = 0.994;
+
 inline void renderBass(float *out, int numSamples, double sampleRate, double hz,
                        float velocity) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
@@ -183,11 +195,63 @@ inline void renderBass(float *out, int numSamples, double sampleRate, double hz,
 
     // Weighted towards the harmonics rather than the fundamental, which is
     // what makes the note audible on a small speaker.
-    const float tone =
-        (float)(0.75 * std::sin(p1) + 0.55 * std::sin(p2) +
-                0.30 * std::sin(p3) + 0.14 * std::sin(p4));
+    const double tone = 0.75 * std::sin(p1) + 0.55 * std::sin(p2) +
+                        0.30 * std::sin(p3) + 0.14 * std::sin(p4);
 
-    out[i] += velocity * 0.38f * tone * env;
+    const float shaped = (float)(std::tanh(kBassDrive * tone) / kBassNormalise);
+    out[i] += velocity * 0.52f * shaped * env;
+  }
+}
+
+// A lead voice: bright enough to sit above the chords and articulate enough to
+// hear as a line rather than a texture.
+//
+// Distinct from the pad by attack (fast, not soft) and from the bass by
+// register and by having odd harmonics rather than a full stack -- closer to a
+// clarinet or a square-ish synth than to either. It has to be recognisable as
+// "the part someone would otherwise be playing", because the point of the lead
+// bot is that you can mute it and play that part yourself.
+inline void renderLead(float *out, int numSamples, double sampleRate, double hz,
+                       float velocity) {
+  if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
+    return;
+
+  const double total = (double)numSamples / sampleRate;
+  const double attack = std::min(0.006, total * 0.1);
+  const double release = std::min(0.08, total * 0.4);
+  double p1 = 0.0, p3 = 0.0, p5 = 0.0;
+
+  // A little vibrato, late in the note. Nothing says "played" like a pitch
+  // that is not perfectly steady, and it costs one oscillator.
+  double vib = 0.0;
+
+  for (int i = 0; i < numSamples; ++i) {
+    const double t = (double)i / sampleRate;
+
+    float env = 1.0f;
+    if (t < attack)
+      env = (float)(t / attack);
+    else if (t > total - release)
+      env = (float)((total - t) / release);
+    if (env < 0.0f)
+      env = 0.0f;
+    if (env > 1.0f)
+      env = 1.0f;
+
+    vib += 2.0 * kPi * 5.2 / sampleRate;
+    const double depth = std::min(1.0, t / 0.25) * 0.004;
+    const double f = hz * (1.0 + depth * std::sin(vib));
+
+    p1 += 2.0 * kPi * f / sampleRate;
+    p3 += 2.0 * kPi * f * 3.0 / sampleRate;
+    p5 += 2.0 * kPi * f * 5.0 / sampleRate;
+
+    // Odd harmonics only: hollow rather than buzzy, and it keeps the lead from
+    // masking the keys, whose triads are full of even-harmonic content.
+    const double tone =
+        std::sin(p1) + 0.32 * std::sin(p3) + 0.12 * std::sin(p5);
+
+    out[i] += velocity * 0.30f * (float)tone * env;
   }
 }
 

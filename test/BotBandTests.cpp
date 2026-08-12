@@ -59,6 +59,7 @@ public:
     runSeedTests();
     runFigureTests();
     runAudioTests();
+    runLeadTests();
     runHarmonyFollowingTests();
     runRobustnessTests();
     writeAuditionIfAsked();
@@ -97,7 +98,7 @@ public:
     for (int i = 0; i < intervals; ++i) {
       std::vector<float> acc;
       for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
-                         BotBand::Voice::Keys}) {
+                         BotBand::Voice::Keys, BotBand::Voice::Lead}) {
         // A different base seed per voice, as PracticeRoom does.
         std::uint32_t s = (std::uint32_t)seed;
         for (int step = 0; step < (int)voice; ++step)
@@ -147,10 +148,11 @@ public:
     beginTest("salting makes the voices differ from one seed");
     {
       // Without it, one seed gives the bass the kick's pattern note for note.
-      const auto d = BotBand::saltedSeed(BotBand::Voice::Drums, 1);
-      const auto b = BotBand::saltedSeed(BotBand::Voice::Bass, 1);
-      const auto k = BotBand::saltedSeed(BotBand::Voice::Keys, 1);
-      expect(d != b && b != k && d != k, "two voices share a salted seed");
+      std::set<std::uint32_t> seen;
+      for (int v = 0; v < BotBand::kNumVoices; ++v)
+        seen.insert(BotBand::saltedSeed((BotBand::Voice)v, 1));
+      expectEquals((int)seen.size(), BotBand::kNumVoices,
+                   "two voices share a salted seed");
     }
 
     beginTest("neighbouring seeds are not neighbouring patterns");
@@ -166,7 +168,7 @@ public:
     {
       const auto s = settingsFor("C major");
       for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
-                         BotBand::Voice::Keys}) {
+                         BotBand::Voice::Keys, BotBand::Voice::Lead}) {
         const auto a = render(voice, s);
         const auto b = render(voice, s);
         expect(a == b, juce::String(BotBand::voiceName(voice)) +
@@ -188,7 +190,7 @@ public:
       for (int bpi : {4, 8, 12, 16, 24}) {
         const auto s = settingsFor("C major", 120, bpi);
         for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
-                           BotBand::Voice::Keys}) {
+                           BotBand::Voice::Keys, BotBand::Voice::Lead}) {
           const auto f = BotBand::figureFor(voice, s);
           expect(f.steps > 0, "no steps");
           expect(f.pulses > 0, "no pulses at bpi " + juce::String(bpi));
@@ -224,7 +226,7 @@ public:
     {
       const auto s = settingsFor("C major");
       for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
-                         BotBand::Voice::Keys}) {
+                         BotBand::Voice::Keys, BotBand::Voice::Lead}) {
         const auto buf = render(voice, s);
         const float level = rms(buf, 0, (int)buf.size());
         expect(level > 0.005f, juce::String(BotBand::voiceName(voice)) +
@@ -239,7 +241,7 @@ public:
         for (std::uint32_t seed : {1u, 55u, 900u}) {
           const auto s = settingsFor("C major", 120, bpi, seed);
           for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
-                             BotBand::Voice::Keys}) {
+                             BotBand::Voice::Keys, BotBand::Voice::Lead}) {
             const auto buf = render(voice, s);
             float peak = 0.0f;
             for (float x : buf)
@@ -401,6 +403,119 @@ public:
     }
   }
 
+  void runLeadTests() {
+    beginTest("metric strength ranks the metre");
+    {
+      // Step is in eighths. The interval downbeat outranks a bar head, which
+      // outranks a half bar, which outranks a beat, which outranks an off-beat.
+      expectEquals(BotBand::metricStrength(0, 16), 4, "interval downbeat");
+      expectEquals(BotBand::metricStrength(8, 16), 3, "beat 4, a bar head");
+      expectEquals(BotBand::metricStrength(4, 16), 2, "beat 2, a half bar");
+      expectEquals(BotBand::metricStrength(2, 16), 1, "beat 1");
+      expectEquals(BotBand::metricStrength(1, 16), 0, "an off-beat eighth");
+      expectEquals(BotBand::metricStrength(7, 16), 0, "an off-beat eighth");
+
+      // It repeats each interval, and negative steps do not fall off the end.
+      for (int step = 0; step < 32; ++step)
+        expectEquals(BotBand::metricStrength(step, 16),
+                     BotBand::metricStrength(step + 32, 16));
+      expectEquals(BotBand::metricStrength(-32, 16), 4);
+    }
+
+    beginTest("the lead plays a line, with rests in it");
+    {
+      const auto s = settingsFor("C major", 120, 16);
+      const auto line = BotBand::leadLine(s, 0);
+      expectEquals((int)line.size(), s.bpi * 2);
+
+      int notes = 0, rests = 0;
+      for (int n : line)
+        (n >= 0 ? notes : rests)++;
+      expect(notes >= 4, "only " + juce::String(notes) + " notes");
+      expect(rests >= 2, "a line with no rests is a drone");
+    }
+
+    beginTest("strong beats take chord tones");
+    {
+      // The coupling that makes the line sound intended rather than sprinkled.
+      for (const char *keyName : {"C major", "D minor", "A minor", "F Lydian"}) {
+        auto s = settingsFor(keyName, 120, 16);
+        const auto line = BotBand::leadLine(s, 0);
+
+        for (size_t step = 0; step < line.size(); ++step) {
+          if (line[step] < 0 || BotBand::metricStrength((int)step, s.bpi) < 2)
+            continue;
+
+          const int idx = Harmony::chordIndexForBeat(
+              (int)step / 2, s.bpi, (int)s.progression.size());
+          const auto &chord = s.progression[(size_t)idx];
+
+          bool isChordTone = false;
+          for (int t = 0; t < chord.toneCount; ++t)
+            if (((line[step] - chord.root - chord.tones[(size_t)t]) % 12 + 12) %
+                    12 ==
+                0)
+              isChordTone = true;
+
+          expect(isChordTone,
+                 juce::String(keyName) + ": strong beat " +
+                     juce::String((int)step) + " played MIDI " +
+                     juce::String(line[step]) + ", not a tone of the chord");
+        }
+      }
+    }
+
+    beginTest("every note is in the key");
+    {
+      for (const char *keyName : {"C major", "D minor", "E Phrygian",
+                                  "Bb Mixolydian"}) {
+        auto s = settingsFor(keyName, 120, 16);
+        // A diatonic progression, so chord tones are scale tones too.
+        const auto line = BotBand::leadLine(s, 0);
+
+        std::set<int> inKey;
+        for (int degree = 0; degree < MusicalKey::kScaleDegrees; ++degree)
+          inKey.insert(
+              ((MusicalKey::degreeToMidi(s.key, degree, 4) % 12) + 12) % 12);
+
+        for (int n : line) {
+          if (n < 0)
+            continue;
+          expect(inKey.count(((n % 12) + 12) % 12) > 0,
+                 juce::String(keyName) + ": MIDI " + juce::String(n) +
+                     " is out of key");
+        }
+      }
+    }
+
+    beginTest("the lead sits above the chords");
+    {
+      const auto s = settingsFor("C major", 120, 16);
+      const auto line = BotBand::leadLine(s, 0);
+      for (int n : line)
+        if (n >= 0)
+          expect(n >= 60 && n <= 96,
+                 "MIDI " + juce::String(n) + " is outside the lead register");
+    }
+
+    beginTest("the line develops across a phrase rather than repeating");
+    {
+      const auto s = settingsFor("C major", 120, 16);
+      expect(BotBand::leadLine(s, 0) != BotBand::leadLine(s, 1),
+             "two consecutive intervals gave the same line");
+      // Still reproducible, which is what makes a seed worth having.
+      expect(BotBand::leadLine(s, 3) == BotBand::leadLine(s, 3));
+    }
+
+    beginTest("an invalid key gives no line rather than a wrong one");
+    {
+      MusicalKey::Key none;
+      auto s = BotBand::defaults(none, 120, 8, 48000.0, 3);
+      for (int n : BotBand::leadLine(s, 0))
+        expectEquals(n, -1);
+    }
+  }
+
   void runHarmonyFollowingTests() {
     beginTest("changing the key changes what is played");
     {
@@ -495,7 +610,7 @@ public:
       for (int n : {1, 17, 512, 5000}) {
         std::vector<float> small((size_t)n, 0.0f);
         for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
-                           BotBand::Voice::Keys})
+                           BotBand::Voice::Keys, BotBand::Voice::Lead})
           BotBand::renderInterval(voice, s, 0, small.data(), n);
       }
       expect(true, "survived");
