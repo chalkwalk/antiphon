@@ -274,8 +274,21 @@ void NinjamClient::run() {
   }
 
   connectionState = 0;
-  if (socket)
-    socket->close();
+  {
+    // Under writeMutex, because writeFull is inside ::send on another thread
+    // often enough to matter. Closing the descriptor out from under a writer is
+    // a race on the file descriptor itself: the fd number can be reused by
+    // anything that opens a file next, so the write lands somewhere else
+    // entirely. Found by TSan once a practice room had several clients coming
+    // and going in one process; before that nothing wrote from another thread
+    // at the moment of teardown often enough to catch it.
+    //
+    // The mutex is a leaf -- writeFull takes nothing else -- so this cannot
+    // deadlock, and the wait is bounded by one socket write.
+    juce::ScopedLock sl(writeMutex);
+    if (socket)
+      socket->close();
+  }
 
   // Drop all per-session state. Without this a reconnect shows the previous
   // session's users, and their orphaned channel streams keep being swapped

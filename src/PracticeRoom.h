@@ -35,6 +35,14 @@ public:
     double sampleRate = 48000.0;
     juce::String ownerName = "you";
     juce::String topic = "Practice room -- play, nobody is listening";
+
+    // What the band plays in. Announcing `[key: D minor]` in chat changes it
+    // afterwards; this is only where they start.
+    MusicalKey::Key key = MusicalKey::parseName("C major");
+
+    // Rerolled by "shake". Fixed by default so a practice room is the same
+    // room twice, which matters more for learning a piece than novelty does.
+    std::uint32_t seed = 20260811u;
   };
 
   // Brings up the server and the band. Returns false having cleaned up if the
@@ -50,6 +58,10 @@ public:
 
   int botCount() const;
   juce::StringArray botNames() const;
+
+  // What each bot is currently playing. For tests and for the UI to report the
+  // key and chords the band has settled on.
+  std::vector<BotBand::Settings> bandSettings() const;
 
   PracticeServer &practiceServer() { return server; }
 

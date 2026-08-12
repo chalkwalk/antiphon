@@ -145,6 +145,92 @@ Progression defaultProgression(const MusicalKey::Key &key) {
   return realise(key, defaultDegreeLoop(key));
 }
 
+bool parseChordName(const juce::String &text, Chord &out) {
+  const juce::String s = text.trim();
+  if (s.isEmpty())
+    return false;
+
+  static const char *letters = "CDEFGAB";
+  static const int letterSemis[7] = {0, 2, 4, 5, 7, 9, 11};
+
+  const int letterIdx =
+      juce::String(letters).indexOfChar(s[0] >= 'a' && s[0] <= 'z'
+                                            ? (juce::juce_wchar)(s[0] - 32)
+                                            : s[0]);
+  if (letterIdx < 0)
+    return false;
+
+  int root = letterSemis[letterIdx];
+  int pos = 1;
+  while (pos < s.length() && (s[pos] == '#' || s[pos] == 'b')) {
+    // A trailing 'b' can be an accidental or the start of a "b5", so only take
+    // it as a flat while it sits directly against the letter.
+    if (s[pos] == 'b' && pos + 1 < s.length() && juce::CharacterFunctions::isDigit(s[pos + 1]))
+      break;
+    root += (s[pos] == '#') ? 1 : -1;
+    ++pos;
+  }
+
+  const juce::String suffix = s.substring(pos).trim();
+
+  // Longest first, so "maj7" is not read as "m".
+  struct Suffix {
+    const char *text;
+    Quality quality;
+  };
+  static const Suffix table[] = {
+      {"maj7", Quality::Major7},         {"M7", Quality::Major7},
+      {"m7b5", Quality::HalfDiminished7}, {"min7", Quality::Minor7},
+      {"m7", Quality::Minor7},           {"dim", Quality::Diminished},
+      {"aug", Quality::Augmented},       {"min", Quality::Minor},
+      {"maj", Quality::Major},           {"m", Quality::Minor},
+      {"7", Quality::Dominant7},         {"+", Quality::Augmented},
+      {"o", Quality::Diminished},        {"", Quality::Major},
+  };
+
+  for (const auto &entry : table) {
+    const juce::String want(entry.text);
+    if (suffix == want) {
+      out = chordOn(root, entry.quality);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool parseProgression(const juce::String &text, Progression &out) {
+  if (!text.contains("|"))
+    return false;
+
+  auto measures = juce::StringArray::fromTokens(text, "|", "");
+  Progression parsed;
+  for (auto measure : measures) {
+    measure = measure.trim();
+    if (measure.isEmpty())
+      continue; // the empty pieces either side of the outer bars
+
+    // A measure may hold more than one chord; each must still be a chord.
+    auto names = juce::StringArray::fromTokens(measure, " \t", "");
+    for (auto name : names) {
+      name = name.trim();
+      if (name.isEmpty())
+        continue;
+      Chord c;
+      if (!parseChordName(name, c))
+        return false; // one unrecognised token and the line is not a progression
+      parsed.push_back(c);
+    }
+  }
+
+  // Two measures minimum, matching ChatFormat::isChordProgression, so a stray
+  // "| hello" cannot become a one-chord progression.
+  if (parsed.size() < 2)
+    return false;
+
+  out = std::move(parsed);
+  return true;
+}
+
 int chordIndexForBeat(int beat, int bpi, int numChords, int rotation) {
   if (numChords <= 0 || bpi <= 0)
     return 0;

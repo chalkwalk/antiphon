@@ -64,6 +64,7 @@ public:
     runStartupTests();
     runBotVisibilityTests();
     runPartCommandTests();
+    runBandFollowingTests();
     runOwnerDepartureTests();
     runConnectionLossTests();
   }
@@ -251,6 +252,134 @@ public:
       juce::MessageManager::getInstance()->runDispatchLoopUntil(700);
       expect(room.botCount() > 0,
              "the band left before the player ever turned up");
+    }
+  }
+
+  void runBandFollowingTests() {
+    beginTest("the room brings three voices, each on its own channel");
+    {
+      PracticeRoom room;
+      expect(room.start(testConfig()));
+      expectEquals(room.botCount(), 3);
+
+      const auto names = room.botNames();
+      expect(names.contains("Kit [bot]"));
+      expect(names.contains("Bass [bot]"));
+      expect(names.contains("Keys [bot]"));
+    }
+
+    beginTest("shake changes the figures");
+    {
+      PracticeBot bot("Kit [bot]", {"Kit"});
+      bot.playAs(BotBand::Voice::Drums, MusicalKey::parseName("C major"), 120,
+                 8, 48000.0, 7);
+      const auto before = bot.currentSettings().seed;
+      bot.shake();
+      const auto after = bot.currentSettings().seed;
+      expect(before != after, "shake did not change the seed");
+      expect(std::abs((long long)before - (long long)after) > 1000,
+             "shake produced an adjacent seed");
+    }
+
+    beginTest("the shake words are recognised, and nothing else is");
+    {
+      expect(PracticeBot::isShakeCommand("shake"));
+      expect(PracticeBot::isShakeCommand("new"));
+      expect(PracticeBot::isShakeCommand(" AGAIN "));
+      expect(!PracticeBot::isShakeCommand("shaken"));
+      expect(!PracticeBot::isShakeCommand("news"));
+      expect(!PracticeBot::isShakeCommand(""));
+    }
+
+    beginTest("a bot follows a key announced in room chat");
+    {
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.key = MusicalKey::parseName("C major");
+      expect(room.start(cfg));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count("Keys [bot]") > 0;
+      }, 5000));
+
+      you.client.sendChatMessage("[key: D minor]");
+
+      // Observable through the room rather than by reaching into a bot: the
+      // chords the band is playing are what changed.
+      expect(waitUntil([&] {
+        for (const auto &s : room.bandSettings())
+          if (s.key.tonic == 2 && Harmony::isMinorish(s.key.mode))
+            return true;
+        return false;
+      }, 5000), "the band ignored the announced key");
+
+      for (const auto &s : room.bandSettings())
+        expectEquals(s.progression[0].root, 2, "the chords did not follow");
+    }
+
+    beginTest("a bot follows chords announced in room chat");
+    {
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count("Keys [bot]") > 0;
+      }, 5000));
+
+      you.client.sendChatMessage("| Am | F | C | G |");
+
+      expect(waitUntil([&] {
+        for (const auto &s : room.bandSettings())
+          if (s.progression.size() == 4 && s.progression[0].root == 9)
+            return true;
+        return false;
+      }, 5000), "the band ignored the announced chords");
+    }
+
+    beginTest("prose in chat does not become a progression");
+    {
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count("Keys [bot]") > 0;
+      }, 5000));
+
+      const auto before = room.bandSettings();
+      you.client.sendChatMessage("I AM TIRED OF THIS");
+      you.client.sendChatMessage("anyone here?");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(600);
+
+      const auto after = room.bandSettings();
+      expectEquals((int)after.size(), (int)before.size());
+      for (size_t i = 0; i < after.size(); ++i)
+        expect(after[i].progression == before[i].progression,
+               "chat prose changed the harmony");
+    }
+
+    beginTest("the band follows a tempo change");
+    {
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] { return room.botCount() == 3; }));
+
+      room.practiceServer().setConfig(96, 12);
+
+      expect(waitUntil([&] {
+        for (const auto &s : room.bandSettings())
+          if (s.bpm != 96 || s.bpi != 12)
+            return false;
+        return !room.bandSettings().empty();
+      }, 5000), "the band did not follow the tempo");
     }
   }
 

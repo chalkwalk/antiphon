@@ -58,6 +58,89 @@ void PracticeBot::part() {
   netClient.disconnectFromServer();
 }
 
+void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
+                         int bpm, int bpi, double sampleRate,
+                         std::uint32_t seed) {
+  {
+    juce::ScopedLock sl(stateMutex);
+    bandVoice = voice;
+    settings = BotBand::defaults(key, bpm, bpi, sampleRate, seed);
+  }
+  playing = true;
+
+  setRender([this](juce::AudioBuffer<float> &buffer, int numSamples,
+                   int intervalIndex) {
+    BotBand::Voice v;
+    BotBand::Settings snapshot;
+    {
+      juce::ScopedLock sl(stateMutex);
+      v = bandVoice;
+      snapshot = settings;
+    }
+
+    // Mono into the left channel, then copied: the band plays in the middle
+    // and the listener decides where it sits, with the pan control every
+    // remote channel already has.
+    BotBand::renderInterval(v, snapshot, intervalIndex,
+                            buffer.getWritePointer(0), numSamples);
+    if (buffer.getNumChannels() > 1)
+      buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+  });
+}
+
+void PracticeBot::shake() {
+  juce::ScopedLock sl(stateMutex);
+  // A hash of the old seed rather than an increment, so the next figure is
+  // unrelated to the last rather than adjacent to it.
+  std::uint32_t s = settings.seed;
+  s ^= s >> 16;
+  s *= 0x7feb352dU;
+  s ^= s >> 15;
+  settings.seed = s | 1u;
+}
+
+BotBand::Settings PracticeBot::currentSettings() const {
+  juce::ScopedLock sl(stateMutex);
+  return settings;
+}
+
+bool PracticeBot::isShakeCommand(const juce::String &text) {
+  const auto t = text.trim().toLowerCase();
+  return t == "shake" || t == "new" || t == "again";
+}
+
+bool PracticeBot::handleBandCommand(const juce::String &text) {
+  if (!playing.load())
+    return false;
+
+  if (isShakeCommand(text)) {
+    shake();
+    return true;
+  }
+
+  // The key travels as a tagged chat line, never as prose -- MusicalKey refuses
+  // to guess, and so does this.
+  const auto key = MusicalKey::parseTagged(text);
+  if (key.valid) {
+    juce::ScopedLock sl(stateMutex);
+    settings.key = key;
+    // A new key means the old chords are in the wrong one. An announced
+    // progression is not transposed, because nobody announcing chords means
+    // "those chords, moved".
+    settings.progression = Harmony::defaultProgression(key);
+    return true;
+  }
+
+  Harmony::Progression progression;
+  if (Harmony::parseProgression(text, progression)) {
+    juce::ScopedLock sl(stateMutex);
+    settings.progression = std::move(progression);
+    return true;
+  }
+
+  return false;
+}
+
 bool PracticeBot::isPartCommand(const juce::String &text) {
   const auto t = text.trim().toLowerCase();
   for (const auto *cmd : kPartCommands)
@@ -72,9 +155,11 @@ juce::String PracticeBot::helpLine(const juce::String &name) {
 }
 
 void PracticeBot::onConnected() {
-  // The channel list is resent on connect: updateChannelInfo before connecting
-  // only stores it, and the room needs to be told.
-  netClient.updateChannelInfo(channels);
+  // Nothing to do. The channel list was stored before connecting and
+  // NinjamClient sends it itself the moment auth succeeds
+  // (NinjamClient.cpp:347), so resending here was redundant -- and it was a
+  // write from the message thread at the exact moment the network thread might
+  // be tearing the socket down, which is how the fd race above was found.
 }
 
 void PracticeBot::onDisconnected(const juce::String &) {
@@ -130,10 +215,29 @@ void PracticeBot::onUserInfoChange() {
       netClient.setRemoteUserRecv(wanted, idx, true);
 }
 
+void PracticeBot::onServerConfig(int bpm, int bpi) {
+  juce::ScopedLock sl(stateMutex);
+  if (bpm > 0)
+    settings.bpm = bpm;
+  if (bpi > 0)
+    settings.bpi = bpi;
+}
+
 void PracticeBot::onChatMessage(const juce::String &type,
                                 const juce::String &username,
                                 const juce::String &text) {
-  if (type != "PRIVMSG" || username == botName)
+  if (username == botName)
+    return;
+
+  // Room chat: the key, the chords and "shake" are addressed to everyone, so
+  // they are taken from ordinary messages. Nothing here replies -- a band that
+  // answers every line in the room is the annoyance.
+  if (type == "MSG") {
+    handleBandCommand(text);
+    return;
+  }
+
+  if (type != "PRIVMSG")
     return;
 
   // Anyone may evict a bot, not just whoever brought it. A bot in someone
@@ -145,8 +249,15 @@ void PracticeBot::onChatMessage(const juce::String &type,
     return;
   }
 
-  if (text.trim().toLowerCase() == "help")
+  if (text.trim().toLowerCase() == "help") {
     netClient.sendPrivateMessage(username, helpLine(botName));
+    return;
+  }
+
+  // Privately: the same instructions, but aimed at one player, so this one
+  // changes and the rest of the band carries on.
+  if (handleBandCommand(text))
+    netClient.sendPrivateMessage(username, botName + " ok.");
 }
 
 void PracticeBot::renderInterval(int numSamples, int intervalIndex) {

@@ -55,6 +55,7 @@ target_sources(Antiphon
         NinjamClient.cpp
         NinjamProtocol.cpp
         Harmony.cpp
+        BotBand.cpp
         PracticeServer.cpp
         PracticeBot.cpp
         PracticeRoom.cpp
