@@ -140,14 +140,22 @@ Figure figureFor(Voice voice, const Settings &s) {
     // kick's onsets and this figure's, which is what locking to the kick while
     // playing more notes than it actually means.
     //
-    // The extra pulse offsets it, so it is related to the kick rather than a
-    // mechanical doubling of it.
+    // The count is then nudged to the nearest one COPRIME with the steps,
+    // because exactly 2k shares a factor with 2s and so repeats inside the
+    // interval -- and a bass figure that repeats is doubling the kick again by
+    // another route. Twice four pulses over thirty-two steps has period four:
+    // `x...` eight times, a metronome. Nine has period thirty-two.
+    //
+    // The kick deliberately does NOT get this treatment. A short period is
+    // what makes a kick a pulse you can rely on; movement is what a bass wants
+    // and a kick does not.
     Rng rng(saltedSeed(Voice::Bass, s.seed));
     const Figure kick = kickFigure(s);
     Figure f;
     f.steps = kick.steps * 2;
-    f.pulses = std::min(f.steps, kick.pulses * 2 + rng.range(0, 1));
-    f.rotation = 0; // the doubling only contains the kick at rotation zero
+    f.pulses = Euclidean::nearestCoprimePulses(f.steps, kick.pulses * 2,
+                                               rng.range(0, 1) == 1);
+    f.rotation = 0;
     f.accents = std::max(1, f.pulses / 4);
     return f;
   }
