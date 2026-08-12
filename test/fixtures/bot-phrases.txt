@@ -1,0 +1,569 @@
+# The bot phrase corpus.
+#
+# What people actually type at a bot in a jam room, and what each line should
+# resolve to. This file is the specification for src/BotLanguage: the claim in
+# docs/BOT-CHAT.md is that indirect phrasing works, and a claim like that is
+# worth nothing without a measurement (PRINCIPLES 5). The number to quote is the
+# fallback rate over this file.
+#
+# Deliberately plain text, so extending it needs no C++. When a real phrasing
+# misses, add it here first, watch the test go red, then widen the lexicon --
+# and if widening it would take more than a word or two, that is the signal the
+# design was over-reaching rather than the corpus being short.
+#
+# Written the way people type in chat: lowercase, no punctuation, abbreviated,
+# misspelled, padded with politeness, and often not a question at all.
+#
+# Sections:
+#   [INTENT]    every line must resolve to this intent
+#   [CLARIFY]   genuinely ambiguous; must ask which of two rather than guess
+#   [NONE]      must resolve to nothing, and must not be answered
+#
+# Lines beginning with # are comments. Blank lines are ignored.
+
+[DESCRIBE_PART]
+what are you playing
+what are you playing?
+whats your part
+what's your part
+what is your part
+whats ur part
+what r u playing
+wat r u playin
+what are you doing
+whats you doing
+what're you playing
+what you got
+what have you got
+whatve you got
+what are you laying down
+describe your part
+describe what you are playing
+tell me your part
+tell me about your part
+talk me through your part
+what pattern are you playing
+what pattern
+whats the pattern
+what figure
+whats your figure
+whats the figure
+what is your rhythm
+whats your rhythm
+whats the groove
+whats ur groove
+hows the groove
+what groove are you on
+what beat are you on
+whats your line
+what line are you playing
+whats the line
+how many pulses
+how many hits
+how many notes
+where are your accents
+where do the accents fall
+what are you doing rhythmically
+how does your part go
+how does it go
+how does your part sit
+what does your part do
+whats going on in your part
+can you describe your part
+could you tell me what youre playing
+could you tell me what you're playing
+please tell me what you are playing
+would you tell me what you are playing
+tell me what youre up to
+what are you up to
+whats going on
+whats happening in your part
+whats the drummer doing
+what is the bass doing
+kit what are you playing
+bass whats your part
+your part?
+your pattern?
+part?
+pattern?
+give me your part
+run me through the part
+break down your part
+whats the shape of it
+whats the phrasing
+what are you playing right now
+what are you playing at the moment
+whats it doing
+what is it doing
+
+[DESCRIBE_SOUND]
+what do you sound like
+whats your sound
+what's your sound
+whats ur sound
+describe your sound
+describe your tone
+whats your tone
+what tone is that
+what is that sound
+what sound is that
+what sound are you using
+what kit are you using
+what kit is that
+whats the kit
+whats your kit
+what patch
+whats your patch
+what preset
+whats the preset
+what instrument is that
+what is your timbre
+whats your timbre
+whats your character
+whats your voice
+how are you tuned
+how is it tuned
+what tuning
+whats the tuning
+what does your kick sound like
+whats your kick like
+what does it sound like
+how does it sound
+how do you sound
+what does the bass sound like
+tell me about your sound
+tell me about your tone
+tell me your tone
+talk me through your sound
+whats the timbre like
+is it a bright sound
+what sort of sound is it
+what kind of sound
+what type of tone
+describe your timbre
+whats your setup
+your sound?
+your tone?
+sound?
+tone?
+how would you describe your sound
+
+[REPORT_KEY]
+what key
+what key?
+whats the key
+what's the key
+whats the key please
+what key are we in
+what key are we playing in
+what key is this
+what key is this in
+what key are you in
+what key are you playing in
+what key do you think
+key
+key?
+the key?
+whats the key we are in
+do you know the key
+do you know what key
+can you tell me the key
+could you tell me the key
+tell me the key
+tell me what key
+whats the tonality
+what scale
+what scale are we in
+what scale are you using
+what mode
+what mode are we in
+are we in a key
+is there a key
+has anyone set a key
+whats the key set to
+what did we set the key to
+remind me of the key
+whats the key again
+key again?
+what are we in
+what are we playing in
+whats the tonic
+whats the root
+which key
+which key are we in
+
+[REPORT_CHART]
+what chords
+what chords?
+whats the chords
+what are the chords
+what chords are we playing
+what chords are you playing
+chords
+chords?
+the chords?
+whats the progression
+what progression
+whats the chord progression
+what are the changes
+whats the changes
+what are we playing over
+what are you playing over
+whats the chart
+what chart
+whats the sequence
+what sequence
+tell me the chords
+tell me the changes
+tell me the progression
+could you tell me the chords
+can you tell me the chords
+what did we agree on
+whats the loop
+what loop are we playing
+what are the bars
+how many bars
+how many chords
+what is the second chord
+whats the first chord
+whats the turnaround
+remind me of the chords
+chords again?
+whats the chart again
+run me through the changes
+what harmony
+whats the harmony
+what are we playing on
+which chords
+
+[REPORT_TEMPO]
+what tempo
+whats the tempo
+what's the tempo
+tempo
+tempo?
+how fast
+how fast are we going
+how fast is this
+whats the bpm
+what bpm
+whats the speed
+what speed
+how many beats
+how many beats per interval
+whats the bpi
+what bpi
+how long is an interval
+how long is the interval
+how long is a loop
+whats the interval length
+what is the tempo set to
+whats the tempo at
+can you tell me the tempo
+tell me the tempo
+tell me the bpm
+whats our tempo
+what are we running at
+how quick is this
+whats the click at
+how many beats in a bar
+how many beats to the loop
+what is the bpm please
+bpm?
+bpi?
+speed?
+how fast are we playing
+whats the pace
+
+[RESHUFFLE]
+shake
+new
+again
+shake it
+shake it up
+mix it up
+switch it up
+change it
+change it up
+change your part
+change the pattern
+do something else
+play something else
+play something different
+give me something else
+giv me somthing else
+give me another
+try something else
+try something new
+try again
+different pattern
+different please
+something different
+something new
+vary it
+vary your part
+reroll
+roll again
+new pattern
+new part
+new groove
+another one
+one more
+do it again
+go again
+switch
+switch the pattern
+change up
+that again but different
+i dont like that one
+not that one
+try a different figure
+play it differently
+alter your part
+rework it
+
+[SET_QUIET]
+quiet
+quiet please
+be quiet
+shush
+hush
+shut up
+stop talking
+stop chatting
+stop the chat
+no more chat
+no more messages
+less talk
+less chat
+keep it down
+pipe down
+can you stop talking
+could you stop talking
+please stop talking
+please be quiet
+stop messaging
+dont talk
+do not talk
+no talking
+mute yourself
+mute the chat
+silence
+silence please
+say nothing
+stop saying things
+enough talking
+thats enough chat
+stop with the messages
+quiet down
+i dont need the commentary
+no commentary
+
+[SET_LOUD]
+talk
+speak
+you can talk
+you can talk now
+talk again
+speak again
+start talking
+unmute
+unmute yourself
+you can chat now
+chat away
+say something
+go ahead and talk
+its fine to talk
+you may talk
+talking is fine
+resume talking
+back on
+
+[EXPLAIN_SELF]
+help
+help?
+what are you
+who are you
+what is this
+what is this thing
+whats a bot
+what do you do
+what can you do
+what can i ask
+what can i ask you
+what should i say
+what do i say
+how do i use you
+how does this work
+how do you work
+what commands
+what commands are there
+what are the commands
+commands
+commands?
+what are my options
+options?
+what else can you do
+what do you understand
+what do you know
+tell me what you can do
+tell me about yourself
+who is playing
+what are you exactly
+are you a person
+are you human
+are you a bot
+whats going on here
+im lost
+i dont know what to do
+what now
+
+[LEAVE]
+part
+leave
+exit
+stop
+go away
+get out
+get lost
+you can go
+you can leave
+please leave
+please go
+off you go
+leave the room
+leave please
+im done with you
+thats enough
+thats enough thanks
+we are done
+were done
+you can stop now
+stop playing
+stop please
+disconnect
+quit
+bye
+goodbye
+see you
+cheers bye
+time to go
+away with you
+send them home
+everyone out
+all of you out
+
+# Genuinely ambiguous. The right answer is a narrow question naming both
+# candidates, not a guess -- see docs/BOT-CHAT.md section 5.
+[CLARIFY]
+tell me about your kick
+tell me about the kick
+tell me about your bass
+whats your kick
+whats the kick
+how about the snare
+the snare?
+what about the hats
+tell me about it
+whats it like
+describe it
+tell me more
+what about you
+hows yours
+and you?
+
+# Must resolve to nothing at all, and must never be answered. Ordinary chat
+# between humans, courtesy, and things aimed at somebody else.
+[NONE]
+hello
+hi
+hey
+hey all
+hi everyone
+good evening
+morning
+evening all
+whats up
+how are you
+how are you doing
+hows it going
+you alright
+alright?
+thanks
+thanks!
+thank you
+ta
+cheers
+nice one
+lovely
+great
+awesome
+haha
+lol
+:)
+:D
+ok
+okay
+k
+sure
+yeah
+yes
+no
+maybe
+right
+mhm
+brb
+back
+sorry
+one sec
+hold on
+wait
+my bad
+oops
+that was me
+i think my levels are off
+anyone else hearing that
+can you hear me
+is my audio working
+sounds good
+that sounded great
+nice playing
+love that
+that was lovely
+what a tune
+this is fun
+im enjoying this
+lets do another
+shall we go again
+anyone want a break
+im going to get a coffee
+back in five
+who else is on
+is dave here
+dave you there
+hey dave
+tell dave to turn up
+the wifi here is terrible
+my cat walked on the keyboard
+its raining
+what time is it
+whats for dinner
+did you see the game
+football tonight
+i need to restart my interface
+hang on my daw crashed
+reaper just died
+this plugin is great
+what daw are you on
+what interface do you use
+where are you based
+what country
+how old is this song
+who wrote this
+whats this song called
+i dont know this one
+never played this before
+first time here
+new to ninjam
+long time no see
+same time next week
