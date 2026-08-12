@@ -225,6 +225,12 @@ void renderDrums(const Settings &s, int intervalIndex, float *out,
   }
 }
 
+// C2. Must be a C: chord roots are pitch classes where 0 means C.
+inline constexpr double kBassAnchorMidi = 36.0;
+
+// C4, and the same rule applies.
+inline constexpr double kKeysAnchorMidi = 60.0;
+
 void renderBass(const Settings &s, float *out, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
   if (beatSamples <= 0 || !s.key.valid)
@@ -233,24 +239,51 @@ void renderBass(const Settings &s, float *out, int numSamples) {
   const Figure f = figureFor(Voice::Bass, s);
   Rng rng(saltedSeed(Voice::Bass, s.seed));
 
+  const int numChords = (int)s.progression.size();
+
+  // Collect the onsets first, so each note can be held until the next one
+  // rather than for an arbitrary fixed length. A sustained voice needs to know
+  // where it stops.
+  std::vector<int> onsets;
+  std::vector<bool> isChange;
   for (int step = 0; step < f.steps; ++step) {
-    if (!Euclidean::hit(step, f.steps, f.pulses, f.rotation))
+    // A chord change always gets a note, whether or not the figure has an
+    // onset there. A bass player lands on the change; leaving it to the
+    // rotation means the harmony is sometimes announced by nobody, and the
+    // first thing heard over a new chord is its fifth.
+    const bool onChange =
+        step == 0 ||
+        (numChords > 0 &&
+         Harmony::chordIndexForBeat(step, s.bpi, numChords) !=
+             Harmony::chordIndexForBeat(step - 1, s.bpi, numChords));
+
+    if (!onChange && !Euclidean::hit(step, f.steps, f.pulses, f.rotation))
       continue;
+
+    onsets.push_back(step);
+    isChange.push_back(onChange);
+  }
+
+  for (size_t n = 0; n < onsets.size(); ++n) {
+    const int step = onsets[n];
+    const bool onChange = isChange[n];
+
     const int at = step * beatSamples;
     if (at >= numSamples)
       break;
 
+    // Up to the next note, or the end of the interval.
+    const int nextStep =
+        (n + 1 < onsets.size()) ? onsets[n + 1] : f.steps;
+    const int length =
+        std::min(numSamples - at, (nextStep - step) * beatSamples);
+    if (length <= 0)
+      continue;
+
     const auto &chord = chordAtBeat(s, step);
 
     // Root, octave and fifth: the three notes that state a chord without
-    // getting in the way of anyone playing over it. The root lands on a chord
-    // change, so the harmony is always announced.
-    const bool onChange =
-        step == 0 ||
-        Harmony::chordIndexForBeat(step, s.bpi, (int)s.progression.size()) !=
-            Harmony::chordIndexForBeat(step - 1, s.bpi,
-                                       (int)s.progression.size());
-
+    // getting in the way of anyone playing over it.
     int semitoneAboveRoot = 0;
     if (!onChange) {
       const int roll = rng.range(0, 9);
@@ -262,11 +295,19 @@ void renderBass(const Settings &s, float *out, int numSamples) {
         semitoneAboveRoot = chord.toneCount > 2 ? chord.tones[2] : 7; // fifth
     }
 
-    // Bass register: roots around E1-E2 so the line does not wander up into
-    // the chords.
-    const double midi = 28.0 + (double)chord.root + (double)semitoneAboveRoot;
-    BotVoice::renderBass(out + at, std::min(numSamples - at, beatSamples * 2),
-                         s.sampleRate, BotVoice::midiToHz(midi), 0.7f);
+    // MIDI 36 is C2, and a chord root is a pitch class where 0 means C, so the
+    // anchor has to BE a C or every root comes out transposed. It was 28 --
+    // which is E1, not C1 -- so the bass played a fourth above the chord while
+    // the keys, anchored correctly at 60 (C4), played the chord. Two voices
+    // disagreeing about the harmony.
+    //
+    // C2 rather than C1 for the second reason it was wrong: 41-78 Hz is below
+    // what most laptop and monitor speakers reproduce at all, so the part was
+    // not merely wrong but inaudible. C2-B2 is 65-123 Hz, which carries.
+    const double midi =
+        kBassAnchorMidi + (double)chord.root + (double)semitoneAboveRoot;
+    BotVoice::renderBass(out + at, length, s.sampleRate,
+                         BotVoice::midiToHz(midi), 0.7f);
   }
 }
 
@@ -295,7 +336,8 @@ void renderKeys(const Settings &s, float *out, int numSamples) {
     const auto &chord = s.progression[(size_t)idx];
     for (int t = 0; t < chord.toneCount; ++t) {
       // Around C4, above the bass and below where a soloist usually sits.
-      const double midi = 60.0 + (double)chord.root + (double)chord.tones[(size_t)t];
+      const double midi =
+          kKeysAnchorMidi + (double)chord.root + (double)chord.tones[(size_t)t];
       BotVoice::renderPad(out + at, length, s.sampleRate,
                           BotVoice::midiToHz(midi), 0.85f);
     }

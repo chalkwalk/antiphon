@@ -1,5 +1,6 @@
 #include "../src/BotBand.h"
 #include "../src/BotVoice.h"
+#include "TestSignal.h"
 #include <JuceHeader.h>
 
 // Two kinds of assertion here, and the split is the point (AGENTS.md).
@@ -275,6 +276,95 @@ public:
                                  " beats had any energy");
     }
 
+    beginTest("the bass plays the root of the chord, in the right key");
+    {
+      // The test this replaces only compared the bass against the keys and so
+      // passed while the bass was a major third sharp of everything: the
+      // anchor was MIDI 28, which is E1 rather than C1, and a chord root is a
+      // pitch class where 0 means C. Comparing two things that move together
+      // proves nothing (PRINCIPLES 5) -- this asserts the absolute note.
+      for (const char *keyName : {"C major", "D minor", "F# major", "A minor",
+                                  "Bb major", "E Dorian"}) {
+        auto s = settingsFor(keyName);
+        // One chord for the whole interval, so the first note is unambiguous.
+        s.progression = {s.progression[0]};
+
+        // A chord change always gets a note and that note is always the root,
+        // so beat 0 is exactly measurable. Later notes may be the octave or
+        // the fifth, which is why this asks about the change rather than about
+        // whatever happens to sound first.
+        const auto buf = render(BotBand::Voice::Bass, s);
+        const double hz = firstNoteHz(buf, s.sampleRate, s.bpm);
+        if (hz <= 0.0) {
+          expect(false, juce::String(keyName) + ": no bass note found");
+          continue;
+        }
+
+        const double midi = 69.0 + 12.0 * std::log2(hz / 440.0);
+        const int pitchClass = ((int)std::lround(midi) % 12 + 12) % 12;
+        expectEquals(pitchClass, s.progression[0].root,
+                     juce::String(keyName) + ": bass at " +
+                         juce::String(hz, 1) + " Hz is pitch class " +
+                         juce::String(pitchClass) + ", chord root is " +
+                         juce::String(s.progression[0].root));
+      }
+    }
+
+    beginTest("every chord change gets a bass note, on the root");
+    {
+      // The stronger form of the test above: not just the first change, but
+      // all of them, with a real progression underneath.
+      auto s = settingsFor("C major", 120, 16);
+      s.progression = {Harmony::chordOn(0, Harmony::Quality::Major),
+                       Harmony::chordOn(5, Harmony::Quality::Major),
+                       Harmony::chordOn(9, Harmony::Quality::Minor),
+                       Harmony::chordOn(7, Harmony::Quality::Major)};
+
+      const auto buf = render(BotBand::Voice::Bass, s);
+      const int beat = (int)(s.sampleRate * 60.0 / s.bpm);
+
+      for (int chord = 0; chord < (int)s.progression.size(); ++chord) {
+        // Where this chord starts.
+        int step = 0;
+        while (step < s.bpi &&
+               Harmony::chordIndexForBeat(step, s.bpi,
+                                          (int)s.progression.size()) != chord)
+          ++step;
+
+        const int at = step * beat;
+        const int span = juce::jmin(beat, (int)buf.size() - at);
+        if (span <= 0)
+          continue;
+
+        const double hz = fundamentalHz(buf.data() + at, span, s.sampleRate);
+        expect(hz > 0.0, "chord " + juce::String(chord) + ": no note");
+        if (hz <= 0.0)
+          continue;
+
+        const double midi = 69.0 + 12.0 * std::log2(hz / 440.0);
+        const int pitchClass = ((int)std::lround(midi) % 12 + 12) % 12;
+        expectEquals(pitchClass, s.progression[(size_t)chord].root,
+                     "chord " + juce::String(chord) + " at beat " +
+                         juce::String(step) + ", " + juce::String(hz, 1) +
+                         " Hz");
+      }
+    }
+
+    beginTest("the bass is where a speaker can reproduce it");
+    {
+      // 41-78 Hz is below what most laptop and monitor speakers do at all,
+      // which is how a wrong bass part went unnoticed as a missing one.
+      for (const char *keyName : {"C major", "B major", "F# major"}) {
+        auto s = settingsFor(keyName);
+        s.progression = {s.progression[0]};
+        const auto buf = render(BotBand::Voice::Bass, s);
+        const double hz = firstNoteHz(buf, s.sampleRate, s.bpm);
+        expect(hz >= 60.0 && hz <= 140.0,
+               juce::String(keyName) + ": bass fundamental at " +
+                   juce::String(hz, 1) + " Hz");
+      }
+    }
+
     beginTest("the bass sits below the chords");
     {
       // The registers must not collide, or the band is mud. Compare where the
@@ -413,6 +503,95 @@ public:
   }
 
 private:
+  // Fundamental by autocorrelation.
+  //
+  // TestSignal::dominantFrequency counts threshold crossings, which is right
+  // for the pure tones the rest of the suite uses and wrong here. The bass
+  // carries a strong second harmonic, so its waveform is asymmetric: the
+  // negative lobe does not always reach the hysteresis threshold, crossings
+  // are missed, and the estimate comes out about three semitones flat --
+  // consistently enough to look like a transposition bug in the synthesis
+  // rather than an artefact of the instrument (PRINCIPLES 5).
+  //
+  // Autocorrelation finds the period rather than the crossings, so harmonics
+  // reinforce the answer instead of confusing it.
+  static double fundamentalHz(const float *data, int numSamples,
+                              double sampleRate, double lowHz = 40.0,
+                              double highHz = 500.0) {
+    if (data == nullptr || numSamples < 64 || sampleRate <= 0.0)
+      return 0.0;
+
+    // Mean removal, so a DC offset cannot dominate the correlation.
+    double mean = 0.0;
+    for (int i = 0; i < numSamples; ++i)
+      mean += data[i];
+    mean /= (double)numSamples;
+
+    std::vector<double> x((size_t)numSamples);
+    for (int i = 0; i < numSamples; ++i)
+      x[(size_t)i] = (double)data[i] - mean;
+
+    double energy = 0.0;
+    for (double v : x)
+      energy += v * v;
+    if (energy <= 0.0)
+      return 0.0;
+
+    const int minLag = juce::jmax(2, (int)(sampleRate / highHz));
+    const int maxLag = juce::jmin(numSamples / 2, (int)(sampleRate / lowHz));
+    if (maxLag <= minLag)
+      return 0.0;
+
+    double bestScore = 0.0;
+    int bestLag = 0;
+    for (int lag = minLag; lag <= maxLag; ++lag) {
+      double sum = 0.0, normA = 0.0, normB = 0.0;
+      for (int i = 0; i + lag < numSamples; ++i) {
+        sum += x[(size_t)i] * x[(size_t)(i + lag)];
+        normA += x[(size_t)i] * x[(size_t)i];
+        normB += x[(size_t)(i + lag)] * x[(size_t)(i + lag)];
+      }
+      const double denom = std::sqrt(normA * normB);
+      if (denom <= 0.0)
+        continue;
+      const double score = sum / denom;
+      if (score > bestScore) {
+        bestScore = score;
+        bestLag = lag;
+      }
+    }
+
+    if (bestLag <= 0 || bestScore < 0.3)
+      return 0.0;
+    return sampleRate / (double)bestLag;
+  }
+
+  // The pitch of the first note in the buffer, wherever it starts.
+  //
+  // Finding the onset matters: a bass figure's rotation can move the first
+  // note off beat 0, and measuring a fixed window from the start then reads
+  // silence and reports nothing.
+  static double firstNoteHz(const std::vector<float> &buf, double sampleRate,
+                            int bpm) {
+    float peak = 0.0f;
+    for (float x : buf)
+      peak = juce::jmax(peak, std::abs(x));
+    if (peak <= 0.0f)
+      return 0.0;
+
+    size_t onset = 0;
+    while (onset < buf.size() && std::abs(buf[onset]) < 0.2f * peak)
+      ++onset;
+    if (onset >= buf.size())
+      return 0.0;
+
+    // One beat from the onset, or whatever is left. Long enough for many
+    // cycles at bass frequencies, short enough not to run into the next note.
+    const int beat = (int)(sampleRate * 60.0 / (double)bpm);
+    const int span = juce::jmin(beat, (int)(buf.size() - onset));
+    return fundamentalHz(buf.data() + onset, span, sampleRate);
+  }
+
   // Zero crossings over the whole buffer: crude, but it answers "is this an
   // octave apart" without pretending to be a pitch tracker.
   static double dominantHz(const std::vector<float> &v, double sampleRate) {
