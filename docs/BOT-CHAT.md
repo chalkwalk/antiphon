@@ -150,10 +150,83 @@ once, and in a quiet room they say nothing at all.
 
 ## 5. Being addressed, and understanding what was said
 
-A message is "addressed" if it is a private message, or room chat containing the
-bot's name.
+### Who is being spoken to
 
-What it should do with it is the hard part of this document. Exact-match command
+Before what a message means comes who it is for, and in a room with four bots
+and four humans this is the question that decides whether the feature is
+tolerable. Four bots answering one question is the failure this whole design
+exists to avoid, and it would happen on the very first "what are you playing".
+
+**The rule: at most one bot ever answers, and cold silence is the default.**
+
+A bot scores how strongly a message is addressed to it, from strongest down:
+
+| Signal | Example | Strength |
+|---|---|---|
+| private message | (any) | certain |
+| name first, with a separator | `kit: what are you playing`, `kit, ...`, `@kit ...`, `kit - ...` | very strong |
+| name anywhere | `what is kit playing` | strong |
+| instrument noun where the name would be | `drums, what are you playing`, `whats the bass doing` | strong |
+| near-miss on a name | `kt:`, `kitt`, `bas`, `keyz` | strong, if unambiguous |
+| continuation of a conversation it is already in | `and the chords?` | moderate |
+| nothing at all | `what are you playing` | none -- **nobody answers** |
+
+The last row is the important one. **First contact has to be explicit.** An
+unaddressed question in a room with eight participants is not a question for a
+bot, and answering it is presumptuous. Once you have addressed a bot, follow-ups
+work without repeating its name for a few turns or a minute, whichever ends
+first -- which is what makes it feel like a conversation rather than a series of
+commands.
+
+**Never answer a message aimed at somebody else.** A bot knows the room's user
+list from `USERINFO`, so a message beginning with any other participant's name
+-- human or bot -- is not for it, and that test comes before every other signal.
+`dave, what pedal is that` is answered by nobody.
+
+**One answer, without any coordination.** Every bot sees the same chat and the
+same user list, so every bot can compute every other bot's score for the same
+message and answer only if it wins. Ties break on a fixed order all of them
+know. There is no protocol, no election and no shared state -- the same trick as
+one bot acknowledging a key change, and the reason it works is that the inputs
+are identical for everyone.
+
+Bots recognise each other by the ` [bot]` suffix on the username. That is
+spoofable, and it only decides who talks, so it is a legibility mechanism rather
+than a security boundary -- the same reasoning already recorded for how the echo
+bot identifies the human.
+
+**The deliberate exception**: `everyone`, `all`, `band`, `you lot`. Then they all
+answer, in a fixed order, one short line each, because that is what was asked
+for.
+
+A worked case, with four bots and two humans in the room:
+
+```
+you: what are you playing
+(nobody -- not addressed)
+you: kit what are you playing
+Kit [bot]: five over eight, accents on 1 and 4.
+you: and your sound?
+Kit [bot]: deep kick, soft beater.
+you: dave what pedal is that
+(nobody -- that is for dave)
+dave: what are you playing
+(nobody -- dave has not addressed anyone)
+you: band, what are you playing
+Kit [bot]: five over eight, accents on 1 and 4.
+Bass [bot]: roots, on the changes and the kick.
+Keys [bot]: the chart, held, one chord a bar.
+Lead [bot]: eighths over D minor, resting on the weak beats.
+```
+
+`test/fixtures/bot-addressing.txt` is the corpus for this, and it is separate
+from the phrase corpus because it tests a different axis: not what a message
+means, but whose it is.
+
+### What it means
+
+What a bot should do with a message it has decided is for it is the harder half
+of this document. Exact-match command
 words are what makes a rule-based bot feel like talking to a wall: they work
 when you happen to type the magic phrase and fail flatly otherwise, which
 teaches you that the thing is a vending machine. The goal is not general

@@ -1,0 +1,159 @@
+# Who is a message for?
+#
+# A different axis from bot-phrases.txt, which asks what a message means. This
+# one asks whose it is, and in a room with four bots and four humans it is the
+# question that decides whether the feature is tolerable at all. See
+# docs/BOT-CHAT.md section 5.
+#
+# The rule under test: at most one bot ever answers, cold silence is the
+# default, and first contact must be explicit.
+#
+# Room for every case below: bots Kit [bot], Bass [bot], Keys [bot],
+# Lead [bot], Tutor [bot]; humans you, dave, sam.
+#
+# Format, tab or spaces separated:
+#   <expected answerer>  <message>
+#
+# Expected answerer is one of KIT BASS KEYS LEAD TUTOR ALL NOBODY.
+# Section headers set the conversational context the message arrives in.
+
+# No prior conversation. Anything not explicitly addressed is nobody's.
+[COLD]
+KIT     kit: what are you playing
+KIT     kit, what are you playing
+KIT     @kit what are you playing
+KIT     kit - what are you playing
+KIT     Kit [bot]: what are you playing
+KIT     kit what are you playing
+KIT     hey kit whats your part
+KIT     what is kit playing
+KIT     whats kit up to
+KIT     ask kit what hes playing
+BASS    bass: what key
+BASS    bass what are the chords
+BASS    hey bass
+BASS    whats the bass doing
+BASS    what is the bass playing
+KEYS    keys: what chords
+KEYS    keys what are you playing
+KEYS    what are the keys doing
+LEAD    lead: what key are we in
+LEAD    whats the lead playing
+TUTOR   tutor: help
+TUTOR   tutor what do i do
+
+# The instrument rather than the name. Same bot, and just as clear.
+[COLD]
+KIT     drums, what are you playing
+KIT     drummer what are you playing
+KIT     what are the drums doing
+KIT     hey drums
+BASS    bassist what are you playing
+KEYS    piano what are you playing
+KEYS    pad what are you doing
+LEAD    lead guitar what are you playing
+LEAD    soloist what are you playing
+
+# Near misses. A typo must not cost you the answer, as long as it is not
+# ambiguous between two bots.
+[COLD]
+KIT     kt: what are you playing
+KIT     kitt what are you playing
+KIT     kti whats your part
+KIT     drms what are you playing
+BASS    bas what are the chords
+BASS    bss whats the key
+KEYS    keyz what are you playing
+KEYS    kies what chords
+LEAD    leed what key
+
+# Not addressed at all. Nobody may answer, however clear the question is.
+[COLD]
+NOBODY  what are you playing
+NOBODY  whats your part
+NOBODY  what key are we in
+NOBODY  what are the chords
+NOBODY  whats the tempo
+NOBODY  shake
+NOBODY  quiet
+NOBODY  help
+NOBODY  what sound is that
+NOBODY  and the chords?
+NOBODY  tell me more
+
+# Aimed at a human. Checked before every other signal, so a bot name later in
+# the sentence does not override it.
+[COLD]
+NOBODY  dave what pedal is that
+NOBODY  dave: what are you playing
+NOBODY  sam, what key are we in
+NOBODY  dave whats the kit sound like
+NOBODY  sam can you ask kit what hes playing
+NOBODY  dave your bass is loud
+NOBODY  hey dave
+NOBODY  sam?
+
+# Chat between humans that happens to mention the domain. None of it is a
+# question for a bot.
+[COLD]
+NOBODY  i love the drums on this
+NOBODY  the bass is a bit loud
+NOBODY  nice key choice
+NOBODY  those chords are great
+NOBODY  the lead is playing well
+NOBODY  shall we change key
+NOBODY  i think the tempo is too fast
+NOBODY  can someone turn the keys down
+
+# Everyone, deliberately. One short line each, in a fixed order.
+[COLD]
+ALL     everyone what are you playing
+ALL     all: what are you playing
+ALL     band what are you playing
+ALL     you lot what are you playing
+ALL     everybody whats your part
+ALL     all of you shake
+ALL     everyone quiet
+ALL     band, part
+
+# Kit answered this speaker on the previous turn, within the window. Follow-ups
+# continue without repeating the name.
+[AFTER_KIT]
+KIT     and your sound?
+KIT     what about the tempo
+KIT     whats the key
+KIT     shake
+KIT     do it again
+KIT     tell me more
+KIT     what else
+KIT     and?
+KIT     thanks what about your accents
+KIT     ok now shake
+
+# ...but an explicit address to somebody else still wins, and a message for a
+# human is still for the human.
+[AFTER_KIT]
+BASS    bass what are you playing
+KEYS    keys: what chords
+NOBODY  dave what pedal is that
+NOBODY  sam: nice one
+ALL     everyone what are you playing
+
+# The window has expired. Back to needing an explicit address.
+[AFTER_KIT_EXPIRED]
+NOBODY  and your sound?
+NOBODY  what about the tempo
+NOBODY  shake
+KIT     kit shake
+
+# Courtesy and acknowledgement, addressed or not, are never answered -- see
+# the three outcomes in docs/BOT-CHAT.md section 5.
+[AFTER_KIT]
+NOBODY  thanks
+NOBODY  thanks!
+NOBODY  cheers
+NOBODY  nice one
+NOBODY  ok
+NOBODY  cool
+NOBODY  got it
+NOBODY  makes sense

@@ -463,6 +463,53 @@ restraint rather than conversation.
 - [ ] The budget, and a test that asserts a hundred events produce at most N
       lines. The test that keeps it from becoming annoying.
 - [ ] `quiet`, and unprompted speech off outside the practice room.
+- [ ] Addressing: at most one bot ever answers, cold silence is the default,
+      first contact must be explicit, and a message aimed at a human is
+      answered by nobody. Four bots replying to one question is the annoyance
+      the whole feature has to avoid. Corpus at
+      `test/fixtures/bot-addressing.txt`, 102 cases, 40 of them "nobody".
+
+### Form: repetition, tension and release
+
+The parts are generated fresh every interval and never return to anything, so a
+long session meanders: nothing recurs, nothing builds, nothing resolves. The
+lead is the clearest case -- `leadLine` rerolls its contour from
+`saltedSeed + 7919 * intervalIndex`, which is a rule that says "never repeat".
+
+The cheap fix is that **every bot already knows `intervalIndex`**, so every bot
+can evaluate the same function of it and arrive at the same structure with no
+listening and no coordination. That is the third use of this trick -- one bot
+acknowledges a key change, one bot answers a question, and now the whole band
+follows one arc -- and it is worth recognising as the pattern it is: identical
+inputs, identical deterministic function, agreement for free.
+
+- [ ] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
+      interval, so a phrase is a thing the listener can recognise coming back
+      rather than a fresh roll each time. The table and the section length come
+      from the room seed, so `shake` changes the shape of the music and not just
+      its notes.
+- [ ] **A shared intensity curve.** One deterministic arc over a section, read
+      by every voice and mapped to its own parameters: hats thicken, the bass
+      gets busier, the keys add extensions, the lead climbs. Tension and release
+      without anybody hearing anybody.
+- [ ] **Staggered rests.** A voice drops out for a bar at low intensity, with a
+      per-voice threshold from its salted seed so the drop-outs never coincide,
+      and a floor that guarantees somebody is always playing. Sparse stretches
+      and dense ones, rather than everyone stopping at once.
+- [ ] **Turnarounds mark the form.** The drums already fill every fourth
+      interval; make that the section boundary rather than a fixed count.
+- [ ] Deviation, so the form does not become its own kind of stale: an
+      occasional departure whose likelihood grows the longer a phrase has
+      repeated.
+
+**One interlock to get right.** `test/BotBandTests.cpp` asserts that two
+consecutive drum intervals are not bit-identical -- today the hat rotation
+carries that -- and genuine repetition is exactly what would break it. The
+answer is not to weaken the test: it is that repetition should be identical in
+its *figure* and never in its *performance*, which is what the swing and
+per-hit jitter in the synthesis work provide. A phrase that returns played
+exactly the same way twice is a loop; played fractionally differently, it is a
+band. The two pieces of work want doing in that order.
 
 ### A responsive jamming partner
 
