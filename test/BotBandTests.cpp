@@ -214,7 +214,22 @@ public:
 
         expectEquals(bass.steps, kick.steps * 2,
                      "seed " + juce::String((int)seed) + " resolution");
-        expect(bass.pulses >= kick.pulses * 2,
+
+        // The figure must span the interval rather than repeat inside it: a
+        // bass line that comes round every four steps is doubling the kick by
+        // another route. Exactly twice the kick's pulses always shares a
+        // factor with twice its steps, so the count is nudged to the nearest
+        // coprime one.
+        expectEquals(Euclidean::patternPeriod(bass.steps, bass.pulses),
+                     bass.steps,
+                     "seed " + juce::String((int)seed) + ": E(" +
+                         juce::String(bass.pulses) + "," +
+                         juce::String(bass.steps) + ") repeats");
+        // Near twice the kick, in either direction: the coprime nudge may
+        // move the count down as readily as up, and the guarantee that the
+        // bass is never sparser than the kick comes from the union below
+        // rather than from the pulse count.
+        expect(std::abs(bass.pulses - kick.pulses * 2) <= 2,
                "seed " + juce::String((int)seed) + ": bass has " +
                    juce::String(bass.pulses) + " pulses to the kick's " +
                    juce::String(kick.pulses));
@@ -240,6 +255,45 @@ public:
                                    juce::String(step));
         }
       }
+    }
+
+    beginTest("the bass figure spans the interval at every BPI");
+    {
+      // Odd is enough when the step count is a power of two, and not
+      // otherwise: at BPI 12 and 24 -- both ordinary Ninjam values -- 9, 15
+      // and 21 share a factor of three and still repeat. Coprimality is the
+      // property, not oddness.
+      for (int bpi : {4, 8, 12, 16, 20, 24, 32})
+        for (std::uint32_t seed = 1; seed <= 40; ++seed) {
+          const auto s = settingsFor("C major", 120, bpi, seed);
+          const auto bass = BotBand::figureFor(BotBand::Voice::Bass, s);
+          if (Euclidean::patternPeriod(bass.steps, bass.pulses) != bass.steps) {
+            expect(false, "bpi " + juce::String(bpi) + " seed " +
+                              juce::String((int)seed) + ": E(" +
+                              juce::String(bass.pulses) + "," +
+                              juce::String(bass.steps) + ") repeats every " +
+                              juce::String(Euclidean::patternPeriod(
+                                  bass.steps, bass.pulses)));
+            return;
+          }
+        }
+      expect(true);
+    }
+
+    beginTest("the kick is allowed to repeat, and often does");
+    {
+      // The counterpart: movement is what a bass wants and a kick does not, so
+      // the coprime nudge is deliberately not applied to the drums.
+      int repeating = 0;
+      for (std::uint32_t seed = 1; seed <= 40; ++seed) {
+        const auto s = settingsFor("C major", 120, 16, seed);
+        const auto kick = BotBand::figureFor(BotBand::Voice::Drums, s);
+        if (Euclidean::patternPeriod(kick.steps, kick.pulses) < kick.steps)
+          ++repeating;
+      }
+      expect(repeating > 0,
+             "the kick was never allowed a repeating figure, which suggests "
+             "the coprime nudge leaked into the drums");
     }
 
     beginTest("the keys report one pulse per chord");

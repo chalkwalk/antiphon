@@ -67,6 +67,64 @@ inline bool hit(int pos, int length, int pulses, int offset = 0) noexcept {
   return (q * pulses) % length < pulses;
 }
 
+// How long the pattern takes to come round: steps / gcd(steps, pulses).
+//
+// This is the property that decides whether a figure moves or locks, and it is
+// worth naming because it is easy to choose a pulse count by density alone and
+// get a very different rhythm than intended. E(8,32) has period 4 -- eight
+// repetitions of `x...` inside the bar, a metronome. E(9,32) has period 32 and
+// takes the whole bar to return.
+//
+// NEITHER is better in general. A kick usually wants a short period: repetition
+// is what makes it a pulse you can rely on. A bass line usually wants a long
+// one, because a bass that repeats every four steps is not playing against the
+// kick, it is doubling it. Choose deliberately.
+inline int patternPeriod(int steps, int pulses) {
+  if (steps <= 0)
+    return 0;
+  if (pulses <= 0 || pulses >= steps)
+    return 1;
+
+  int a = steps, b = pulses;
+  while (b != 0) {
+    const int t = b;
+    b = a % b;
+    a = t;
+  }
+  return steps / a;
+}
+
+// The pulse count nearest `wanted` whose pattern spans all `steps` -- that is,
+// coprime with them.
+//
+// For a caller that has decided it wants movement rather than lock. Ties go to
+// the higher count when `preferAbove`, which is how a seed varies density
+// without ever landing back on a repeating figure.
+//
+// Always terminates for steps > 1: `steps - 1` and 1 are both coprime with
+// `steps`, so the outward search cannot run out of candidates.
+inline int nearestCoprimePulses(int steps, int wanted, bool preferAbove) {
+  if (steps <= 1)
+    return steps;
+  if (wanted < 1)
+    wanted = 1;
+  if (wanted > steps - 1)
+    wanted = steps - 1;
+
+  for (int distance = 0; distance < steps; ++distance)
+    for (int pass = 0; pass < 2; ++pass) {
+      const bool high = preferAbove ? (pass == 0) : (pass == 1);
+      const int candidate = high ? wanted + distance : wanted - distance;
+      if (candidate < 1 || candidate > steps - 1)
+        continue;
+      if (patternPeriod(steps, candidate) == steps)
+        return candidate;
+      if (distance == 0)
+        break; // both passes are the same candidate
+    }
+  return wanted;
+}
+
 // Velocities for each step: 0 rest, kAccentedVelocity or kOnsetVelocity for an
 // onset. The accented onsets are themselves distributed Euclidean-wise over the
 // onsets, so accents fall in a pattern rather than on a fixed beat.

@@ -15,6 +15,7 @@ public:
     runEdgeCases();
     runRotation();
     runEquivalence();
+    runPeriodTests();
     runAccents();
   }
 
@@ -142,6 +143,100 @@ public:
         expect(Euclidean::hit(i, 8, 3) == Euclidean::hit(i + 8, 8, 3));
         expect(Euclidean::hit(i, 8, 3) == Euclidean::hit(i - 8, 8, 3));
       }
+    }
+  }
+
+  void runPeriodTests() {
+    beginTest("patternPeriod matches the period the pattern actually has");
+    {
+      // Computed from the gcd, so check it against the pattern itself rather
+      // than trusting the arithmetic.
+      for (int steps = 1; steps <= 32; ++steps)
+        for (int pulses = 0; pulses <= steps; ++pulses) {
+          const auto p = Euclidean::pattern(steps, pulses);
+          if (p.empty())
+            continue;
+
+          int measured = steps;
+          for (int d = 1; d <= steps; ++d) {
+            if (steps % d != 0)
+              continue;
+            bool repeats = true;
+            for (int i = 0; i < steps; ++i)
+              if (p[(size_t)i] != p[(size_t)(i % d)]) {
+                repeats = false;
+                break;
+              }
+            if (repeats) {
+              measured = d;
+              break;
+            }
+          }
+
+          expectEquals(Euclidean::patternPeriod(steps, pulses), measured,
+                       "E(" + juce::String(pulses) + "," +
+                           juce::String(steps) + ")");
+        }
+    }
+
+    beginTest("a common factor repeats, and that is a choice not a fault");
+    {
+      // Both are useful. A short period is what makes a kick a pulse you can
+      // rely on; a long one is what stops a bass line doubling it.
+      expectEquals(Euclidean::patternPeriod(32, 8), 4, "eight over 32 repeats");
+      expectEquals(Euclidean::patternPeriod(32, 16), 2);
+      expectEquals(Euclidean::patternPeriod(32, 9), 32, "nine spans the bar");
+      expectEquals(Euclidean::patternPeriod(8, 4), 2);
+      expectEquals(Euclidean::patternPeriod(8, 3), 8);
+
+      // Odd is not the same as coprime: 9 over 24 shares a factor of three.
+      expectEquals(Euclidean::patternPeriod(24, 9), 8,
+                   "odd but not coprime still repeats");
+      expectEquals(Euclidean::patternPeriod(48, 15), 16);
+    }
+
+    beginTest("nearestCoprimePulses spans the pattern and stays near");
+    {
+      for (int steps = 2; steps <= 64; ++steps)
+        for (int wanted = 1; wanted < steps; ++wanted)
+          for (bool above : {false, true}) {
+            const int p = Euclidean::nearestCoprimePulses(steps, wanted, above);
+            expect(p >= 1 && p <= steps - 1,
+                   "out of range at steps " + juce::String(steps));
+            expectEquals(Euclidean::patternPeriod(steps, p), steps,
+                         "steps " + juce::String(steps) + " wanted " +
+                             juce::String(wanted) + " gave " +
+                             juce::String(p));
+            // Never far: a coprime count is always close by.
+            expect(std::abs(p - wanted) <= 3,
+                   "steps " + juce::String(steps) + ": " +
+                       juce::String(wanted) + " -> " + juce::String(p));
+          }
+    }
+
+    beginTest("an already-coprime count is left alone");
+    {
+      expectEquals(Euclidean::nearestCoprimePulses(32, 9, true), 9);
+      expectEquals(Euclidean::nearestCoprimePulses(32, 9, false), 9);
+      expectEquals(Euclidean::nearestCoprimePulses(8, 3, true), 3);
+    }
+
+    beginTest("the tie-break moves the way it is asked to");
+    {
+      // 8 over 32 is not coprime; 7 and 9 both are and are equidistant.
+      expectEquals(Euclidean::nearestCoprimePulses(32, 8, true), 9);
+      expectEquals(Euclidean::nearestCoprimePulses(32, 8, false), 7);
+    }
+
+    beginTest("degenerate step counts do not hang");
+    {
+      expectEquals(Euclidean::nearestCoprimePulses(1, 1, true), 1);
+      expectEquals(Euclidean::nearestCoprimePulses(0, 3, true), 0);
+      expect(Euclidean::nearestCoprimePulses(16, -5, true) >= 1);
+      expect(Euclidean::nearestCoprimePulses(16, 999, true) <= 15);
+      expectEquals(Euclidean::patternPeriod(0, 3), 0);
+      expectEquals(Euclidean::patternPeriod(8, 0), 1);
+      expectEquals(Euclidean::patternPeriod(8, 8), 1);
     }
   }
 
