@@ -34,23 +34,40 @@ enum class Quality {
   Dominant7,
   Major7,
   Minor7,
-  HalfDiminished7
+  HalfDiminished7,
+  Diminished7,
+  Sus2,
+  Sus4,
+  Major6,
+  Minor6
 };
 
 inline constexpr int kMaxChordTones = 5;
 
 struct Chord {
   int root = 0; // pitch class, 0-11, absolute
+
+  // A label, never the truth. Shapes with no name in this enum -- a ninth, a
+  // thirteenth, an altered dominant -- carry the closest one and are still
+  // exact in their tones, which is what everything actually reads.
   Quality quality = Quality::Major;
 
-  // Semitones above the root. Derived from the quality today, but stored
-  // rather than recomputed so an alteration can move or add one tone without
-  // needing a quality to name the result.
+  // Semitones above the root, and NOT reduced into an octave: a ninth is 14
+  // rather than 2, because a chord that names a ninth wants it voiced above the
+  // seventh. Callers that only care about pitch class take it modulo 12.
+  //
+  // Derived from the quality today, but stored rather than recomputed so an
+  // alteration can move or add one tone without needing a quality to name the
+  // result.
   std::array<std::int8_t, kMaxChordTones> tones{{0, 4, 7, 0, 0}};
   int toneCount = 3;
 
+  // The pitch class under the chord when it is not the root -- the G of Am7/G.
+  // -1 means the root is the bass, which is the ordinary case.
+  int bass = -1;
+
   bool operator==(const Chord &o) const {
-    if (root != o.root || toneCount != o.toneCount)
+    if (root != o.root || toneCount != o.toneCount || bass != o.bass)
       return false;
     for (int i = 0; i < toneCount; ++i)
       if (tones[(size_t)i] != o.tones[(size_t)i])
@@ -60,6 +77,25 @@ struct Chord {
 };
 
 using Progression = std::vector<Chord>;
+
+// A bar of the chart, holding one chord or several.
+//
+// Bars exist because the notation carries timing that a flat list throws away:
+// "| Dm7 | C# Csus |" says the second bar holds two chords, so Dm7 lasts twice
+// as long as either of them. Read as a flat list of three it becomes 3+3+2
+// beats of an eight-beat interval, which is not what anybody wrote.
+struct Bar {
+  std::vector<Chord> chords;
+};
+
+using Chart = std::vector<Bar>;
+
+// One chord per bar, which is what a flat progression means.
+Chart chartOf(const Progression &progression);
+
+// Every chord in the chart, in the order they sound. For display and for tests;
+// the band reads a Layout instead, because a flat list has lost the timing.
+Progression flatten(const Chart &chart);
 
 // The tones of a quality, as semitones above the root.
 Chord chordOn(int rootPitchClass, Quality quality);
@@ -100,9 +136,29 @@ Progression realise(const MusicalKey::Key &key, const DegreeLoop &degrees);
 // The whole default: degrees, then chords.
 Progression defaultProgression(const MusicalKey::Key &key);
 
-// "Am", "F", "C7", "Bbmaj7", "F#m7b5". Returns false for anything it does not
-// recognise, rather than guessing.
+// The same, as a chart of one chord per bar.
+Chart defaultChart(const MusicalKey::Key &key);
+
+// "Am", "F", "C7", "Bbmaj7", "F#m7b5", "Csus4", "Am7/G", "F#m7(b5)", "Cmaj9".
+// Returns false for anything it does not recognise, rather than guessing.
+//
+// Accepts what players actually write, which is a wider vocabulary than the
+// band can voice: five tones is the limit, so a thirteenth keeps its name and
+// its seventh but not every rung of the stack. Parsing more than we voice is
+// deliberate -- the chart is a document as well as an instruction, and a chord
+// we refuse to read is a chord the room cannot talk about.
 bool parseChordName(const juce::String &text, Chord &out);
+
+// The name back again: "Dm7", "C#sus4", "Am7/G". Spelled sharp or flat as
+// asked, since the key signature decides that and a chord does not know it.
+//
+// Derived from the tones rather than from the quality label, so an altered or
+// borrowed chord names itself correctly without an enum entry existing for it.
+// Canonical: "CM7" and "Cmaj7" both come back as "Cmaj7".
+juce::String chordName(const Chord &chord, bool flat);
+
+// A chart from a chat line, bars and all: "| Dm7 | C# Csus |".
+bool parseChart(const juce::String &text, Chart &out);
 
 // A Jamtaba-style progression from a chat line: "| Am | F | C | G |".
 //
@@ -112,6 +168,15 @@ bool parseChordName(const juce::String &text, Chord &out);
 // the same reason. Every measure must parse as a chord or the whole line is
 // not a progression.
 bool parseProgression(const juce::String &text, Progression &out);
+
+// Whether a line is a chord chart at all, for anything that has to decide how
+// to show it before deciding what it means.
+//
+// The same tokeniser as parseProgression, so a line coloured as a chart in the
+// chat pane and a line the band will play are the same set. They were two
+// parsers once and they disagreed in both directions: a line could be coloured
+// green and silently never reach the band (`PRINCIPLES §8`).
+bool looksLikeChart(const juce::String &text);
 
 // Where in the progression a given beat of the interval falls.
 //
@@ -127,5 +192,42 @@ bool parseProgression(const juce::String &text, Progression &out);
 // is the obvious one, and the rotation is there to displace the changes off the
 // beat when a seed asks for it.
 int chordIndexForBeat(int beat, int bpi, int numChords, int rotation = 0);
+
+// A chart resolved onto one interval's grid: which chord sounds at every step,
+// worked out once instead of four times.
+//
+// Every voice needs the same three answers -- what is sounding now, has it just
+// changed, and how long does it last -- and each of them used to re-derive the
+// timing from the chord count. That was tolerable while chords were evenly
+// spaced and stops being so the moment a bar can hold two of them.
+//
+// The grid is eighths rather than beats, because a bar one beat long can still
+// hold two chords, and because the lead already thinks in eighths.
+inline constexpr int kStepsPerBeat = 2;
+
+struct Layout {
+  Progression chords;           // in the order they sound
+  std::vector<int> stepToChord; // one entry per eighth of the interval
+  int bpi = 0;
+
+  int steps() const { return (int)stepToChord.size(); }
+  bool empty() const { return chords.empty() || stepToChord.empty(); }
+};
+
+// Placement, in two applications of the generator the drums use:
+//
+//   - bars over the interval, which is exactly `chordIndexForBeat` -- so a
+//     chart of one chord per bar lays out precisely as it did before bars
+//     existed, and that is asserted rather than assumed;
+//   - then each bar's chords over that bar's own steps.
+//
+// A bar holding more chords than it has steps drops the ones that will not fit,
+// the same way a progression longer than the interval always has.
+Layout layoutChart(const Chart &chart, int bpi);
+
+// What is sounding at a step, and whether the chord changed on it. Step 0 is
+// always a change: an interval opens on its first chord.
+const Chord &chordAtStep(const Layout &layout, int step);
+bool changesAtStep(const Layout &layout, int step);
 
 } // namespace Harmony

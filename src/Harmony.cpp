@@ -48,6 +48,28 @@ Chord chordOn(int rootPitchClass, Quality quality) {
     c.tones = {{0, 3, 6, 10, 0}};
     c.toneCount = 4;
     break;
+  case Quality::Diminished7:
+    // A diminished seventh is nine semitones up, which is a major sixth by
+    // another name -- the triad under it is what makes it a seventh.
+    c.tones = {{0, 3, 6, 9, 0}};
+    c.toneCount = 4;
+    break;
+  case Quality::Sus2:
+    c.tones = {{0, 2, 7, 0, 0}};
+    c.toneCount = 3;
+    break;
+  case Quality::Sus4:
+    c.tones = {{0, 5, 7, 0, 0}};
+    c.toneCount = 3;
+    break;
+  case Quality::Major6:
+    c.tones = {{0, 4, 7, 9, 0}};
+    c.toneCount = 4;
+    break;
+  case Quality::Minor6:
+    c.tones = {{0, 3, 7, 9, 0}};
+    c.toneCount = 4;
+    break;
   }
   return c;
 }
@@ -145,89 +167,410 @@ Progression defaultProgression(const MusicalKey::Key &key) {
   return realise(key, defaultDegreeLoop(key));
 }
 
-bool parseChordName(const juce::String &text, Chord &out) {
-  const juce::String s = text.trim();
-  if (s.isEmpty())
-    return false;
+Chart chartOf(const Progression &progression) {
+  Chart chart;
+  chart.reserve(progression.size());
+  for (const auto &c : progression)
+    chart.push_back(Bar{{c}});
+  return chart;
+}
 
+Progression flatten(const Chart &chart) {
+  Progression out;
+  for (const auto &bar : chart)
+    for (const auto &c : bar.chords)
+      out.push_back(c);
+  return out;
+}
+
+Chart defaultChart(const MusicalKey::Key &key) {
+  return chartOf(defaultProgression(key));
+}
+
+namespace {
+
+// A note letter and its accidentals: "C", "F#", "Bb". Advances `pos` past what
+// it read and returns the pitch class, or -1.
+int parseNote(const juce::String &s, int &pos) {
   static const char *letters = "CDEFGAB";
   static const int letterSemis[7] = {0, 2, 4, 5, 7, 9, 11};
 
-  const int letterIdx =
-      juce::String(letters).indexOfChar(s[0] >= 'a' && s[0] <= 'z'
-                                            ? (juce::juce_wchar)(s[0] - 32)
-                                            : s[0]);
-  if (letterIdx < 0)
-    return false;
+  if (pos >= s.length())
+    return -1;
 
-  int root = letterSemis[letterIdx];
-  int pos = 1;
+  const juce::juce_wchar raw = s[pos];
+  const juce::juce_wchar upper =
+      (raw >= 'a' && raw <= 'z') ? (juce::juce_wchar)(raw - 32) : raw;
+  const int idx = juce::String(letters).indexOfChar(upper);
+  if (idx < 0)
+    return -1;
+
+  int pc = letterSemis[idx];
+  ++pos;
   while (pos < s.length() && (s[pos] == '#' || s[pos] == 'b')) {
-    // A trailing 'b' can be an accidental or the start of a "b5", so only take
-    // it as a flat while it sits directly against the letter.
-    if (s[pos] == 'b' && pos + 1 < s.length() && juce::CharacterFunctions::isDigit(s[pos + 1]))
+    // A 'b' can be an accidental or the start of "b5", so only take it as a
+    // flat while it sits directly against the letter.
+    if (s[pos] == 'b' && pos + 1 < s.length() &&
+        juce::CharacterFunctions::isDigit(s[pos + 1]))
       break;
-    root += (s[pos] == '#') ? 1 : -1;
+    pc += (s[pos] == '#') ? 1 : -1;
     ++pos;
   }
-
-  const juce::String suffix = s.substring(pos).trim();
-
-  // Longest first, so "maj7" is not read as "m".
-  struct Suffix {
-    const char *text;
-    Quality quality;
-  };
-  static const Suffix table[] = {
-      {"maj7", Quality::Major7},         {"M7", Quality::Major7},
-      {"m7b5", Quality::HalfDiminished7}, {"min7", Quality::Minor7},
-      {"m7", Quality::Minor7},           {"dim", Quality::Diminished},
-      {"aug", Quality::Augmented},       {"min", Quality::Minor},
-      {"maj", Quality::Major},           {"m", Quality::Minor},
-      {"7", Quality::Dominant7},         {"+", Quality::Augmented},
-      {"o", Quality::Diminished},        {"", Quality::Major},
-  };
-
-  for (const auto &entry : table) {
-    const juce::String want(entry.text);
-    if (suffix == want) {
-      out = chordOn(root, entry.quality);
-      return true;
-    }
-  }
-  return false;
+  return wrapPitchClass(pc);
 }
 
-bool parseProgression(const juce::String &text, Progression &out) {
-  if (!text.contains("|"))
+// The chord's shape, as the suffix is read. Kept as intervals rather than as a
+// quality because most of what players write has no name in the enum.
+struct Shape {
+  int third = 4;    // 4 major, 3 minor
+  int sus = -1;     // 2 or 5 when the third is suspended
+  int fifth = 7;    // 6 diminished, 8 augmented
+  int seventh = -1; // 10 minor, 11 major, 9 diminished
+  bool sixth = false;
+  bool dimBase = false;
+  std::vector<int> extras; // 13, 14, 15, 17, 18, 20, 21 -- in the order named
+};
+
+// A cursor over the suffix. Case-sensitive, because "M7" and "m7" are different
+// chords and lowercasing early is how that gets lost.
+struct Cursor {
+  juce::String text;
+  int pos = 0;
+
+  bool take(const char *literal) {
+    const juce::String want(literal);
+    if (text.substring(pos, pos + want.length()) != want)
+      return false;
+    pos += want.length();
+    return true;
+  }
+  bool done() const { return pos >= text.length(); }
+};
+
+void addSeventh(Shape &shape, bool major) {
+  if (shape.seventh >= 0)
+    return;
+  shape.seventh = shape.dimBase && !major ? 9 : (major ? 11 : 10);
+}
+
+// The suffix after the root: "m7b5", "sus4", "maj9", "7b9", "add9".
+bool parseSuffix(Cursor &c, Shape &shape) {
+  bool majorSeventh = false;
+
+  // The base quality comes first and only once. "M" is major and "m" is minor,
+  // which is the one place capitals carry meaning in a chord symbol.
+  if (c.take("maj") || c.take("Maj") || c.take("MAJ") || c.take("M")) {
+    majorSeventh = true;
+  } else if (c.take("min") || c.take("mi") || c.take("m") || c.take("-")) {
+    shape.third = 3;
+  } else if (c.take("dim")) {
+    shape.third = 3;
+    shape.fifth = 6;
+    shape.dimBase = true;
+  } else if (c.take("aug")) {
+    shape.fifth = 8;
+  } else if (c.take("o")) {
+    shape.third = 3;
+    shape.fifth = 6;
+    shape.dimBase = true;
+  } else if (c.take("+")) {
+    shape.fifth = 8;
+  }
+
+  while (!c.done()) {
+    // Two-digit numbers first, or "13" reads as "1" and then fails.
+    if (c.take("13")) {
+      addSeventh(shape, majorSeventh);
+      shape.extras.push_back(21);
+    } else if (c.take("11")) {
+      addSeventh(shape, majorSeventh);
+      shape.extras.push_back(17);
+    } else if (c.take("9")) {
+      addSeventh(shape, majorSeventh);
+      shape.extras.push_back(14);
+    } else if (c.take("7")) {
+      addSeventh(shape, majorSeventh);
+    } else if (c.take("6")) {
+      shape.sixth = true;
+    } else if (c.take("sus2")) {
+      shape.sus = 2;
+    } else if (c.take("sus4") || c.take("sus")) {
+      shape.sus = 5;
+    } else if (c.take("add9") || c.take("add2")) {
+      shape.extras.push_back(14);
+    } else if (c.take("add11") || c.take("add4")) {
+      shape.extras.push_back(17);
+    } else if (c.take("add13") || c.take("add6")) {
+      shape.extras.push_back(21);
+    } else if (c.take("b5")) {
+      shape.fifth = 6;
+    } else if (c.take("#5")) {
+      shape.fifth = 8;
+    } else if (c.take("b9")) {
+      shape.extras.push_back(13);
+    } else if (c.take("#9")) {
+      shape.extras.push_back(15);
+    } else if (c.take("#11")) {
+      shape.extras.push_back(18);
+    } else if (c.take("b13")) {
+      shape.extras.push_back(20);
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Give the shape the closest name the enum has. Nothing depends on it -- the
+// tones are the truth -- but a Chord that can say "minor 7" is easier to read
+// in a test failure than one that can only list intervals.
+Quality qualityOf(const Shape &shape) {
+  if (shape.sus == 2)
+    return Quality::Sus2;
+  if (shape.sus == 5)
+    return Quality::Sus4;
+
+  if (shape.third == 3) {
+    if (shape.fifth == 6)
+      return shape.seventh == 10
+                 ? Quality::HalfDiminished7
+                 : (shape.seventh == 9 ? Quality::Diminished7
+                                       : Quality::Diminished);
+    if (shape.sixth)
+      return Quality::Minor6;
+    return shape.seventh >= 0 ? Quality::Minor7 : Quality::Minor;
+  }
+
+  if (shape.fifth == 8)
+    return Quality::Augmented;
+  if (shape.sixth)
+    return Quality::Major6;
+  if (shape.seventh == 11)
+    return Quality::Major7;
+  if (shape.seventh == 10)
+    return Quality::Dominant7;
+  return Quality::Major;
+}
+
+Chord chordFrom(int root, const Shape &shape) {
+  Chord c;
+  c.root = wrapPitchClass(root);
+  c.quality = qualityOf(shape);
+
+  // Most defining first, because five tones is the ceiling: a thirteenth chord
+  // keeps its seventh and its thirteenth and loses the rungs between, which is
+  // how a keyboard player would voice it anyway.
+  std::vector<int> tones;
+  tones.push_back(0);
+  tones.push_back(shape.sus >= 0 ? shape.sus : shape.third);
+  tones.push_back(shape.fifth);
+  if (shape.seventh >= 0)
+    tones.push_back(shape.seventh);
+  if (shape.sixth)
+    tones.push_back(9);
+  for (int e : shape.extras)
+    tones.push_back(e);
+
+  c.toneCount = juce::jmin((int)tones.size(), kMaxChordTones);
+  for (int i = 0; i < c.toneCount; ++i)
+    c.tones[(size_t)i] = (std::int8_t)tones[(size_t)i];
+  return c;
+}
+
+} // namespace
+
+bool parseChordName(const juce::String &text, Chord &out) {
+  juce::String s = text.trim();
+  if (s.isEmpty())
     return false;
 
-  auto measures = juce::StringArray::fromTokens(text, "|", "");
-  Progression parsed;
-  for (auto measure : measures) {
-    measure = measure.trim();
+  // Parentheses are decoration around an alteration -- "F#m7(b5)" is
+  // "F#m7b5" -- so they come out before the suffix is read rather than being
+  // handled at every alteration. Unbalanced ones are a typo, not a chord:
+  // dropping them silently would make "C(" a C major triad.
+  if (s.indexOfChar('(') >= 0 || s.indexOfChar(')') >= 0) {
+    int opens = 0, closes = 0;
+    for (int i = 0; i < s.length(); ++i) {
+      opens += (s[i] == '(') ? 1 : 0;
+      closes += (s[i] == ')') ? 1 : 0;
+    }
+    if (opens != closes)
+      return false;
+    s = s.removeCharacters("()");
+  }
+
+  int bass = -1;
+  const int slash = s.lastIndexOfChar('/');
+  if (slash >= 0) {
+    juce::String bassText = s.substring(slash + 1).trim();
+    int bassPos = 0;
+    bass = parseNote(bassText, bassPos);
+    if (bass < 0 || bassPos != bassText.length())
+      return false;
+    s = s.substring(0, slash).trim();
+  }
+
+  int pos = 0;
+  const int root = parseNote(s, pos);
+  if (root < 0)
+    return false;
+
+  Cursor cursor{s.substring(pos), 0};
+  Shape shape;
+  if (!parseSuffix(cursor, shape))
+    return false;
+
+  out = chordFrom(root, shape);
+  out.bass = (bass == out.root) ? -1 : bass;
+  return true;
+}
+
+juce::String chordName(const Chord &chord, bool flat) {
+  auto has = [&](int semitone) {
+    for (int i = 0; i < chord.toneCount; ++i)
+      if (chord.tones[(size_t)i] == semitone)
+        return true;
+    return false;
+  };
+
+  const bool sus2 = has(2) && !has(3) && !has(4);
+  const bool sus4 = has(5) && !has(3) && !has(4);
+  const bool minor = has(3);
+  const bool flatFive = has(6) && !has(7);
+  const bool sharpFive = has(8) && !has(7);
+  const int seventh = has(11) ? 11 : (has(10) ? 10 : -1);
+  // A tone 9 is a sixth on an ordinary chord and a diminished seventh on a
+  // diminished one. The triad under it is the only thing that tells them apart.
+  const bool dimSeventh = has(9) && minor && flatFive;
+  const bool sixth = has(9) && !dimSeventh;
+
+  // The number a chord is called by: the highest rung it names. Only a chord
+  // with a seventh under it counts up -- an added ninth with no seventh is
+  // "add9" and calling it a ninth would name a chord with one more note in it.
+  int top = seventh >= 0 ? 7 : 0;
+  if (seventh >= 0) {
+    if (has(21))
+      top = 13;
+    else if (has(17))
+      top = 11;
+    else if (has(14))
+      top = 9;
+  }
+
+  juce::String suffix;
+  if (minor && flatFive && seventh == 10) {
+    suffix = "m7b5";
+  } else if (dimSeventh) {
+    suffix = "dim7";
+  } else if (minor && flatFive) {
+    suffix = "dim";
+  } else {
+    if (minor)
+      suffix = "m";
+    if (sharpFive)
+      suffix += "aug";
+
+    if (sixth)
+      suffix += "6";
+    else if (top >= 7)
+      suffix += (seventh == 11 ? "maj" : "") + juce::String(top);
+    else if (has(14))
+      suffix += "add9"; // a ninth with no seventh under it is an added note
+
+    if (flatFive && !minor)
+      suffix += "b5";
+  }
+
+  if (sus2)
+    suffix += "sus2";
+  else if (sus4)
+    suffix += "sus4";
+
+  // Alterations last, in the order a player would read them.
+  if (has(13))
+    suffix += "b9";
+  if (has(15))
+    suffix += "#9";
+  if (has(18))
+    suffix += "#11";
+  if (has(20))
+    suffix += "b13";
+
+  juce::String name = MusicalKey::noteName(chord.root, flat) + suffix;
+  if (chord.bass >= 0 && chord.bass != chord.root)
+    name += "/" + MusicalKey::noteName(chord.bass, flat);
+  return name;
+}
+
+namespace {
+
+// The one tokeniser. `chords` is filled when it is asked for; `looksLikeChart`
+// passes nullptr and only wants the verdict.
+bool readChart(const juce::String &text, std::vector<std::vector<Chord>> *bars) {
+  const auto trimmed = text.trim();
+
+  // A chart opens with a bar line. Requiring it is what keeps prose out:
+  // Jamtaba's parser treats "I" and "l" as separators and so reads "I AM TIRED"
+  // as a progression, which is exactly the guess this refuses to make.
+  if (!trimmed.startsWithChar('|'))
+    return false;
+
+  int measures = 0;
+  int chords = 0;
+  for (const auto &part : juce::StringArray::fromTokens(trimmed, "|", "")) {
+    const auto measure = part.trim();
     if (measure.isEmpty())
       continue; // the empty pieces either side of the outer bars
 
-    // A measure may hold more than one chord; each must still be a chord.
-    auto names = juce::StringArray::fromTokens(measure, " \t", "");
-    for (auto name : names) {
-      name = name.trim();
+    ++measures;
+    std::vector<Chord> bar;
+    for (const auto &token : juce::StringArray::fromTokens(measure, " \t", "")) {
+      const auto name = token.trim();
       if (name.isEmpty())
         continue;
       Chord c;
       if (!parseChordName(name, c))
-        return false; // one unrecognised token and the line is not a progression
-      parsed.push_back(c);
+        return false; // one unreadable token and the line is not a chart
+      ++chords;
+      bar.push_back(c);
     }
+    if (bars != nullptr)
+      bars->push_back(std::move(bar));
   }
 
-  // Two measures minimum, matching ChatFormat::isChordProgression, so a stray
-  // "| hello" cannot become a one-chord progression.
-  if (parsed.size() < 2)
+  // Two measures minimum, so a stray "|C" cannot become a progression.
+  return measures >= 2 && chords >= 2;
+}
+
+} // namespace
+
+bool looksLikeChart(const juce::String &text) {
+  return readChart(text, nullptr);
+}
+
+bool parseChart(const juce::String &text, Chart &out) {
+  std::vector<std::vector<Chord>> bars;
+  if (!readChart(text, &bars))
     return false;
 
-  out = std::move(parsed);
+  Chart chart;
+  for (auto &bar : bars) {
+    // A chart may be written with an empty bar in it -- "|C|F||G|F" is in
+    // Jamtaba's own test suite -- and an empty bar holds no time.
+    if (bar.empty())
+      continue;
+    chart.push_back(Bar{std::move(bar)});
+  }
+
+  out = std::move(chart);
+  return true;
+}
+
+bool parseProgression(const juce::String &text, Progression &out) {
+  Chart chart;
+  if (!parseChart(text, chart))
+    return false;
+  out = flatten(chart);
   return true;
 }
 
@@ -252,6 +595,82 @@ int chordIndexForBeat(int beat, int bpi, int numChords, int rotation) {
   if (idx < 0)
     return numChords - 1;
   return idx >= numChords ? numChords - 1 : idx;
+}
+
+Layout layoutChart(const Chart &chart, int bpi) {
+  Layout layout;
+  layout.bpi = bpi;
+  if (chart.empty() || bpi <= 0)
+    return layout;
+
+  const int steps = bpi * kStepsPerBeat;
+  layout.stepToChord.assign((size_t)steps, 0);
+
+  // Where each bar starts and ends, in steps. The bars are placed by the same
+  // rule the chords used to be, so a chart of one chord per bar is unchanged.
+  std::vector<int> barOfBeat((size_t)bpi, 0);
+  for (int beat = 0; beat < bpi; ++beat)
+    barOfBeat[(size_t)beat] = chordIndexForBeat(beat, bpi, (int)chart.size());
+
+  int firstIndexInBar = 0;
+  for (size_t bar = 0; bar < chart.size(); ++bar) {
+    // The stretch of the interval this bar owns.
+    int firstBeat = -1, lastBeat = -1;
+    for (int beat = 0; beat < bpi; ++beat) {
+      if (barOfBeat[(size_t)beat] != (int)bar)
+        continue;
+      if (firstBeat < 0)
+        firstBeat = beat;
+      lastBeat = beat;
+    }
+
+    const auto &chords = chart[bar].chords;
+    for (const auto &c : chords)
+      layout.chords.push_back(c);
+
+    // More bars than beats: this one never sounds, but its chords still exist
+    // in the chart, so they take an index and no time.
+    if (firstBeat < 0) {
+      firstIndexInBar += (int)chords.size();
+      continue;
+    }
+
+    const int barSteps = (lastBeat - firstBeat + 1) * kStepsPerBeat;
+    const int fit = juce::jmin((int)chords.size(), barSteps);
+
+    for (int s = 0; s < barSteps; ++s) {
+      const int within = chordIndexForBeat(s, barSteps, fit);
+      layout.stepToChord[(size_t)(firstBeat * kStepsPerBeat + s)] =
+          firstIndexInBar + juce::jlimit(0, fit - 1, within);
+    }
+    firstIndexInBar += (int)chords.size();
+  }
+
+  return layout;
+}
+
+const Chord &chordAtStep(const Layout &layout, int step) {
+  static const Chord fallback{};
+  if (layout.empty())
+    return fallback;
+
+  const int steps = layout.steps();
+  const int s = ((step % steps) + steps) % steps;
+  const int idx = layout.stepToChord[(size_t)s];
+  if (idx < 0 || idx >= (int)layout.chords.size())
+    return fallback;
+  return layout.chords[(size_t)idx];
+}
+
+bool changesAtStep(const Layout &layout, int step) {
+  if (layout.empty())
+    return false;
+
+  const int steps = layout.steps();
+  const int s = ((step % steps) + steps) % steps;
+  if (s == 0)
+    return true; // an interval opens on its first chord
+  return layout.stepToChord[(size_t)s] != layout.stepToChord[(size_t)(s - 1)];
 }
 
 } // namespace Harmony

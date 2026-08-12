@@ -127,14 +127,14 @@ bool PracticeBot::handleBandCommand(const juce::String &text) {
     // A new key means the old chords are in the wrong one. An announced
     // progression is not transposed, because nobody announcing chords means
     // "those chords, moved".
-    settings.progression = Harmony::defaultProgression(key);
+    settings.chart = Harmony::defaultChart(key);
     return true;
   }
 
-  Harmony::Progression progression;
-  if (Harmony::parseProgression(text, progression)) {
+  Harmony::Chart chart;
+  if (Harmony::parseChart(text, chart)) {
     juce::ScopedLock sl(stateMutex);
-    settings.progression = std::move(progression);
+    settings.chart = std::move(chart);
     return true;
   }
 

@@ -45,13 +45,11 @@ int samplesPerBeat(const Settings &s) {
   return (int)(s.sampleRate * 60.0 / (double)s.bpm);
 }
 
-const Harmony::Chord &chordAtBeat(const Settings &s, int beat) {
-  static const Harmony::Chord fallback{};
-  if (s.progression.empty())
-    return fallback;
-  const int idx =
-      Harmony::chordIndexForBeat(beat, s.bpi, (int)s.progression.size());
-  return s.progression[(size_t)idx];
+// The chart resolved onto this interval's grid. Every voice works from one of
+// these rather than re-deriving the timing, which is what lets a bar hold two
+// chords without four places having to agree about what that means.
+Harmony::Layout layoutOf(const Settings &s) {
+  return Harmony::layoutChart(s.chart, s.bpi);
 }
 
 // The kick's figure, needed by the bass as well as the drums: a bass line that
@@ -118,7 +116,7 @@ Settings defaults(const MusicalKey::Key &key, int bpm, int bpi,
   s.bpi = bpi;
   s.sampleRate = sampleRate;
   s.key = key;
-  s.progression = Harmony::defaultProgression(key);
+  s.chart = Harmony::defaultChart(key);
   s.seed = seed;
   return s;
 }
@@ -165,7 +163,7 @@ Figure figureFor(Voice voice, const Settings &s) {
     // pulse per chord so the shape of the answer is the same for every voice.
     Figure f;
     f.steps = std::max(1, s.bpi);
-    f.pulses = std::max(1, (int)s.progression.size());
+    f.pulses = std::max(1, (int)Harmony::flatten(s.chart).size());
     f.rotation = 0;
     f.accents = 1;
     return f;
@@ -206,9 +204,10 @@ int noteTier(int midiNote, const Harmony::Chord &chord) {
 std::vector<int> leadLine(const Settings &s, int intervalIndex) {
   const int eighths = std::max(1, s.bpi * 2);
   std::vector<int> line((size_t)eighths, -1);
-  if (!s.key.valid || s.progression.empty())
+  if (!s.key.valid || s.chart.empty())
     return line;
 
+  const auto layout = layoutOf(s);
   const Figure f = figureFor(Voice::Lead, s);
   Rng rng(saltedSeed(Voice::Lead, s.seed) + 7919u * (std::uint32_t)intervalIndex);
 
@@ -227,7 +226,9 @@ std::vector<int> leadLine(const Settings &s, int intervalIndex) {
       continue;
 
     const int strength = metricStrength(step, s.bpi);
-    const auto &chord = chordAtBeat(s, step / 2);
+    // The lead already runs in eighths, which is the layout's own grid, so it
+    // sees a chord change inside a beat rather than only on one.
+    const auto &chord = Harmony::chordAtStep(layout, step);
 
     // Where the contour wants to be, as a fraction of the way through.
     const double u = (double)step / (double)eighths;
@@ -427,7 +428,7 @@ void renderBass(const Settings &s, float *out, int numSamples) {
   const Figure f = figureFor(Voice::Bass, s);
   Rng rng(saltedSeed(Voice::Bass, s.seed));
 
-  const int numChords = (int)s.progression.size();
+  const auto layout = layoutOf(s);
 
   // The figure runs finer than the beat, so a step is a fraction of one.
   const int stepsPerBeat = std::max(1, f.steps / std::max(1, s.bpi));
@@ -435,7 +436,11 @@ void renderBass(const Settings &s, float *out, int numSamples) {
   if (stepSamples <= 0)
     return;
 
-  auto beatOf = [stepsPerBeat](int step) { return step / stepsPerBeat; };
+  // The figure's grid and the harmony's need not be the same resolution, so
+  // map one onto the other rather than assuming they match.
+  auto layoutStepOf = [stepsPerBeat](int step) {
+    return step * Harmony::kStepsPerBeat / stepsPerBeat;
+  };
 
   // Collect the onsets first, so each note can be held until the next one
   // rather than for an arbitrary fixed length. A sustained voice needs to know
@@ -451,9 +456,8 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     // first thing heard over a new chord is its fifth.
     const bool onChange =
         step == 0 ||
-        (numChords > 0 && step % stepsPerBeat == 0 &&
-         Harmony::chordIndexForBeat(beatOf(step), s.bpi, numChords) !=
-             Harmony::chordIndexForBeat(beatOf(step) - 1, s.bpi, numChords));
+        (step * Harmony::kStepsPerBeat % stepsPerBeat == 0 &&
+         Harmony::changesAtStep(layout, layoutStepOf(step)));
 
     // Every kick gets a bass note, plus the figure's own. The union rather
     // than the figure alone: locking to the kick has to mean actually landing
@@ -486,7 +490,7 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     if (length <= 0)
       continue;
 
-    const auto &chord = chordAtBeat(s, beatOf(step));
+    const auto &chord = Harmony::chordAtStep(layout, layoutStepOf(step));
 
     // Root, octave and fifth: the three notes that state a chord without
     // getting in the way of anyone playing over it.
@@ -519,27 +523,33 @@ void renderBass(const Settings &s, float *out, int numSamples) {
 
 void renderKeys(const Settings &s, float *out, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
-  if (beatSamples <= 0 || s.progression.empty())
+  const auto layout = layoutOf(s);
+  if (beatSamples <= 0 || layout.empty())
     return;
+
+  // Sample positions are worked out from the beat rather than accumulated per
+  // step, so a beat length that is not even does not drift across the interval.
+  auto atStep = [beatSamples](int step) {
+    return step * beatSamples / Harmony::kStepsPerBeat;
+  };
 
   // One sustained chord per slot: held, not stabbed.
   int step = 0;
-  while (step < s.bpi) {
-    const int idx =
-        Harmony::chordIndexForBeat(step, s.bpi, (int)s.progression.size());
+  while (step < layout.steps()) {
+    const int idx = layout.stepToChord[(size_t)step];
 
     int end = step + 1;
-    while (end < s.bpi &&
-           Harmony::chordIndexForBeat(end, s.bpi,
-                                      (int)s.progression.size()) == idx)
+    while (end < layout.steps() && layout.stepToChord[(size_t)end] == idx)
       ++end;
 
-    const int at = step * beatSamples;
+    const int at = atStep(step);
     if (at >= numSamples)
       break;
-    const int length = std::min(numSamples - at, (end - step) * beatSamples);
+    const int length = std::min(numSamples - at, atStep(end) - at);
+    if (length <= 0)
+      break;
 
-    const auto &chord = s.progression[(size_t)idx];
+    const auto &chord = layout.chords[(size_t)idx];
     for (int t = 0; t < chord.toneCount; ++t) {
       // Around C4, above the bass and below where a soloist usually sits.
       const double midi =
@@ -559,6 +569,7 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
     return;
 
   const auto line = leadLine(s, intervalIndex);
+  const auto layout = layoutOf(s);
   const int eighth = beatSamples / 2;
   if (eighth <= 0)
     return;
@@ -589,7 +600,7 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
     // into the clash and one that trips over it -- and it is the other half of
     // why minor sounded wrong, because that is where those notes live.
     int held = length;
-    const auto &chord = chordAtBeat(s, (int)step / 2);
+    const auto &chord = Harmony::chordAtStep(layout, (int)step);
     if (noteTier(line[step], chord) == 2)
       held = std::min(length, eighth);
 
