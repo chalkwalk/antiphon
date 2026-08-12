@@ -313,6 +313,21 @@ namespace {
 // was 1.41, so this leaves a little over.
 inline constexpr float kDrumHeadroom = 0.55f;
 
+// The kit's bus stage, and the one piece of processing here that is not part
+// of a voice.
+//
+// Three drums rendered independently and summed are three drums, not a kit.
+// Shaping the sum is what makes them one thing: because the nonlinearity sees
+// the total, the loudest element momentarily pushes the others down, so the
+// hats duck a little under each kick and come back between them. That
+// intermodulation is audible as the parts belonging together, and no amount of
+// per-voice shaping produces it -- it only exists in the sum.
+//
+// Gentle on purpose. This is well below the drive the kick uses on itself: a
+// bus that audibly distorts is a different effect, and it eats the transients
+// that make a kit read as hits.
+inline constexpr double kKitDrive = 1.1;
+
 void renderDrums(const Settings &s, int intervalIndex, float *out,
                  int numSamples) {
   const int beatSamples = samplesPerBeat(s);
@@ -393,6 +408,9 @@ void renderDrums(const Settings &s, int intervalIndex, float *out,
                             saltedSeed(Voice::Drums, s.seed) + 31u * (std::uint32_t)sub);
     }
   }
+
+  for (int i = 0; i < numSamples; ++i)
+    out[i] = BotVoice::saturate(out[i], kKitDrive);
 }
 
 // C2. Must be a C: chord roots are pitch classes where 0 means C.

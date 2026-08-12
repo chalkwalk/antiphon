@@ -97,8 +97,13 @@ int noteTier(int midiNote, const Harmony::Chord &chord);
 // where the audio can only be measured.
 std::vector<int> leadLine(const Settings &s, int intervalIndex);
 
-// Renders one interval into `out`, which must hold `numSamples` frames and is
-// added to rather than overwritten. Mono: the caller decides how it is placed.
+// Renders one interval into `out`, which must hold `numSamples` frames. Mono:
+// the caller decides how it is placed.
+//
+// `out` must be this voice's own buffer, cleared by the caller. Notes within a
+// voice add into it so overlapping ones mix, but the kit finishes by shaping
+// the whole buffer as a bus, which would shape anything else that was already
+// there.
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
                     float *out, int numSamples);
 
