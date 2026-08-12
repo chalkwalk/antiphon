@@ -373,6 +373,9 @@ ghosts out when you are not connected, and clears when you join a new session.
 | `hello` | Says hello to the room |
 | `/me plays a wrong note` | Third-person message |
 | `/msg bob you there?` | Private message to bob |
+| `/key Dm` | Tells the room the key |
+| `/chords Am F C G` | Tells the room the chords |
+| `/chords ii V I` | The same, in degrees, once a key is set |
 | `/topic Jam in D minor` | Sets the room topic |
 | `!vote bpm 130` | Proposes a tempo change |
 | `!vote bpi 8` | Proposes an interval length change |
@@ -381,6 +384,18 @@ ghosts out when you are not connected, and clears when you join a new session.
 Votes need a majority of the room. When one passes, the tempo changes for
 everyone at the next interval -- **including you**, so in a DAW you will need to
 change your project tempo again and re-Sync.
+
+Ninjam has no protocol field for a key or a chart, so both ride on chat as text
+every other client shows plainly. A chart appears above the phase bar with each
+chord where its change falls, so you can see the next one coming; the roman
+numerals sit at the right of the row above. `| Dm7 | C# Csus |` is two bars, and
+the second holds two chords, so Dm7 lasts twice as long as either of them.
+
+Degrees are turned into chords by your own client before anything is sent, so
+`/chords ii V I` leaves as `| Dm7 | G7 | Cmaj7 |` and everyone else in the room
+sees chords they already understand. If a chart makes the key obvious and nobody
+has set one, Antiphon offers it on the chip under the chat -- and stays quiet
+when the chords are genuinely ambiguous.
 
 ---
 

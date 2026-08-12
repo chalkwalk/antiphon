@@ -400,6 +400,64 @@ announcing them continuously -- which `PRINCIPLES §11` explicitly refuses. A
 deliberate "read me the levels now" gesture is the missing half of that decision.
 
 - [ ] A shortcut that speaks the current levels once, on demand.
+- [ ] The same gesture, or one beside it, for the harmony: the key, the chart,
+      and the chord sounding now. The chord changes several times a bar, so it
+      can never be announced on a timer -- which is exactly the argument above,
+      and the reason it is the same work area.
+
+### The band's harmony
+
+The practice room's band plays over a chart, and a chart is also the one thing
+a room can say about its music that Ninjam has no field for. Both halves live in
+`src/Harmony.{h,cpp}`; see `DESIGN.md` section 6.3.
+
+- [x] Chord vocabulary players actually write, and a name for every chord read.
+- [x] Bars survive parsing, so a bar holding two chords is half the time each.
+- [x] One layout table per interval, shared by every voice.
+- [x] Voice leading for the keys bot, solved around the loop.
+- [x] A key inferred from a chart, offered on a chip and never applied by itself.
+- [x] Degrees and roman numerals, resolved locally so nothing new goes on the wire.
+- [x] The chart drawn along the phase bar, where position carries the timing.
+- [ ] **Chart repetition.** `| ii | V | I |` might be a three-bar loop or the
+      same loop three times over a long interval. Today a chart always fills
+      exactly one interval. A repeat count -- explicit, or inferred when the bars
+      divide the interval evenly -- is its own decision.
+- [ ] **Harmony beyond diatonic.** `Harmony::realise` is the named seam:
+      secondary and altered dominants, tritone substitution, borrowing from
+      adjacent modes. Functional roman naming (`V7/vi`) belongs with it, since
+      it is the same knowledge and today's naming is deliberately mechanical.
+- [ ] **Fuller voicings.** Ninths and thirteenths voiced rather than named only,
+      and dropping the root from the pad when the bass is already on it.
+- [ ] The practice room is not wired into the processor at all yet, so the
+      timeline's "show the band's own chart in practice" rule is written but
+      unreachable. It lands with the room.
+
+### Tutorial bot
+
+Practice is the best introduction to Antiphon and nothing says so. A bot whose
+instrument is chat could walk you through a first jam in the practice room: what
+an interval is, why you hear yourself undelayed and everyone else a bar late,
+how to set a key, when to play. It needs the same eviction rules every bot has,
+and it is the natural home for the talking form of the key suggestion, which is
+deliberately a silent chip today.
+
+- [ ] Decide what it says, and what it never says twice.
+- [ ] Written so it teaches the form rather than the buttons.
+
+### Split the client out
+
+`NinjamClient`, `NinjamProtocol`, `VorbisCodec`, `Harmony` and the bots have no
+dependency on the plugin -- `tools/StemsMain.cpp` and the wanted
+`tools/BotMain.cpp` already prove it. Making them their own repository, consumed
+here as a submodule with the bots a submodule of that, would let a bot travel
+with the client rather than with the plugin.
+
+It is a packaging decision rather than a code one, and it costs a repository
+boundary in exchange for reuse nobody has asked for yet. Written down because
+the thought recurs, not because it is scheduled.
+
+- [ ] Decide, and if the answer is no, move this to `NON-GOALS.md` with the
+      reason.
 
 ---
 

@@ -548,6 +548,64 @@ meaningless when there is no server to stop sending.
 
 ---
 
+## 6.3 Harmony: what the room is playing over
+
+Ninjam has no field for a key and none for a chord chart. Both ride on chat, as
+text any client shows and this one reads (`PRINCIPLES §10`) -- `[key: D minor]`
+and the Jamtaba-style `| Dm7 | C# Csus |`. `src/Harmony.{h,cpp}` and
+`src/MusicalKey.{h,cpp}` hold all of it, JUCE-light so the whole layer is
+testable headless, and the UI reads the same functions the bots do rather than
+computing harmony a second way (`PRINCIPLES §8`).
+
+**A chord is an absolute root plus explicit tones**, never a scale degree, so a
+borrowed or altered chord is expressible without a new model. The vocabulary is
+what players write -- `sus4`, `6`, `add9`, ninths and thirteenths, slash basses,
+parenthesised alterations -- and wider than the band can voice: five tones is
+the ceiling, so a thirteenth keeps its name, its seventh and its thirteenth and
+loses the rungs between. Parsing more than we voice is deliberate. A chart is a
+document as well as an instruction, and a chord we refuse to read is a chord the
+room cannot talk about.
+
+**A chart keeps its bars.** `| Dm7 | C# Csus |` is two bars, the second holding
+two chords, and reading it as three chords evenly spread gives 3+3+2 beats of an
+eight-beat interval where the notation says 4+2+2. `Harmony::Chart` is a list of
+`Bar`s; `layoutChart` resolves one onto the interval by applying the Euclidean
+generator twice -- bars over the interval, then each bar's chords over its own
+beats -- and hands back a `Layout`, a table of which chord sounds at every
+eighth. Every voice reads that table. Four places used to re-derive the timing
+independently, which was tolerable only while chords were evenly spaced.
+
+At one chord per bar the layout is arithmetically what it was before bars
+existed, and that is asserted across bpi 1-16 rather than assumed: it is the
+test that says every existing recording of the band still sounds the same.
+
+**Voicing is chosen, not stacked.** `voiceLead` picks an inversion and octave
+per chord to minimise total movement, inside G3-G5. It solves the CYCLE, not the
+line: a chart repeats every interval, so the last chord's move back to the first
+is the seam a listener hears every time round and is costed like any other move.
+Root position everywhere -- what this replaced -- moves all three voices from C
+to Am when two of them are the same note.
+
+**A chart is evidence about the key.** `inferKey` scores every candidate by how
+its chord tones sit against the scale, weighted by how much each tone
+discriminates rather than by how important it sounds: a fifth is in the scale for
+six of seven degrees and rules almost nothing out, where the third separates
+major from minor. Content alone cannot separate a key from its relative, so
+opening on the tonic, resolving onto it, and a major chord on the fifth degree
+break the tie. The result is offered, never applied -- and below a calibrated
+margin it says nothing at all, because `| Am | F | C | G |` genuinely is
+ambiguous and a suggestion that is wrong half the time is worse than none.
+
+**Degrees never travel.** `| I | vi IV |` and `| 1 | 4 | b6 |` are resolved
+against the session key by the client that typed them, which sends the absolute
+chart. Bots, Jamtaba users and anything else in the room see chords they already
+understand, and there is one place the resolution can be wrong rather than one
+per client. Roman numerals are chromatic and mechanical in both directions --
+`III7`, `bVI`, `#ivo` -- because naming a chord by its function is a claim about
+intent where naming it by position is not.
+
+---
+
 ## 7. Remote playback, mixing and routing
 
 Each `(username, channelIndex)` pair holds one of the fixed `streamSlots`
@@ -758,6 +816,24 @@ Per `PRINCIPLES §12`, state is announced by colour and motion before text.
   when idle. The amber clears when Connect is clicked again.
 - **Phase bar** advances only when in sync. Teal when connected, grey when not.
   Beat ticks and flashes are suppressed when disconnected; phase resets to 0.
+- **Chord timeline**, when a chart has been announced: a row of chord names
+  directly above the phase bar, each at the position in the interval where its
+  change falls, so the fill sweeps through them and the chord now sounding is
+  the bright one. Position carries the timing, which is why it is not a line of
+  text elsewhere. The header grows 80 -> 96 px only while it is showing. The
+  same chart in roman numerals sits at the right end of row 2, where what it
+  carries is the shape of the progression rather than when anything happens.
+  Only an announced chart is ever drawn: a progression the room did not agree
+  to would be a lie on screen.
+- **Chip precedence**, in the one row between the chat and its input: a live
+  server vote first, because it is a decision already in progress; then a key
+  the chords imply but nobody has declared; then the DAW tempo worth proposing.
+  Every one of them is an offer -- the chip never acts on its own, and accepting
+  the key suggestion sends exactly the message `/key` sends.
+- **The spoken status carries the key and the chart** because the drawn one
+  does. The chord *sounding* is deliberately not in it: it changes several times
+  a bar, and reading state that moves on a timer is what `PRINCIPLES §11`
+  refuses.
 - **Chat panel** is ghosted (disabled, near-black, dim text, "(not connected)"
   placeholder) when disconnected, and cleared on the next successful connect so
   a new session does not open with the last one's backlog.
