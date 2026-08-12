@@ -83,6 +83,7 @@ src/
   StemRender.h              # one clip into one interval, resampled and aligned
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
   IntervalProbe.h           # shared test signal: plugin Test Tone and the tests
+  AudioMeasure.h            # peak, rms, crest, pitch, brightness: one instrument
   ChatFormat.{h,cpp}        # chat rendering: vote lines, chord progressions
   # --- UI ---
   LocalChannelStrip.{h,cpp} # 90px vertical strip per local input channel
@@ -135,6 +136,11 @@ ctest --test-dir build --output-on-failure
 ./build/test/AntiphonAudit_artefacts/AntiphonAudit
 # Offline: turn a session archive into WAV stems.
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/
+# Tuning the band's synthesis: render one voice and measure it. The numbers it
+# prints come from src/AudioMeasure.h, which is what the unit tests assert
+# against, so tuning by ear and setting a threshold use one instrument.
+./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab kick --seconds 0.6
+./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab band --seed 12345
 ```
 
 Targets: `Antiphon_Standalone` (easiest for iteration), `Antiphon_VST3`. CLAP is

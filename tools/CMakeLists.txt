@@ -37,3 +37,39 @@ target_link_libraries(AntiphonStems
         juce::juce_recommended_config_flags)
 
 target_include_directories(AntiphonStems PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# antiphon-voicelab: render one bot voice to a WAV and measure it.
+#
+# A development instrument for tuning the synthesis by ear, not something a
+# player ever runs -- so it is built but not installed. It links the band's own
+# sources rather than copies of them, which is the point: what it renders is
+# what the room hears, and the numbers it prints come from the same
+# src/AudioMeasure.h the unit tests assert against.
+#
+# Same light recipe as antiphon-stems: no juce_audio_utils, so it runs on a
+# headless box.
+
+juce_add_console_app(AntiphonVoiceLab
+    COMPANY_NAME "Chalkwalk"
+    PRODUCT_NAME "antiphon-voicelab")
+
+juce_generate_juce_header(AntiphonVoiceLab)
+
+target_sources(AntiphonVoiceLab PRIVATE
+        VoiceLabMain.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
+        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
+        ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp)
+
+target_compile_definitions(AntiphonVoiceLab PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+
+target_link_libraries(AntiphonVoiceLab
+    PRIVATE
+        juce::juce_audio_formats
+        juce::juce_events
+    PUBLIC
+        juce::juce_recommended_config_flags)
+
+target_include_directories(AntiphonVoiceLab PRIVATE ${CMAKE_SOURCE_DIR}/src)
