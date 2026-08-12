@@ -32,6 +32,8 @@ target_sources(NinjamTests
         SpscRingTests.cpp
         ChatFormatTests.cpp
         MusicalKeyTests.cpp
+        EuclideanTests.cpp
+        HarmonyTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
         RunGateTests.cpp
@@ -53,6 +55,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
         ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
+        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
