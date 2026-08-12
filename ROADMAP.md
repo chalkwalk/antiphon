@@ -432,17 +432,25 @@ a room can say about its music that Ninjam has no field for. Both halves live in
       timeline's "show the band's own chart in practice" rule is written but
       unreachable. It lands with the room.
 
-### Tutorial bot
+### Bots that talk
 
-Practice is the best introduction to Antiphon and nothing says so. A bot whose
-instrument is chat could walk you through a first jam in the practice room: what
-an interval is, why you hear yourself undelayed and everyone else a bar late,
-how to set a key, when to play. It needs the same eviction rules every bot has,
-and it is the natural home for the talking form of the key suggestion, which is
-deliberately a silent chip today.
+Practice is the best introduction to Antiphon and nothing says so. Beyond
+teaching, the bots could feel like present players rather than pattern
+generators -- answering when asked what they are playing, noticing a chart they
+cannot read -- without a language model and without becoming a novelty.
 
-- [ ] Decide what it says, and what it never says twice.
-- [ ] Written so it teaches the form rather than the buttons.
+**Designed in `docs/BOT-CHAT.md`; that document is the proposal and this is the
+checklist.** Chat only: the bots do not listen, and musical interaction is
+separate future work. What makes a bot feel alive here is precision and
+restraint rather than conversation.
+
+- [ ] Decide the open questions at the end of `docs/BOT-CHAT.md`, in particular
+      whether teaching lives on a fifth bot that leaves when it is done.
+- [ ] `src/BotChat.{h,cpp}` as pure functions over what a bot knows, so a seed
+      and a script of events give a byte-identical transcript.
+- [ ] The budget, and a test that asserts a hundred events produce at most N
+      lines. The test that keeps it from becoming annoying.
+- [ ] `quiet`, and unprompted speech off outside the practice room.
 
 ### Split the client out
 
