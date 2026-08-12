@@ -32,6 +32,7 @@ public:
     runChordNameTests();
     runBeatMappingTests();
     runLayoutTests();
+    runVoiceLeadingTests();
   }
 
   void runChordTests() {
@@ -493,6 +494,165 @@ public:
       Harmony::Chart withGap;
       expect(Harmony::parseChart("|C|F||G|F", withGap));
       expectEquals((int)withGap.size(), 4);
+    }
+  }
+
+  void runVoiceLeadingTests() {
+    auto chordsOf = [](const char *text) {
+      Harmony::Progression p;
+      const bool ok = Harmony::parseProgression(text, p);
+      jassert(ok);
+      juce::ignoreUnused(ok);
+      return p;
+    };
+
+    auto totalMovement = [](const std::vector<Harmony::Voicing> &v) {
+      // Around the loop, which is the number that matters: the last chord's
+      // move back to the first is heard every time the interval comes round.
+      int total = 0;
+      for (size_t i = 0; i < v.size(); ++i)
+        total += Harmony::voicingDistance(v[i], v[(i + 1) % v.size()]);
+      return total;
+    };
+
+    beginTest("the voicings are these voicings");
+    {
+      // Exact, because the layer is integer arithmetic and because every
+      // looser assertion tried here passed under a deliberately broken
+      // implementation. If a change to the candidates or the search is
+      // intended, these lines are what to update -- and reading them is how
+      // you check the intent.
+      struct Case {
+        const char *text;
+        const char *voicings;
+        int movement;
+      };
+      const Case cases[] = {
+          // C-E-G, C-E-A, C-F-A, B-D-G: two voices held into Am, the top
+          // moving a tone; then the classic step down onto G.
+          {"| C | Am | F | G |",
+           "[60 64 67] [60 64 69] [60 65 69] [59 62 67]", 12},
+          // Chromatic and unrelated by key, where root position costs 36.
+          {"| C | Eb | Ab | G |",
+           "[60 64 67] [58 63 67] [60 63 68] [59 62 67]", 12},
+          // A ii-V-I, where the sevenths resolve down by a semitone.
+          {"| Dm7 | G7 | Cmaj7 |",
+           "[60 62 65 69] [59 62 65 67] [59 60 64 67]", 12},
+      };
+
+      for (const auto &c : cases) {
+        const auto v = Harmony::voiceLead(chordsOf(c.text));
+        juce::StringArray notes;
+        for (const auto &one : v) {
+          juce::StringArray x;
+          for (int note : one)
+            x.add(juce::String(note));
+          notes.add("[" + x.joinIntoString(" ") + "]");
+        }
+        expectEquals(notes.joinIntoString(" "), juce::String(c.voicings),
+                     c.text);
+        expectEquals(totalMovement(v), c.movement,
+                     juce::String(c.text) + " movement around the loop");
+      }
+    }
+
+    beginTest("common tones do not move");
+    {
+      // C to Am shares C and E. Voiced in root position all three voices move,
+      // which is the sound of a machine reading a list rather than a player.
+      const auto v = Harmony::voiceLead(chordsOf("| C | Am |"));
+      expectEquals((int)v.size(), 2);
+
+      std::set<int> first(v[0].begin(), v[0].end());
+      int held = 0;
+      for (int n : v[1])
+        held += first.count(n) > 0 ? 1 : 0;
+      expectEquals(held, 2, "C and E should have stayed exactly where they were");
+
+      expectEquals(Harmony::voicingDistance(v[0], v[1]), 2,
+                   "one voice moves a tone, and that is the whole move");
+    }
+
+    beginTest("a chart that comes back to its first chord comes back to its voicing");
+    {
+      // What costing the turnaround buys, and the property a listener hears:
+      // the loop must not arrive home in a different inversion from the one it
+      // left in, or every time round has a seam in it.
+      for (const char *text : {"| C | F | G | C |", "| E | A | B | E |",
+                               "| Am | Dm | E7 | Am |"}) {
+        const auto v = Harmony::voiceLead(chordsOf(text));
+        expect(v.size() >= 2, text);
+        expect(v.front() == v.back(),
+               juce::String(text) +
+                   ": came home to a different voicing from the one it left");
+        expectEquals(Harmony::voicingDistance(v.front(), v.back()), 0);
+      }
+    }
+
+    beginTest("it beats what it replaced");
+    {
+      // Root position anchored at C4 is what renderKeys did before this
+      // existed, so it is the number worth beating.
+      for (const char *text : {"| C | Am | F | G |", "| C | Eb | Ab | G |",
+                               "| Cmaj7 | Am7 | Dm7 | G7 |"}) {
+        const auto chords = chordsOf(text);
+        std::vector<Harmony::Voicing> rootPosition;
+        for (const auto &c : chords) {
+          Harmony::Voicing v;
+          for (int i = 0; i < c.toneCount; ++i)
+            v.push_back(60 + c.root + c.tones[(size_t)i]);
+          rootPosition.push_back(v);
+        }
+
+        const auto best = Harmony::voiceLead(chords);
+        expect(totalMovement(best) < totalMovement(rootPosition),
+               juce::String(text) + ": voice leading cost " +
+                   juce::String(totalMovement(best)) +
+                   " against root position's " +
+                   juce::String(totalMovement(rootPosition)));
+      }
+    }
+
+    beginTest("voicings stay in the register");
+    {
+      for (const char *text :
+           {"| C | Am | F | G |", "| Bmaj7 | Ebm7 | F#13 | Bmaj7 |",
+            "| Csus2 | Gsus4 |", "| Cdim7 | F#dim7 |"}) {
+        for (const auto &v : Harmony::voiceLead(chordsOf(text))) {
+          expect(!v.empty(), text);
+          for (int n : v)
+            expect(n >= Harmony::kVoiceLow && n <= Harmony::kVoiceHigh,
+                   juce::String(text) + ": note " + juce::String(n) +
+                       " left the register");
+          for (size_t i = 1; i < v.size(); ++i)
+            expect(v[i] > v[i - 1], "a voicing must be ascending");
+        }
+      }
+    }
+
+    beginTest("voicing is deterministic and copes with the degenerate cases");
+    {
+      const auto a = Harmony::voiceLead(chordsOf("| Dm7 | G7 | Cmaj7 |"));
+      const auto b = Harmony::voiceLead(chordsOf("| Dm7 | G7 | Cmaj7 |"));
+      expect(a == b, "two runs gave different voicings");
+
+      expect(Harmony::voiceLead({}).empty());
+
+      // One chord is a loop of one: it has nothing to lead to, and must still
+      // come back voiced.
+      const auto one = Harmony::voiceLead({Harmony::chordOn(0, Harmony::Quality::Major)});
+      expectEquals((int)one.size(), 1);
+      expectEquals((int)one[0].size(), 3);
+    }
+
+    beginTest("a distance is what it costs to move");
+    {
+      expectEquals(Harmony::voicingDistance({60, 64, 67}, {60, 64, 67}), 0);
+      expectEquals(Harmony::voicingDistance({60, 64, 67}, {60, 65, 69}), 3);
+      // A fourth voice has to come from somewhere, and the nearest note it
+      // could have moved from is what it costs.
+      expectEquals(Harmony::voicingDistance({60, 64, 67}, {60, 64, 67, 70}), 3);
+      expectEquals(Harmony::voicingDistance({}, {60}), 0);
     }
   }
 
