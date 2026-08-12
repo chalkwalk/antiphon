@@ -289,7 +289,11 @@ void PracticeServer::dropClient(int index) {
   auto &c = *clients[(size_t)index];
   if (c.authenticated) {
     broadcastChannels(c.username, c.channels, false, &c);
-    auto part = NinjamProtocol::buildChat("MSG", {}, c.username + " has left");
+
+    // PART, not a MSG saying so: NinjamClient only removes a name from
+    // roomMembers on a real PART (NinjamClient.cpp:652), and a bot that leaves
+    // when its owner does needs that to be accurate.
+    auto part = NinjamProtocol::buildChat("PART", c.username);
     for (auto &other : clients) {
       if (other.get() == &c || !other->authenticated)
         continue;
@@ -374,6 +378,23 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
     if (topic.isNotEmpty()) {
       auto t = NinjamProtocol::buildChat("TOPIC", {}, topic);
       sendTo(c, 0xC0, t.getData(), (int)t.getSize());
+    }
+
+    // Who is already here, then tell everyone else who just arrived. JOIN and
+    // PART are how the far end maintains room membership for players who have
+    // no audio channels at all.
+    for (const auto &other : clients) {
+      if (other.get() == &c || !other->authenticated)
+        continue;
+      auto j = NinjamProtocol::buildChat("JOIN", other->username);
+      sendTo(c, 0xC0, j.getData(), (int)j.getSize());
+    }
+
+    auto joined = NinjamProtocol::buildChat("JOIN", c.username);
+    for (auto &other : clients) {
+      if (other.get() == &c || !other->authenticated)
+        continue;
+      sendTo(*other, 0xC0, joined.getData(), (int)joined.getSize());
     }
 
     sendRoster(c);

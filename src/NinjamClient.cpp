@@ -386,6 +386,7 @@ bool NinjamClient::handleMessage(juce::uint8 type,
             RemoteUserChannel newChan;
             newChan.channelIndex = e.channelIndex;
             newChan.channelName = e.channelName;
+            newChan.recvEnabled = defaultRecvEnabled.load();
             user.channels[e.channelIndex] = newChan;
             changed = true;
           } else if (user.channels[e.channelIndex].channelName !=

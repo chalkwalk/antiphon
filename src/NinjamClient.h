@@ -83,6 +83,16 @@ public:
                             int channelIndex, bool mono);
   void getDecodedAudio(juce::AudioBuffer<float> &buffer);
 
+  // Whether a channel is subscribed to the moment it is first seen. Set before
+  // connecting.
+  //
+  // A client that only transmits wants none of it: an unsubscribed channel
+  // never causes the server to send an interval, so it never causes one to be
+  // allocated here. That is what keeps a practice room of bots costing one
+  // client's worth of interval buffers rather than one per bot. Turning recv
+  // off after the fact would leave a window in which audio arrives anyway.
+  void setDefaultRecvEnabled(bool enabled) { defaultRecvEnabled = enabled; }
+
   void setSampleRate(double sr) { sampleRate = sr; }
   void setServerBpm(int bpm) { serverBpm = bpm; }
   void setServerBpi(int bpi) { serverBpi = bpi; }
@@ -434,6 +444,8 @@ private:
   double sampleRate = 48000.0;
   int serverBpm = 120;
   int serverBpi = 16;
+
+  std::atomic<bool> defaultRecvEnabled{true};
 
   juce::String currentHost;
   int currentPort = 2049;
