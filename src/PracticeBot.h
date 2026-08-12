@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BotBand.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
 #include <functional>
@@ -41,6 +42,25 @@ public:
   // room and do nothing is the first thing worth proving.
   void setRender(Render r);
 
+  // Play an instrument, and follow the room while doing it.
+  //
+  // Everything a band member needs to know arrives over the wire -- tempo and
+  // BPI from SERVER_CONFIG_CHANGE, the key from a `[key: ...]` chat line, the
+  // chords from a Jamtaba-style `| Am | F | C | G |` -- so a bot that follows
+  // does so wherever it is pointed, with no orchestrator to tell it. That is
+  // why this lives here and not in PracticeRoom.
+  void playAs(BotBand::Voice voice, const MusicalKey::Key &key, int bpm,
+              int bpi, double sampleRate, std::uint32_t seed);
+
+  // A fresh seed, so the figures change. What "shake" does.
+  void shake();
+
+  BotBand::Settings currentSettings() const;
+  bool isPlaying() const { return playing.load(); }
+
+  // The commands a bot answers to, beyond parting.
+  static bool isShakeCommand(const juce::String &text);
+
   // When this player leaves the room, so does the bot. Empty means nothing but
   // the connection itself ends it. PracticeRoom always sets it.
   void setOwner(juce::String ownerUsername);
@@ -70,15 +90,24 @@ public:
 private:
   void onConnected() override;
   void onDisconnected(const juce::String &reason) override;
+  void onServerConfig(int bpm, int bpi) override;
   void onUserInfoChange() override;
   void onChatMessage(const juce::String &type, const juce::String &username,
                      const juce::String &text) override;
+
+  // Returns true if the line was an instruction to the band. Room chat and
+  // private messages take the same commands.
+  bool handleBandCommand(const juce::String &text);
 
   juce::String botName;
   juce::StringArray channels;
   juce::String owner;
   juce::String listensTo;
   Render render;
+
+  BotBand::Voice bandVoice = BotBand::Voice::Drums;
+  BotBand::Settings settings;
+  std::atomic<bool> playing{false};
 
   NinjamClient netClient;
   juce::AudioBuffer<float> renderBuffer;

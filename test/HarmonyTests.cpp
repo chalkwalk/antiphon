@@ -29,6 +29,7 @@ public:
     runChordTests();
     runDiatonicTests();
     runDefaultProgressionTests();
+    runChordNameTests();
     runBeatMappingTests();
   }
 
@@ -177,6 +178,77 @@ public:
       MusicalKey::Key none;
       const auto prog = Harmony::defaultProgression(none);
       expectEquals((int)prog.size(), 4);
+    }
+  }
+
+  void runChordNameTests() {
+    beginTest("chord names parse");
+    {
+      struct Case {
+        const char *text;
+        int root;
+        Harmony::Quality quality;
+      };
+      const Case cases[] = {
+          {"C", 0, Harmony::Quality::Major},
+          {"Am", 9, Harmony::Quality::Minor},
+          {"F#", 6, Harmony::Quality::Major},
+          {"Bb", 10, Harmony::Quality::Major},
+          {"G7", 7, Harmony::Quality::Dominant7},
+          {"Cmaj7", 0, Harmony::Quality::Major7},
+          {"Dm7", 2, Harmony::Quality::Minor7},
+          {"Bm7b5", 11, Harmony::Quality::HalfDiminished7},
+          {"Edim", 4, Harmony::Quality::Diminished},
+          {"Caug", 0, Harmony::Quality::Augmented},
+          {"Abmin", 8, Harmony::Quality::Minor},
+      };
+
+      for (const auto &c : cases) {
+        Harmony::Chord out;
+        if (!Harmony::parseChordName(c.text, out)) {
+          expect(false, juce::String("failed to parse ") + c.text);
+          continue;
+        }
+        expectEquals(out.root, c.root, juce::String(c.text) + " root");
+        expect(out.quality == c.quality, juce::String(c.text) + " quality");
+      }
+    }
+
+    beginTest("nonsense is refused rather than guessed at");
+    {
+      Harmony::Chord out;
+      for (const char *bad : {"", "H", "hello", "Cxyz", "7", "#", "Ammm"})
+        expect(!Harmony::parseChordName(bad, out),
+               juce::String("accepted ") + bad);
+    }
+
+    beginTest("a Jamtaba-style progression parses");
+    {
+      Harmony::Progression p;
+      expect(Harmony::parseProgression("| Am | F | C | G |", p));
+      expectEquals((int)p.size(), 4);
+      expectEquals(p[0].root, 9);
+      expect(p[0].quality == Harmony::Quality::Minor);
+      expectEquals(p[3].root, 7);
+
+      // Two chords in one measure.
+      Harmony::Progression q;
+      expect(Harmony::parseProgression("| Am F | C G |", q));
+      expectEquals((int)q.size(), 4);
+    }
+
+    beginTest("prose is not a chord progression");
+    {
+      // Jamtaba's own parser reads "I AM TIRED ..." as chords, because it
+      // treats I and l as separators. Refusing to guess is the whole point.
+      Harmony::Progression p;
+      expect(!Harmony::parseProgression("I AM TIRED OF THIS", p));
+      expect(!Harmony::parseProgression("no bars here", p));
+      expect(!Harmony::parseProgression("| Am | not-a-chord |", p),
+             "one bad measure should reject the line");
+      expect(!Harmony::parseProgression("| Am |", p),
+             "one chord is not a progression");
+      expect(!Harmony::parseProgression("", p));
     }
   }
 

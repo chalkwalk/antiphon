@@ -100,6 +100,19 @@ Progression realise(const MusicalKey::Key &key, const DegreeLoop &degrees);
 // The whole default: degrees, then chords.
 Progression defaultProgression(const MusicalKey::Key &key);
 
+// "Am", "F", "C7", "Bbmaj7", "F#m7b5". Returns false for anything it does not
+// recognise, rather than guessing.
+bool parseChordName(const juce::String &text, Chord &out);
+
+// A Jamtaba-style progression from a chat line: "| Am | F | C | G |".
+//
+// Strict on purpose. Jamtaba's own parser treats "I" and "l" as measure
+// separators and so reads "I AM TIRED ..." as a chord progression -- that is a
+// real case in their test suite, and MusicalKey.h refuses to guess at prose for
+// the same reason. Every measure must parse as a chord or the whole line is
+// not a progression.
+bool parseProgression(const juce::String &text, Progression &out);
+
 // Where in the progression a given beat of the interval falls.
 //
 // The progression fills exactly one interval, so every interval is a complete
