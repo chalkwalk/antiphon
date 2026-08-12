@@ -129,13 +129,26 @@ Figure figureFor(Voice voice, const Settings &s) {
     return kickFigure(s);
 
   case Voice::Bass: {
-    // Locked to the kick, then displaced by the bass's own seed so it is
-    // related rather than identical -- the difference between a band and a
-    // sequencer playing one pattern through two sounds.
+    // Twice the kick's density, at twice its resolution -- a bass part has far
+    // more notes than there are kicks, and matching the kick one for one made
+    // it sound like a second kick drum rather than a part.
+    //
+    // This figure is only half the answer. Doubling does NOT contain the kick:
+    // E(2p, 2s) at step 2j reduces to (2jp) mod s < p, which is not the kick's
+    // (jp) mod s < p. An earlier comment here claimed otherwise and the test
+    // that checked it disagreed. renderBass therefore takes the UNION of the
+    // kick's onsets and this figure's, which is what locking to the kick while
+    // playing more notes than it actually means.
+    //
+    // The extra pulse offsets it, so it is related to the kick rather than a
+    // mechanical doubling of it.
     Rng rng(saltedSeed(Voice::Bass, s.seed));
-    Figure f = kickFigure(s);
-    f.rotation = rng.range(0, 1); // usually with the kick, sometimes pushed
-    f.accents = std::max(1, f.pulses / 3);
+    const Figure kick = kickFigure(s);
+    Figure f;
+    f.steps = kick.steps * 2;
+    f.pulses = std::min(f.steps, kick.pulses * 2 + rng.range(0, 1));
+    f.rotation = 0; // the doubling only contains the kick at rotation zero
+    f.accents = std::max(1, f.pulses / 4);
     return f;
   }
 
@@ -162,6 +175,24 @@ Figure figureFor(Voice voice, const Settings &s) {
   }
   }
   return {};
+}
+
+int noteTier(int midiNote, const Harmony::Chord &chord) {
+  const int pc = ((midiNote % 12) + 12) % 12;
+
+  for (int t = 0; t < chord.toneCount; ++t) {
+    const int tone = (((chord.root + chord.tones[(size_t)t]) % 12) + 12) % 12;
+    if (pc == tone)
+      return 0;
+  }
+
+  for (int t = 0; t < chord.toneCount; ++t) {
+    const int tone = (((chord.root + chord.tones[(size_t)t]) % 12) + 12) % 12;
+    if (pc == (tone + 1) % 12)
+      return 2;
+  }
+
+  return 1;
 }
 
 std::vector<int> leadLine(const Settings &s, int intervalIndex) {
@@ -211,20 +242,30 @@ std::vector<int> leadLine(const Settings &s, int intervalIndex) {
     }
     const int wanted = centre + (int)std::lround(target * span);
 
-    // Metric strength decides WHICH notes are allowed here: a strong beat
-    // takes a chord tone, a weak one may pass through the scale. That coupling
-    // is what makes the result sound intended rather than sprinkled.
+    // The coupling: beat strength decides how strong a note may be. A strong
+    // beat takes a chord tone; an ordinary one takes any comfortable scale
+    // tone; only an off-beat may touch a semitone above a chord tone, and only
+    // in passing (see the duration cap below).
+    //
+    // Porting the beat axis without this one is what made minor keys sound
+    // wrong: the flat sixth was as welcome on beat three as the fifth was.
+    const int worstTierAllowed = strength >= 3 ? 0 : (strength >= 1 ? 1 : 2);
+
     std::vector<int> allowed;
-    if (strength >= 2) {
+    for (int degree = 0; degree < MusicalKey::kScaleDegrees; ++degree)
+      for (int octave = 4; octave <= 6; ++octave) {
+        const int note = MusicalKey::degreeToMidi(s.key, degree, octave);
+        if (note >= 0 && noteTier(note, chord) <= worstTierAllowed)
+          allowed.push_back(note);
+      }
+
+    // A chord may be borrowed or altered, in which case its tones are not all
+    // in the scale. On a strong beat the chord wins.
+    if (worstTierAllowed == 0)
       for (int t = 0; t < chord.toneCount; ++t)
-        for (int octave = -1; octave <= 1; ++octave)
-          allowed.push_back(chord.root + chord.tones[(size_t)t] + 60 +
-                            12 * octave);
-    } else {
-      for (int degree = 0; degree < MusicalKey::kScaleDegrees; ++degree)
-        for (int octave = 4; octave <= 6; ++octave)
-          allowed.push_back(MusicalKey::degreeToMidi(s.key, degree, octave));
-    }
+        for (int octave = 5; octave <= 6; ++octave)
+          allowed.push_back(chord.root + chord.tones[(size_t)t] + 12 * octave);
+
     if (allowed.empty())
       continue;
 
@@ -362,11 +403,21 @@ void renderBass(const Settings &s, float *out, int numSamples) {
 
   const int numChords = (int)s.progression.size();
 
+  // The figure runs finer than the beat, so a step is a fraction of one.
+  const int stepsPerBeat = std::max(1, f.steps / std::max(1, s.bpi));
+  const int stepSamples = beatSamples / stepsPerBeat;
+  if (stepSamples <= 0)
+    return;
+
+  auto beatOf = [stepsPerBeat](int step) { return step / stepsPerBeat; };
+
   // Collect the onsets first, so each note can be held until the next one
   // rather than for an arbitrary fixed length. A sustained voice needs to know
   // where it stops.
   std::vector<int> onsets;
   std::vector<bool> isChange;
+  const Figure kick = figureFor(Voice::Drums, s);
+
   for (int step = 0; step < f.steps; ++step) {
     // A chord change always gets a note, whether or not the figure has an
     // onset there. A bass player lands on the change; leaving it to the
@@ -374,11 +425,20 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     // first thing heard over a new chord is its fifth.
     const bool onChange =
         step == 0 ||
-        (numChords > 0 &&
-         Harmony::chordIndexForBeat(step, s.bpi, numChords) !=
-             Harmony::chordIndexForBeat(step - 1, s.bpi, numChords));
+        (numChords > 0 && step % stepsPerBeat == 0 &&
+         Harmony::chordIndexForBeat(beatOf(step), s.bpi, numChords) !=
+             Harmony::chordIndexForBeat(beatOf(step) - 1, s.bpi, numChords));
 
-    if (!onChange && !Euclidean::hit(step, f.steps, f.pulses, f.rotation))
+    // Every kick gets a bass note, plus the figure's own. The union rather
+    // than the figure alone: locking to the kick has to mean actually landing
+    // on it, and the doubled Euclidean does not do that by itself.
+    const bool onKick =
+        step % stepsPerBeat == 0 &&
+        Euclidean::hit(step / stepsPerBeat, kick.steps, kick.pulses,
+                       kick.rotation);
+
+    if (!onChange && !onKick &&
+        !Euclidean::hit(step, f.steps, f.pulses, f.rotation))
       continue;
 
     onsets.push_back(step);
@@ -389,19 +449,18 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     const int step = onsets[n];
     const bool onChange = isChange[n];
 
-    const int at = step * beatSamples;
+    const int at = step * stepSamples;
     if (at >= numSamples)
       break;
 
     // Up to the next note, or the end of the interval.
-    const int nextStep =
-        (n + 1 < onsets.size()) ? onsets[n + 1] : f.steps;
+    const int nextStep = (n + 1 < onsets.size()) ? onsets[n + 1] : f.steps;
     const int length =
-        std::min(numSamples - at, (nextStep - step) * beatSamples);
+        std::min(numSamples - at, (nextStep - step) * stepSamples);
     if (length <= 0)
       continue;
 
-    const auto &chord = chordAtBeat(s, step);
+    const auto &chord = chordAtBeat(s, beatOf(step));
 
     // Root, octave and fifth: the three notes that state a chord without
     // getting in the way of anyone playing over it.
@@ -499,7 +558,16 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
     const int strength = metricStrength((int)step, s.bpi);
     const float velocity = strength >= 3 ? 0.85f : (strength >= 1 ? 0.7f : 0.5f);
 
-    BotVoice::renderLead(out + at, length, s.sampleRate,
+    // A colour note passes; it does not sit. Holding a semitone above a chord
+    // tone until the next note is the difference between a line that leans
+    // into the clash and one that trips over it -- and it is the other half of
+    // why minor sounded wrong, because that is where those notes live.
+    int held = length;
+    const auto &chord = chordAtBeat(s, (int)step / 2);
+    if (noteTier(line[step], chord) == 2)
+      held = std::min(length, eighth);
+
+    BotVoice::renderLead(out + at, held, s.sampleRate,
                          BotVoice::midiToHz((double)line[step]), velocity);
   }
 }

@@ -1,5 +1,6 @@
 #include "../src/BotBand.h"
 #include "../src/BotVoice.h"
+#include "../src/Euclidean.h"
 #include "TestSignal.h"
 #include <JuceHeader.h>
 
@@ -199,17 +200,45 @@ public:
       }
     }
 
-    beginTest("the bass is locked to the kick, not rolling its own");
+    beginTest("the bass is denser than the kick but lands on every one");
     {
-      // Two unrelated Euclidean patterns fight; a bass line that shares the
-      // kick's density and differs only by displacement locks to it.
-      for (std::uint32_t seed : {1u, 7u, 4242u}) {
+      // A bass part has far more notes than there are kicks -- matching one
+      // for one made it sound like a second kick drum. Doubling both the
+      // pulses and the resolution is what allows both at once: E(2p, 2s)
+      // contains E(p, s) exactly, so the bass hits every kick and fills in
+      // between. That containment is the property worth asserting.
+      for (std::uint32_t seed : {1u, 7u, 4242u, 99u}) {
         const auto s = settingsFor("C major", 120, 16, seed);
         const auto kick = BotBand::figureFor(BotBand::Voice::Drums, s);
         const auto bass = BotBand::figureFor(BotBand::Voice::Bass, s);
-        expectEquals(bass.pulses, kick.pulses,
-                     "seed " + juce::String((int)seed) + " density");
-        expectEquals(bass.steps, kick.steps);
+
+        expectEquals(bass.steps, kick.steps * 2,
+                     "seed " + juce::String((int)seed) + " resolution");
+        expect(bass.pulses >= kick.pulses * 2,
+               "seed " + juce::String((int)seed) + ": bass has " +
+                   juce::String(bass.pulses) + " pulses to the kick's " +
+                   juce::String(kick.pulses));
+
+        // The doubled figure alone does NOT contain the kick -- E(2p,2s) at
+        // step 2j reduces to (2jp) mod s < p, not the kick's (jp) mod s < p --
+        // so renderBass takes the union. Check that in the audio, which is
+        // where the property has to hold.
+        const auto buf = render(BotBand::Voice::Bass, s);
+        const int beat = (int)(s.sampleRate * 60.0 / s.bpm);
+        for (int step = 0; step < kick.steps; ++step) {
+          if (!Euclidean::hit(step, kick.steps, kick.pulses, kick.rotation))
+            continue;
+          const int at = step * beat;
+          if (at + 256 >= (int)buf.size())
+            continue;
+          // A note starting here means energy rising out of near-silence.
+          float peak = 0.0f;
+          for (int i = at; i < at + 256; ++i)
+            peak = juce::jmax(peak, std::abs(buf[(size_t)i]));
+          expect(peak > 0.01f, "seed " + juce::String((int)seed) +
+                                   ": no bass note on kick step " +
+                                   juce::String(step));
+        }
       }
     }
 
@@ -435,34 +464,60 @@ public:
       expect(rests >= 2, "a line with no rests is a drone");
     }
 
-    beginTest("strong beats take chord tones");
+    beginTest("beat strength and note strength are coupled");
     {
-      // The coupling that makes the line sound intended rather than sprinkled.
-      for (const char *keyName : {"C major", "D minor", "A minor", "F Lydian"}) {
+      // The whole point of the melodic writing, and the half that was missing
+      // when this sounded fine in major and wrong in minor. A strong beat may
+      // only take a chord tone; an ordinary beat a comfortable scale tone; and
+      // only an off-beat may touch a semitone above a chord tone.
+      for (const char *keyName : {"C major", "D minor", "A minor", "F Lydian",
+                                  "E Phrygian", "G Mixolydian"}) {
         auto s = settingsFor(keyName, 120, 16);
-        const auto line = BotBand::leadLine(s, 0);
+        for (int interval = 0; interval < 4; ++interval) {
+          const auto line = BotBand::leadLine(s, interval);
 
-        for (size_t step = 0; step < line.size(); ++step) {
-          if (line[step] < 0 || BotBand::metricStrength((int)step, s.bpi) < 2)
-            continue;
+          for (size_t step = 0; step < line.size(); ++step) {
+            if (line[step] < 0)
+              continue;
 
-          const int idx = Harmony::chordIndexForBeat(
-              (int)step / 2, s.bpi, (int)s.progression.size());
-          const auto &chord = s.progression[(size_t)idx];
+            const int strength = BotBand::metricStrength((int)step, s.bpi);
+            const int idx = Harmony::chordIndexForBeat(
+                (int)step / 2, s.bpi, (int)s.progression.size());
+            const int tier =
+                BotBand::noteTier(line[step], s.progression[(size_t)idx]);
+            const int worst = strength >= 3 ? 0 : (strength >= 1 ? 1 : 2);
 
-          bool isChordTone = false;
-          for (int t = 0; t < chord.toneCount; ++t)
-            if (((line[step] - chord.root - chord.tones[(size_t)t]) % 12 + 12) %
-                    12 ==
-                0)
-              isChordTone = true;
-
-          expect(isChordTone,
-                 juce::String(keyName) + ": strong beat " +
-                     juce::String((int)step) + " played MIDI " +
-                     juce::String(line[step]) + ", not a tone of the chord");
+            expect(tier <= worst,
+                   juce::String(keyName) + " interval " +
+                       juce::String(interval) + ": step " +
+                       juce::String((int)step) + " strength " +
+                       juce::String(strength) + " played MIDI " +
+                       juce::String(line[step]) + " of tier " +
+                       juce::String(tier));
+          }
         }
       }
+    }
+
+    beginTest("the avoid note is the one a semitone above a chord tone");
+    {
+      // Derived from the chord rather than listed per mode, which is what
+      // makes it right in all seven.
+      const auto cMajor = Harmony::chordOn(0, Harmony::Quality::Major);
+      expectEquals(BotBand::noteTier(60, cMajor), 0, "C over C is the root");
+      expectEquals(BotBand::noteTier(64, cMajor), 0, "E over C is the third");
+      expectEquals(BotBand::noteTier(65, cMajor), 2, "F sits above the third");
+      expectEquals(BotBand::noteTier(62, cMajor), 1, "D is comfortable");
+
+      const auto aMinor = Harmony::chordOn(9, Harmony::Quality::Minor);
+      expectEquals(BotBand::noteTier(65, aMinor), 2,
+                   "the flat sixth sits above the fifth -- the minor problem");
+      expectEquals(BotBand::noteTier(62, aMinor), 1, "the fourth is fine");
+
+      // Lydian's sharp fourth is a whole tone above the third, so it is the
+      // characteristic note rather than one to handle carefully.
+      const auto fMajor = Harmony::chordOn(5, Harmony::Quality::Major);
+      expectEquals(BotBand::noteTier(71, fMajor), 1, "B over F is Lydian");
     }
 
     beginTest("every note is in the key");
@@ -678,6 +733,33 @@ private:
 
     if (bestLag <= 0 || bestScore < 0.3)
       return 0.0;
+
+    // Reject subharmonics, but only at INTEGER divisions of the best lag.
+    //
+    // A period of 3T correlates about as well as T, so taking the maximum can
+    // report a third of the true pitch -- which is how this instrument once
+    // claimed a B2 bass was sounding at 41 Hz, convincingly enough to look
+    // like a bug in the synthesis. Scanning for any shorter lag that scores
+    // nearly as well overcorrects the other way and lands between semitones,
+    // so only bestLag/2, /3, /4... are considered.
+    auto scoreAt = [&](int lag) {
+      double sum = 0.0, normA = 0.0, normB = 0.0;
+      for (int i = 0; i + lag < numSamples; ++i) {
+        sum += x[(size_t)i] * x[(size_t)(i + lag)];
+        normA += x[(size_t)i] * x[(size_t)i];
+        normB += x[(size_t)(i + lag)] * x[(size_t)(i + lag)];
+      }
+      const double denom = std::sqrt(normA * normB);
+      return denom > 0.0 ? sum / denom : 0.0;
+    };
+
+    for (int divisor = 8; divisor >= 2; --divisor) {
+      const int lag = bestLag / divisor;
+      if (lag < minLag)
+        continue;
+      if (scoreAt(lag) >= 0.85 * bestScore)
+        return sampleRate / (double)lag;
+    }
     return sampleRate / (double)bestLag;
   }
 
