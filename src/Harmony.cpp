@@ -665,6 +665,132 @@ const Chord &chordAtStep(const Layout &layout, int step) {
   return layout.chords[(size_t)idx];
 }
 
+namespace {
+
+double weightOfTone(int semitonesAboveRoot) {
+  const int i = ((semitonesAboveRoot % 12) + 12) % 12;
+  if (i == 0)
+    return kRootWeight;
+  if (i == 3 || i == 4)
+    return kThirdWeight;
+  if (i == 6 || i == 7 || i == 8)
+    return kFifthWeight;
+  if (i == 9 || i == 10 || i == 11)
+    return kSeventhWeight;
+  return kExtensionWeight; // seconds, fourths, and the ninths above them
+}
+
+// How common a mode is, before any evidence. Major and minor are most of the
+// music anybody plays, and a mode that only differs from one of them by a
+// single note should have to earn the difference.
+double priorForMode(MusicalKey::Mode mode) {
+  switch (mode) {
+  case MusicalKey::Mode::Major:
+  case MusicalKey::Mode::Minor:
+    return 3.0;
+  default:
+    return 1.5;
+  }
+}
+
+bool inScale(const MusicalKey::Key &key, int pitchClass) {
+  const int *steps = MusicalKey::scaleSteps(key.mode);
+  for (int d = 0; d < MusicalKey::kScaleDegrees; ++d)
+    if (wrapPitchClass(key.tonic + steps[d]) == pitchClass)
+      return true;
+  return false;
+}
+
+// Which scale degree a pitch class is, or -1 if it is not in the scale.
+int degreeOf(const MusicalKey::Key &key, int pitchClass) {
+  const int *steps = MusicalKey::scaleSteps(key.mode);
+  for (int d = 0; d < MusicalKey::kScaleDegrees; ++d)
+    if (wrapPitchClass(key.tonic + steps[d]) == pitchClass)
+      return d;
+  return -1;
+}
+
+double scoreKey(const MusicalKey::Key &key, const Progression &chords) {
+  // Averaged per chord, so a long chart and a short one are on the same scale
+  // and the function terms below mean the same thing in both.
+  double content = 0.0;
+  for (const auto &chord : chords) {
+    for (int i = 0; i < chord.toneCount; ++i) {
+      const int tone = chord.tones[(size_t)i];
+      const double w = weightOfTone(tone);
+      content += inScale(key, wrapPitchClass(chord.root + tone)) ? w : -w;
+    }
+  }
+  content /= (double)chords.size();
+
+  // Content alone cannot separate a key from its relative -- they are the same
+  // seven notes -- so what a chord DOES has to break the tie.
+  double function = 0.0;
+  if (chords.front().root == key.tonic)
+    function += 3.0;
+  if (chords.back().root == key.tonic)
+    function += 4.0; // a loop resolves onto its tonic, and that is stronger
+  for (const auto &chord : chords) {
+    // A major-quality chord on the fifth degree: the dominant, and the single
+    // clearest statement a progression makes about where home is.
+    if (degreeOf(key, chord.root) != 4)
+      continue;
+    const bool majorThird = chord.toneCount > 1 && chord.tones[1] == 4;
+    if (majorThird)
+      function += chord.toneCount > 3 && chord.tones[3] == 10 ? 3.0 : 2.0;
+  }
+
+  return content + function + priorForMode(key.mode);
+}
+
+} // namespace
+
+KeyGuess inferKey(const Progression &chords) {
+  KeyGuess best;
+  if (chords.empty())
+    return best;
+
+  // Ionian and Aeolian are the same notes as major and minor, so offering them
+  // as separate candidates would only split the vote between two names for one
+  // answer. Phrygian and Locrian are left out for the same reason the prior
+  // exists: they are rare enough that a chart which fits one also fits
+  // something likelier.
+  const MusicalKey::Mode modes[] = {
+      MusicalKey::Mode::Major, MusicalKey::Mode::Minor,
+      MusicalKey::Mode::Dorian, MusicalKey::Mode::Mixolydian};
+
+  double runnerUp = 0.0;
+  bool haveBest = false, haveRunnerUp = false;
+
+  for (int tonic = 0; tonic < 12; ++tonic) {
+    for (auto mode : modes) {
+      MusicalKey::Key key;
+      key.valid = true;
+      key.tonic = tonic;
+      key.mode = mode;
+      key.flat = MusicalKey::usesFlats(tonic, mode);
+
+      const double score = scoreKey(key, chords);
+      if (!haveBest || score > best.score) {
+        if (haveBest) {
+          runnerUp = best.score;
+          haveRunnerUp = true;
+        }
+        best.key = key;
+        best.score = score;
+        haveBest = true;
+      } else if (!haveRunnerUp || score > runnerUp) {
+        runnerUp = score;
+        haveRunnerUp = true;
+      }
+    }
+  }
+
+  best.margin = best.score - runnerUp;
+  best.confident = best.score > 0.0 && best.margin >= kConfidentMargin;
+  return best;
+}
+
 int voicingDistance(const Voicing &a, const Voicing &b) {
   if (a.empty() || b.empty())
     return 0;
