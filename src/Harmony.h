@@ -160,6 +160,35 @@ juce::String chordName(const Chord &chord, bool flat);
 // A chart from a chat line, bars and all: "| Dm7 | C# Csus |".
 bool parseChart(const juce::String &text, Chart &out);
 
+// A chart written in scale degrees, against the key it is relative to:
+// "| I | vi IV |", "| i | VI | III VII |", "| 1 | 4 | b6 |".
+//
+// Roman case carries the quality -- IV is major, iv is minor -- and an arabic
+// degree takes whatever the key gives it, so "1 4 5" is major in a major key
+// and minor in a minor one. An altered degree is major unless it says
+// otherwise, since "b6" almost always means the borrowed major chord.
+//
+// Degrees never travel on the wire. The client resolves them against the
+// session key and sends the absolute chart, so a bot, a Jamtaba user and
+// anything else in the room all see chords they already understand -- and
+// there is exactly one place the resolution can be wrong (`PRINCIPLES §10`).
+bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
+                      Chart &out);
+
+// "| Dm | Bb F |": a chart as a player would write it.
+juce::String chartText(const Chart &chart, bool flat);
+
+// The same chart in roman numerals against a key: "| i | VI IV |".
+//
+// Chromatic and mechanical. A chord whose root is not in the scale is named by
+// where it sits against it -- III7, bVI, #ivo -- rather than by guessing at
+// what it is doing. V7/vi is a claim about intent and two readings are often
+// defensible; where a root sits is not a matter of opinion.
+juce::String romanChartText(const Chart &chart, const MusicalKey::Key &key);
+
+// One chord as a roman numeral: "ii7", "V7", "bVI", "#ivo".
+juce::String romanName(const Chord &chord, const MusicalKey::Key &key);
+
 // A Jamtaba-style progression from a chat line: "| Am | F | C | G |".
 //
 // Strict on purpose. Jamtaba's own parser treats "I" and "l" as measure
