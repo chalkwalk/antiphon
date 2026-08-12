@@ -258,6 +258,36 @@ inline constexpr int kVoiceHigh = 79;
 // thread's behalf: it runs once per interval on the conductor thread.
 std::vector<Voicing> voiceLead(const Progression &chords);
 
+// What a chart says about what key it is in.
+//
+// A progression is evidence, not a declaration -- so this offers rather than
+// decides. `confident` is the only field a caller should act on without asking
+// a human: below it the answer is "these chords do not say", which for a loop
+// like Am F C G is the truthful answer and not a failure.
+struct KeyGuess {
+  MusicalKey::Key key;
+  double score = 0.0;  // the winner's score
+  double margin = 0.0; // how far ahead of the runner-up, in points
+  bool confident = false;
+};
+
+// Weights by how much a tone DISCRIMINATES, which is not the same as how
+// important it sounds. A perfect fifth is in the scale for six of the seven
+// degrees, so it almost never rules a key out; the third is what separates
+// major from minor and Dorian from Aeolian.
+inline constexpr double kRootWeight = 3.0;
+inline constexpr double kThirdWeight = 2.0;
+inline constexpr double kSeventhWeight = 2.0;
+inline constexpr double kFifthWeight = 1.0;
+inline constexpr double kExtensionWeight = 1.0;
+
+// How far ahead the winner must be before the guess is worth showing.
+// Calibrated against the table in HarmonyTests, which is the specification:
+// every entry in it is a progression whose key is or is not in doubt.
+inline constexpr double kConfidentMargin = 2.0;
+
+KeyGuess inferKey(const Progression &chords);
+
 // What voiceLead is minimising: total semitone movement between two voicings,
 // pairing them from the bottom up and charging an added or dropped voice the
 // distance to its nearest neighbour. Exposed because a test that cannot measure

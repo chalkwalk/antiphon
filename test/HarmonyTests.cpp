@@ -33,6 +33,7 @@ public:
     runBeatMappingTests();
     runLayoutTests();
     runVoiceLeadingTests();
+    runKeyInferenceTests();
   }
 
   void runChordTests() {
@@ -653,6 +654,83 @@ public:
       // could have moved from is what it costs.
       expectEquals(Harmony::voicingDistance({60, 64, 67}, {60, 64, 67, 70}), 3);
       expectEquals(Harmony::voicingDistance({}, {60}), 0);
+    }
+  }
+
+  void runKeyInferenceTests() {
+    auto chordsOf = [](const char *text) {
+      Harmony::Progression p;
+      const bool ok = Harmony::parseProgression(text, p);
+      jassert(ok);
+      juce::ignoreUnused(ok);
+      return p;
+    };
+
+    beginTest("a chart that names its key is read correctly");
+    {
+      // This table is the specification, and the confidence threshold is
+      // calibrated against it rather than picked. Every entry is a progression
+      // whose key either is or is not in doubt, and saying which is the whole
+      // job -- a wrong suggestion is worse than none.
+      struct Case {
+        const char *text;
+        const char *key;
+        bool confident;
+      };
+      const Case cases[] = {
+          // A ii-V-I says it outright.
+          {"| Dm7 | G7 | Cmaj7 |", "C major", true},
+          // The dominant's major third is what makes this minor and not its
+          // relative major: E7's G# is in neither scale, but the E chord is
+          // the fifth degree of A and nothing in C.
+          {"| Am | Dm | E7 | Am |", "A minor", true},
+          {"| Am | G | F | E7 |", "A minor", true},
+          {"| C | F | G | C |", "C major", true},
+          {"| C | Am | F | G |", "C major", true},
+          {"| D | G | A | D |", "D major", true},
+          {"| Bb | Eb | F | Bb |", "Bb major", true},
+
+          // The same four chords, starting somewhere else. Nothing here says
+          // whether home is C or its relative A minor, and the honest answer
+          // is to keep quiet rather than guess and be wrong half the time.
+          {"| Am | F | C | G |", "A minor", false},
+          // F natural against a G tonic is Mixolydian, and the evidence for it
+          // exactly cancels how much likelier plain major is.
+          {"| G | F | C | G |", "G major", false},
+          // Chromatic: three major triads a third apart belong to no one key.
+          {"| C | E | Ab | C |", "C major", false},
+      };
+
+      for (const auto &c : cases) {
+        const auto guess = Harmony::inferKey(chordsOf(c.text));
+        expectEquals(MusicalKey::displayName(guess.key), juce::String(c.key),
+                     c.text);
+        expect(guess.confident == c.confident,
+               juce::String(c.text) + ": margin " +
+                   juce::String(guess.margin, 2) + ", expected " +
+                   (c.confident ? "confidence" : "no confidence"));
+      }
+    }
+
+    beginTest("a guessed key is spelled the way the key signature spells it");
+    {
+      const auto guess = Harmony::inferKey(chordsOf("| Bb | Eb | F | Bb |"));
+      expect(guess.key.flat, "Bb major should not be spelled A#");
+      expectEquals(MusicalKey::scaleNotes(guess.key),
+                   juce::String("Bb C D Eb F G A"));
+    }
+
+    beginTest("inferring a key from nothing says nothing");
+    {
+      const auto none = Harmony::inferKey({});
+      expect(!none.confident);
+      expect(!none.key.valid, "an empty chart has no key");
+
+      // One chord is not a progression, but it must not crash or claim
+      // certainty either.
+      const auto one =
+          Harmony::inferKey({Harmony::chordOn(0, Harmony::Quality::Major)});
+      expect(one.key.valid);
     }
   }
 
