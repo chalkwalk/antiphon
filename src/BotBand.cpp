@@ -417,8 +417,8 @@ void renderDrums(const Settings &s, int intervalIndex, float *out,
 // C2. Must be a C: chord roots are pitch classes where 0 means C.
 inline constexpr double kBassAnchorMidi = 36.0;
 
-// C4, and the same rule applies.
-inline constexpr double kKeysAnchorMidi = 60.0;
+// The keys have no anchor of their own any more: a voicing is absolute MIDI
+// notes chosen by Harmony::voiceLead, inside the register it names.
 
 void renderBass(const Settings &s, float *out, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
@@ -514,8 +514,11 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     // C2 rather than C1 for the second reason it was wrong: 41-78 Hz is below
     // what most laptop and monitor speakers reproduce at all, so the part was
     // not merely wrong but inaudible. C2-B2 is 65-123 Hz, which carries.
+    // A slash chord names the note underneath it, and the bass is what is
+    // underneath: the G of Am7/G is the bass player's job, not the pad's.
+    const int lowest = (chord.bass >= 0 && onChange) ? chord.bass : chord.root;
     const double midi =
-        kBassAnchorMidi + (double)chord.root + (double)semitoneAboveRoot;
+        kBassAnchorMidi + (double)lowest + (double)semitoneAboveRoot;
     BotVoice::renderBass(out + at, length, s.sampleRate,
                          BotVoice::midiToHz(midi), 0.7f);
   }
@@ -533,32 +536,40 @@ void renderKeys(const Settings &s, float *out, int numSamples) {
     return step * beatSamples / Harmony::kStepsPerBeat;
   };
 
-  // One sustained chord per slot: held, not stabbed.
-  int step = 0;
-  while (step < layout.steps()) {
+  // The chords in the order they actually sound, which is the loop the voice
+  // leading has to close: a chord in the chart that never gets any time must
+  // not pull the voicing of the ones that do.
+  struct Span {
+    int from, to, chord;
+  };
+  std::vector<Span> spans;
+  Harmony::Progression sounding;
+  for (int step = 0; step < layout.steps();) {
     const int idx = layout.stepToChord[(size_t)step];
-
     int end = step + 1;
     while (end < layout.steps() && layout.stepToChord[(size_t)end] == idx)
       ++end;
+    spans.push_back({step, end, (int)sounding.size()});
+    sounding.push_back(layout.chords[(size_t)idx]);
+    step = end;
+  }
 
-    const int at = atStep(step);
+  const auto voicings = Harmony::voiceLead(sounding);
+  if (voicings.size() != sounding.size())
+    return;
+
+  // One sustained chord per slot: held, not stabbed.
+  for (const auto &span : spans) {
+    const int at = atStep(span.from);
     if (at >= numSamples)
       break;
-    const int length = std::min(numSamples - at, atStep(end) - at);
+    const int length = std::min(numSamples - at, atStep(span.to) - at);
     if (length <= 0)
       break;
 
-    const auto &chord = layout.chords[(size_t)idx];
-    for (int t = 0; t < chord.toneCount; ++t) {
-      // Around C4, above the bass and below where a soloist usually sits.
-      const double midi =
-          kKeysAnchorMidi + (double)chord.root + (double)chord.tones[(size_t)t];
+    for (int note : voicings[(size_t)span.chord])
       BotVoice::renderPad(out + at, length, s.sampleRate,
-                          BotVoice::midiToHz(midi), 0.85f);
-    }
-
-    step = end;
+                          BotVoice::midiToHz((double)note), 0.85f);
   }
 }
 

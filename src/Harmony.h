@@ -230,4 +230,38 @@ Layout layoutChart(const Chart &chart, int bpi);
 const Chord &chordAtStep(const Layout &layout, int step);
 bool changesAtStep(const Layout &layout, int step);
 
+// A chord as absolute MIDI notes, ascending: an actual voicing rather than a
+// set of intervals.
+using Voicing = std::vector<int>;
+
+// Where a chordal instrument sits: G3 to G5, above the bass and below where a
+// soloist usually is.
+inline constexpr int kVoiceLow = 55;
+inline constexpr int kVoiceHigh = 79;
+
+// Voice a sequence of chords so each one moves as little as possible from the
+// last -- and so the loop closes.
+//
+// Root position for everything is what a machine does: C to Am moves all three
+// notes when two of them are the same note, and the ear hears three separate
+// chords rather than a progression. Choosing an inversion instead lets common
+// tones stay exactly where they are, which is the whole of what voice leading
+// buys.
+//
+// The chart repeats every interval, so what matters is the cost around the
+// CYCLE, not along the line. The last chord's move back to the first is costed
+// like any other, because that seam is the one a listener hears every single
+// time round; leaving it out of the objective visibly changes the answer, and
+// there is a test that says so.
+//
+// Deterministic, integer, and free of anything that could allocate on an audio
+// thread's behalf: it runs once per interval on the conductor thread.
+std::vector<Voicing> voiceLead(const Progression &chords);
+
+// What voiceLead is minimising: total semitone movement between two voicings,
+// pairing them from the bottom up and charging an added or dropped voice the
+// distance to its nearest neighbour. Exposed because a test that cannot measure
+// the cost cannot show that the loop was closed.
+int voicingDistance(const Voicing &a, const Voicing &b);
+
 } // namespace Harmony
