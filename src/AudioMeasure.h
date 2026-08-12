@@ -118,6 +118,41 @@ inline double crossingRateHz(const float *data, int numSamples,
   return 0.5 * (double)crossings * sampleRate / (double)numSamples;
 }
 
+// The true peak between samples, by fitting a parabola through the correlation
+// either side of the best lag.
+//
+// Without this the finest answer available is `sampleRate / lag` for an integer
+// lag, and lags get short as pitch rises: at 660 Hz and 48 kHz the period is
+// 72.7 samples and the two nearest answers are 666.7 and 657.5 Hz, so the
+// instrument cannot resolve better than about 1.4% however good the signal is.
+// That is coarse enough to hide a real half-sample tuning error in a string,
+// which is exactly what it did hide.
+template <typename ScoreFn>
+inline double refinedHz(ScoreFn scoreAt, int lag, int minLag, int maxLag,
+                        double sampleRate) {
+  if (lag <= minLag || lag >= maxLag)
+    return sampleRate / (double)lag;
+
+  const double before = scoreAt(lag - 1);
+  const double here = scoreAt(lag);
+  const double after = scoreAt(lag + 1);
+
+  const double denom = before - 2.0 * here + after;
+  if (denom == 0.0)
+    return sampleRate / (double)lag;
+
+  double offset = 0.5 * (before - after) / denom;
+  // A parabola through three points near a broad maximum can suggest a vertex
+  // some way off; beyond half a sample it is extrapolating rather than
+  // refining, so it is clamped to the interval it was fitted over.
+  if (offset > 0.5)
+    offset = 0.5;
+  if (offset < -0.5)
+    offset = -0.5;
+
+  return sampleRate / ((double)lag + offset);
+}
+
 // The fundamental, by normalised autocorrelation. Returns 0 when it is not
 // confident rather than guessing.
 inline double fundamentalHz(const float *data, int numSamples,
@@ -217,9 +252,9 @@ inline double fundamentalHz(const float *data, int numSamples,
     if (lag < minLag)
       continue;
     if (scoreAt(lag) >= 0.85 * bestScore)
-      return sampleRate / (double)lag;
+      return refinedHz(scoreAt, lag, minLag, maxLag, sampleRate);
   }
-  return sampleRate / (double)bestLag;
+  return refinedHz(scoreAt, bestLag, minLag, maxLag, sampleRate);
 }
 
 // The pitch of the first note in a buffer, wherever it starts.

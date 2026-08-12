@@ -35,6 +35,7 @@ target_sources(NinjamTests
         EuclideanTests.cpp
         HarmonyTests.cpp
         AudioMeasureTests.cpp
+        BotDspTests.cpp
         BotBandTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
