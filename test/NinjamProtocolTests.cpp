@@ -299,6 +299,68 @@ public:
       Chat c;
       expect(!parseChat(p, c));
     }
+
+    beginTest("0x80 round-trips, and the tail is optional");
+    {
+      juce::uint8 hash[20];
+      for (int i = 0; i < 20; ++i)
+        hash[i] = (juce::uint8)(i + 7);
+
+      AuthUser a;
+      expect(parseAuthUser(buildAuthUser(hash, "alice", 1, 0x00020000), a));
+      expectEquals(a.username, juce::String("alice"));
+      expectEquals((int)a.caps, 1);
+      expectEquals((int)a.version, 0x00020000);
+      expect(memcmp(a.hash, hash, 20) == 0);
+
+      // A client that stops after the username is still understood.
+      juce::MemoryBlock short_;
+      short_.append(hash, 20);
+      short_.append("bob\0", 4);
+      AuthUser b;
+      expect(parseAuthUser(short_, b));
+      expectEquals(b.username, juce::String("bob"));
+      expectEquals((int)b.caps, 0);
+    }
+
+    beginTest("0x81 round-trips, and an empty mask is not an absent one");
+    {
+      std::vector<UsermaskEntry> m;
+      expect(parseUsermask(buildUsermask({{"alice", 0x5u}, {"bob", 0u}}), m));
+      expectEquals((int)m.size(), 2);
+      expectEquals(m[0].username, juce::String("alice"));
+      expectEquals((int)m[0].mask, 5);
+      // Subscribed to nothing, but present -- which is how a bot goes deaf.
+      expectEquals(m[1].username, juce::String("bob"));
+      expectEquals((int)m[1].mask, 0);
+
+      std::vector<UsermaskEntry> none;
+      expect(parseUsermask({}, none));
+      expectEquals((int)none.size(), 0);
+    }
+
+    beginTest("0x82 round-trips and honours mpisize");
+    {
+      std::vector<ChannelInfoEntry> c;
+      expect(parseChannelInfo(buildChannelInfo({"gtr", "vox"}), c));
+      expectEquals((int)c.size(), 2);
+      expectEquals(c[0].name, juce::String("gtr"));
+      expectEquals(c[1].name, juce::String("vox"));
+
+      // A wider metadata block must be skipped, not misread as the next name.
+      juce::MemoryBlock wide;
+      const juce::uint8 mpisize[2] = {6, 0};
+      wide.append(mpisize, 2);
+      wide.append("gtr\0", 4);
+      const juce::uint8 meta[6] = {0, 0, 0, 0, 0xAA, 0xBB};
+      wide.append(meta, 6);
+      wide.append("vox\0", 4);
+      wide.append(meta, 6);
+      std::vector<ChannelInfoEntry> w;
+      expect(parseChannelInfo(wide, w));
+      expectEquals((int)w.size(), 2);
+      expectEquals(w[1].name, juce::String("vox"));
+    }
   }
 
   void runTruncationTests() {
@@ -370,6 +432,31 @@ public:
           parseChat(p, c);
         },
         "0xC0");
+
+    juce::uint8 authHash[20];
+    for (int i = 0; i < 20; ++i)
+      authHash[i] = (juce::uint8)(i * 3 + 1);
+    truncationSweep(
+        buildAuthUser(authHash, "alice"),
+        [](const juce::MemoryBlock &p) {
+          AuthUser a;
+          parseAuthUser(p, a);
+        },
+        "0x80");
+    truncationSweep(
+        buildUsermask({{"alice", 0x3u}, {"bob", 0x1u}}),
+        [](const juce::MemoryBlock &p) {
+          std::vector<UsermaskEntry> m;
+          parseUsermask(p, m);
+        },
+        "0x81");
+    truncationSweep(
+        buildChannelInfo({"gtr", "vox"}),
+        [](const juce::MemoryBlock &p) {
+          std::vector<ChannelInfoEntry> c;
+          parseChannelInfo(p, c);
+        },
+        "0x82");
 
     beginTest("parsers survive random garbage");
     {
