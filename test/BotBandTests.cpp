@@ -1,4 +1,5 @@
 #include "../src/BotBand.h"
+#include "../src/AudioMeasure.h"
 #include "../src/BotVoice.h"
 #include "../src/Euclidean.h"
 #include "TestSignal.h"
@@ -843,120 +844,26 @@ private:
   //
   // Autocorrelation finds the period rather than the crossings, so harmonics
   // reinforce the answer instead of confusing it.
+  // The detectors themselves live in src/AudioMeasure.h, calibrated against
+  // signals of known pitch in AudioMeasureTests and shared with the voice lab,
+  // so tuning by ear and asserting a threshold use one instrument
+  // (`PRINCIPLES §5`, `§8`). These are the shapes this file wants them in.
   static double fundamentalHz(const float *data, int numSamples,
-                              double sampleRate, double lowHz = 40.0,
-                              double highHz = 500.0) {
-    if (data == nullptr || numSamples < 64 || sampleRate <= 0.0)
-      return 0.0;
-
-    // Mean removal, so a DC offset cannot dominate the correlation.
-    double mean = 0.0;
-    for (int i = 0; i < numSamples; ++i)
-      mean += data[i];
-    mean /= (double)numSamples;
-
-    std::vector<double> x((size_t)numSamples);
-    for (int i = 0; i < numSamples; ++i)
-      x[(size_t)i] = (double)data[i] - mean;
-
-    double energy = 0.0;
-    for (double v : x)
-      energy += v * v;
-    if (energy <= 0.0)
-      return 0.0;
-
-    const int minLag = juce::jmax(2, (int)(sampleRate / highHz));
-    const int maxLag = juce::jmin(numSamples / 2, (int)(sampleRate / lowHz));
-    if (maxLag <= minLag)
-      return 0.0;
-
-    double bestScore = 0.0;
-    int bestLag = 0;
-    for (int lag = minLag; lag <= maxLag; ++lag) {
-      double sum = 0.0, normA = 0.0, normB = 0.0;
-      for (int i = 0; i + lag < numSamples; ++i) {
-        sum += x[(size_t)i] * x[(size_t)(i + lag)];
-        normA += x[(size_t)i] * x[(size_t)i];
-        normB += x[(size_t)(i + lag)] * x[(size_t)(i + lag)];
-      }
-      const double denom = std::sqrt(normA * normB);
-      if (denom <= 0.0)
-        continue;
-      const double score = sum / denom;
-      if (score > bestScore) {
-        bestScore = score;
-        bestLag = lag;
-      }
-    }
-
-    if (bestLag <= 0 || bestScore < 0.3)
-      return 0.0;
-
-    // Reject subharmonics, but only at INTEGER divisions of the best lag.
-    //
-    // A period of 3T correlates about as well as T, so taking the maximum can
-    // report a third of the true pitch -- which is how this instrument once
-    // claimed a B2 bass was sounding at 41 Hz, convincingly enough to look
-    // like a bug in the synthesis. Scanning for any shorter lag that scores
-    // nearly as well overcorrects the other way and lands between semitones,
-    // so only bestLag/2, /3, /4... are considered.
-    auto scoreAt = [&](int lag) {
-      double sum = 0.0, normA = 0.0, normB = 0.0;
-      for (int i = 0; i + lag < numSamples; ++i) {
-        sum += x[(size_t)i] * x[(size_t)(i + lag)];
-        normA += x[(size_t)i] * x[(size_t)i];
-        normB += x[(size_t)(i + lag)] * x[(size_t)(i + lag)];
-      }
-      const double denom = std::sqrt(normA * normB);
-      return denom > 0.0 ? sum / denom : 0.0;
-    };
-
-    for (int divisor = 8; divisor >= 2; --divisor) {
-      const int lag = bestLag / divisor;
-      if (lag < minLag)
-        continue;
-      if (scoreAt(lag) >= 0.85 * bestScore)
-        return sampleRate / (double)lag;
-    }
-    return sampleRate / (double)bestLag;
+                              double sampleRate) {
+    return AudioMeasure::fundamentalHz(data, numSamples, sampleRate);
   }
 
-  // The pitch of the first note in the buffer, wherever it starts.
-  //
-  // Finding the onset matters: a bass figure's rotation can move the first
-  // note off beat 0, and measuring a fixed window from the start then reads
-  // silence and reports nothing.
   static double firstNoteHz(const std::vector<float> &buf, double sampleRate,
                             int bpm) {
-    float peak = 0.0f;
-    for (float x : buf)
-      peak = juce::jmax(peak, std::abs(x));
-    if (peak <= 0.0f)
-      return 0.0;
-
-    size_t onset = 0;
-    while (onset < buf.size() && std::abs(buf[onset]) < 0.2f * peak)
-      ++onset;
-    if (onset >= buf.size())
-      return 0.0;
-
-    // One beat from the onset, or whatever is left. Long enough for many
-    // cycles at bass frequencies, short enough not to run into the next note.
+    // One beat of analysis: long enough for many cycles at bass frequencies,
+    // short enough not to run into the note after.
     const int beat = (int)(sampleRate * 60.0 / (double)bpm);
-    const int span = juce::jmin(beat, (int)(buf.size() - onset));
-    return fundamentalHz(buf.data() + onset, span, sampleRate);
+    return AudioMeasure::firstNoteHz(buf.data(), (int)buf.size(), sampleRate,
+                                     beat);
   }
 
-  // Zero crossings over the whole buffer: crude, but it answers "is this an
-  // octave apart" without pretending to be a pitch tracker.
   static double dominantHz(const std::vector<float> &v, double sampleRate) {
-    int crossings = 0;
-    for (size_t i = 1; i < v.size(); ++i)
-      if ((v[i - 1] <= 0.0f) != (v[i] <= 0.0f))
-        ++crossings;
-    if (v.empty())
-      return 0.0;
-    return 0.5 * (double)crossings * sampleRate / (double)v.size();
+    return AudioMeasure::crossingRateHz(v.data(), (int)v.size(), sampleRate);
   }
 };
 
