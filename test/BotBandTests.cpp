@@ -317,6 +317,104 @@ public:
       }
     }
 
+    beginTest("saturation shapes rather than trims");
+    {
+      // A drive of zero has to be exactly the input, because it is the way to
+      // turn the stage off while measuring the other one.
+      for (float x : {-1.0f, -0.3f, 0.0f, 0.25f, 1.0f})
+        expectEquals(BotVoice::saturate(x, 0.0), x);
+
+      // Normalised, odd, and never expanding past full scale -- which is what
+      // lets it be applied to a bus without a limiter behind it.
+      expectWithinAbsoluteError(BotVoice::saturate(1.0f, 2.0), 1.0f, 1.0e-6f);
+      expectWithinAbsoluteError(BotVoice::saturate(-1.0f, 2.0), -1.0f, 1.0e-6f);
+
+      float previous = -2.0f;
+      for (int i = -100; i <= 100; ++i) {
+        const float x = (float)i / 100.0f;
+        const float y = BotVoice::saturate(x, 2.0);
+        expect(std::abs(y) <= 1.0f + 1.0e-6f,
+               "saturate(" + juce::String(x) + ") left full scale at " +
+                   juce::String(y));
+        expect(y > previous, "saturate is not monotonic at " + juce::String(x));
+        previous = y;
+      }
+
+      // The point of it: quiet material comes out louder, which is where the
+      // audibility the kick needed comes from.
+      expect(BotVoice::saturate(0.1f, 2.0) > 0.15f,
+             "small signals were not lifted");
+    }
+
+    beginTest("shaping a sum ducks the quiet part under the loud one");
+    {
+      // The glue the kit's bus stage is there for, measured directly: a loud
+      // low tone and a quiet high one, shaped together. Where the low tone is
+      // at its peak the high one must come out smaller than where the low tone
+      // is passing through zero. That intermodulation only exists in the sum,
+      // and it is what makes three drums read as one kit.
+      const double sr = 48000.0, low = 60.0, high = 4000.0;
+      const int n = 1600;
+      std::vector<float> both((size_t)n), lowOnly((size_t)n);
+      for (int i = 0; i < n; ++i) {
+        const double t = (double)i / sr;
+        const float l = (float)(0.85 * std::sin(2.0 * juce::MathConstants<double>::pi * low * t));
+        const float h = (float)(0.10 * std::sin(2.0 * juce::MathConstants<double>::pi * high * t));
+        both[(size_t)i] = BotVoice::saturate(l + h, 1.1);
+        lowOnly[(size_t)i] = BotVoice::saturate(l, 1.1);
+      }
+
+      // What survives of the high tone, over one of its cycles, at the low
+      // tone's crest (sample 200) and at its zero crossing (sample 400).
+      auto amplitudeAt = [&](int centre) {
+        float lo = 1.0f, hi = -1.0f;
+        for (int i = centre - 6; i <= centre + 6; ++i) {
+          const float d = both[(size_t)i] - lowOnly[(size_t)i];
+          lo = juce::jmin(lo, d);
+          hi = juce::jmax(hi, d);
+        }
+        return 0.5f * (hi - lo);
+      };
+
+      const float atCrest = amplitudeAt(200), atZero = amplitudeAt(400);
+      expect(atCrest < 0.7f * atZero,
+             "no ducking: " + juce::String(atCrest, 4) + " at the crest against " +
+                 juce::String(atZero, 4) + " at the zero crossing");
+    }
+
+    beginTest("the kick is shaped, not just loud");
+    {
+      // A decaying sine is the least loud waveform there is for a given peak,
+      // and that is exactly why the kick was the quietest thing in the kit.
+      // Crest factor is what changes when it is shaped: measured 3.58
+      // unshaped against 2.42 as it stands, so a limit of 3.0 fails if the
+      // saturation is taken out and passes with room as it is.
+      std::vector<float> kick(7200, 0.0f);
+      BotVoice::renderKick(kick.data(), (int)kick.size(), 48000.0, 1.0f);
+
+      float peak = 0.0f;
+      for (float x : kick)
+        peak = juce::jmax(peak, std::abs(x));
+      const float level = rms(kick, 0, (int)kick.size());
+
+      expect(level > 0.0f, "the kick was silent");
+      expect(peak / level < 3.0f,
+             "the kick's crest factor is " + juce::String(peak / level, 3) +
+                 ", which is an unshaped sine");
+    }
+
+    beginTest("the kit carries level and not only peaks");
+    {
+      // Both saturation stages together, in one number. Measured 0.077 as it
+      // stands, 0.059 with only the kick shaped, 0.053 with only the bus, so
+      // this fails if either one is removed.
+      const auto buf = render(BotBand::Voice::Drums,
+                              settingsFor("C major", 120, 8, 1u));
+      const float level = rms(buf, 0, (int)buf.size());
+      expect(level > 0.068f,
+             "the kit came out at rms " + juce::String(level, 5));
+    }
+
     beginTest("nothing clips");
     {
       // Three voices are summed by the room, so each must leave headroom.

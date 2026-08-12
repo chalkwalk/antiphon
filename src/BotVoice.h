@@ -48,6 +48,28 @@ inline double midiToHz(double midiNote) {
   return 440.0 * std::pow(2.0, (midiNote - 69.0) / 12.0);
 }
 
+// Soft saturation, normalised so that an input of 1 comes out at 1.
+//
+// Used for two different jobs, and it is worth keeping them apart.
+//
+// On a single voice it is about AUDIBILITY: the harmonics it adds sit above the
+// fundamental, so a bass note or a kick whose fundamental a small speaker
+// cannot reproduce is still heard. Raising the gain instead spends headroom and
+// does not help.
+//
+// On a bus it is about COHESION, and it does something no amount of per-voice
+// shaping can. Because the sum is shaped, the loudest element momentarily pushes
+// the others down -- when the kick lands, the hats duck a little. That
+// intermodulation is what "glue" actually is.
+//
+// Drives above about 3 start eating transients before they add anything, which
+// on drums is the wrong trade.
+inline float saturate(float x, double drive) {
+  if (drive <= 0.0)
+    return x;
+  return (float)(std::tanh(drive * (double)x) / std::tanh(drive));
+}
+
 // Exponential decay to about -60 dB over `seconds`.
 inline float decayAt(double t, double seconds) {
   if (seconds <= 0.0)
@@ -62,6 +84,14 @@ inline float decayAt(double t, double seconds) {
 // which a laptop or a small monitor does not reproduce at all, so without
 // something up where the speaker works the kick is inaudible on most of the
 // machines this will be played on.
+//
+// Saturation is the other half of that argument, and it is why the kick was
+// the quietest thing in the kit: a pure sine is the least loud waveform there
+// is for a given peak, so the drum spent all its headroom on a fundamental
+// nobody could hear. Shaping it fills in harmonics at 100 and 150 Hz, where
+// small speakers work, and the peak barely moves.
+inline constexpr double kKickDrive = 2.0;
+
 inline void renderKick(float *out, int numSamples, double sampleRate,
                        float velocity) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0)
@@ -83,7 +113,9 @@ inline void renderKick(float *out, int numSamples, double sampleRate,
     const float click =
         0.28f * (float)std::sin(clickPhase) * decayAt(t, clickDecay);
 
-    out[i] += velocity * (body + click);
+    // Shaped before the velocity rather than after it, so a quiet hit and an
+    // accented one are the same drum at two levels instead of two drums.
+    out[i] += velocity * saturate(body + click, kKickDrive);
   }
 }
 
