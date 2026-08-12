@@ -447,16 +447,37 @@ restraint rather than conversation.
 - [ ] `src/BotLanguage.{h,cpp}`: normalise, stem, repair typos, map to concepts,
       read the sentence's shape, score the intents. Indirect phrasing has to
       work or the bots feel like a vending machine.
-- [ ] A corpus of a few hundred phrasings and their intents, and a second of
-      lines that must resolve to nothing. The **fallback rate** is the number to
-      quote and drive down.
+- [x] A corpus of phrasings and their intents, including the ones that must be
+      clarified rather than guessed and the ones that must not be answered at
+      all: `test/fixtures/bot-phrases.txt`, 519 lines. The **fallback rate**
+      over it is the number to quote and drive down.
 - [ ] `src/BotChat.{h,cpp}` as pure functions over what a bot knows, so a seed
       and a script of events give a byte-identical transcript.
 - [ ] A fifth, instrument-less tutor bot that teaches six lines and then parts.
       The players play the changes; they do not teach.
+- [ ] The tutor's one piece of listening: subscribed to the owner alone, using
+      `AudioMeasure` plus a duty cycle and a transient count to tell silence,
+      a faint signal, clicks and clipping from somebody playing -- so it can say
+      "that went out" rather than hope. It gates which encouraging line is said
+      and never becomes a judgement.
 - [ ] The budget, and a test that asserts a hundred events produce at most N
       lines. The test that keeps it from becoming annoying.
 - [ ] `quiet`, and unprompted speech off outside the practice room.
+
+### A responsive jamming partner
+
+Sketched in `docs/BOT-CHAT.md` section 14, and not scheduled. A bot receives a
+whole interval at once and composes a whole interval at once, so it holds your
+complete phrase -- ending and all -- at the moment a human listener has heard
+only its first beat, and it answers into the same slot they would. It can
+therefore be more responsive than a player in the room, while staying entirely
+inside the form.
+
+- [ ] Decide whether this is wanted at all before building any of it.
+- [ ] Analysis as a bias on the existing generator rather than a replacement, so
+      that with no analysis the band plays exactly as it does now.
+- [ ] Rhythm and density before pitch: much cheaper, and most of the effect.
+      Key detection from audio is its own project and is not this.
 
 ### Split the client out
 

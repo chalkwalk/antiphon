@@ -90,21 +90,27 @@ So the honest inventory of what a bot can know today:
 
 And the one thing it cannot know: **whether you are playing at all.**
 
-**That is a boundary this proposal keeps rather than pushes against.** The bots
-interact in chat; they do not listen. Musical interaction -- a bot that responds
-to what you played -- is a different and much larger piece of work, and it is
-not proposed here. The deafness is worth stating precisely all the same, because
-it is *why* several tempting ideas are absent from the lists below: a bot cannot
-tell you that you dropped out, cannot compliment a phrase, and must never sound
-as though it could.
+**The four players keep that boundary.** They interact in chat and do not
+listen. It is worth stating precisely because it is *why* several tempting ideas
+are absent below: a player bot cannot tell you that you dropped out, cannot
+compliment a phrase, and must never sound as though it could.
 
-If it is ever wanted, the cheap version is a **presence-only subscription** --
-subscribe to one player and teach `NinjamClient` to notice interval *arrivals*
-without decoding them, since the memory cost is the decoded buffers and not the
-subscription. That would tell a bot "somebody is playing, this interval, yes or
-no" for nearly nothing, with no audio analysis at all. The place it would earn
-its keep is a tutorial bot confirming it can hear you before telling you that
-everyone else can. Not now, and not for the rest of this.
+**The tutor is the one exception, and only for the person it is teaching.** It
+subscribes to the owner alone -- the same thing the echo bot already does with
+`setListensTo` -- and it does so for one narrow purpose: to tell you *"that went
+out and here is why nobody has heard it yet"* rather than saying so and hoping.
+A tutorial that claims your audio reached the room without checking is a
+tutorial that will eventually be wrong at the worst moment, when you are new and
+have no way to tell which of you is mistaken.
+
+That costs one player's worth of decoded interval buffers, on a bot that has no
+instrument and leaves when it is finished. It is a fair price for the one thing
+in the thread that cannot be faked. What the check is, and how carefully it has
+to avoid becoming a judgement, is section 7.
+
+Everything beyond that -- a bot that responds musically to what you played -- is
+future work, sketched in section 14 because the shape of it is interesting and
+worth not forgetting.
 
 ---
 
@@ -332,9 +338,41 @@ done rather than on a timer.
 
 Six lines, and gone. A wizard with twenty tips is one nobody reads.
 
-Whether it can confirm it hears you before telling you everyone else can -- step
-2 above, honestly the weakest of the six without ears -- is the one place a
-presence-only subscription would earn its keep. Noted in §3, not proposed here.
+### Step 2, and the only listening in this design
+
+Step 2 is the one that cannot be faked, so the tutor checks. Not "is that any
+good" -- it has no business having an opinion -- but the far narrower question:
+**does this look like an instrument somebody could hear?**
+
+Every signal it needs is already in `src/AudioMeasure.h`, built for tuning the
+band, plus a duty cycle and a transient count:
+
+| Reading | Reads as | What it says |
+|---|---|---|
+| peak below about -60 dBFS | nothing arrived | "i am not seeing anything from you yet -- is the right input armed?" |
+| rms below about -45 dBFS | there, but faint | "that went out, though it is quiet -- others may struggle to hear it" |
+| very high crest, tiny duty cycle | clicks, not a part | "i am getting clicks rather than playing -- that is usually a buffer size" |
+| peak at or above full scale, high duty | too hot | "that is clipping, and it will distort for everyone else" |
+| pitched (a confident fundamental) **or** rhythmic (transients on a grid) **or** sustained with a plausible duty | somebody playing | the real line: what just happened, and why nobody has heard it yet |
+
+Guitar, bass, keys, drums and a synth pad all land in the last row by different
+routes, which is the point of testing three things and accepting any of them.
+
+Three rules keep this from becoming a nag, and they matter more than the
+thresholds:
+
+- **It gates which encouraging line is said, never a criticism.** Every row
+  above is diagnostic and actionable. None of them is an opinion about music.
+- **Uncertainty says the neutral line.** A sparse part -- one note per interval,
+  a held drone, someone warming up quietly -- must never be told it is not
+  playing. When the reading is not clear, the tutor assumes you are playing and
+  moves on.
+- **Each of the first four rows fires at most once, ever**, and only after
+  several consecutive intervals agree. A single quiet interval is a person
+  thinking.
+
+This is deliberately not musical analysis. It does not know what you played, and
+after step 2 it never listens for anything else.
 
 ---
 
@@ -494,24 +532,47 @@ needs a human to judge.
   it, or the default will rot.
 - **`quiet` is an assertion**: after `quiet`, no cue of `notice` class fires,
   ever, for any bot.
-- **Understanding is a corpus and a number.** The claim in §5 is that indirect
-  phrasing works, and a claim like that is worth nothing without a measurement
-  (`PRINCIPLES §5`). So: a file of a few hundred phrasings paired with the
-  intent each should resolve to -- direct, indirect, elliptical, misspelled,
-  negated, padded with politeness -- and the test asserts both the resolution
-  and the **fallback rate**, which is the number to drive down and to quote.
-  Something like:
+- **Understanding is a corpus and a number**, and the corpus exists:
+  **`test/fixtures/bot-phrases.txt`**, 519 lines written the way people type in
+  chat -- lowercase, unpunctuated, abbreviated, misspelled, padded with
+  politeness, often not a question at all.
+
+  | | |
+  |---|---|
+  | `DESCRIBE_PART` | 73 |
+  | `DESCRIBE_SOUND` | 50 |
+  | `REPORT_KEY` | 42 |
+  | `REPORT_CHART` | 42 |
+  | `REPORT_TEMPO` | 37 |
+  | `RESHUFFLE` | 45 |
+  | `SET_QUIET` | 35 |
+  | `SET_LOUD` | 18 |
+  | `EXPLAIN_SELF` | 37 |
+  | `LEAVE` | 33 |
+  | `CLARIFY` -- must ask, not guess | 15 |
+  | `NONE` -- must not answer at all | 92 |
+
+  The test asserts the resolution of every line and reports the **fallback
+  rate**, which is the number to quote and drive down:
 
   ```
-  320 phrasings, 9 intents
-  resolved 308  clarified 7  fell back 5   (fallback 1.6%)
+  519 phrasings, 9 intents
+  resolved 498  clarified 15  fell back 6   (fallback 1.2%)
   ```
 
-  A second corpus of lines that must **not** resolve -- greetings, chat between
-  humans, other bots' names, insults, empty strings -- asserts the opposite: no
-  intent fires, and nothing is invented. Both corpora are plain text a
-  non-programmer can extend, and extending them when a real phrasing misses is
-  how the lexicon grows.
+  The `NONE` section is the other half and is the one that keeps the bots
+  civil: greetings, courtesy, humans talking to each other, someone asking after
+  Dave, a cat on a keyboard. None of it may fire an intent and none of it may be
+  answered. It is deliberately the largest section.
+
+  `CLARIFY` is worth its own section because a design with three outcomes needs
+  a corpus with three: "tell me about your kick" is genuinely ambiguous and the
+  right behaviour is to ask which.
+
+  It is plain text so extending it needs no C++. When a real phrasing misses,
+  add it, watch the test go red, then widen the lexicon -- and if widening would
+  take more than a word or two, that is the signal the design was over-reaching
+  rather than the corpus being short.
 - **Each stage is testable alone**: the Porter stemmer against its published
   vectors, the edit distance against known pairs, the normaliser against
   contraction and vocative cases, the shape flags against negation.
@@ -584,10 +645,11 @@ Rough size:
 1. ~~Does teaching live on the instrument bots or a fifth bot?~~ **Decided: a
    fifth bot, which leaves when it is finished.** See §7. The players play the
    changes.
-2. ~~Is the presence subscription worth building first?~~ **Decided: no.** The
-   bots interact in chat and do not listen. Musical interaction is future work,
-   and the only presence question worth reopening later is a tutorial bot
-   confirming it can hear you before it explains that everyone else can.
+2. ~~Is the presence subscription worth building first?~~ **Decided: no, and it
+   is not what was needed anyway.** The four players do not listen. The tutor
+   does, for the owner alone and for the one check in §7, and that needs real
+   decoded audio rather than presence -- so the presence-only idea is dropped
+   rather than deferred. Musical listening beyond that is §14.
 3. **How much should bots know about each other?** Today they share nothing and
    converge only by hearing the same chat. Letting the drummer say "the bass is
    on the offbeat too" needs shared state and I suspect it is not worth it.
@@ -601,6 +663,71 @@ Rough size:
    is now three outcomes rather than two -- answer, clarify, or report what was
    recognised -- with courtesy getting silence and the fallback rate treated as
    a defect to measure and drive down.
+
+   Still open underneath it: **how far the lexicon should reach before it is
+   over-engineered.** The corpus exists now, so this is answerable by
+   measurement rather than by argument: build the pipeline, run it, and let the
+   fallback rate say when to stop widening.
+
+---
+
+## 14. Beyond chat: the responsive partner
+
+Not proposed, not scheduled, and written down because the shape of it is
+peculiar to this program and easy to lose.
+
+**A bot can be more responsive than a human, and the interval is why.**
+
+Follow one phrase through. You play during interval N. Your audio is complete at
+the boundary into N+1, and everyone plays it back through N+1. A human listening
+hears it *unfold* across N+1 -- they learn how your phrase ended only at the end
+of N+1 -- while simultaneously playing their own material, which others will
+hear in N+2. So a human's N+1 performance can answer only the part of your
+phrase they have heard so far. Your ending reaches them too late to answer
+before N+2.
+
+A bot renders a whole interval in one go, before that interval is transmitted.
+At the start of N+1 it holds your **complete** interval N, ending and all, and
+what it renders is heard in N+2 -- the same slot as the human's reply. It is
+answering the whole phrase in the interval where the human is still hearing it.
+
+That is not a trick or a latency cheat. It is a consequence of two facts already
+true here: audio arrives a whole interval at a time, and a generative bot
+composes a whole interval at a time. It means a bot could do things a human
+player in the same room cannot -- answer your ending, match your phrase length,
+land its own cadence against yours -- while staying exactly inside the form and
+the wire protocol.
+
+**The architecture that keeps it honest** is to leave the generator in charge
+and let analysis *bias* it:
+
+- analysis of the received interval produces a handful of plain numbers --
+  density, register, how active, how syncopated, where the energy sits, a pitch
+  histogram;
+- those bias existing decisions rather than replacing them: the Euclidean pulse
+  count, the register the bass sits in, whether to rest through a bar, dynamics,
+  how busy the lead is;
+- with no analysis available, every bias is zero and the band plays exactly as
+  it does today.
+
+That last property is what makes it safe to build incrementally, and it is the
+same shape as the character system: a small vector of influences over a
+generator that already works.
+
+**What to be careful of, when it comes:**
+
+- *Mimicry reads as mockery.* A bot that plays back your rhythm is not
+  responsive, it is a parrot, and it is unpleasant within about four bars. The
+  interesting responses are complementary -- it thins out when you get busy,
+  drops to the root when you go outside.
+- *Feedback loops.* Bots are deaf to each other, and that should stay true, or
+  four responsive bots will converge on each other and leave you out of it.
+- *Key detection from audio is a real project* -- `Harmony::inferKey` infers from
+  a chart, which is a very different problem from inferring from a signal.
+  Rhythm and density are much cheaper and would buy most of the effect.
+- *The tutor's check in §7 is the first stone of this path*, and worth building
+  well for that reason: "is somebody playing, and does it have a shape" is the
+  simplest question in this family, and its answer is already useful.
 
    What is still open underneath it: **how far the lexicon should reach before
    it is over-engineered.** 150 words and nine intents is my estimate, and the
