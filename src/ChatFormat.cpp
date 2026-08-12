@@ -1,5 +1,6 @@
 #include "ChatFormat.h"
 
+#include "Harmony.h"
 #include "MusicalKey.h"
 
 namespace ChatFormat {
@@ -76,35 +77,11 @@ Line render(const juce::String &type, const juce::String &username,
 }
 
 bool isChordProgression(const juce::String &text) {
-  const auto trimmed = text.trim();
-  if (!trimmed.startsWithChar('|'))
-    return false;
-
-  // At least two measures with something in them. One "|C" is a chord, not a
-  // progression, and requiring two is what keeps a stray pipe out.
-  int measures = 0;
-  bool anyChord = false;
-  for (const auto &part : juce::StringArray::fromTokens(trimmed, "|", "")) {
-    const auto measure = part.trim();
-    if (measure.isEmpty())
-      continue;
-    ++measures;
-    for (const auto &token :
-         juce::StringArray::fromTokens(measure, " \t", "")) {
-      const auto chord = token.trim();
-      if (chord.isEmpty())
-        continue;
-      // A chord starts with a note letter, optionally with an accidental. The
-      // rest -- m, 7, maj7, sus4, /G -- is not worth validating: this only
-      // decides how to colour a line.
-      const auto letter = juce::CharacterFunctions::toUpperCase(chord[0]);
-      if (letter < 'A' || letter > 'G')
-        return false; // a word in the middle means this is prose with pipes
-      anyChord = true;
-    }
-  }
-
-  return measures >= 2 && anyChord;
+  // Deliberately not a second parser. This was one once -- it validated the
+  // first letter and shrugged at the rest -- so a line could be coloured as a
+  // chart here and rejected by the band, or the other way round. One tokeniser
+  // decides both (`PRINCIPLES §8`).
+  return Harmony::looksLikeChart(text);
 }
 
 VoteState parseVote(const juce::String &text) {

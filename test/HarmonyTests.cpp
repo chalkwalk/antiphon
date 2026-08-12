@@ -31,6 +31,7 @@ public:
     runDefaultProgressionTests();
     runChordNameTests();
     runBeatMappingTests();
+    runLayoutTests();
   }
 
   void runChordTests() {
@@ -214,10 +215,115 @@ public:
       }
     }
 
+    beginTest("the vocabulary players actually write");
+    {
+      // Tones, because the quality enum has no name for most of these and the
+      // tones are what the band plays. Ninths and above are not folded into the
+      // octave: a ninth is 14, so a voicing puts it above the seventh.
+      struct Case {
+        const char *text;
+        const char *tones;
+      };
+      const Case cases[] = {
+          {"Csus4", "0,5,7"},        {"Csus2", "0,2,7"},
+          {"Csus", "0,5,7"},         {"C7sus4", "0,5,7,10"},
+          {"C6", "0,4,7,9"},         {"Am6", "0,3,7,9"},
+          {"C9", "0,4,7,10,14"},     {"Cmaj9", "0,4,7,11,14"},
+          {"Cm9", "0,3,7,10,14"},    {"C11", "0,4,7,10,17"},
+          {"C13", "0,4,7,10,21"},    {"Cadd9", "0,4,7,14"},
+          {"C7b9", "0,4,7,10,13"},   {"C7#9", "0,4,7,10,15"},
+          {"C7#11", "0,4,7,10,18"},  {"C7b13", "0,4,7,10,20"},
+          {"Cdim7", "0,3,6,9"},      {"Co7", "0,3,6,9"},
+          {"C7b5", "0,4,6,10"},      {"C7#5", "0,4,8,10"},
+          {"F#m7(b5)", "0,3,6,10"},  {"C-7", "0,3,7,10"},
+          {"CM7", "0,4,7,11"},       {"Cmi7", "0,3,7,10"},
+      };
+
+      for (const auto &c : cases) {
+        Harmony::Chord out;
+        if (!Harmony::parseChordName(c.text, out)) {
+          expect(false, juce::String("failed to parse ") + c.text);
+          continue;
+        }
+        expectEquals(toneList(out), juce::String(c.tones),
+                     juce::String(c.text) + " tones");
+      }
+    }
+
+    beginTest("a slash chord keeps the note underneath it");
+    {
+      Harmony::Chord out;
+      expect(Harmony::parseChordName("Am7/G", out));
+      expectEquals(out.root, 9);
+      expectEquals(out.bass, 7);
+      expect(out.quality == Harmony::Quality::Minor7);
+
+      // A slash naming the root is not an inversion, so it is not recorded.
+      expect(Harmony::parseChordName("C/C", out));
+      expectEquals(out.bass, -1);
+
+      // The bass has to be a note, or the whole symbol is refused.
+      expect(!Harmony::parseChordName("Am7/H", out));
+      expect(!Harmony::parseChordName("Am7/", out));
+    }
+
+    beginTest("a chord can be written back out");
+    {
+      // Round trip, and canonical: the spellings on the right are what comes
+      // back, so "CM7" normalises to "Cmaj7" and "F#m7(b5)" loses its brackets.
+      struct Case {
+        const char *in;
+        const char *out;
+        bool flat;
+      };
+      const Case cases[] = {
+          {"C", "C", false},           {"Am", "Am", false},
+          {"G7", "G7", false},         {"Cmaj7", "Cmaj7", false},
+          {"CM7", "Cmaj7", false},     {"Dm7", "Dm7", false},
+          {"Bm7b5", "Bm7b5", false},   {"F#m7(b5)", "F#m7b5", false},
+          {"Edim", "Edim", false},     {"Eo", "Edim", false},
+          {"Caug", "Caug", false},     {"C+", "Caug", false},
+          {"Csus4", "Csus4", false},   {"Csus", "Csus4", false},
+          {"Csus2", "Csus2", false},   {"C6", "C6", false},
+          {"Am6", "Am6", false},       {"C9", "C9", false},
+          {"Cmaj9", "Cmaj9", false},   {"C13", "C13", false},
+          {"Cadd9", "Cadd9", false},   {"C7b9", "C7b9", false},
+          {"Cdim7", "Cdim7", false},   {"Am7/G", "Am7/G", false},
+          {"C7sus4", "C7sus4", false}, {"Abmin", "Abm", true},
+          {"Bbmaj7", "Bbmaj7", true},  {"Dm7/Bb", "Dm7/Bb", true},
+      };
+
+      for (const auto &c : cases) {
+        Harmony::Chord chord;
+        if (!Harmony::parseChordName(c.in, chord)) {
+          expect(false, juce::String("failed to parse ") + c.in);
+          continue;
+        }
+        const auto written = Harmony::chordName(chord, c.flat);
+        expectEquals(written, juce::String(c.out),
+                     juce::String(c.in) + " written back");
+
+        // And the name it produces must parse to the same chord.
+        Harmony::Chord again;
+        expect(Harmony::parseChordName(written, again),
+               "could not re-read " + written);
+        expect(again == chord, written + " did not survive the round trip");
+      }
+    }
+
+    beginTest("a root is spelled to match the key signature");
+    {
+      Harmony::Chord bFlat;
+      expect(Harmony::parseChordName("Bb", bFlat));
+      expectEquals(Harmony::chordName(bFlat, true), juce::String("Bb"));
+      expectEquals(Harmony::chordName(bFlat, false), juce::String("A#"));
+    }
+
     beginTest("nonsense is refused rather than guessed at");
     {
       Harmony::Chord out;
-      for (const char *bad : {"", "H", "hello", "Cxyz", "7", "#", "Ammm"})
+      for (const char *bad : {"", "H", "hello", "Cxyz", "7", "#", "Ammm",
+                              "Cmaj7x", "Csus3", "C(", "Cb5b", "and"})
         expect(!Harmony::parseChordName(bad, out),
                juce::String("accepted ") + bad);
     }
@@ -237,6 +343,23 @@ public:
       expectEquals((int)q.size(), 4);
     }
 
+    beginTest("what looks like a chart is what parses as one");
+    {
+      // The property, not the implementation: these were two parsers once, and
+      // a line could be coloured green in the chat pane and then rejected by
+      // the band. Whatever the rule is, both answers have to agree.
+      for (const char *line :
+           {"| Am | F | C | G |", "|C |Fmaj7 |G7 |Am7 |Am7/G |F#m7(b5) |Fmaj9",
+            "| Dm7 | C# Csus |", "|C|F||G|F", "| C | and then something else",
+            "I AM TIRED OF THIS", "no bars here", "| Am | not-a-chord |",
+            "| Am |", "|C", "", "|", "|| ||", "Am | F |"}) {
+        Harmony::Progression p;
+        expect(Harmony::looksLikeChart(line) ==
+                   Harmony::parseProgression(line, p),
+               juce::String("the two disagree about: ") + line);
+      }
+    }
+
     beginTest("prose is not a chord progression");
     {
       // Jamtaba's own parser reads "I AM TIRED ..." as chords, because it
@@ -249,6 +372,127 @@ public:
       expect(!Harmony::parseProgression("| Am |", p),
              "one chord is not a progression");
       expect(!Harmony::parseProgression("", p));
+    }
+  }
+
+  void runLayoutTests() {
+    beginTest("one chord per bar lays out exactly as it did before bars");
+    {
+      // The compatibility claim, and the reason bars could be introduced at
+      // all: a flat progression is a chart of one-chord bars, and it must land
+      // on precisely the beats it used to. If this ever goes red, every
+      // existing recording of the band changed.
+      for (int bpi = 1; bpi <= 16; ++bpi) {
+        for (int n = 1; n <= 8; ++n) {
+          Harmony::Progression p;
+          for (int i = 0; i < n; ++i)
+            p.push_back(Harmony::chordOn(i, Harmony::Quality::Major));
+
+          const auto layout = Harmony::layoutChart(Harmony::chartOf(p), bpi);
+          for (int beat = 0; beat < bpi; ++beat) {
+            const int want = Harmony::chordIndexForBeat(beat, bpi, n);
+            for (int half = 0; half < Harmony::kStepsPerBeat; ++half) {
+              const int step = beat * Harmony::kStepsPerBeat + half;
+              expectEquals(layout.stepToChord[(size_t)step], want,
+                           "bpi " + juce::String(bpi) + ", " +
+                               juce::String(n) + " chords, beat " +
+                               juce::String(beat));
+            }
+          }
+        }
+      }
+    }
+
+    beginTest("a bar holding two chords gives each of them half the bar");
+    {
+      // The whole point. Read as a flat list of three chords over eight beats
+      // this is 3+3+2; read as two bars it is 4+2+2, which is what was written.
+      Harmony::Chart chart;
+      expect(Harmony::parseChart("| Dm7 | C# Csus |", chart));
+      expectEquals((int)chart.size(), 2, "bars");
+      expectEquals((int)chart[0].chords.size(), 1);
+      expectEquals((int)chart[1].chords.size(), 2);
+
+      const auto layout = Harmony::layoutChart(chart, 8);
+      const int wantPerBeat[8] = {0, 0, 0, 0, 1, 1, 2, 2};
+      for (int beat = 0; beat < 8; ++beat)
+        expectEquals(layout.stepToChord[(size_t)(beat * 2)],
+                     wantPerBeat[beat], "beat " + juce::String(beat));
+
+      expectEquals(Harmony::chordAtStep(layout, 0).root, 2, "Dm7");
+      expectEquals(Harmony::chordAtStep(layout, 8).root, 1, "C#");
+      expectEquals(Harmony::chordAtStep(layout, 12).root, 0, "Csus");
+    }
+
+    beginTest("a chord change is where the chord changes");
+    {
+      Harmony::Chart chart;
+      expect(Harmony::parseChart("| Dm7 | C# Csus |", chart));
+      const auto layout = Harmony::layoutChart(chart, 8);
+
+      expect(Harmony::changesAtStep(layout, 0), "an interval opens on a chord");
+
+      int changes = 0;
+      for (int step = 0; step < layout.steps(); ++step)
+        if (Harmony::changesAtStep(layout, step))
+          ++changes;
+      expectEquals(changes, 3, "one change per chord that sounds");
+
+      expect(Harmony::changesAtStep(layout, 8), "the second bar");
+      expect(Harmony::changesAtStep(layout, 12), "inside the second bar");
+      expect(!Harmony::changesAtStep(layout, 9), "mid-chord");
+    }
+
+    beginTest("a bar shorter than its chords keeps the ones that fit");
+    {
+      // Two bars over two beats is a beat each, and eighths is as fine as the
+      // grid goes, so a bar of three chords sounds two of them.
+      Harmony::Chart chart;
+      expect(Harmony::parseChart("| C G Am | F |", chart));
+      const auto layout = Harmony::layoutChart(chart, 2);
+
+      expectEquals(layout.steps(), 4);
+      // The first bar owns one beat, which is two eighths.
+      expectEquals(layout.stepToChord[0], 0, "C");
+      expectEquals(layout.stepToChord[1], 1, "G, an eighth later");
+      expectEquals(layout.stepToChord[2], 3, "F, in the second bar");
+
+      // Am is still in the chart and still has an index; it simply has no time.
+      expectEquals((int)layout.chords.size(), 4);
+    }
+
+    beginTest("a layout survives being asked for nonsense");
+    {
+      const auto empty = Harmony::layoutChart({}, 8);
+      expect(empty.empty());
+      expect(!Harmony::changesAtStep(empty, 0));
+      expectEquals(Harmony::chordAtStep(empty, 3).root, 0, "the fallback chord");
+
+      Harmony::Chart chart;
+      expect(Harmony::parseChart("| C | F |", chart));
+      const auto zero = Harmony::layoutChart(chart, 0);
+      expect(zero.empty(), "no interval, no layout");
+
+      // Steps outside the interval wrap rather than reading off the end.
+      const auto layout = Harmony::layoutChart(chart, 4);
+      expectEquals(Harmony::chordAtStep(layout, 100).root,
+                   Harmony::chordAtStep(layout, 100 % layout.steps()).root);
+      expectEquals(Harmony::chordAtStep(layout, -1).root,
+                   Harmony::chordAtStep(layout, layout.steps() - 1).root);
+    }
+
+    beginTest("a chart keeps its bars through a parse");
+    {
+      Harmony::Chart chart;
+      expect(Harmony::parseChart("| Am F | C G |", chart));
+      expectEquals((int)chart.size(), 2);
+      expectEquals((int)Harmony::flatten(chart).size(), 4);
+
+      // An empty measure holds no time, so it is not a bar. "|C|F||G|F" is in
+      // Jamtaba's test suite.
+      Harmony::Chart withGap;
+      expect(Harmony::parseChart("|C|F||G|F", withGap));
+      expectEquals((int)withGap.size(), 4);
     }
   }
 

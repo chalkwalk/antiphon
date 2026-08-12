@@ -319,7 +319,8 @@ public:
       }, 5000), "the band ignored the announced key");
 
       for (const auto &s : room.bandSettings())
-        expectEquals(s.progression[0].root, 2, "the chords did not follow");
+        expectEquals(Harmony::flatten(s.chart)[0].root, 2,
+                     "the chords did not follow");
     }
 
     beginTest("a bot follows chords announced in room chat");
@@ -336,9 +337,11 @@ public:
       you.client.sendChatMessage("| Am | F | C | G |");
 
       expect(waitUntil([&] {
-        for (const auto &s : room.bandSettings())
-          if (s.progression.size() == 4 && s.progression[0].root == 9)
+        for (const auto &s : room.bandSettings()) {
+          const auto chords = Harmony::flatten(s.chart);
+          if (chords.size() == 4 && chords[0].root == 9)
             return true;
+        }
         return false;
       }, 5000), "the band ignored the announced chords");
     }
@@ -362,7 +365,8 @@ public:
       const auto after = room.bandSettings();
       expectEquals((int)after.size(), (int)before.size());
       for (size_t i = 0; i < after.size(); ++i)
-        expect(after[i].progression == before[i].progression,
+        expect(Harmony::flatten(after[i].chart) ==
+                   Harmony::flatten(before[i].chart),
                "chat prose changed the harmony");
     }
 

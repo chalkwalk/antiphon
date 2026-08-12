@@ -76,6 +76,18 @@ juce::String scaleNotes(const Key &key);
 
 juce::String modeName(Mode mode);
 
+// A pitch class as a note name, spelled sharp or flat as asked: "C#" or "Db".
+//
+// Exported because spelling a chord root is the same problem as spelling a
+// scale note, and a second accidental table in Harmony.cpp would be a second
+// place to be wrong (`PRINCIPLES §8`).
+juce::String noteName(int semitone, bool flat);
+
+// Whether a key is conventionally written with flats, derived from its relative
+// major. What `scaleNotes` uses, and what a chord name should use, so a chord in
+// D minor spells Bb rather than A#.
+bool usesFlats(int tonic, Mode mode);
+
 // The seven scale degrees as semitones above the tonic, for anything that has
 // to make a note rather than name one. `scaleNotes` spells them for a reader;
 // this is the same information for a synthesiser.

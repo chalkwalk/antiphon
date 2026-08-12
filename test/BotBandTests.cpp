@@ -300,7 +300,7 @@ public:
     {
       const auto s = settingsFor("C major");
       const auto f = BotBand::figureFor(BotBand::Voice::Keys, s);
-      expectEquals(f.pulses, (int)s.progression.size());
+      expectEquals(f.pulses, (int)Harmony::flatten(s.chart).size());
     }
   }
 
@@ -470,7 +470,7 @@ public:
                                   "Bb major", "E Dorian"}) {
         auto s = settingsFor(keyName);
         // One chord for the whole interval, so the first note is unambiguous.
-        s.progression = {s.progression[0]};
+        s.chart = {s.chart[0]};
 
         // A chord change always gets a note and that note is always the root,
         // so beat 0 is exactly measurable. Later notes may be the octave or
@@ -485,11 +485,11 @@ public:
 
         const double midi = 69.0 + 12.0 * std::log2(hz / 440.0);
         const int pitchClass = ((int)std::lround(midi) % 12 + 12) % 12;
-        expectEquals(pitchClass, s.progression[0].root,
+        expectEquals(pitchClass, s.chart[0].chords[0].root,
                      juce::String(keyName) + ": bass at " +
                          juce::String(hz, 1) + " Hz is pitch class " +
                          juce::String(pitchClass) + ", chord root is " +
-                         juce::String(s.progression[0].root));
+                         juce::String(s.chart[0].chords[0].root));
       }
     }
 
@@ -498,23 +498,29 @@ public:
       // The stronger form of the test above: not just the first change, but
       // all of them, with a real progression underneath.
       auto s = settingsFor("C major", 120, 16);
-      s.progression = {Harmony::chordOn(0, Harmony::Quality::Major),
-                       Harmony::chordOn(5, Harmony::Quality::Major),
-                       Harmony::chordOn(9, Harmony::Quality::Minor),
-                       Harmony::chordOn(7, Harmony::Quality::Major)};
+      s.chart = Harmony::chartOf({Harmony::chordOn(0, Harmony::Quality::Major),
+                                  Harmony::chordOn(5, Harmony::Quality::Major),
+                                  Harmony::chordOn(9, Harmony::Quality::Minor),
+                                  Harmony::chordOn(7, Harmony::Quality::Major)});
 
       const auto buf = render(BotBand::Voice::Bass, s);
       const int beat = (int)(s.sampleRate * 60.0 / s.bpm);
 
-      for (int chord = 0; chord < (int)s.progression.size(); ++chord) {
-        // Where this chord starts.
-        int step = 0;
-        while (step < s.bpi &&
-               Harmony::chordIndexForBeat(step, s.bpi,
-                                          (int)s.progression.size()) != chord)
-          ++step;
+      const auto layout = Harmony::layoutChart(s.chart, s.bpi);
+      const auto chords = Harmony::flatten(s.chart);
 
-        const int at = step * beat;
+      for (int chord = 0; chord < (int)chords.size(); ++chord) {
+        // Where this chord starts, asked of the same layout the band played
+        // from rather than re-derived here.
+        int at = -1;
+        for (int i = 0; i < layout.steps(); ++i)
+          if (layout.stepToChord[(size_t)i] == chord) {
+            at = i * beat / Harmony::kStepsPerBeat;
+            break;
+          }
+        if (at < 0)
+          continue;
+        const int step = at / beat;
         const int span = juce::jmin(beat, (int)buf.size() - at);
         if (span <= 0)
           continue;
@@ -526,7 +532,7 @@ public:
 
         const double midi = 69.0 + 12.0 * std::log2(hz / 440.0);
         const int pitchClass = ((int)std::lround(midi) % 12 + 12) % 12;
-        expectEquals(pitchClass, s.progression[(size_t)chord].root,
+        expectEquals(pitchClass, chords[(size_t)chord].root,
                      "chord " + juce::String(chord) + " at beat " +
                          juce::String(step) + ", " + juce::String(hz, 1) +
                          " Hz");
@@ -539,7 +545,7 @@ public:
       // which is how a wrong bass part went unnoticed as a missing one.
       for (const char *keyName : {"C major", "B major", "F# major"}) {
         auto s = settingsFor(keyName);
-        s.progression = {s.progression[0]};
+        s.chart = {s.chart[0]};
         const auto buf = render(BotBand::Voice::Bass, s);
         const double hz = firstNoteHz(buf, s.sampleRate, s.bpm);
         expect(hz >= 60.0 && hz <= 140.0,
@@ -625,6 +631,7 @@ public:
       for (const char *keyName : {"C major", "D minor", "A minor", "F Lydian",
                                   "E Phrygian", "G Mixolydian"}) {
         auto s = settingsFor(keyName, 120, 16);
+        const auto layout = Harmony::layoutChart(s.chart, s.bpi);
         for (int interval = 0; interval < 4; ++interval) {
           const auto line = BotBand::leadLine(s, interval);
 
@@ -633,10 +640,8 @@ public:
               continue;
 
             const int strength = BotBand::metricStrength((int)step, s.bpi);
-            const int idx = Harmony::chordIndexForBeat(
-                (int)step / 2, s.bpi, (int)s.progression.size());
-            const int tier =
-                BotBand::noteTier(line[step], s.progression[(size_t)idx]);
+            const auto &chord = Harmony::chordAtStep(layout, (int)step);
+            const int tier = BotBand::noteTier(line[step], chord);
             const int worst = strength >= 3 ? 0 : (strength >= 1 ? 1 : 2);
 
             expect(tier <= worst,
@@ -737,16 +742,17 @@ public:
     beginTest("a minor key is played minor");
     {
       const auto s = settingsFor("A minor");
-      expectEquals((int)s.progression.size(), 4);
-      expectEquals(s.progression[0].root, 9);
-      expect(s.progression[0].quality == Harmony::Quality::Minor);
+      const auto chords = Harmony::flatten(s.chart);
+      expectEquals((int)chords.size(), 4);
+      expectEquals(chords[0].root, 9);
+      expect(chords[0].quality == Harmony::Quality::Minor);
     }
 
     beginTest("an announced progression is played instead of the default");
     {
       auto s = settingsFor("C major");
-      s.progression = {Harmony::chordOn(2, Harmony::Quality::Minor),
-                       Harmony::chordOn(7, Harmony::Quality::Dominant7)};
+      s.chart = Harmony::chartOf({Harmony::chordOn(2, Harmony::Quality::Minor),
+                                  Harmony::chordOn(7, Harmony::Quality::Dominant7)});
 
       const auto f = BotBand::figureFor(BotBand::Voice::Keys, s);
       expectEquals(f.pulses, 2, "the keys did not take the announced chords");
@@ -787,7 +793,7 @@ public:
                               (int)buf.size());
 
       bad = settingsFor("C major");
-      bad.progression.clear();
+      bad.chart.clear();
       BotBand::renderInterval(BotBand::Voice::Keys, bad, 0, buf.data(),
                               (int)buf.size());
 

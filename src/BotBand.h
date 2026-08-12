@@ -37,7 +37,11 @@ struct Settings {
   int bpi = 8;
   double sampleRate = 48000.0;
   MusicalKey::Key key;
-  Harmony::Progression progression;
+
+  // Bars, not a flat list: a bar holding two chords is half the time each, and
+  // that is the difference between playing what was written and playing the
+  // same chords evenly spread (see Harmony::layoutChart).
+  Harmony::Chart chart;
 
   // Rerolled by "shake". Salted per voice inside, so one seed does not give
   // every instrument the same shape -- the mistake seq_play's MelodyGen

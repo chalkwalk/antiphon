@@ -89,12 +89,8 @@ const int kModeOffsetFromRelativeMajor[] = {
     11, // Locrian
 };
 
-// Whether this key is conventionally written with flats.
-//
-// The spelling belongs to the key signature, not to how the tonic happened to
-// be typed: D minor has one flat, so its sixth is Bb and never A#, even though
-// nobody writes an accidental when they type "Dm". Derived from the relative
-// major, which is what carries the signature.
+} // namespace
+
 bool usesFlats(int tonic, Mode mode) {
   const int offset = kModeOffsetFromRelativeMajor[(int)mode];
   const int relativeMajor = (((tonic - offset) % 12) + 12) % 12;
@@ -104,17 +100,14 @@ bool usesFlats(int tonic, Mode mode) {
          relativeMajor == 8 || relativeMajor == 1;
 }
 
-const char *kSharpNames[] = {"C",  "C#", "D",  "D#", "E",  "F",
-                             "F#", "G",  "G#", "A",  "A#", "B"};
-const char *kFlatNames[] = {"C",  "Db", "D",  "Eb", "E",  "F",
-                            "Gb", "G",  "Ab", "A",  "Bb", "B"};
-
 juce::String noteName(int semitone, bool flat) {
+  static const char *sharp[] = {"C",  "C#", "D",  "D#", "E",  "F",
+                                "F#", "G",  "G#", "A",  "A#", "B"};
+  static const char *flatNames[] = {"C",  "Db", "D",  "Eb", "E",  "F",
+                                    "Gb", "G",  "Ab", "A",  "Bb", "B"};
   const int s = ((semitone % 12) + 12) % 12;
-  return flat ? kFlatNames[s] : kSharpNames[s];
+  return flat ? flatNames[s] : sharp[s];
 }
-
-} // namespace
 
 juce::String modeName(Mode mode) {
   switch (mode) {
