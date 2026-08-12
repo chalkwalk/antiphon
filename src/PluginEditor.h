@@ -4,6 +4,7 @@
 #include "NinjamClient.h"
 #include "AntiphonLookAndFeel.h"
 #include "ChatFormat.h"
+#include "Harmony.h"
 #include "MusicalKey.h"
 #include "Announcer.h"
 #include "Shortcuts.h"
@@ -172,6 +173,11 @@ private:
   void updateTempoChip();
   void setChipVisible(bool shouldShow);
 
+  // The chart row appears only when there is a chart, so an idle header keeps
+  // the height it has always had.
+  int headerHeight() const;
+  bool showsChartRow() const;
+
   // The server vote currently on offer, and the DAW tempo currently worth
   // proposing. Dismissal is remembered per value, so saying no to one proposal
   // does not silence the next, different one.
@@ -180,6 +186,17 @@ private:
   // The key the room is playing in, as last announced by anyone. Display only:
   // Ninjam has no field for it, so it rides on chat (see MusicalKey.h).
   MusicalKey::Key sessionKey;
+
+  // The chart the room is playing over, as last announced by anyone -- and
+  // only ever that. A progression nobody agreed to would be a lie on screen,
+  // so nothing is inferred or defaulted into this.
+  Harmony::Chart sessionChart;
+
+  // A key the chords imply but nobody has declared. Offered on the chip, never
+  // acted on by itself, and never sent anywhere: clicking is what announces it.
+  Harmony::KeyGuess keyFromChords;
+  MusicalKey::Key dismissedKeyGuess;
+
   int dismissedVoteTarget = 0;
   bool dismissedVoteIsBpm = true;
   int dismissedDawBpm = 0;
