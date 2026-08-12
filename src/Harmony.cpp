@@ -272,7 +272,10 @@ bool parseSuffix(Cursor &c, Shape &shape) {
     shape.dimBase = true;
   } else if (c.take("aug")) {
     shape.fifth = 8;
-  } else if (c.take("o")) {
+  } else if (c.take("o") || c.take("0")) {
+    // The degree sign is not ASCII and not on a keyboard, so people type "o"
+    // or a zero. Both mean diminished, and refusing the zero would be refusing
+    // the spelling half of them use.
     shape.third = 3;
     shape.fifth = 6;
     shape.dimBase = true;
@@ -428,7 +431,10 @@ bool parseChordName(const juce::String &text, Chord &out) {
   return true;
 }
 
-juce::String chordName(const Chord &chord, bool flat) {
+namespace {
+
+// The part of a chord symbol after the root: "m7", "sus4", "maj9", "dim7".
+juce::String chordSuffix(const Chord &chord) {
   auto has = [&](int semitone) {
     for (int i = 0; i < chord.toneCount; ++i)
       if (chord.tones[(size_t)i] == semitone)
@@ -499,10 +505,108 @@ juce::String chordName(const Chord &chord, bool flat) {
   if (has(20))
     suffix += "b13";
 
-  juce::String name = MusicalKey::noteName(chord.root, flat) + suffix;
+  return suffix;
+}
+
+} // namespace
+
+juce::String chordName(const Chord &chord, bool flat) {
+  juce::String name =
+      MusicalKey::noteName(chord.root, flat) + chordSuffix(chord);
   if (chord.bass >= 0 && chord.bass != chord.root)
     name += "/" + MusicalKey::noteName(chord.bass, flat);
   return name;
+}
+
+juce::String romanName(const Chord &chord, const MusicalKey::Key &key) {
+  if (!key.valid)
+    return {};
+
+  static const char *numerals[] = {"I", "II", "III", "IV", "V", "VI", "VII"};
+  const int *steps = MusicalKey::scaleSteps(key.mode);
+  const int interval = wrapPitchClass(chord.root - key.tonic);
+
+  auto degreeAt = [&](int semitones) {
+    for (int d = 0; d < MusicalKey::kScaleDegrees; ++d)
+      if (steps[d] == ((semitones % 12) + 12) % 12)
+        return d;
+    return -1;
+  };
+
+  juce::String accidental;
+  int degree = degreeAt(interval);
+  if (degree < 0) {
+    // Not in the scale. Name it as a lowered degree above -- bIII, bVI, bVII --
+    // which is what a player writes, except at the tritone, where "bV" is
+    // nobody's spelling and "#IV" is everybody's.
+    const int above = degreeAt(interval + 1);
+    const int below = degreeAt(interval - 1);
+    if (above >= 0 && above != 4) {
+      degree = above;
+      accidental = "b";
+    } else if (below >= 0) {
+      degree = below;
+      accidental = "#";
+    } else if (above >= 0) {
+      degree = above;
+      accidental = "b";
+    } else {
+      return {}; // a root a scale reaches from neither side: not nameable
+    }
+  }
+
+  juce::String numeral(numerals[degree]);
+  const bool minorThird =
+      chord.toneCount > 1 &&
+      (chord.tones[1] == 3 || (chord.tones[1] != 4 && chord.toneCount > 2 &&
+                               chord.tones[2] == 6));
+  if (minorThird)
+    numeral = numeral.toLowerCase();
+
+  // The case already says minor, so the symbol must not say it twice: Dm7 in C
+  // is ii7, not iim7. "m7b5" stays whole, because it names a fifth as well as a
+  // third, and "dim" reads better as the "o" a chart would use.
+  juce::String suffix = chordSuffix(chord);
+  if (suffix == "m")
+    suffix = "";
+  else if (suffix.startsWith("m") && !suffix.startsWith("maj") &&
+           !suffix.startsWith("m7b5"))
+    suffix = suffix.substring(1);
+  else if (suffix.startsWith("dim"))
+    suffix = "o" + suffix.substring(3);
+
+  juce::String out = accidental + numeral + suffix;
+  if (chord.bass >= 0 && chord.bass != chord.root)
+    out += "/" + MusicalKey::noteName(chord.bass, key.flat);
+  return out;
+}
+
+juce::String chartText(const Chart &chart, bool flat) {
+  if (chart.empty())
+    return {};
+
+  juce::String out = "|";
+  for (const auto &bar : chart) {
+    for (const auto &c : bar.chords)
+      out += " " + chordName(c, flat);
+    out += " |";
+  }
+  return out;
+}
+
+juce::String romanChartText(const Chart &chart, const MusicalKey::Key &key) {
+  if (chart.empty() || !key.valid)
+    return {};
+
+  juce::String out = "|";
+  for (const auto &bar : chart) {
+    for (const auto &c : bar.chords) {
+      const auto name = romanName(c, key);
+      out += " " + (name.isEmpty() ? chordName(c, key.flat) : name);
+    }
+    out += " |";
+  }
+  return out;
 }
 
 namespace {
@@ -549,6 +653,130 @@ bool readChart(const juce::String &text, std::vector<std::vector<Chord>> *bars) 
 
 bool looksLikeChart(const juce::String &text) {
   return readChart(text, nullptr);
+}
+
+namespace {
+
+// "I", "iv", "bVI", "#ivo", "1", "b6", "5sus4". The key decides what an
+// unqualified degree means.
+bool parseDegreeName(const juce::String &text, const MusicalKey::Key &key,
+                     Chord &out) {
+  juce::String s = text.trim().removeCharacters("()");
+  if (s.isEmpty())
+    return false;
+
+  int alter = 0;
+  if (s.startsWithChar('b')) {
+    alter = -1;
+    s = s.substring(1);
+  } else if (s.startsWithChar('#')) {
+    alter = 1;
+    s = s.substring(1);
+  }
+  if (s.isEmpty())
+    return false;
+
+  // Roman first, longest first so "vii" is not read as "v".
+  static const char *romans[] = {"vii", "vi", "iv", "v", "iii", "ii", "i"};
+  static const int romanDegree[] = {6, 5, 3, 4, 2, 1, 0};
+
+  int degree = -1;
+  bool minorCase = false;
+  bool fromRoman = false;
+
+  for (size_t i = 0; i < 7; ++i) {
+    const juce::String lower(romans[i]);
+    const juce::String upper = lower.toUpperCase();
+    if (s.startsWith(lower)) {
+      degree = romanDegree[i];
+      minorCase = true;
+      fromRoman = true;
+      s = s.substring(lower.length());
+      break;
+    }
+    if (s.startsWith(upper)) {
+      degree = romanDegree[i];
+      fromRoman = true;
+      s = s.substring(upper.length());
+      break;
+    }
+  }
+
+  if (degree < 0) {
+    if (!juce::CharacterFunctions::isDigit(s[0]))
+      return false;
+    const int number = s[0] - '0';
+    if (number < 1 || number > 7)
+      return false;
+    degree = number - 1;
+    s = s.substring(1);
+  }
+
+  if (!key.valid)
+    return false;
+
+  const int *steps = MusicalKey::scaleSteps(key.mode);
+  const int root = wrapPitchClass(key.tonic + steps[degree] + alter);
+
+  Shape shape;
+  if (fromRoman) {
+    shape.third = minorCase ? 3 : 4;
+  } else if (alter == 0) {
+    // An arabic degree takes the chord the key already has there, so "1 4 5" is
+    // major in a major key and minor in a minor one.
+    const auto diatonic = diatonicTriad(key, degree);
+    shape.third = diatonic.tones[1];
+    shape.fifth = diatonic.tones[2];
+  }
+  // An altered arabic degree keeps the major default: "b6" means the borrowed
+  // major chord nearly every time it is written.
+
+  Cursor cursor{s, 0};
+  if (!parseSuffix(cursor, shape))
+    return false;
+
+  out = chordFrom(root, shape);
+  return true;
+}
+
+} // namespace
+
+bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
+                      Chart &out) {
+  if (!key.valid)
+    return false;
+
+  const auto trimmed = text.trim();
+  if (!trimmed.startsWithChar('|'))
+    return false;
+
+  Chart chart;
+  int chords = 0;
+  for (const auto &part : juce::StringArray::fromTokens(trimmed, "|", "")) {
+    const auto measure = part.trim();
+    if (measure.isEmpty())
+      continue;
+
+    Bar bar;
+    for (const auto &token : juce::StringArray::fromTokens(measure, " \t", "")) {
+      const auto name = token.trim();
+      if (name.isEmpty())
+        continue;
+      Chord c;
+      if (!parseDegreeName(name, key, c))
+        return false;
+      ++chords;
+      bar.chords.push_back(c);
+    }
+    if (!bar.chords.empty())
+      chart.push_back(std::move(bar));
+  }
+
+  if ((int)chart.size() < 2 || chords < 2)
+    return false;
+
+  out = std::move(chart);
+  return true;
 }
 
 bool parseChart(const juce::String &text, Chart &out) {

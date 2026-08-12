@@ -33,6 +33,7 @@ public:
     runBeatMappingTests();
     runLayoutTests();
     runVoiceLeadingTests();
+    runNotationTests();
     runKeyInferenceTests();
   }
 
@@ -654,6 +655,128 @@ public:
       // could have moved from is what it costs.
       expectEquals(Harmony::voicingDistance({60, 64, 67}, {60, 64, 67, 70}), 3);
       expectEquals(Harmony::voicingDistance({}, {60}), 0);
+    }
+  }
+
+  void runNotationTests() {
+    beginTest("a chord names its degree against a key");
+    {
+      struct Case {
+        const char *key;
+        const char *chord;
+        const char *roman;
+      };
+      const Case cases[] = {
+          {"C major", "C", "I"},        {"C major", "Dm7", "ii7"},
+          {"C major", "Em", "iii"},     {"C major", "F", "IV"},
+          {"C major", "G7", "V7"},      {"C major", "Am", "vi"},
+          {"C major", "Bm7b5", "viim7b5"}, {"C major", "Cmaj7", "Imaj7"},
+          // Not in the key: named by where the root sits, never by what it
+          // might be doing.
+          {"C major", "E7", "III7"},    {"C major", "Ab", "bVI"},
+          {"C major", "Eb", "bIII"},    {"C major", "Bb", "bVII"},
+          {"C major", "F#dim", "#ivo"}, {"C major", "Db", "bII"},
+          // Minor keys read from their own scale, so VI is major and v minor.
+          {"D minor", "Dm", "i"},       {"D minor", "Bb", "VI"},
+          {"D minor", "Gm", "iv"},      {"D minor", "C", "VII"},
+          {"D minor", "A7", "V7"},      {"D minor", "Am", "v"},
+          // Modes name their own degrees: Dorian's IV is major.
+          {"D Dorian", "G", "IV"},      {"D Dorian", "Dm7", "i7"},
+          // A slash keeps the note underneath it.
+          {"C major", "Am7/G", "vi7/G"},
+      };
+
+      for (const auto &c : cases) {
+        Harmony::Chord chord;
+        expect(Harmony::parseChordName(c.chord, chord), c.chord);
+        expectEquals(Harmony::romanName(chord, keyOf(c.key)),
+                     juce::String(c.roman),
+                     juce::String(c.chord) + " in " + c.key);
+      }
+    }
+
+    beginTest("a chart writes itself out in both notations");
+    {
+      Harmony::Chart chart;
+      expect(Harmony::parseChart("| Dm7 | C# Csus |", chart));
+      expectEquals(Harmony::chartText(chart, false),
+                   juce::String("| Dm7 | C# Csus4 |"));
+
+      Harmony::Chart four;
+      expect(Harmony::parseChart("| Am | F | C | G |", four));
+      expectEquals(Harmony::chartText(four, false),
+                   juce::String("| Am | F | C | G |"));
+      expectEquals(Harmony::romanChartText(four, keyOf("C major")),
+                   juce::String("| vi | IV | I | V |"));
+      expectEquals(Harmony::romanChartText(four, keyOf("A minor")),
+                   juce::String("| i | VI | III | VII |"));
+
+      // Bars survive the round trip, which is the whole point of having them.
+      Harmony::Chart again;
+      expect(Harmony::parseChart(Harmony::chartText(chart, false), again));
+      expectEquals((int)again.size(), 2);
+      expectEquals((int)again[1].chords.size(), 2);
+
+      expectEquals(Harmony::chartText({}, false), juce::String());
+      MusicalKey::Key none;
+      expectEquals(Harmony::romanChartText(four, none), juce::String());
+    }
+
+    beginTest("degrees resolve against the key");
+    {
+      struct Case {
+        const char *key;
+        const char *degrees;
+        const char *absolute;
+      };
+      const Case cases[] = {
+          // Roman case carries the quality.
+          {"C major", "| I | vi | IV | V |", "| C | Am | F | G |"},
+          {"D minor", "| i | VI | III VII |", "| Dm | Bb | F C |"},
+          {"C major", "| ii7 | V7 | Imaj7 |", "| Dm7 | G7 | Cmaj7 |"},
+          {"C major", "| I | vii0 |", "| C | Bdim |"},
+          {"C major", "| I | viio |", "| C | Bdim |"},
+          // Arabic degrees take what the key gives them.
+          {"C major", "| 1 | 4 | 5 |", "| C | F | G |"},
+          {"A minor", "| 1 | 4 | 5 |", "| Am | Dm | Em |"},
+          // An altered degree is the borrowed major chord.
+          {"C major", "| 1 | b6 | b7 |", "| C | Ab | Bb |"},
+          {"C major", "| I | bVI | bVII |", "| C | Ab | Bb |"},
+          // A suffix still applies on top.
+          {"C major", "| 1 | 5sus4 |", "| C | Gsus4 |"},
+      };
+
+      for (const auto &c : cases) {
+        Harmony::Chart chart;
+        if (!Harmony::parseDegreeChart(c.degrees, keyOf(c.key), chart)) {
+          expect(false, juce::String("failed to read ") + c.degrees);
+          continue;
+        }
+        const bool flat = juce::String(c.absolute).contains("b ") ||
+                          juce::String(c.absolute).contains("b |");
+        expectEquals(Harmony::chartText(chart, flat),
+                     juce::String(c.absolute),
+                     juce::String(c.degrees) + " in " + c.key);
+      }
+    }
+
+    beginTest("degrees are refused rather than guessed at");
+    {
+      Harmony::Chart chart;
+      const auto c = keyOf("C major");
+
+      // Prose can never become a chart, which is why the bar lines are
+      // required here exactly as they are for chord names.
+      expect(!Harmony::parseDegreeChart("2 5 1", c, chart));
+      expect(!Harmony::parseDegreeChart("I IV V", c, chart));
+      expect(!Harmony::parseDegreeChart("| VIII | II |", c, chart));
+      expect(!Harmony::parseDegreeChart("| 8 | 2 |", c, chart));
+      expect(!Harmony::parseDegreeChart("| I | hello |", c, chart));
+      expect(!Harmony::parseDegreeChart("| I |", c, chart), "one chord is not a chart");
+
+      // Without a key there is nothing to resolve against.
+      MusicalKey::Key none;
+      expect(!Harmony::parseDegreeChart("| I | IV |", none, chart));
     }
   }
 
