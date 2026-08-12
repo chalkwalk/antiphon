@@ -261,6 +261,67 @@ bool parseChat(const juce::MemoryBlock &payload, Chat &out) {
   return true;
 }
 
+bool parseAuthUser(const juce::MemoryBlock &payload, AuthUser &out) {
+  out = AuthUser{};
+  Reader r(payload.getData(), payload.getSize());
+  if (!r.bytes(out.hash, 20) || !r.cstr(out.username))
+    return false;
+
+  // Older clients stop after the username. Treat the tail as optional rather
+  // than rejecting them outright.
+  if (r.atEnd())
+    return true;
+  if (!r.u32le(out.caps))
+    return false;
+  if (r.atEnd())
+    return true;
+  return r.u32le(out.version);
+}
+
+bool parseUsermask(const juce::MemoryBlock &payload,
+                   std::vector<UsermaskEntry> &out) {
+  Reader r(payload.getData(), payload.getSize());
+  while (!r.atEnd()) {
+    UsermaskEntry e;
+    if (!r.cstr(e.username) || !r.u32le(e.mask))
+      return false;
+    out.push_back(std::move(e));
+  }
+  return true;
+}
+
+bool parseChannelInfo(const juce::MemoryBlock &payload,
+                      std::vector<ChannelInfoEntry> &out) {
+  Reader r(payload.getData(), payload.getSize());
+  juce::uint16 mpisize;
+  if (!r.u16le(mpisize))
+    return false;
+
+  while (!r.atEnd()) {
+    ChannelInfoEntry e;
+    if (!r.cstr(e.name))
+      return false;
+
+    // The metadata block is mpisize bytes wide, of which we understand the
+    // first four. Anything beyond that is skipped, not guessed at.
+    juce::int16 volume = 0;
+    juce::int8 pan = 0;
+    if (mpisize >= 4) {
+      if (!r.i16le(volume) || !r.i8(pan) || !r.u8(e.flags))
+        return false;
+      if (mpisize > 4 && !r.skip((size_t)(mpisize - 4)))
+        return false;
+    } else if (mpisize > 0 && !r.skip(mpisize)) {
+      return false;
+    }
+
+    e.volume = volume;
+    e.pan = pan;
+    out.push_back(std::move(e));
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Builders
 // ---------------------------------------------------------------------------
@@ -278,6 +339,51 @@ void computeAuthHash(const juce::String &username, const juce::String &password,
   outer.add(innerDigest, 20);
   outer.add(challenge, 8);
   outer.result(out);
+}
+
+juce::MemoryBlock buildAuthChallenge(const juce::uint8 challenge[8],
+                                     juce::uint32 caps, juce::uint32 version,
+                                     const juce::String &licence) {
+  juce::MemoryBlock b;
+  b.append(challenge, 8);
+  const juce::uint32 leCaps = juce::ByteOrder::swapIfBigEndian(caps);
+  b.append(&leCaps, 4);
+  const juce::uint32 leVer = juce::ByteOrder::swapIfBigEndian(version);
+  b.append(&leVer, 4);
+  b.append(licence.toRawUTF8(), (size_t)licence.getNumBytesAsUTF8() + 1);
+  return b;
+}
+
+juce::MemoryBlock buildServerConfig(int bpm, int bpi) {
+  juce::MemoryBlock b;
+  const juce::uint16 leBpm =
+      juce::ByteOrder::swapIfBigEndian((juce::uint16)bpm);
+  const juce::uint16 leBpi =
+      juce::ByteOrder::swapIfBigEndian((juce::uint16)bpi);
+  b.append(&leBpm, 2);
+  b.append(&leBpi, 2);
+  return b;
+}
+
+juce::MemoryBlock buildUserInfo(const std::vector<UserInfoEntry> &entries) {
+  juce::MemoryBlock b;
+  for (const auto &e : entries) {
+    const juce::uint8 active = e.active ? 1 : 0;
+    const juce::uint8 chIdx = (juce::uint8)juce::jlimit(0, 255, e.channelIndex);
+    b.append(&active, 1);
+    b.append(&chIdx, 1);
+    const juce::uint16 leVol =
+        juce::ByteOrder::swapIfBigEndian((juce::uint16)(juce::int16)e.volume);
+    b.append(&leVol, 2);
+    const juce::int8 pan = (juce::int8)juce::jlimit(-128, 127, e.pan);
+    b.append(&pan, 1);
+    b.append(&e.flags, 1);
+    b.append(e.username.toRawUTF8(),
+             (size_t)e.username.getNumBytesAsUTF8() + 1);
+    b.append(e.channelName.toRawUTF8(),
+             (size_t)e.channelName.getNumBytesAsUTF8() + 1);
+  }
+  return b;
 }
 
 juce::MemoryBlock buildAuthUser(const juce::uint8 hash[20],

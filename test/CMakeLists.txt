@@ -42,6 +42,7 @@ target_sources(NinjamTests
         TransmitSpansTests.cpp
         FakeNinjamServer.cpp
         LoopbackTests.cpp
+        PracticeServerTests.cpp
         AudioLoopbackTests.cpp
         RealServerTests.cpp
         ReferenceFixtureTests.cpp
@@ -51,6 +52,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
         ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
+        ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
         ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
         ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp

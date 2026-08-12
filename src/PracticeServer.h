@@ -1,0 +1,116 @@
+#pragma once
+
+#include "NinjamProtocol.h"
+#include <JuceHeader.h>
+#include <map>
+#include <memory>
+#include <vector>
+
+// A real Ninjam server, in process, on the loopback interface.
+//
+// This is what makes practice mode a jam rather than a simulation of one:
+// NinjamClient keys remote players purely off the wire, so a room served from
+// here lights up the whole connected UI -- phase bar, remote strips, routing,
+// chat, sync, recording -- with no special-casing anywhere.
+//
+// It is small because Ninjam servers are small. The interval grid is entirely
+// client-side (every client plays each received interval starting at its own
+// downbeat, PRINCIPLES 9), so there is no clock here at all. The server
+// authenticates, tracks who is in the room, and relays.
+//
+// Not a general-purpose server, and not trying to be: no licences, no
+// persistence, no anonymous-user rules, no bans. It serves a practice room.
+//
+// SAFETY: the listener binds 127.0.0.1 explicitly and nothing else. That is the
+// property that replaces the old practice echo's "offline by construction"
+// argument (DESIGN.md 6.2) now that practising means being genuinely connected
+// and genuinely transmitting.
+class PracticeServer : private juce::Thread {
+public:
+  PracticeServer();
+  ~PracticeServer() override;
+
+  bool start(int bpm = 120, int bpi = 8);
+  void stop();
+
+  int port() const { return boundPort.load(); }
+  bool isListening() const { return boundPort.load() > 0; }
+
+  // Broadcasts SERVER_CONFIG_CHANGE. Safe from any thread.
+  void setConfig(int bpm, int bpi);
+  int bpm() const;
+  int bpi() const;
+
+  void setTopic(const juce::String &topic);
+
+  // Relayed as though `from` had typed it, so the client renders it through the
+  // ordinary chat path. `from` empty means the server itself.
+  void broadcastChat(const juce::String &from, const juce::String &text);
+
+  juce::StringArray connectedUsernames() const;
+  int clientCount() const;
+
+private:
+  struct Client {
+    std::unique_ptr<juce::StreamingSocket> socket;
+    juce::String username;
+    bool authenticated = false;
+    juce::uint8 challenge[8] = {};
+
+    // Channel index -> name, as last declared by CLIENT_SET_CHANNEL_INFO.
+    std::map<int, juce::String> channels;
+
+    // Who this client has asked to hear, by CLIENT_SET_USERMASK: a bit per
+    // channel index. Absent from the map and present-but-zero both mean "send
+    // me nothing", which is how a bot stays deaf and why the room does not cost
+    // a NinjamClient's worth of interval buffers per bot.
+    std::map<juce::String, juce::uint32> usermask;
+
+    // GUID -> channel index for this client's uploads in flight. Only
+    // UPLOAD_INTERVAL_BEGIN carries the channel index; the writes that follow
+    // identify themselves by GUID alone, so the relay has to remember which
+    // channel each one belongs to in order to honour a subscription.
+    std::map<juce::String, int> uploadChannel;
+
+    // Frames arrive split across reads and coalesced across writes, so bytes
+    // accumulate here until a whole frame is present.
+    juce::MemoryBlock pending;
+  };
+
+  void run() override;
+  void acceptPendingConnections();
+  bool readFromClient(Client &c);
+  void drainFrames(Client &c);
+  void handleFrame(Client &c, juce::uint8 type,
+                   const juce::MemoryBlock &payload);
+  void dropClient(int index);
+
+  // Control frames are written blocking: they are small, they always fit, and
+  // losing one desynchronises the room. Audio frames go through relayAudio,
+  // which drops rather than blocks -- see the comment there.
+  bool sendTo(Client &c, juce::uint8 type, const void *data, int size);
+  void relayAudio(const Client &from, int channelIndex, juce::uint8 type,
+                  const void *data, int size);
+  static bool subscribed(const Client &to, const juce::String &user,
+                         int channelIndex);
+  void broadcastExcept(const Client *skip, juce::uint8 type, const void *data,
+                       int size);
+
+  void sendRoster(Client &to);
+  void broadcastChannels(const juce::String &username,
+                         const std::map<int, juce::String> &channels,
+                         bool active, const Client *skip);
+  juce::String uniqueUsername(const juce::String &wanted) const;
+
+  juce::StreamingSocket listener;
+  std::vector<std::unique_ptr<Client>> clients;
+  mutable juce::CriticalSection clientsMutex;
+
+  std::atomic<int> boundPort{0};
+  std::atomic<int> serverBpm{120};
+  std::atomic<int> serverBpi{8};
+  juce::String roomTopic;
+  mutable juce::CriticalSection stateMutex;
+
+  juce::Random rng;
+};

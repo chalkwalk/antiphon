@@ -54,6 +54,7 @@ target_sources(Antiphon
         PluginEditor.cpp
         NinjamClient.cpp
         NinjamProtocol.cpp
+        PracticeServer.cpp
         IntervalClock.cpp
         MetronomeVoice.cpp
         RemoteUserStrip.cpp

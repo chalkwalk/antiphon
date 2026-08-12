@@ -142,6 +142,30 @@ struct Chat {
   juce::String type, p1, p2, p3, p4;
 };
 
+// The client-sent messages, which only a server has any reason to read. They
+// live here with the rest of the wire format so they get the same bounds
+// checking and the same truncation sweep; PracticeServer holds the state.
+struct AuthUser {
+  juce::uint8 hash[20] = {};
+  juce::String username;
+  juce::uint32 caps = 0;
+  juce::uint32 version = 0;
+};
+
+// Which channels of which player this client wants sent to it. A player absent
+// from the list has not been subscribed to.
+struct UsermaskEntry {
+  juce::String username;
+  juce::uint32 mask = 0;
+};
+
+struct ChannelInfoEntry {
+  juce::String name;
+  int volume = 0;
+  int pan = 0;
+  juce::uint8 flags = 0;
+};
+
 // Each returns false on malformed input, having read nothing past the payload.
 bool parseAuthChallenge(const juce::MemoryBlock &payload, AuthChallenge &out);
 bool parseAuthReply(const juce::MemoryBlock &payload, AuthReply &out);
@@ -162,6 +186,18 @@ bool parseIntervalWrite(const juce::MemoryBlock &payload, IntervalWrite &out);
 
 bool parseChat(const juce::MemoryBlock &payload, Chat &out);
 
+bool parseAuthUser(const juce::MemoryBlock &payload, AuthUser &out);
+
+// As with parseUserInfo, entries read before a malformed one are retained.
+bool parseUsermask(const juce::MemoryBlock &payload,
+                   std::vector<UsermaskEntry> &out);
+
+// The leading 2-byte mpisize gives the per-channel metadata width, which is 4
+// in every client seen but is honoured rather than assumed -- a wrong guess
+// desynchronises the parse for every channel after the first.
+bool parseChannelInfo(const juce::MemoryBlock &payload,
+                      std::vector<ChannelInfoEntry> &out);
+
 // ---------------------------------------------------------------------------
 // Builders.
 // ---------------------------------------------------------------------------
@@ -175,6 +211,15 @@ void computeAuthHash(const juce::String &username, const juce::String &password,
 juce::MemoryBlock buildAuthReply(bool granted,
                                  const juce::String &errorMessage = {},
                                  int maxChannels = 32);
+
+juce::MemoryBlock buildAuthChallenge(const juce::uint8 challenge[8],
+                                     juce::uint32 caps = 0,
+                                     juce::uint32 version = 0x00020000,
+                                     const juce::String &licence = {});
+
+juce::MemoryBlock buildServerConfig(int bpm, int bpi);
+
+juce::MemoryBlock buildUserInfo(const std::vector<UserInfoEntry> &entries);
 
 juce::MemoryBlock buildAuthUser(const juce::uint8 hash[20],
                                 const juce::String &username,
