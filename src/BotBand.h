@@ -72,6 +72,26 @@ Figure figureFor(Voice voice, const Settings &s);
 // beat resolution.
 int metricStrength(int step, int bpi);
 
+// The other half of the coupling: how strong a NOTE is against a chord.
+//
+// MelodyGen pairs beat strength with note strength -- strong beats take strong
+// notes -- and porting only the first axis is why an early version of this
+// sounded fine in major and wrong in minor. There, the weak-beat pool included
+// the flat sixth, and since notes are held until the next one it sat on the
+// clash rather than passing through it.
+//
+// The tiers are derived from the chord rather than listed per mode, using the
+// avoid-note rule: a scale tone a semitone above a chord tone is the one that
+// clashes. That gives the flat sixth in Aeolian over i, the fourth in Ionian
+// over I, and the flat second in Phrygian -- and correctly leaves Lydian's
+// sharp fourth alone, since it is a whole tone above the third and is the
+// characteristic note of the mode rather than a note to handle carefully.
+//
+//   0  a chord tone
+//   1  a scale tone that sits comfortably
+//   2  a semitone above a chord tone: colour, and only in passing
+int noteTier(int midiNote, const Harmony::Chord &chord);
+
 // The lead's line for one interval, as MIDI notes with -1 for a rest, one
 // entry per eighth. Exposed so the note choices can be asserted exactly,
 // where the audio can only be measured.
