@@ -57,20 +57,33 @@ inline float decayAt(double t, double seconds) {
 
 // A pitch sweep is what separates a kick drum from a low beep: the click at the
 // front is the first few milliseconds of a much higher pitch.
+//
+// The beater click on top of that is not decoration. The body lands at 50 Hz,
+// which a laptop or a small monitor does not reproduce at all, so without
+// something up where the speaker works the kick is inaudible on most of the
+// machines this will be played on.
 inline void renderKick(float *out, int numSamples, double sampleRate,
                        float velocity) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0)
     return;
 
-  const double startHz = 150.0, endHz = 45.0;
-  const double sweep = 0.035, decay = 0.32;
-  double phase = 0.0;
+  const double startHz = 190.0, endHz = 50.0;
+  const double sweep = 0.030, decay = 0.30;
+  const double clickDecay = 0.004;
+  double phase = 0.0, clickPhase = 0.0;
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
+
     const double hz = endHz + (startHz - endHz) * std::exp(-t / sweep);
     phase += 2.0 * kPi * hz / sampleRate;
-    out[i] += velocity * decayAt(t, decay) * (float)std::sin(phase);
+    const float body = (float)std::sin(phase) * decayAt(t, decay);
+
+    clickPhase += 2.0 * kPi * 1400.0 / sampleRate;
+    const float click =
+        0.28f * (float)std::sin(clickPhase) * decayAt(t, clickDecay);
+
+    out[i] += velocity * (body + click);
   }
 }
 
@@ -121,25 +134,60 @@ inline void renderHat(float *out, int numSamples, double sampleRate,
   }
 }
 
-// A plucked bass: a couple of harmonics and a fast-ish decay, which sits under
-// a mix without needing a filter envelope.
-inline void renderBass(float *out, int numSamples, double sampleRate,
-                       double hz, float velocity) {
+// A sustained, harmonically rich bass -- deliberately NOT a plucked one.
+//
+// The first version was a sine with a fast exponential decay, which is very
+// nearly the definition of a kick drum: same register, same envelope, and the
+// two were indistinguishable in the mix. Pitch alone does not separate them,
+// because a bass note and a kick occupy the same octave by design.
+//
+// What separates them is shape and timbre. A bass note holds -- attack, a long
+// body at nearly full level, then a release -- where a kick is gone in a third
+// of a second. And it carries strong upper harmonics, so it reads as a pitched
+// instrument on a speaker that cannot reproduce its fundamental at all. Most of
+// what a listener hears as "the bass note" on a laptop is the second and third
+// harmonic; the fundamental only fills it in on something that can go low.
+inline void renderBass(float *out, int numSamples, double sampleRate, double hz,
+                       float velocity) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
     return;
 
-  const double decay = 0.55;
-  double p1 = 0.0, p2 = 0.0, p3 = 0.0;
+  const double total = (double)numSamples / sampleRate;
+  const double attack = std::min(0.012, total * 0.1);
+  const double release = std::min(0.10, total * 0.3);
+
+  // Enough of a droop to sound played rather than held by a machine, but
+  // nothing like the decay of a drum.
+  const double bodyDecay = 1.8;
+
+  double p1 = 0.0, p2 = 0.0, p3 = 0.0, p4 = 0.0;
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
+
+    float env = 1.0f;
+    if (t < attack)
+      env = (float)(t / attack);
+    else if (t > total - release)
+      env = (float)((total - t) / release);
+    if (env < 0.0f)
+      env = 0.0f;
+    if (env > 1.0f)
+      env = 1.0f;
+    env *= decayAt(t, bodyDecay);
+
     p1 += 2.0 * kPi * hz / sampleRate;
     p2 += 2.0 * kPi * hz * 2.0 / sampleRate;
     p3 += 2.0 * kPi * hz * 3.0 / sampleRate;
+    p4 += 2.0 * kPi * hz * 4.0 / sampleRate;
 
-    const float tone = (float)(std::sin(p1) + 0.30 * std::sin(p2) +
-                               0.12 * std::sin(p3));
-    out[i] += velocity * 0.5f * tone * decayAt(t, decay);
+    // Weighted towards the harmonics rather than the fundamental, which is
+    // what makes the note audible on a small speaker.
+    const float tone =
+        (float)(0.75 * std::sin(p1) + 0.55 * std::sin(p2) +
+                0.30 * std::sin(p3) + 0.14 * std::sin(p4));
+
+    out[i] += velocity * 0.38f * tone * env;
   }
 }
 
