@@ -513,6 +513,77 @@ inputs, identical deterministic function, agreement for free.
       one. Longest match against the names actually in the room fixes it, and
       is what makes tab completion and hand-typing agree.
 
+### Sampled instruments, alongside the models
+
+Not scheduled, and deliberately not started while the synthesis plan has three
+steps left -- two half-finished engines would be worse than one finished one.
+Recorded now because the analysis is done and the conclusion is not the obvious
+one.
+
+**The idea.** A General MIDI SoundFont is a few tens of megabytes and gives you
+128 instruments at once. GeneralUser GS is the usual suggestion. An SF2 reader
+is a bounded piece of work -- TinySoundFont is one MIT header -- and sits at the
+same layer as the vendored Ogg and Vorbis decoders rather than being a
+framework, so `PRINCIPLES §6` is satisfiable.
+
+**What the gate says.** It passes: the form is untouched (a bot renders an
+interval; how it made the sound is nobody's business), nothing crosses the wire
+differently (§4, §10), loading is file I/O on the conductor thread and never the
+audio thread (§7), and no fence in the catalogue refuses it. The closest call is
+fence #2, since "load a sound file to change how it sounds" is a step toward
+being a sampler, which is a DAW's job -- but the DAW cannot do it *here*,
+because the bots' notes never leave the plugin (fence #8 refuses MIDI on the
+wire, and there is no route from a generated part to a host instrument).
+
+**What the licence says, and this is the finding that matters.** The
+GeneralUser GS documentation states that some samples came from banks freely
+available on the internet, that the author cannot be certain where all of them
+originated, and that this "may concern you if you intend to use GeneralUser GS
+in a commercial software product". That is the author being straight with us,
+and it is decisive -- but only about BUNDLING. This project does not vendor
+sources whose provenance it cannot account for; that is the same stance that
+keeps the NINJAM sources out of the history entirely, and it does not get
+relaxed for an asset just because an asset is not code.
+
+So the split:
+
+- **Loading a SoundFont the player already has is free of the problem
+  entirely.** No redistribution, no provenance question, and the choice belongs
+  to whoever made it. This is the version to build.
+- **Shipping one in the box** needs a bank whose provenance is documented, and
+  that is a search rather than a decision. A small single-instrument bank -- a
+  piano, a few megabytes -- is a likelier answer than a full GM set.
+
+**Where samples actually win, which is narrower than it first looks.** A sample
+is the same recording every time, and repetition is this band's specific enemy:
+the hat rotation, the per-interval lead contour, the per-note seeds and the
+oscillator drift all exist to fight it. A sampler is the most repetitive source
+there is, and a General MIDI bank has one or two velocity layers, so velocity
+moves volume and a filter rather than articulation -- which is exactly the axis
+the plucked bass and the electric piano were built around.
+
+So samples lose for everything the band currently plays, and win decisively for
+the instruments we will never model: an acoustic piano, a brass section, bowed
+strings, reeds. That is the case for doing it -- not better versions of the four
+voices, but voices that are otherwise impossible.
+
+**Layering is the strongest form of it.** A sampled attack over a modelled body
+plays to both: the transient is where a sample is most convincing and a model
+least, and the sustain is where a model's continuous variation is the whole
+point. Running a sample through the tone, drift and saturation chain the voices
+already have is also what a real sampler does to stop notes machine-gunning, and
+it is nearly free now -- `BandPatch` made every voice's parameters data, so a
+new source type plugs in under the same level and trim layer rather than beside
+it.
+
+- [ ] Load an SF2 from a path the player chooses; no bundled bank.
+- [ ] One voice at a time, selectable like the lead's instruments, so the
+      comparison against the model is direct.
+- [ ] Through the existing per-note chain, not straight out, and measured with
+      `AudioMeasure` like everything else.
+- [ ] Layering, once a single sampled voice has been lived with.
+- [ ] Only then, if at all, the question of a bank we can ship.
+
 - [ ] **A seed should not change the volume.** The kit's integrated loudness
       varies by 3.7 LU across seeds, purely because a busy Euclidean figure has
       more hits in it than a sparse one -- so `shake` currently changes how loud
