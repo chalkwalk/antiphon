@@ -524,35 +524,342 @@ inline void renderLead(float *out, int numSamples, double sampleRate, double hz,
   }
 }
 
-// A sustained voice with a soft attack and release, for chords. Held for the
-// whole of its slot rather than plucked, because a pad that stabs is not a pad.
+// What the keyboard player brought to the session.
+//
+// Three patches off the front panel of a stage polysynth, and the choice of
+// what to model is a choice about the era rather than about the machine: a
+// Prophet-5, a Juno-106, a Polysix and an OB-X differ in details a player
+// cares about and a listener mostly does not. What they SHARE is the thing to
+// build -- two oscillators a few cents apart, a four-pole lowpass with an
+// envelope on it, a little noise in the mixer, and saturation everywhere the
+// signal passes through a gain stage.
+//
+// Deliberately bread and butter. There is no ring modulator, no sync, no
+// screaming self-oscillation, and no modulation matrix, because none of those
+// is what a keyboard player is doing behind a jam.
+enum class PadCharacter { Strings, Brass, Poly };
+
+inline const char *padCharacterName(PadCharacter c) {
+  switch (c) {
+  case PadCharacter::Strings:
+    return "strings";
+  case PadCharacter::Brass:
+    return "brass";
+  case PadCharacter::Poly:
+    return "poly";
+  }
+  return "poly";
+}
+
+// One patch: the front panel, as numbers.
+//
+// Every field has a range rather than a value, and the ranges are the whole
+// point of the seed being allowed near this. A synth's controls are mostly not
+// safe -- resonance at the top self-oscillates, a filter closed too far leaves
+// silence, an attack longer than the chord means the chord never arrives. So
+// the seed does not turn knobs; it picks one of three patches and then moves
+// each control inside a span that was chosen by listening to both of its ends.
+// The sweet spot is the range, and `padPatchFor` is what keeps you in it.
+struct PadPatch {
+  PadCharacter character = PadCharacter::Poly;
+
+  double detuneCents = 7.0;   // between the two oscillators
+  double driftCents = 3.0;    // how far each drifts, slowly, on its own
+  bool secondIsPulse = true;  // saw + pulse, or saw + saw
+  double pulseWidth = 0.4;
+
+  // Where the second oscillator is TUNED, in semitones from the first.
+  //
+  // Two oscillators means two of them you can tune, which is the whole reason
+  // these instruments have two -- not one plus a fixed sub-octave square, which
+  // is a different and cheaper arrangement. Unison with a few cents between
+  // them is the setting most patches use and the one that produces the beating
+  // everybody means by "fat". An octave down is the other common one and is
+  // where the weight comes from. A fifth is a real setting on a real panel and
+  // people do use it, but every note of a four-part voicing gets it, so a
+  // chord arrives with its own quintal harmony on top of what the keys were
+  // asked to play -- it is left rare for that reason rather than for taste.
+  int secondSemitones = 0;
+
+  // And how loud it is, which is not independent of the above. An oscillator
+  // at unison is an equal partner; one an octave down is doubling a register
+  // four notes already occupy; one at a fifth is a colour and a colour that
+  // loud is a chord change.
+  double secondLevel = 1.0;
+  double noiseLevel = 0.02;
+
+  double cutoffPartials = 9.0; // filter cutoff, in harmonics of the note
+  double resonance = 1.0;
+  double envAmount = 2.4;      // how far the envelope opens the filter
+  double envDecay = 0.7;       // and how long it takes to settle back
+
+  double attackSeconds = 0.18;
+  double releaseSeconds = 0.35;
+  double drive = 1.0;          // into the filter
+  double movementHz = 0.12;    // the slow wander that keeps a held chord alive
+
+  // What the player left the volume on, so that changing patch is not changing
+  // level.
+  //
+  // Not a taste control -- a correction, and it is needed because the patches
+  // differ in things that all happen to affect loudness. A brass patch is a
+  // near-square oscillator driven hard through a filter that opens on every
+  // note; a strings patch is two saws barely driven through one that mostly
+  // sits still. Measured across twelve seeds, that was 6 LU between the two,
+  // which is a seed changing how loud the band is. A real player would have
+  // reached for the output knob, and this is that knob.
+  double level = 1.0;
+};
+
+inline PadPatch padPatchFor(std::uint32_t seed) {
+  // Its own generator, so a patch can be asked for without disturbing whatever
+  // sequence chose the notes (see BotBand::bassTechnique for the same rule).
+  std::uint32_t state = seed | 1u;
+  auto uni = [&state]() {
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return (double)(state >> 8) / 16777216.0; // 0..1
+  };
+  auto between = [&uni](double lo, double hi) { return lo + (hi - lo) * uni(); };
+
+  PadPatch p;
+  p.character = (PadCharacter)(int)(uni() * 2.999);
+
+  switch (p.character) {
+  case PadCharacter::Strings:
+    // Two saws, wide apart, filter well open and barely moving: the patch that
+    // is on the front panel of every one of these machines and is the first
+    // thing anybody plays through them.
+    p.secondIsPulse = false;
+    p.detuneCents = between(9.0, 16.0);
+    p.driftCents = between(2.5, 5.0);
+    p.noiseLevel = between(0.015, 0.035);
+    p.cutoffPartials = between(10.0, 16.0);
+    p.resonance = between(0.75, 1.00);
+    p.envAmount = between(1.2, 2.0);
+    p.envDecay = between(0.9, 1.6);
+    p.attackSeconds = between(0.25, 0.55);
+    p.releaseSeconds = between(0.40, 0.80);
+    p.drive = between(0.5, 0.9);
+    p.movementHz = between(0.07, 0.16);
+    p.level = 1.45;
+    break;
+
+  case PadCharacter::Brass:
+    // The other patch everybody plays: a filter envelope deep enough to hear
+    // as a swell into each chord, which is what makes a subtractive synth
+    // sound like it is being blown rather than switched on.
+    p.secondIsPulse = true;
+    p.pulseWidth = between(0.42, 0.50);
+    p.detuneCents = between(5.0, 10.0);
+    p.driftCents = between(1.5, 3.5);
+    p.noiseLevel = between(0.020, 0.045);
+    p.cutoffPartials = between(5.0, 8.0);
+    p.resonance = between(1.00, 1.45);
+    p.envAmount = between(3.0, 5.0);
+    p.envDecay = between(0.35, 0.70);
+    p.attackSeconds = between(0.06, 0.16);
+    p.releaseSeconds = between(0.20, 0.40);
+    p.drive = between(1.0, 1.6);
+    p.movementHz = between(0.10, 0.22);
+    p.level = 0.77;
+    break;
+
+  case PadCharacter::Poly:
+    // The bread and butter one: a narrow pulse against a saw, and everything
+    // else in the middle of its range.
+    p.secondIsPulse = true;
+    p.pulseWidth = between(0.28, 0.44);
+    p.detuneCents = between(4.0, 9.0);
+    p.driftCents = between(2.0, 4.0);
+    p.noiseLevel = between(0.015, 0.035);
+    p.cutoffPartials = between(7.0, 11.0);
+    p.resonance = between(0.80, 1.20);
+    p.envAmount = between(1.8, 3.0);
+    p.envDecay = between(0.6, 1.1);
+    p.attackSeconds = between(0.12, 0.30);
+    p.releaseSeconds = between(0.30, 0.60);
+    p.drive = between(0.7, 1.2);
+    p.movementHz = between(0.08, 0.18);
+    p.level = 1.00;
+    break;
+  }
+
+  // Where the second oscillator sits. Weighted rather than uniform, because
+  // these are not three equally likely settings on a real instrument: unison is
+  // what most patches use, the octave is the next most common, and the fifth is
+  // a thing people occasionally do.
+  const double roll = uni();
+  if (roll < 0.62) {
+    p.secondSemitones = 0;
+    p.secondLevel = 1.00;
+  } else if (roll < 0.90) {
+    p.secondSemitones = -12;
+    p.secondLevel = 0.75;
+  } else {
+    p.secondSemitones = 7;
+    p.secondLevel = 0.50;
+  }
+
+  return p;
+}
+
+// One voice of the polysynth, held for the whole of its slot.
+//
+// The signal path, in the order a panel lays it out, because every stage is
+// there for a reason a player would recognise:
+//
+//   two oscillators, tuned against each other  ->  the beating that makes it
+//                                                  wide, or the weight if the
+//                                                  second one is an octave down
+//   a little noise                       ->  air, and it keeps the filter alive
+//   drive                                ->  an oscillator mixer overloading
+//   a four-pole lowpass with an envelope ->  the instrument's actual voice
+//   an amplifier envelope                ->  soft in, soft out
+//
+// Two things are doing most of the work of not sounding like a computer.
+//
+// The oscillators are BAND-LIMITED. A naive saw folds everything above Nyquist
+// back down as inharmonic tones, and while that is inaudible as "aliasing" to
+// most people, it is exactly what they mean when they say a synth sounds
+// cheap. That is the whole reason BotDsp::polyBlepSaw exists.
+//
+// And nothing here is steady. Each oscillator drifts a few cents on its own
+// slow path, the filter wanders, and both are seeded per NOTE, so the four
+// notes of a chord are four independent instruments rather than one waveform
+// played four times. On a real polysynth that is not a feature -- it is six
+// separate boards that will never quite agree -- and it is most of the
+// difference between a chord that breathes and one that sits.
 inline void renderPad(float *out, int numSamples, double sampleRate, double hz,
-                      float velocity) {
+                      float velocity, const PadPatch &patch,
+                      std::uint32_t seed) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
     return;
 
   const double total = (double)numSamples / sampleRate;
-  const double attack = std::min(0.08, total * 0.25);
-  const double release = std::min(0.20, total * 0.35);
-  double p1 = 0.0, p2 = 0.0;
+  const double attack = std::min(patch.attackSeconds, total * 0.35);
+  const double release = std::min(patch.releaseSeconds, total * 0.35);
+
+  // Filter cutoff, keyboard-tracked. Expressed in harmonics of the note so the
+  // patch means the same thing wherever it is played -- the lesson the plucked
+  // string cost us, where an absolute cutoff made one number a dull guitar and
+  // a bass with its energy around the twelfth harmonic.
+  //
+  // Tracked at 70% rather than fully, which is what these instruments do: full
+  // tracking makes a low chord as thin as a high one, and none tracked at all
+  // makes it mud. Referred to middle C, so the patch's numbers describe the
+  // register the keys actually play in.
+  const double middleC = 261.6255653;
+  const double baseCutoff =
+      middleC * patch.cutoffPartials * std::pow(hz / middleC, 0.7);
+
+  // Two oscillators, detuned in opposite directions so the pair stays centred
+  // on the note. A synth whose detune pulls both oscillators sharp is a synth
+  // that is out of tune.
+  const double halfDetune = std::pow(2.0, patch.detuneCents / 2400.0);
+  // And where the second one is tuned to, which is a front-panel decision
+  // rather than a fine one: unison, an octave down, or a fifth up.
+  const double interval = std::pow(2.0, (double)patch.secondSemitones / 12.0);
+  double phaseA = 0.0, phaseB = 0.0;
+
+  // Free-running phase, per note. Analogue oscillators are never reset by a
+  // key, so no two notes of a chord start together -- and phase-coherent
+  // oscillators are a large part of why a naive digital chord sounds like one
+  // waveform at four pitches.
+  Noise seeder(seed);
+  phaseA = 0.5 * (double)seeder.next() + 0.5;
+  phaseB = 0.5 * (double)seeder.next() + 0.5;
+
+  // The slow disagreements: two drift paths for the oscillators, one for the
+  // filter, at rates that share no common period.
+  const double driftPhaseA = seeder.next() * kPi;
+  const double driftPhaseB = seeder.next() * kPi;
+  const double driftRateA = 0.21 + 0.13 * (0.5 * (double)seeder.next() + 0.5);
+  const double driftRateB = 0.31 + 0.17 * (0.5 * (double)seeder.next() + 0.5);
+  const double movePhase = seeder.next() * kPi;
+
+  BotDsp::Noise noise(seed ^ 0xA511E9B3u);
+
+  // Four poles. Two is not a synth filter: the whole character of these
+  // machines is a 24 dB/octave slope, and at 12 the sound stays bright and
+  // buzzy however far the cutoff comes down. Resonance sits on the first stage
+  // only -- putting it on both squares the peak, which is how a bread-and-
+  // butter patch turns into a whistle.
+  BotDsp::Svf filterA, filterB;
+
+  const double driftDepth = patch.driftCents / 1200.0;
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
 
-    float env = 1.0f;
+    // Amplifier envelope. Squared on the way in and out, so the corners are
+    // curves rather than the kinks a linear ramp leaves at each end.
+    double env = 1.0;
     if (t < attack)
-      env = (float)(t / attack);
+      env = t / attack;
     else if (t > total - release)
-      env = (float)((total - t) / release);
-    env = env < 0.0f ? 0.0f : (env > 1.0f ? 1.0f : env);
+      env = (total - t) / release;
+    env = env < 0.0 ? 0.0 : (env > 1.0 ? 1.0 : env);
+    env *= env;
 
-    p1 += 2.0 * kPi * hz / sampleRate;
-    // A slightly detuned second oscillator, which is most of what makes a pad
-    // sound wide rather than thin.
-    p2 += 2.0 * kPi * hz * 1.005 / sampleRate;
+    // Filter envelope: open on the attack, settle back towards a sustain. This
+    // is the one that is audible as an instrument being played.
+    const double fenv = std::exp(-t / patch.envDecay);
+    const double move =
+        1.0 + 0.15 * std::sin(2.0 * kPi * patch.movementHz * t + movePhase);
+    double cutoff = baseCutoff * (1.0 + patch.envAmount * fenv) * move;
+    if (cutoff < 80.0)
+      cutoff = 80.0;
 
-    out[i] += velocity * 0.22f * env *
-              (float)(std::sin(p1) + 0.8 * std::sin(p2));
+    // Retuned in blocks: tan() at every sample of every note of every chord is
+    // real money, and a filter cannot move audibly in two thirds of a
+    // millisecond anyway.
+    if (i % 32 == 0) {
+      filterA.set(cutoff, patch.resonance, sampleRate);
+      filterB.set(cutoff, 0.6, sampleRate);
+    }
+
+    const double detA =
+        halfDetune *
+        (1.0 + driftDepth * std::sin(2.0 * kPi * driftRateA * t + driftPhaseA));
+    const double detB =
+        (1.0 / halfDetune) *
+        (1.0 + driftDepth * std::sin(2.0 * kPi * driftRateB * t + driftPhaseB));
+
+    const double incA = hz * detA / sampleRate;
+    const double incB = hz * interval * detB / sampleRate;
+
+    phaseA += incA;
+    if (phaseA >= 1.0)
+      phaseA -= 1.0;
+    phaseB += incB;
+    if (phaseB >= 1.0)
+      phaseB -= 1.0;
+
+    float mixed = BotDsp::polyBlepSaw(phaseA, incA);
+    mixed += (float)patch.secondLevel *
+             (patch.secondIsPulse
+                  ? BotDsp::polyBlepPulse(phaseB, incB, patch.pulseWidth)
+                  : BotDsp::polyBlepSaw(phaseB, incB));
+    mixed += (float)patch.noiseLevel * noise.next();
+
+    // The oscillator mixer, pushed. On these instruments the summed
+    // oscillators run into the filter hot enough to round their corners, and
+    // that is where a subtractive synth stops sounding subtractive.
+    mixed = saturate(0.34f * mixed, patch.drive);
+
+    const float filtered = filterB.process(
+        filterA.process(mixed, BotDsp::Svf::LowPass), BotDsp::Svf::LowPass);
+
+    // Scaled for a CHORD rather than for a note. A polysynth's output amp sees
+    // however many voices are held, and four of these summing incoherently is
+    // about twice one of them -- so a note loud enough to be right on its own
+    // drives the output stage of renderKeys into hard tanh clamping, where it
+    // stops being warmth and becomes a limiter. Measured: every seed peaked at
+    // exactly 1.198, which is 1/tanh(1.2) and therefore the ceiling of the
+    // shaper rather than anything the music did.
+    out[i] += velocity * 0.30f * (float)patch.level * (float)env * filtered;
   }
 }
 
