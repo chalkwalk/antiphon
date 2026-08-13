@@ -73,3 +73,39 @@ target_link_libraries(AntiphonVoiceLab
         juce::juce_recommended_config_flags)
 
 target_include_directories(AntiphonVoiceLab PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# antiphon-bandlab: a control surface for the band's synthesis.
+#
+# The one target here that is a GUI, and the one that links juce_audio_devices
+# and juce_audio_utils -- it has to open an output and loop what it renders, so
+# the headless rule the other two follow does not apply and cannot. It will not
+# start on a machine with no display or no audio device, which is fine: it is a
+# tuning instrument, and tuning is done at a desk with speakers.
+#
+# Like antiphon-voicelab it links the band's own sources rather than copies, so
+# what it plays is what the room plays.
+
+juce_add_gui_app(AntiphonBandLab
+    COMPANY_NAME "Chalkwalk"
+    PRODUCT_NAME "antiphon-bandlab")
+
+juce_generate_juce_header(AntiphonBandLab)
+
+target_sources(AntiphonBandLab PRIVATE
+        BandLabMain.cpp
+        ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
+        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
+        ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp)
+
+target_compile_definitions(AntiphonBandLab PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+
+target_link_libraries(AntiphonBandLab
+    PRIVATE
+        juce::juce_audio_utils
+    PUBLIC
+        juce::juce_recommended_config_flags)
+
+target_include_directories(AntiphonBandLab PRIVATE ${CMAKE_SOURCE_DIR}/src)

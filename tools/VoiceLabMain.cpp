@@ -173,11 +173,14 @@ std::vector<float> renderOne(const Options &o) {
       BotVoice::renderHat(out, room, o.sampleRate, o.velocity, seed, o.open);
     else if (o.voice == "bass")
       BotVoice::renderBassString(out, juce::jmin(room, hit), o.sampleRate, hz,
-                                 o.velocity, o.technique, seed);
+                                 o.velocity, BotVoice::bassPatchFor(o.technique),
+                                 seed);
     else if (o.voice == "lead") {
       const int span = juce::jmin(room, hit);
+      BotVoice::LeadPatch patch;
+      patch.instrument = o.instrument;
       BotVoice::renderLead(out, span, (int)(0.6 * span), o.sampleRate, hz,
-                           o.velocity, o.instrument, seed);
+                           o.velocity, patch, seed);
     }
     else if (o.voice == "pad") {
       const auto patch = patchFor(o, seed);

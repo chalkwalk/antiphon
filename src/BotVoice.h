@@ -80,6 +80,25 @@ inline float decayAt(double t, double seconds) {
   return (float)std::exp(-6.9078 * t / seconds);
 }
 
+// A knob's sweet spot: the two ends of what this control is allowed to be.
+//
+// Every tunable number in the band is one of these rather than a literal, and
+// that is the whole of what "the seed may not turn knobs, only pick inside
+// them" means in code. The seed draws from the range; a person tuning by ear
+// moves inside it; and when the range itself turns out to be wrong, ONE table
+// changes rather than a constant buried in a render loop.
+//
+// It is also what makes the band lab possible. A slider needs to know its own
+// limits, and the honest limits are the ones the synthesis already uses --
+// anything else is a second set of numbers to keep in step.
+struct Range {
+  double lo = 0.0, hi = 1.0;
+
+  double at(double u) const { return lo + (hi - lo) * u; }
+  double mid() const { return 0.5 * (lo + hi); }
+  double clamp(double v) const { return v < lo ? lo : (v > hi ? hi : v); }
+};
+
 // A kick drum is a struck membrane, and modelling it as one is the difference
 // between a drum and a low beep with an envelope.
 //
@@ -289,6 +308,94 @@ inline const char *bassTechniqueName(BassTechnique t) {
   return "fingered";
 }
 
+// Every knob on the bass, and the range each is allowed to move in.
+//
+// The technique picks the range; velocity moves inside it; the seed does not
+// touch this one at all, because how somebody plays is not a thing that should
+// change halfway through a session.
+struct BassPatch {
+  BassTechnique technique = BassTechnique::Fingered;
+
+  double pickPosition = 0.25;    // along the string, as a fraction
+  double brightFloor = 0.18;     // excitation brightness at velocity 0
+  double brightSpan = 0.24;      // and how much velocity adds
+  double decaySeconds = 3.0;
+  double contact = 0.15;         // finger or plectrum noise
+  double toneFloor = 5.0;        // tone control, in harmonics of the note
+  double toneSpan = 3.0;
+  double bodyHz = 95.0;          // the lowest air resonance
+  double bodyMix = 0.35;
+  double cabinetHz = 2200.0;
+  double cabinetDrive = 0.25;
+  double gain = 1.0;
+};
+
+struct BassRanges {
+  Range pickPosition{0.08, 0.35};
+  Range brightFloor{0.05, 0.45};
+  Range brightSpan{0.10, 0.40};
+  Range decaySeconds{0.4, 4.0};
+  Range contact{0.0, 0.6};
+  Range toneFloor{2.5, 12.0};
+  Range toneSpan{0.0, 8.0};
+  Range bodyHz{60.0, 160.0};
+  Range bodyMix{0.0, 0.8};
+  Range cabinetHz{1200.0, 5000.0};
+  Range cabinetDrive{0.0, 1.2};
+  Range gain{0.5, 2.2};
+};
+
+// The same for every technique, because these are the limits of the
+// INSTRUMENT rather than of a way of playing it. Which technique you use moves
+// you around inside them; none of them should take you outside.
+inline BassRanges bassRanges() { return {}; }
+
+inline BassPatch bassPatchFor(BassTechnique technique) {
+  BassPatch p;
+  p.technique = technique;
+
+  switch (technique) {
+  case BassTechnique::Fingered:
+    // The flesh of a finger, over the end of the neck: round, and it damps the
+    // string a little as it leaves.
+    break;
+
+  case BassTechnique::Picked:
+    // Nearer the bridge and much harder, so more of the upper modes survive
+    // the pluck and the contact is a click rather than a thump.
+    p.pickPosition = 0.11;
+    p.brightFloor = 0.32;
+    p.brightSpan = 0.30;
+    p.decaySeconds = 2.4;
+    p.contact = 0.40;
+    p.toneFloor = 6.5;
+    p.toneSpan = 4.5;
+    p.gain = 1.15;
+    break;
+
+  case BassTechnique::Muted:
+    // The heel of the hand resting on the bridge. Same pluck, far shorter
+    // string life, which is the whole of what a palm mute is.
+    //
+    // Not as short as it wants to be, and the reason is level rather than
+    // physics: at 0.45 s the note carries so little energy that the gain
+    // needed to keep it in the band pushed single notes to 1.19, and a voice
+    // that lives in the ceiling is a voice being limited rather than played.
+    // 0.7 s is still unmistakably muted and needs half the compensation.
+    p.pickPosition = 0.16;
+    p.brightFloor = 0.14;
+    p.brightSpan = 0.20;
+    p.decaySeconds = 0.70;
+    p.contact = 0.18;
+    p.toneFloor = 4.0;
+    p.toneSpan = 2.5;
+    p.gain = 1.5;
+    break;
+  }
+
+  return p;
+}
+
 // A plucked bass string.
 //
 // Karplus-Strong, which is a delay line the length of the period, a bridge
@@ -311,82 +418,30 @@ inline const char *bassTechniqueName(BassTechnique t) {
 // brighter, and the contact noise of finger or plectrum is more prominent.
 // None of them is a switch.
 inline void renderBassString(float *out, int numSamples, double sampleRate,
-                             double hz, float velocity, BassTechnique technique,
+                             double hz, float velocity, const BassPatch &patch,
                              std::uint32_t seed) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
     return;
 
   const float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
-
-  // Each technique is a RANGE that velocity moves along, never a point.
-  double pickPosition = 0.25, brightnessFloor = 0.18, brightnessSpan = 0.24;
-  double decaySeconds = 3.0, contact = 0.15;
-
-  // How far up the harmonic series the instrument lets anything through, as a
-  // multiple of the note. See the tone control below.
-  double toneFloor = 5.0, toneSpan = 3.0;
-
-  // A technique that lets the string ring puts far more energy into the room
-  // than one that stops it, so the same velocity is not the same loudness. A
-  // player compensates by digging in, and so does this: without it a muted
-  // part measures 6 LU under a fingered one and the bass drops out of the band
-  // whenever the seed happens to choose it.
-  double techniqueGain = 1.0;
-  switch (technique) {
-  case BassTechnique::Fingered:
-    // The flesh of a finger, over the end of the neck: round, and it damps the
-    // string a little as it leaves.
-    break;
-  case BassTechnique::Picked:
-    // Nearer the bridge and much harder, so more of the upper modes survive
-    // the pluck and the contact is a click rather than a thump.
-    pickPosition = 0.11;
-    brightnessFloor = 0.32;
-    brightnessSpan = 0.30;
-    decaySeconds = 2.4;
-    contact = 0.40;
-    techniqueGain = 1.15;
-    toneFloor = 6.5;
-    toneSpan = 4.5;
-    break;
-  case BassTechnique::Muted:
-    // The heel of the hand resting on the bridge. Same pluck, far shorter
-    // string life, which is the whole of what a palm mute is.
-    //
-    // Not as short as it wants to be, and the reason is level rather than
-    // physics: at 0.45 s the note carries so little energy that the gain
-    // needed to keep it in the band pushed single notes to 1.19, and a voice
-    // that lives in the ceiling is a voice being limited rather than played.
-    // 0.7 s is still unmistakably muted and needs half the compensation.
-    pickPosition = 0.16;
-    brightnessFloor = 0.14;
-    brightnessSpan = 0.20;
-    decaySeconds = 0.70;
-    contact = 0.18;
-    techniqueGain = 1.5;
-    toneFloor = 4.0;
-    toneSpan = 2.5;
-    break;
-  }
-
-  const double brightness = brightnessFloor + brightnessSpan * (double)v;
+  const double brightness = patch.brightFloor + patch.brightSpan * (double)v;
 
   BotDsp::PluckedString string;
-  string.pluck(hz, sampleRate, 0.85f * (0.18f + 0.82f * v), pickPosition,
-               brightness, decaySeconds, seed);
+  string.pluck(hz, sampleRate, 0.85f * (0.18f + 0.82f * v), patch.pickPosition,
+               brightness, patch.decaySeconds, seed);
 
   // The body: an instrument is not only its string. A bandpass around the
   // lowest air resonance, mixed under, is what stops the note sounding like a
   // synthesiser playing the right frequency.
   BotDsp::Svf body;
-  body.set(95.0, 2.2, sampleRate);
+  body.set(patch.bodyHz, 2.2, sampleRate);
 
   // The sound of the finger or plectrum meeting the string, which is not the
   // string and does not ring.
   BotDsp::Noise noise(seed ^ 0x5BD1E995u);
   BotDsp::Svf contactTone;
-  contactTone.set(technique == BassTechnique::Picked ? 2600.0 : 1300.0, 1.1,
-                  sampleRate);
+  contactTone.set(patch.technique == BassTechnique::Picked ? 2600.0 : 1300.0,
+                  1.1, sampleRate);
 
   // The tone control, and the only filter here that follows the note.
   //
@@ -409,13 +464,14 @@ inline void renderBassString(float *out, int numSamples, double sampleRate,
   // It tracks VELOCITY as well as pitch, which is what keeps the articulation:
   // digging in opens it, exactly as it opens the excitation.
   BotDsp::Svf tone;
-  tone.set(hz * (toneFloor + toneSpan * (double)v), 0.7, sampleRate);
+  tone.set(hz * (patch.toneFloor + patch.toneSpan * (double)v), 0.7,
+           sampleRate);
 
   // A bass cabinet is a DARK box: a 15-inch driver in a sealed cab does
   // essentially nothing above two kilohertz, and that limit is most of why an
   // amplified bass sounds like one rather than like a very low guitar.
   BotDsp::Cabinet cabinet;
-  cabinet.prepare(sampleRate, 2200.0, 0.25);
+  cabinet.prepare(sampleRate, patch.cabinetHz, patch.cabinetDrive);
 
   // The note is damped rather than cut. A string stopped by a player dies over
   // a few tens of milliseconds with its highs going first, and gating it at the
@@ -434,14 +490,15 @@ inline void renderBassString(float *out, int numSamples, double sampleRate,
     // The contact is a detail on the front of the note, not a component of
     // it: audible as articulation, never as a second instrument sitting on
     // top of the string.
-    const float attack = 0.35f * (float)contact * (0.4f + 0.6f * v) *
+    const float attack = 0.35f * (float)patch.contact * (0.4f + 0.6f * v) *
                          contactTone.process(noise.next(), BotDsp::Svf::BandPass) *
                          decayAt(t, 0.004);
 
-    const float withBody = s + 0.35f * body.process(s, BotDsp::Svf::BandPass);
+    const float withBody =
+        s + (float)patch.bodyMix * body.process(s, BotDsp::Svf::BandPass);
     const float voiced =
         tone.process(withBody + attack, BotDsp::Svf::LowPass);
-    out[i] += 0.55f * (float)techniqueGain * cabinet.process(voiced);
+    out[i] += 0.55f * (float)patch.gain * cabinet.process(voiced);
   }
 }
 
@@ -564,9 +621,45 @@ inline const char *leadInstrumentName(LeadInstrument i) {
 inline constexpr int kTineModes = 3;
 inline constexpr double kTineRatios[kTineModes] = {1.0, 3.86, 6.27};
 
+struct EPianoPatch {
+  double tineDecay = 4.5;      // the fundamental, which is nearly all of it
+  double barkGain = 0.10;      // the inharmonic modes, at full velocity
+  double barkDecay = 0.35;
+  double pingGain = 0.10;
+  double hammerLevel = 0.22;
+  double hammerPartials = 2.0; // how hard the felt is, in harmonics
+  double barMix = 0.12;        // the tonebar alongside the tine
+  double ampCutoff = 3800.0;
+  double ampDriveFloor = 0.4;  // the amp at velocity 0
+  double ampDriveSpan = 3.2;   // and how much digging in adds -- the bark
+  double tremoloHz = 5.1;
+  double tremoloDepth = 0.16;
+  double release = 0.45;
+  double gain = 0.30;
+};
+
+struct EPianoRanges {
+  Range tineDecay{1.0, 8.0};
+  Range barkGain{0.0, 0.5};
+  Range barkDecay{0.05, 1.2};
+  Range pingGain{0.0, 0.5};
+  Range hammerLevel{0.0, 0.8};
+  Range hammerPartials{1.0, 8.0};
+  Range barMix{0.0, 0.5};
+  Range ampCutoff{1500.0, 8000.0};
+  Range ampDriveFloor{0.0, 2.0};
+  Range ampDriveSpan{0.0, 6.0};
+  Range tremoloHz{2.0, 9.0};
+  Range tremoloDepth{0.0, 0.5};
+  Range release{0.05, 1.2};
+  Range gain{0.1, 0.9};
+};
+
+inline EPianoRanges ePianoRanges() { return {}; }
+
 inline void renderEPiano(float *out, int numSamples, int holdSamples,
                          double sampleRate, double hz, float velocity,
-                         std::uint32_t seed) {
+                         const EPianoPatch &patch, std::uint32_t seed) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
     return;
 
@@ -584,9 +677,10 @@ inline void renderEPiano(float *out, int numSamples, int holdSamples,
   // inharmonic modes are the sound of the hammer arriving and are gone before
   // the note has properly started -- present enough to hear as a strike, not
   // enough to make the instrument metallic.
-  const double decays[kTineModes] = {4.5, 0.35, 0.07};
-  const float gains[kTineModes] = {1.0f, (float)(0.09 + 0.07 * (double)v),
-                                   (float)(0.10 * (double)v * (double)v)};
+  const double decays[kTineModes] = {patch.tineDecay, patch.barkDecay, 0.07};
+  const float gains[kTineModes] = {
+      1.0f, (float)(patch.barkGain * (0.55 + 0.45 * (double)v)),
+      (float)(patch.pingGain * (double)v * (double)v)};
   for (int m = 0; m < kTineModes; ++m)
     tine.addMode(hz * kTineRatios[m], decays[m], gains[m]);
 
@@ -599,7 +693,8 @@ inline void renderEPiano(float *out, int numSamples, int holdSamples,
   // read as a mallet on wood.
   BotDsp::Noise noise(seed);
   BotDsp::Svf hammerTone;
-  hammerTone.set(hz * (2.0 + 2.5 * (double)v), 0.9, sampleRate);
+  hammerTone.set(hz * patch.hammerPartials * (1.0 + 1.25 * (double)v), 0.9,
+                 sampleRate);
 
   // The amplifier, and the one place velocity really acts.
   //
@@ -607,27 +702,29 @@ inline void renderEPiano(float *out, int numSamples, int holdSamples,
   // rather than sitting at a fixed frequency. That is the whole character of
   // the instrument and it is one line: the same tine, amplified harder.
   BotDsp::Cabinet amp;
-  amp.prepare(sampleRate, 3800.0, 0.4 + 3.2 * (double)v * (double)v);
+  amp.prepare(sampleRate, patch.ampCutoff,
+              patch.ampDriveFloor + patch.ampDriveSpan * (double)v * (double)v);
 
   // Tremolo, which every one of these has and which most players leave on. It
   // is amplitude and not pitch, whatever the panel calls it.
-  const double tremoloHz = 5.1;
-  const double tremoloDepth = 0.16;
+  const double tremoloHz = patch.tremoloHz;
+  const double tremoloDepth = patch.tremoloDepth;
 
   const double holdTime = (double)holdSamples / sampleRate;
   // The damper is felt on a tine that is barely moving, so it takes its time.
-  const double release = 0.45;
+  const double release = patch.release;
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
 
     const float strike =
         (i == 0 ? 1.0f : 0.0f) +
-        0.22f * hammerTone.process(noise.next(), BotDsp::Svf::BandPass) *
+        (float)patch.hammerLevel *
+            hammerTone.process(noise.next(), BotDsp::Svf::BandPass) *
             decayAt(t, 0.008 + 0.012 * (1.0 - (double)v));
 
     float body = tine.process(strike);
-    body += 0.12f * bar.process(body, BotDsp::Svf::BandPass);
+    body += (float)patch.barMix * bar.process(body, BotDsp::Svf::BandPass);
 
     const double tremolo =
         1.0 - tremoloDepth + tremoloDepth * std::sin(2.0 * kPi * tremoloHz * t);
@@ -640,7 +737,7 @@ inline void renderEPiano(float *out, int numSamples, int holdSamples,
 
     // Amplified BEFORE the level, so a quiet note and a loud one are the same
     // instrument at two settings rather than two instruments.
-    out[i] += (float)(0.30 * (0.35 + 0.65 * (double)v) * tremolo * env) *
+    out[i] += (float)(patch.gain * (0.35 + 0.65 * (double)v) * tremolo * env) *
               amp.process(1.4f * body);
   }
 }
@@ -666,9 +763,53 @@ inline void renderEPiano(float *out, int numSamples, int holdSamples,
 // seconds, so the note DARKENS as it decays. The string model does some of that
 // by itself through the loop filter, but not nearly enough, and the pick
 // transient was loud enough on top to read as a mallet strike besides.
+struct GuitarPatch {
+  double pickPosition = 0.13;
+  double brightFloor = 0.14;   // nearly a sine when played softly
+  double brightSpan = 0.44;    // and the harmonics velocity brings in
+  double decaySeconds = 1.7;
+  double toneFloor = 5.0;      // where the tone control settles, in harmonics
+  double toneSpan = 5.0;       // how much velocity opens it
+  double toneOpenFloor = 4.0;  // how far above that it starts
+  double toneOpenSpan = 8.0;
+  double toneFall = 0.30;      // and how long it takes to close -- the darkening
+  double pickLevel = 0.08;
+  double pickHz = 2000.0;
+  double airHz = 105.0;
+  double airMix = 0.30;
+  double topHz = 210.0;
+  double topMix = 0.22;
+  double boxCutoff = 3400.0;
+  double boxDrive = 0.15;
+  double gain = 1.45;
+};
+
+struct GuitarRanges {
+  Range pickPosition{0.05, 0.35};
+  Range brightFloor{0.02, 0.40};
+  Range brightSpan{0.10, 0.60};
+  Range decaySeconds{0.5, 4.0};
+  Range toneFloor{2.0, 14.0};
+  Range toneSpan{0.0, 12.0};
+  Range toneOpenFloor{0.0, 14.0};
+  Range toneOpenSpan{0.0, 20.0};
+  Range toneFall{0.05, 1.20};
+  Range pickLevel{0.0, 0.5};
+  Range pickHz{800.0, 5000.0};
+  Range airHz{70.0, 180.0};
+  Range airMix{0.0, 0.8};
+  Range topHz{140.0, 400.0};
+  Range topMix{0.0, 0.8};
+  Range boxCutoff{1500.0, 8000.0};
+  Range boxDrive{0.0, 1.0};
+  Range gain{0.4, 2.5};
+};
+
+inline GuitarRanges guitarRanges() { return {}; }
+
 inline void renderGuitar(float *out, int numSamples, int holdSamples,
                          double sampleRate, double hz, float velocity,
-                         std::uint32_t seed) {
+                         const GuitarPatch &patch, std::uint32_t seed) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
     return;
 
@@ -683,15 +824,16 @@ inline void renderGuitar(float *out, int numSamples, int holdSamples,
   // harmonics at the top -- a range of three to one rather than the four-to-
   // three it had.
   BotDsp::PluckedString string;
-  string.pluck(hz, sampleRate, 0.80f * (0.22f + 0.78f * v), 0.13,
-               0.14 + 0.44 * (double)v, 1.7, seed);
+  string.pluck(hz, sampleRate, 0.80f * (0.22f + 0.78f * v), patch.pickPosition,
+               patch.brightFloor + patch.brightSpan * (double)v,
+               patch.decaySeconds, seed);
 
   // The soundbox, which on a guitar is a much bigger part of the sound than a
   // solid bass's body is: the lowest air resonance of a dreadnought sits near
   // 100 Hz and the first top mode near 200.
   BotDsp::Svf air, top;
-  air.set(105.0, 2.0, sampleRate);
-  top.set(210.0, 1.6, sampleRate);
+  air.set(patch.airHz, 2.0, sampleRate);
+  top.set(patch.topHz, 1.6, sampleRate);
 
   // The tone control, and it CLOSES as the note decays.
   //
@@ -701,18 +843,18 @@ inline void renderGuitar(float *out, int numSamples, int holdSamples,
   // sweep the note is as bright at two seconds as at ten milliseconds, and a
   // string that never darkens does not sound like one.
   BotDsp::Svf tone;
-  const double toneFloor = 5.0 + 5.0 * (double)v;
-  const double toneOpen = 4.0 + 8.0 * (double)v;
-  const double toneFall = 0.30;
+  const double toneFloor = patch.toneFloor + patch.toneSpan * (double)v;
+  const double toneOpen = patch.toneOpenFloor + patch.toneOpenSpan * (double)v;
+  const double toneFall = patch.toneFall;
 
   BotDsp::Noise noise(seed ^ 0x3C6EF372u);
   BotDsp::Svf pickTone;
-  pickTone.set(2000.0, 1.2, sampleRate);
+  pickTone.set(patch.pickHz, 1.2, sampleRate);
 
   // The box, close-miked. Gentle: an acoustic guitar is not going through an
   // amplifier, and the shaping here is the wood rather than a valve.
   BotDsp::Cabinet box;
-  box.prepare(sampleRate, 3400.0, 0.15);
+  box.prepare(sampleRate, patch.boxCutoff, patch.boxDrive);
 
   const double holdTime = (double)holdSamples / sampleRate;
   const double release = 0.12;
@@ -733,14 +875,15 @@ inline void renderGuitar(float *out, int numSamples, int holdSamples,
     // The fingernail or plectrum meeting the string: a detail on the front of
     // the note. At four times this level it was the note's attack rather than
     // a detail on it, and the ear hears that as something being struck.
-    const float pick = 0.08f * (0.3f + 0.7f * v) *
+    const float pick = (float)patch.pickLevel * (0.3f + 0.7f * v) *
                        pickTone.process(noise.next(), BotDsp::Svf::BandPass) *
                        decayAt(t, 0.004);
 
-    const float withBody = s + 0.30f * air.process(s, BotDsp::Svf::BandPass) +
-                           0.22f * top.process(s, BotDsp::Svf::BandPass);
+    const float withBody =
+        s + (float)patch.airMix * air.process(s, BotDsp::Svf::BandPass) +
+        (float)patch.topMix * top.process(s, BotDsp::Svf::BandPass);
 
-    out[i] += 1.45f * box.process(
+    out[i] += (float)patch.gain * box.process(
                           tone.process(withBody + pick, BotDsp::Svf::LowPass));
   }
 }
@@ -755,9 +898,47 @@ inline void renderGuitar(float *out, int numSamples, int holdSamples,
 // The vibrato is the piece worth keeping from the voice this replaces. It is
 // the one thing about the old lead that already sounded played, and it arrives
 // late in the note, which is what a player does rather than what an LFO does.
+struct SynthLeadPatch {
+  double pulseWidth = 0.32;
+  double partialsFloor = 7.0;  // filter cutoff, in harmonics of the note
+  double partialsSpan = 9.0;
+  double resonance = 1.1;
+  double envAmount = 1.6;      // the short sweep down into the note
+  double envDecay = 0.09;
+  double preDrive = 2.2;       // into the filter
+  double postDrive = 1.6;      // and the amplifier after it
+  double postGain = 1.5;
+  double vibratoHz = 5.2;
+  double vibratoDepth = 0.004;
+  double vibratoOnset = 0.25;  // seconds before it is fully in
+  double attack = 0.010;
+  double release = 0.09;
+  double gain = 0.16;
+};
+
+struct SynthLeadRanges {
+  Range pulseWidth{0.10, 0.50};
+  Range partialsFloor{2.0, 16.0};
+  Range partialsSpan{0.0, 16.0};
+  Range resonance{0.5, 2.0};
+  Range envAmount{0.0, 6.0};
+  Range envDecay{0.02, 0.60};
+  Range preDrive{0.0, 5.0};
+  Range postDrive{0.0, 5.0};
+  Range postGain{0.5, 3.0};
+  Range vibratoHz{3.0, 8.0};
+  Range vibratoDepth{0.0, 0.020};
+  Range vibratoOnset{0.0, 1.0};
+  Range attack{0.001, 0.100};
+  Range release{0.02, 0.60};
+  Range gain{0.05, 0.60};
+};
+
+inline SynthLeadRanges synthLeadRanges() { return {}; }
+
 inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
                             double sampleRate, double hz, float velocity,
-                            std::uint32_t seed) {
+                            const SynthLeadPatch &patch, std::uint32_t seed) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
     return;
 
@@ -769,8 +950,8 @@ inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
   const float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
 
   const double holdTime = (double)holdSamples / sampleRate;
-  const double attack = std::min(0.010, holdTime * 0.3);
-  const double release = 0.09;
+  const double attack = std::min(patch.attack, holdTime * 0.3);
+  const double release = patch.release;
 
   Noise seeder(seed);
   double phase = 0.5 * (double)seeder.next() + 0.5;
@@ -780,7 +961,7 @@ inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
 
   // Well up the harmonic series so the line is heard over a full band, and it
   // opens with velocity like everything else here.
-  const double partials = 7.0 + 9.0 * (double)v;
+  const double partials = patch.partialsFloor + patch.partialsSpan * (double)v;
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
@@ -797,14 +978,16 @@ inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
 
     // The filter envelope: a short sweep down into the note, which is what
     // gives a synth line its attack without a transient to make one from.
-    const double fenv = 1.0 + 1.6 * std::exp(-t / 0.09);
+    const double fenv = 1.0 + patch.envAmount * std::exp(-t / patch.envDecay);
     if (i % 32 == 0) {
-      filterA.set(hz * partials * fenv, 1.1, sampleRate);
+      filterA.set(hz * partials * fenv, patch.resonance, sampleRate);
       filterB.set(hz * partials * fenv, 0.6, sampleRate);
     }
 
-    vib += 2.0 * kPi * 5.2 / sampleRate;
-    const double depth = std::min(1.0, t / 0.25) * 0.004;
+    vib += 2.0 * kPi * patch.vibratoHz / sampleRate;
+    const double depth =
+        (patch.vibratoOnset > 0.0 ? std::min(1.0, t / patch.vibratoOnset) : 1.0) *
+        patch.vibratoDepth;
     const double f = hz * (1.0 + depth * std::sin(vib));
 
     const double inc = f / sampleRate;
@@ -814,7 +997,7 @@ inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
 
     // A pulse rather than a saw: hollow rather than buzzy, which keeps the
     // line out of the way of the keys, whose saws are full of even harmonics.
-    const float osc = BotDsp::polyBlepPulse(phase, inc, 0.32);
+    const float osc = BotDsp::polyBlepPulse(phase, inc, patch.pulseWidth);
 
     // Driven twice, before the filter and after it, and that is what makes a
     // lead sound like a lead rather than a clean tone that happens to be
@@ -823,14 +1006,25 @@ inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
     // it is an overdriven amplifier, which adds harmonics that MOVE with the
     // note instead of sitting at a fixed cutoff, and which compresses the line
     // so it stays present between the loud parts of the bar.
-    const float shaped = saturate(0.85f * osc, 2.2);
+    const float shaped = saturate(0.85f * osc, patch.preDrive);
     const float filtered =
         filterB.process(filterA.process(shaped, BotDsp::Svf::LowPass),
                         BotDsp::Svf::LowPass);
 
-    out[i] += (float)(0.16 * env) * saturate(1.5f * filtered, 1.6);
+    out[i] += (float)(patch.gain * env) *
+              saturate((float)patch.postGain * filtered, patch.postDrive);
   }
 }
+
+// All three instruments in one object, so the lead can be passed around and
+// edited without every caller knowing which one is currently in the player's
+// hands. Only the one named by `instrument` is heard.
+struct LeadPatch {
+  LeadInstrument instrument = LeadInstrument::Synth;
+  EPianoPatch epiano;
+  GuitarPatch guitar;
+  SynthLeadPatch synth;
+};
 
 // The lead, whichever instrument is holding it.
 //
@@ -838,17 +1032,19 @@ inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
 // struck or plucked instrument uses that room to ring on. A synth barely does.
 inline void renderLead(float *out, int numSamples, int holdSamples,
                        double sampleRate, double hz, float velocity,
-                       LeadInstrument instrument, std::uint32_t seed) {
-  switch (instrument) {
+                       const LeadPatch &patch, std::uint32_t seed) {
+  switch (patch.instrument) {
   case LeadInstrument::EPiano:
-    renderEPiano(out, numSamples, holdSamples, sampleRate, hz, velocity, seed);
+    renderEPiano(out, numSamples, holdSamples, sampleRate, hz, velocity,
+                 patch.epiano, seed);
     return;
   case LeadInstrument::Guitar:
-    renderGuitar(out, numSamples, holdSamples, sampleRate, hz, velocity, seed);
+    renderGuitar(out, numSamples, holdSamples, sampleRate, hz, velocity,
+                 patch.guitar, seed);
     return;
   case LeadInstrument::Synth:
     renderLeadSynth(out, numSamples, holdSamples, sampleRate, hz, velocity,
-                    seed);
+                    patch.synth, seed);
     return;
   }
 }
@@ -961,6 +1157,91 @@ struct PadPatch {
   double level = 1.0;
 };
 
+// The sweet spot for every knob on this patch, per character.
+//
+// One table, read by two things that must never disagree: `padPatchFor`, which
+// is how a seed picks a keyboard, and the band lab, which is how a person
+// tunes one. When these were separate the second was guesswork.
+struct PadRanges {
+  Range detuneCents{4.0, 9.0};
+  Range driftCents{2.0, 4.0};
+  Range pulseWidth{0.28, 0.44};
+  Range noiseLevel{0.015, 0.035};
+  Range cutoffPartials{7.0, 11.0};
+  Range resonance{0.80, 1.20};
+  Range envAmount{1.8, 3.0};
+  Range envAttack{0.10, 0.24};
+  Range envDecay{0.6, 1.1};
+  Range envSustain{0.40, 0.65};
+  Range attackSeconds{0.25, 0.50};
+  Range releaseSeconds{0.55, 0.95};
+  Range drive{0.7, 1.2};
+  Range movementHz{0.08, 0.18};
+
+  // Not drawn from: fixed per character, and a correction rather than a taste.
+  double level = 1.10;
+  bool secondIsPulse = true;
+};
+
+inline PadRanges padRanges(PadCharacter character) {
+  PadRanges r;
+  switch (character) {
+  case PadCharacter::Strings:
+    // Two saws, wide apart, filter well open and barely moving: the patch that
+    // is on the front panel of every one of these machines and is the first
+    // thing anybody plays through them.
+    r.secondIsPulse = false;
+    r.detuneCents = {9.0, 16.0};
+    r.driftCents = {2.5, 5.0};
+    r.noiseLevel = {0.015, 0.035};
+    r.cutoffPartials = {10.0, 16.0};
+    r.resonance = {0.75, 1.00};
+    r.envAmount = {1.2, 2.0};
+    r.envAttack = {0.20, 0.45};
+    r.envDecay = {0.9, 1.6};
+    r.envSustain = {0.55, 0.80};
+    r.attackSeconds = {0.45, 0.85};
+    r.releaseSeconds = {0.70, 1.20};
+    r.drive = {0.5, 0.9};
+    r.movementHz = {0.07, 0.16};
+    r.level = 1.63;
+    break;
+
+  case PadCharacter::Brass:
+    // Shut, and then a third of a second to open.
+    //
+    // Between one and two harmonics is the fundamental and almost nothing
+    // else -- as closed as this filter goes while still passing the note --
+    // and it is where the sweep has to start for the swell to be the sound of
+    // the patch rather than a detail on the front of it. The sustain then
+    // settles back to about a third of the way up, so the held chord is darker
+    // than the note's arrival without being the muffled thing it started as.
+    r.secondIsPulse = true;
+    r.pulseWidth = {0.42, 0.50};
+    r.detuneCents = {5.0, 10.0};
+    r.driftCents = {1.5, 3.5};
+    r.noiseLevel = {0.020, 0.045};
+    r.cutoffPartials = {1.2, 2.0};
+    r.resonance = {1.00, 1.45};
+    r.envAmount = {8.0, 14.0};
+    r.envAttack = {0.28, 0.38};
+    r.envDecay = {0.45, 0.85};
+    r.envSustain = {0.25, 0.42};
+    r.attackSeconds = {0.12, 0.28};
+    r.releaseSeconds = {0.40, 0.70};
+    r.drive = {1.0, 1.6};
+    r.movementHz = {0.10, 0.22};
+    r.level = 0.866;
+    break;
+
+  case PadCharacter::Poly:
+    // The bread and butter one: a narrow pulse against a saw, and everything
+    // else in the middle of its range. The defaults above are this patch.
+    break;
+  }
+  return r;
+}
+
 inline PadPatch padPatchFor(std::uint32_t seed) {
   // Its own generator, so a patch can be asked for without disturbing whatever
   // sequence chose the notes (see BotBand::bassTechnique for the same rule).
@@ -971,84 +1252,27 @@ inline PadPatch padPatchFor(std::uint32_t seed) {
     state ^= state << 5;
     return (double)(state >> 8) / 16777216.0; // 0..1
   };
-  auto between = [&uni](double lo, double hi) { return lo + (hi - lo) * uni(); };
 
   PadPatch p;
   p.character = (PadCharacter)(int)(uni() * 2.999);
+  const PadRanges r = padRanges(p.character);
 
-  switch (p.character) {
-  case PadCharacter::Strings:
-    // Two saws, wide apart, filter well open and barely moving: the patch that
-    // is on the front panel of every one of these machines and is the first
-    // thing anybody plays through them.
-    p.secondIsPulse = false;
-    p.detuneCents = between(9.0, 16.0);
-    p.driftCents = between(2.5, 5.0);
-    p.noiseLevel = between(0.015, 0.035);
-    p.cutoffPartials = between(10.0, 16.0);
-    p.resonance = between(0.75, 1.00);
-    p.envAmount = between(1.2, 2.0);
-    p.envAttack = between(0.20, 0.45);
-    p.envDecay = between(0.9, 1.6);
-    p.envSustain = between(0.55, 0.80);
-    p.attackSeconds = between(0.45, 0.85);
-    p.releaseSeconds = between(0.70, 1.20);
-    p.drive = between(0.5, 0.9);
-    p.movementHz = between(0.07, 0.16);
-    p.level = 1.63;
-    break;
-
-  case PadCharacter::Brass:
-    // The other patch everybody plays: a filter envelope deep enough to hear
-    // as a swell into each chord, which is what makes a subtractive synth
-    // sound like it is being blown rather than switched on.
-    p.secondIsPulse = true;
-    p.pulseWidth = between(0.42, 0.50);
-    p.detuneCents = between(5.0, 10.0);
-    p.driftCents = between(1.5, 3.5);
-    p.noiseLevel = between(0.020, 0.045);
-    // Shut, and then a third of a second to open.
-    //
-    // Between one and two harmonics is the fundamental and almost nothing
-    // else -- as closed as this filter goes while still passing the note --
-    // and it is where the sweep has to start for the swell to be the sound of
-    // the patch rather than a detail on the front of it. The sustain then
-    // settles back to about a third of the way up, so the held chord is darker
-    // than the note's arrival without being the muffled thing it started as.
-    p.cutoffPartials = between(1.2, 2.0);
-    p.resonance = between(1.00, 1.45);
-    p.envAmount = between(8.0, 14.0);
-    p.envAttack = between(0.28, 0.38);
-    p.envDecay = between(0.45, 0.85);
-    p.envSustain = between(0.25, 0.42);
-    p.attackSeconds = between(0.12, 0.28);
-    p.releaseSeconds = between(0.40, 0.70);
-    p.drive = between(1.0, 1.6);
-    p.movementHz = between(0.10, 0.22);
-    p.level = 0.866;
-    break;
-
-  case PadCharacter::Poly:
-    // The bread and butter one: a narrow pulse against a saw, and everything
-    // else in the middle of its range.
-    p.secondIsPulse = true;
-    p.pulseWidth = between(0.28, 0.44);
-    p.detuneCents = between(4.0, 9.0);
-    p.driftCents = between(2.0, 4.0);
-    p.noiseLevel = between(0.015, 0.035);
-    p.cutoffPartials = between(7.0, 11.0);
-    p.resonance = between(0.80, 1.20);
-    p.envAmount = between(1.8, 3.0);
-    p.envAttack = between(0.10, 0.24);
-    p.envDecay = between(0.6, 1.1);
-    p.envSustain = between(0.40, 0.65);
-    p.attackSeconds = between(0.25, 0.50);
-    p.releaseSeconds = between(0.55, 0.95);
-    p.drive = between(0.7, 1.2);
-    p.movementHz = between(0.08, 0.18);
-    p.level = 1.10;
-    break;
-  }
+  p.detuneCents = r.detuneCents.at(uni());
+  p.driftCents = r.driftCents.at(uni());
+  p.pulseWidth = r.pulseWidth.at(uni());
+  p.noiseLevel = r.noiseLevel.at(uni());
+  p.cutoffPartials = r.cutoffPartials.at(uni());
+  p.resonance = r.resonance.at(uni());
+  p.envAmount = r.envAmount.at(uni());
+  p.envAttack = r.envAttack.at(uni());
+  p.envDecay = r.envDecay.at(uni());
+  p.envSustain = r.envSustain.at(uni());
+  p.attackSeconds = r.attackSeconds.at(uni());
+  p.releaseSeconds = r.releaseSeconds.at(uni());
+  p.drive = r.drive.at(uni());
+  p.movementHz = r.movementHz.at(uni());
+  p.secondIsPulse = r.secondIsPulse;
+  p.level = r.level;
 
   // Where the second oscillator sits. Weighted rather than uniform, because
   // these are not three equally likely settings on a real instrument: unison is
