@@ -648,37 +648,47 @@ section is many megabytes of multisampling. A quarter of the presets gives about
 
 It compounds with SF3 though, and that is where it pays:
 
-| | SF2 | SF3 at q0.8 |
-|---|---|---|
-| full bank, 287 presets | 30.82 MB | 10.07 MB |
-| core + eight drum kits, 31 presets | 16.53 MB | **4.82 MB** |
-| core, 23 presets | 12.42 MB | 3.55 MB |
-| minimal, 8 presets | 7.16 MB | 1.90 MB |
+| set | presets | SF2 | SF3 at q0.8 |
+|---|---|---|---|
+| minimal | 8 | 7.16 MB | 1.90 MB |
+| core | 23 | 12.42 MB | 3.55 MB |
+| core + 8 kits | 31 | 16.53 MB | 4.82 MB |
+| **band + 5 acoustic kits** | **43** | **20.33 MB** | **6.16 MB** |
+| everything but synths and effects | 99 | 27.63 MB | 8.57 MB |
+| the whole bank | 287 | 30.82 MB | 10.07 MB |
 
 **The drum kits are the bargain, and the arithmetic is not obvious.** Each is
 about 2.7 MB alone, but they share almost everything -- the GS kits are largely
 one set of samples remapped with a few kit-specific pieces -- so the first costs
-2.69 MB and the other seven cost 1.38 MB between them. Eight kits, 1.27 MB
-compressed.
+2.69 MB and the other seven cost 1.38 MB between them.
 
-Worth taking whole for a musical reason as well. The modelled kit has three
-pieces; each sampled kit has 65 samples, including five toms, ride, ride bell,
-crash, splash, china, cowbell, tambourine, claves, congas, bongos, timbales,
-agogo, guiro, cabasa, shaker and woodblock. None of that is a physical model
-anybody here is going to write, and `ROADMAP` already carries "multi-tap clap,
-cowbell, rimshot and toms" as deferred work. Percussion is also the best case
-for Ogg compression, since a one-shot is never looped and the loop artifacts are
-the whole risk.
+Worth taking for a musical reason too. The modelled kit has three pieces; each
+sampled kit has 65 samples, including five toms, ride, ride bell, crash, splash,
+china, cowbell, tambourine, claves, congas, bongos, timbales, agogo, guiro,
+cabasa, shaker and woodblock. None of that is a physical model anybody here is
+going to write, and `ROADMAP` already carries "multi-tap clap, cowbell, rimshot
+and toms" as deferred work. Percussion is also the best case for Ogg, since a
+one-shot is never looped and loop artifacts are the whole risk.
 
-That does NOT make the modelled kick, snare and hat redundant: they vary
-continuously with velocity and never repeat, which is exactly what a sample
-cannot do and exactly what a backing band needs most from its drummer. The
-sampled kits are a palette to extend it, not a replacement for it.
+The five kept are the acoustic ones. **Electronic and 808/909 are dropped
+because the modelled kit already is a synthesised one**, and does that job
+better: it varies continuously with velocity and never repeats, which is exactly
+what a drum-machine sample cannot do. **Room is dropped because the kit is
+already put in a room of our own** (`BotDsp::Room`), and baking a second one
+into the samples would be two rooms.
 
-The `core` set is what a physical model will never do well: piano, vibes and
-marimba, two organs, nylon and steel guitar, violin, cello, pizzicato, string
-ensemble, choir, four brass, three saxes, oboe, clarinet, flute. Everything the
-band already plays is left out, because modelling those is better.
+That last point generalises: the sampled kits are a palette to extend the
+modelled kit with -- toms, cymbals, hand percussion, colour -- not a replacement
+for its kick, snare and hat. A machine-gunned snare is the classic sampler
+failure and it is most audible on the thing you hear every bar.
+
+**And the intuition about dropping the synthesisers is the wrong one, which is
+worth knowing before anybody acts on it.** Cutting the synths and the sound
+effects -- the obvious first move -- saves 11% of the bytes, because they are
+short and thin. Every megabyte is in acoustic multisampling, which is precisely
+what any of these sets is keeping. So the choice is not "what do we throw away"
+but "how much acoustic material do we want", and the honest range is 6 MB for
+the band's own palette against 8.6 MB for everything acoustic in the bank.
 
 **The trim is provably lossless.** Rendering the same MIDI through the full bank
 and through each trimmed one gives BIT-IDENTICAL output from FluidSynth -- not
