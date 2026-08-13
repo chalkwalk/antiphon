@@ -376,6 +376,65 @@ public:
       expect(!PracticeBot::isShakeCommand(""));
     }
 
+    beginTest("the band introduces itself once, and only once");
+    {
+      // The one line every player is guaranteed to read, and the only answer to
+      // "how would anybody know they can talk to these things". Four separate
+      // "X here" lines would read as four processes starting; one roster reads
+      // as a band arriving.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
+      }, 5000), "the band never arrived");
+
+      // Five seconds of deliberate delay, plus room to be late.
+      expect(waitUntil([&] {
+        for (const auto &line : you.snapshot())
+          if (line.contains("The Understudies"))
+            return true;
+        return false;
+      }, 9000), "no roster was ever posted");
+
+      juce::StringArray roster, instructions, introductions;
+      for (const auto &line : you.snapshot()) {
+        if (!line.startsWith("MSG|") || !line.contains("-bot]"))
+          continue;
+        if (line.contains("The Understudies"))
+          roster.add(line);
+        else if (line.contains("say a name"))
+          instructions.add(line);
+        else if (line.contains("joining the others"))
+          introductions.add(line);
+      }
+
+      expectEquals(roster.size(), 1,
+                   "the roster was posted " + juce::String(roster.size()) +
+                       " times: " + roster.joinIntoString(" / "));
+      expectEquals(instructions.size(), 1, "instructions posted more than once");
+      expect(introductions.isEmpty(),
+             "a bot introduced itself as well as being on the roster: " +
+                 introductions.joinIntoString(" / "));
+
+      // Every player is named, with what they play, so the room is legible.
+      for (const auto &n : room.botNames()) {
+        const auto handle = juce::String(BotNames::handleOf(n.toStdString()));
+        expect(roster[0].containsIgnoreCase(handle),
+               handle + " is missing from the roster: " + roster[0]);
+      }
+
+      // And it leads with the interesting thing. A first-time player who types
+      // the first command they are shown should not empty their own room.
+      const int nameAt = instructions[0].indexOf("say a name");
+      const int partAt = instructions[0].indexOf("part");
+      expect(nameAt >= 0 && partAt > nameAt,
+             "the eviction command is offered before the interesting one: " +
+                 instructions[0]);
+    }
+
     beginTest("nobody answers a question that was not aimed at anybody");
     {
       // The failure this whole addressing layer exists to prevent, tested end

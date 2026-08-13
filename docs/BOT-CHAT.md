@@ -623,18 +623,19 @@ Observed rather than configured, which matters for three reasons: a bot that
 failed to connect is not announced as present, bots brought by two different
 people still produce one sensible list, and nothing has to be told to anybody.
 
-**Who announces needs no agreement.** A bot arriving looks at the user list it
-is given on connect. If it sees no other bot, it is the first, and the job is
-its own -- a local observation with no coordination in it at all.
+**Who announces needs no agreement: it is the lowest-named bot in the room five
+seconds in.** A pure function of what everybody can see, evaluated at the one
+moment when everybody sees the same thing. Every bot sorts the same list and
+reaches the same answer, with nothing sent between them -- the "identical
+inputs, identical function, no coordination" trick used for key changes.
 
-**And the five seconds are what make that safe.** Two bots connecting close
-enough together may each see a room without the other, and both would think
-themselves first. So the decision is re-checked at the moment of speaking: by
-five seconds in, both can see each other, and a fixed tiebreak on the name
-leaves exactly one talking. This is the same "identical inputs, identical
-function, no coordination" trick used for key changes -- but applied at the one
-instant when it is sound, rather than at connect time when the user lists have
-not converged. The delay is not only there to let people read.
+**And that is the second job the five seconds do.** An earlier draft of this
+section had a bot decide at CONNECT time, by looking for other bots and
+concluding it was first if it saw none. Building it showed why that cannot work:
+the membership list has not arrived when a client finishes authenticating, so
+every bot sees an empty room and every bot believes it is the first. The delay
+is what lets the lists converge, and only then is the question answerable at
+all. It is not merely a pause for the reader.
 
 In a practice room, where the room controls the timing, the whole thing is
 deterministic:
@@ -661,12 +662,16 @@ The band's NAME is used only when every bot in the list is one the announcer was
 spawned alongside. Two strangers' bots in one room are a list, not a band, and
 calling them one would be a small lie in the first line anybody reads.
 
-**A bot that arrives later introduces itself, once, in one line.** It knows to
-because of what it did or did not see: every bot waits the same five seconds
-after connecting, and a bot that saw a roster posted during its own wait was
-covered by it and stays quiet. One that did not was too late, and says
-`Pundo[keys-bot]: keys, joining the others.` No roster is ever posted twice --
-a roster is a thing you post once.
+**A bot that arrives later says nothing at all**, and that is a change from an
+earlier draft which had it introduce itself in one line. The rule it needed --
+"did I hear a bot during my own wait?" -- cannot tell a late arrival from a bot
+that simply lost the tiebreak, because during startup every bot is waiting at
+once. Building it produced four introductions and no roster.
+
+The fix is not a better discriminator but a smaller promise: only the announcer
+speaks. A bot that joins afterwards is visible in the user list and can be
+asked, and a line of chat nobody requested is worse than a quiet arrival.
+Silence is the default here, and it survives contact with the awkward case.
 
 **A human arriving later has missed it**, which is the one real gap. In a
 practice room -- your own room, quiet by definition -- the roster is repeated

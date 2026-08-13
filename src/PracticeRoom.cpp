@@ -76,6 +76,15 @@ bool PracticeRoom::start(const Config &config) {
       seed = seed * 1664525u + 1013904223u;
     }
 
+    // Who arrived together, so the roster can say whether these are a band or
+    // merely a list. Told before joining, because the announcement happens five
+    // seconds after connect and nobody should be racing it.
+    juce::StringArray names;
+    for (const auto &b : bots)
+      names.add(b->name());
+    for (auto &b : bots)
+      b->setBandmates(names, cfg.bandName);
+
     for (auto &b : bots)
       if (!b->join(host(), server.port(), cfg.sampleRate)) {
         bots.clear();

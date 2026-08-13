@@ -57,6 +57,7 @@ void PracticeBot::part() {
   // Idempotent, and terminal: see onDisconnected for why there is no rejoin.
   if (!active.exchange(false))
     return;
+  stopTimer();
   netClient.disconnectFromServer();
 }
 
@@ -247,8 +248,94 @@ juce::String PracticeBot::helpLine(const juce::String &name) {
                 "will leave.";
 }
 
+void PracticeBot::setBandmates(juce::StringArray names, juce::String name) {
+  juce::ScopedLock sl(stateMutex);
+  bandmates = std::move(names);
+  bandName = std::move(name);
+}
+
+juce::StringArray PracticeBot::botsPresent() const {
+  juce::StringArray out;
+  out.add(botName);
+  for (const auto &m : netClient.getRoomMembers())
+    if (m.username != botName && BotNames::looksLikeBot(m.username.toStdString()))
+      out.add(m.username);
+  // Sorted so that every bot in the room computes the same list, and therefore
+  // agrees about who speaks without anybody having to ask.
+  out.sort(true);
+  return out;
+}
+
+void PracticeBot::timerCallback() {
+  stopTimer();
+  if (!active.load() || arrivalDone.exchange(true))
+    return;
+
+  // Somebody already introduced the room while we were waiting, so there is
+  // nothing to add.
+  if (heardABot.load())
+    return;
+
+  // Who speaks: the lowest-named bot in the room, five seconds in.
+  //
+  // A pure function of what everybody can see, evaluated at the one moment when
+  // everybody sees the same thing -- which is the second job the delay does and
+  // the reason it is not merely a pause for the reader. At connect time the
+  // membership list has not arrived yet, so a bot cannot tell whether it is the
+  // first; five seconds later every bot computes the same sorted list and the
+  // same winner, with no coordination and no messages between them.
+  const auto bots = botsPresent();
+  if (bots.isEmpty() || bots[0] != botName)
+    return;
+
+  // The roster lists what is ACTUALLY HERE, not what we were told to expect: a
+  // bot that failed to connect is not announced as present, and bots brought by
+  // two different people still make one sensible list.
+  juce::StringArray entries;
+  bool allSiblings = true;
+  {
+    juce::ScopedLock sl(stateMutex);
+    for (const auto &name : bots) {
+      if (!bandmates.isEmpty() && !bandmates.contains(name))
+        allSiblings = false;
+      const auto open = name.indexOfChar('[');
+      const juce::String handle =
+          open > 0 ? name.substring(0, open) : name;
+      const juce::String instrument =
+          open > 0 ? name.substring(open + 1)
+                         .upToFirstOccurrenceOf("-bot]", false, false)
+                   : juce::String();
+      entries.add(instrument.isEmpty() ? handle
+                                       : handle + " (" + instrument + ")");
+    }
+  }
+
+  juce::String roster;
+  {
+    juce::ScopedLock sl(stateMutex);
+    if (allSiblings && bandName.isNotEmpty())
+      roster = bandName + " -- ";
+  }
+  roster += entries.joinIntoString(", ") + ".";
+
+  netClient.sendChatMessage(roster);
+
+  // The interesting thing first, and the destructive one stated so plainly
+  // that nobody types it idly. Leading with `part` would invite a curious
+  // player to empty their own room with the first command they were shown.
+  netClient.sendChatMessage(
+      "say a name to talk to one of us. say \"part\" and we all go home.");
+}
+
 void PracticeBot::onConnected() {
-  // Nothing to do. The channel list was stored before connecting and
+  // The arrival window. Five seconds, then one bot introduces the band.
+  //
+  // The delay is doing two jobs. It lets the join notices finish scrolling
+  // before the one line anybody is meant to read -- and, less obviously, it is
+  // what makes the choice of speaker safe. See timerCallback.
+  startTimer(5000);
+
+  // Beyond that, nothing to do. The channel list was stored before connecting and
   // NinjamClient sends it itself the moment auth succeeds
   // (NinjamClient.cpp:347), so resending here was redundant -- and it was a
   // write from the message thread at the exact moment the network thread might
@@ -458,6 +545,14 @@ void PracticeBot::onChatMessage(const juce::String &type,
     return;
   if (type != "MSG" && type != "PRIVMSG")
     return;
+
+  // A bot speaking during our arrival window means the room has already been
+  // introduced, so we were covered by it. Bots are silent unless spoken to, so
+  // in practice the only unprompted thing one says is the roster -- and if this
+  // is ever wrong the cost is one bot not introducing itself, which is silence,
+  // and silence is always the safe direction here.
+  if (BotNames::looksLikeBot(username.toStdString()))
+    heardABot = true;
 
   const bool isPrivate = (type == "PRIVMSG");
 

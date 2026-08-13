@@ -29,7 +29,7 @@
 // LEAVING: a bot must be trivially easy to get rid of. See the rules on
 // `part()` below; they live here rather than in PracticeRoom so they hold
 // wherever the bot is pointed.
-class PracticeBot : private NinjamClientListener {
+class PracticeBot : private NinjamClientListener, private juce::Timer {
 public:
   // Fills one interval. Called on the conductor thread, never the audio thread,
   // so it may allocate -- though there is no reason for it to.
@@ -66,6 +66,14 @@ public:
   // the connection itself ends it. PracticeRoom always sets it.
   void setOwner(juce::String ownerUsername);
 
+  // Who else this bot arrived with, and what the group is called.
+  //
+  // Needed only for the arrival roster, and only to decide whether to use the
+  // band's NAME: two strangers' bots in one room are a list, not a band, and
+  // calling them one would be a small lie in the first line anybody reads.
+  // A bot told nothing simply lists whoever it can see.
+  void setBandmates(juce::StringArray names, juce::String bandName);
+
   // Whose audio this bot wants. Empty subscribes to nobody, which is the
   // default and what a generative bot wants: it follows the grid, not the room,
   // and an unsubscribed client never causes an interval to be allocated.
@@ -95,6 +103,14 @@ private:
   void onUserInfoChange() override;
   void onRoomMembershipChange(const juce::String &username,
                               bool joined) override;
+
+  // The arrival window: five seconds after connecting, decide whether to
+  // announce the band, introduce ourselves, or stay quiet.
+  void timerCallback() override;
+
+  // Every bot in the room right now, ours or not, sorted so that every bot
+  // computes the same list and therefore the same answer.
+  juce::StringArray botsPresent() const;
   void onChatMessage(const juce::String &type, const juce::String &username,
                      const juce::String &text) override;
 
@@ -147,6 +163,21 @@ private:
 
   NinjamClient netClient;
   juce::AudioBuffer<float> renderBuffer;
+
+  // The arrival choreography (docs/BOT-CHAT.md section 6).
+  //
+  // Who speaks is decided five seconds in, by every bot evaluating the same
+  // function over the same sorted list of who is present. Nothing is agreed and
+  // nothing is sent between them.
+  //
+  // It cannot be decided at connect time, which an earlier version tried: the
+  // membership list has not arrived when `onConnected` fires, so every bot sees
+  // an empty room and believes itself the first. `heardABot` covers the
+  // remaining case, where somebody else has already introduced the room.
+  std::atomic<bool> heardABot{false};
+  std::atomic<bool> arrivalDone{false};
+  juce::StringArray bandmates;
+  juce::String bandName;
 
   // One conversation, with one person. Belongs to whoever opened it, not to
   // the room -- two other people talking are not talking to the bot.
