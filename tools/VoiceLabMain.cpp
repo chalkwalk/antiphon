@@ -56,6 +56,9 @@ void usage() {
       "  AntiphonVoiceLab <voice> [options]\n"
       "\n"
       "voices: kick snare hat bass lead pad kit band\n"
+      "  file <paths...>  measure WAVs that already exist, and with --lufs\n"
+      "                   write matched copies -- for comparing renders from\n"
+      "                   builds you can no longer reproduce\n"
       "  kit and band go through the real path, with the room, in stereo\n"
       "\n"
       "  -o <path>          output file, or directory when sweeping\n"
@@ -376,6 +379,64 @@ bool writeWav(const juce::File &file, const std::vector<float> &buf,
   return true;
 }
 
+// Measure a WAV that already exists, and optionally write a loudness-matched
+// copy of it.
+//
+// The point of this is comparing renders that CANNOT be regenerated: a band
+// from three commits ago is a file and nothing else, and the only fair way to
+// A/B it against today's is to bring both to the same integrated loudness.
+int measureFile(const Options &o, const juce::File &input) {
+  juce::WavAudioFormat wav;
+  std::unique_ptr<juce::AudioFormatReader> reader(
+      wav.createReaderFor(new juce::FileInputStream(input), true));
+  if (reader == nullptr) {
+    std::fprintf(stderr, "voicelab: could not read %s\n",
+                 input.getFullPathName().toRawUTF8());
+    return 1;
+  }
+
+  const int n = (int)reader->lengthInSamples;
+  const int channels = (int)reader->numChannels;
+  const double rate = reader->sampleRate;
+
+  juce::AudioBuffer<float> buf(juce::jmax(1, channels), juce::jmax(1, n));
+  buf.clear();
+  reader->read(&buf, 0, n, 0, true, channels > 1);
+
+  std::vector<float> left((size_t)n), right((size_t)n);
+  for (int i = 0; i < n; ++i) {
+    left[(size_t)i] = buf.getSample(0, i);
+    right[(size_t)i] = channels > 1 ? buf.getSample(1, i) : buf.getSample(0, i);
+  }
+
+  Options local = o;
+  local.sampleRate = rate;
+
+  const double before =
+      AudioMeasure::integratedLufs(left.data(), right.data(), n, rate);
+  std::printf("%-34s %2d ch  %5.0f Hz  %6.2f s  peak %.3f  %6.1f LUFS\n",
+              input.getFileName().toRawUTF8(), channels, rate,
+              (double)n / rate, AudioMeasure::peak(left.data(), n), before);
+
+  if (!o.matchLufs)
+    return 0;
+
+  matchLoudness(local, left, &right);
+
+  const juce::File out =
+      o.out != juce::File()
+          ? o.out
+          : input.getSiblingFile(input.getFileNameWithoutExtension() +
+                                 "-matched.wav");
+  if (!writeWav(out, left, rate, &right)) {
+    std::fprintf(stderr, "voicelab: could not write %s\n",
+                 out.getFullPathName().toRawUTF8());
+    return 1;
+  }
+  std::printf("  wrote %s\n", out.getFullPathName().toRawUTF8());
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -387,6 +448,7 @@ int main(int argc, char *argv[]) {
   }
 
   Options o;
+  juce::StringArray files;
   o.voice = juce::String(argv[1]).toLowerCase();
   if (o.voice == "-h" || o.voice == "--help") {
     usage();
@@ -449,10 +511,26 @@ int main(int argc, char *argv[]) {
       o.sweepLo = parts[0].getDoubleValue();
       o.sweepHi = parts[1].getDoubleValue();
       o.sweepCount = juce::jmax(1, parts[2].getIntValue());
-    } else {
+    } else if (arg.startsWithChar('-')) {
       std::fprintf(stderr, "voicelab: unknown option %s\n", arg.toRawUTF8());
       return 1;
+    } else {
+      files.add(arg);
     }
+  }
+
+  // `file` takes a path rather than being a voice, so it is handled before the
+  // list of things that can be rendered.
+  if (o.voice == "file") {
+    if (files.isEmpty()) {
+      std::fprintf(stderr, "voicelab: file needs a path\n");
+      return 1;
+    }
+    int failures = 0;
+    for (const auto &path : files)
+      failures += measureFile(
+          o, juce::File::getCurrentWorkingDirectory().getChildFile(path));
+    return failures;
   }
 
   const juce::StringArray known{"kick", "snare", "hat",  "bass", "lead",
