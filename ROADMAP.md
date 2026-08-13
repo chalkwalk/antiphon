@@ -651,8 +651,29 @@ It compounds with SF3 though, and that is where it pays:
 | | SF2 | SF3 at q0.8 |
 |---|---|---|
 | full bank, 287 presets | 30.82 MB | 10.07 MB |
-| **core, 23 presets** | 12.42 MB | **3.55 MB** |
+| core + eight drum kits, 31 presets | 16.53 MB | **4.82 MB** |
+| core, 23 presets | 12.42 MB | 3.55 MB |
 | minimal, 8 presets | 7.16 MB | 1.90 MB |
+
+**The drum kits are the bargain, and the arithmetic is not obvious.** Each is
+about 2.7 MB alone, but they share almost everything -- the GS kits are largely
+one set of samples remapped with a few kit-specific pieces -- so the first costs
+2.69 MB and the other seven cost 1.38 MB between them. Eight kits, 1.27 MB
+compressed.
+
+Worth taking whole for a musical reason as well. The modelled kit has three
+pieces; each sampled kit has 65 samples, including five toms, ride, ride bell,
+crash, splash, china, cowbell, tambourine, claves, congas, bongos, timbales,
+agogo, guiro, cabasa, shaker and woodblock. None of that is a physical model
+anybody here is going to write, and `ROADMAP` already carries "multi-tap clap,
+cowbell, rimshot and toms" as deferred work. Percussion is also the best case
+for Ogg compression, since a one-shot is never looped and the loop artifacts are
+the whole risk.
+
+That does NOT make the modelled kick, snare and hat redundant: they vary
+continuously with velocity and never repeat, which is exactly what a sample
+cannot do and exactly what a backing band needs most from its drummer. The
+sampled kits are a palette to extend it, not a replacement for it.
 
 The `core` set is what a physical model will never do well: piano, vibes and
 marimba, two organs, nylon and steel guitar, violin, cello, pizzicato, string
@@ -1329,8 +1350,29 @@ It compounds with SF3 though, and that is where it pays:
 | | SF2 | SF3 at q0.8 |
 |---|---|---|
 | full bank, 287 presets | 30.82 MB | 10.07 MB |
-| **core, 23 presets** | 12.42 MB | **3.55 MB** |
+| core + eight drum kits, 31 presets | 16.53 MB | **4.82 MB** |
+| core, 23 presets | 12.42 MB | 3.55 MB |
 | minimal, 8 presets | 7.16 MB | 1.90 MB |
+
+**The drum kits are the bargain, and the arithmetic is not obvious.** Each is
+about 2.7 MB alone, but they share almost everything -- the GS kits are largely
+one set of samples remapped with a few kit-specific pieces -- so the first costs
+2.69 MB and the other seven cost 1.38 MB between them. Eight kits, 1.27 MB
+compressed.
+
+Worth taking whole for a musical reason as well. The modelled kit has three
+pieces; each sampled kit has 65 samples, including five toms, ride, ride bell,
+crash, splash, china, cowbell, tambourine, claves, congas, bongos, timbales,
+agogo, guiro, cabasa, shaker and woodblock. None of that is a physical model
+anybody here is going to write, and `ROADMAP` already carries "multi-tap clap,
+cowbell, rimshot and toms" as deferred work. Percussion is also the best case
+for Ogg compression, since a one-shot is never looped and the loop artifacts are
+the whole risk.
+
+That does NOT make the modelled kick, snare and hat redundant: they vary
+continuously with velocity and never repeat, which is exactly what a sample
+cannot do and exactly what a backing band needs most from its drummer. The
+sampled kits are a palette to extend it, not a replacement for it.
 
 The `core` set is what a physical model will never do well: piano, vibes and
 marimba, two organs, nylon and steel guitar, violin, cello, pizzicato, string

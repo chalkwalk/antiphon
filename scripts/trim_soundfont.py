@@ -51,6 +51,22 @@ SETS = {
     "minimal": [0, 24, 40, 48, 56, 65, 71, 73],
 }
 
+# Drum kits live in bank 128, and they are the bargain in this file.
+#
+# Each is about 2.7 MB on its own, but they SHARE almost everything -- the GS
+# kits are largely one set of samples remapped, with a handful of kit-specific
+# pieces. So the first costs 2.69 MB and the other seven cost 1.38 MB between
+# them. Eight kits for barely more than one.
+#
+# Worth taking whole for a second reason. The modelled kit has three pieces --
+# kick, snare, hat -- and this is 65 samples per kit including five toms, ride,
+# ride bell, crash, splash, china, cowbell, tambourine, claves, congas, bongos,
+# timbales, agogo, guiro, cabasa, shaker, whistle and woodblock. None of that is
+# a physical model we are ever going to write, and percussion one-shots are also
+# the best case for Ogg compression, since nothing is looped.
+DRUM_KITS = [0, 8, 16, 24, 25, 32, 40, 48]  # Standard, Room, Power, Electronic,
+                                            # 808/909, Jazz, Brush, Orchestral
+
 
 def chunks(buf, start, end):
     i = start
@@ -281,6 +297,8 @@ def main():
                     metavar="BANK:PROGRAM", help="keep this preset; repeatable")
     ap.add_argument("--set", choices=sorted(SETS),
                     help="keep a named set of bank 0 programs")
+    ap.add_argument("--drums", action="store_true",
+                    help="keep the eight drum kits in bank 128")
     ap.add_argument("--list", action="store_true",
                     help="print the presets in the input and stop")
     args = ap.parse_args()
@@ -299,6 +317,8 @@ def main():
         keep.add((int(bank), int(prog)))
     if args.set:
         keep |= {(0, p) for p in SETS[args.set]}
+    if args.drums:
+        keep |= {(128, p) for p in DRUM_KITS}
     if not keep:
         raise SystemExit("nothing to keep: pass --preset or --set")
 
