@@ -162,7 +162,7 @@ addressed by default.**
 
 That is a correction to an earlier draft, which said "at most one bot ever
 answers". One was standing in for "not all four", but it is the wrong number:
-`hollis, ridley, can you turn it up` names two people and should get two
+`delvo, mirn, can you turn it up` names two people and should get two
 answers, exactly as it would from two humans. What has to be impossible is a
 bot answering something that was not aimed at it -- not two bots answering
 something that was aimed at both.
@@ -176,17 +176,18 @@ against a known, tiny vocabulary of proper nouns, which is a different and far
 easier problem than working out what a sentence is doing.
 
 Matching is on whole tokens, case-insensitively, with punctuation stripped, so
-`hollis`, `Hollis,` and `@hollis` are one thing and `hollisters` is not. Where
+`delvo`, `Delvo,` and `@delvo` are one thing, and a longer word that merely
+happens to contain it is not. Where
 in the message the name falls changes only how strongly it counts:
 
 | Signal | Example | Strength |
 |---|---|---|
 | private message | (any) | certain |
-| name first, with a separator | `hollis: what are the changes`, `hollis, ...`, `@hollis ...` | very strong |
-| name last | `what are the changes hollis` | very strong |
-| the name alone | `hollis` | very strong -- see below |
-| name anywhere | `what is hollis playing` | strong |
-| several names | `hollis, ridley, turn it up` | each is addressed |
+| name first, with a separator | `delvo: what are the changes`, `delvo, ...`, `@delvo ...` | very strong |
+| name last | `what are the changes delvo` | very strong |
+| the name alone | `delvo` | very strong -- see below |
+| name anywhere | `what is delvo playing` | strong |
+| several names | `delvo, mirn, turn it up` | each is addressed |
 | instrument noun in the name position | `bass, what are you playing` | strong |
 | near-miss on a name | `holis:`, `hollos` | strong, if unambiguous |
 | continuation, from the person who opened it | `and the chords?` | moderate |
@@ -198,13 +199,13 @@ bot, and answering it is presumptuous.
 
 #### The name on its own, and the attention window
 
-Saying just `hollis` is the most natural way there is to start talking to
+Saying just `delvo` is the most natural way there is to start talking to
 somebody, and it should work:
 
-> `you: hollis`
-> `Hollis[bass-bot]: here -- roots on the changes, D minor.`
+> `you: delvo`
+> `Delvo[bass-bot]: here -- roots on the changes, D minor.`
 > `you: what are the changes`
-> `Hollis[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.`
+> `Delvo[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.`
 
 The greeting is doing two jobs and the second one is why it is phrased that
 way. It acknowledges, and it says what this bot is in a position to talk about
@@ -266,7 +267,7 @@ enter a room at present is that somebody started a room full of them.
 
 **Bots we did not spawn: the `-bot]` marker in the username, and that is
 enough.** It is spoofable, but consider what spoofing buys: a human deliberately
-naming themselves `Hollis[bass-bot]` to make bots ignore them. That is a person
+naming themselves `Delvo[bass-bot]` to make bots ignore them. That is a person
 choosing to be ignored, which is not an attack. The reverse -- a human causing a
 loop -- requires them to impersonate a bot AND to keep emitting lines that
 address other bots, at which point they are the loop rather than the bots, and
@@ -296,11 +297,12 @@ messages is undiscoverable by construction, however well it works.
 #### One practical trap, already hit
 
 Bot usernames must not contain spaces. Every Ninjam client sends a private
-message as `/msg <user> <text>` and splits on the first space, so a bot called
-`Wren[keys-bot]` cannot be sent one at all: `/msg Wren[keys-bot] guitar` addresses a
-user called `Keys`, who does not exist, and fails silently. Antiphon's own
-client does this (`PluginEditor.cpp`), and so, being the same one-line parse,
-will everyone else's.
+message as `/msg <user> <text>` and splits on the first space, so the original
+name `Keys [bot]` could not be sent one at all: `/msg Keys [bot] guitar`
+addresses a user called `Keys`, who does not exist, and fails silently.
+Antiphon's own client does this (`PluginEditor.cpp`), and so, being the same
+one-line parse, will everyone else's. This is half of why the names in §8 are
+one token -- the other half is that they have to be sayable.
 
 Two separate fixes, and both are worth doing because they fail differently.
 The names lose their spaces, which fixes every client including the ones we do
@@ -318,7 +320,7 @@ outranks conversational tidiness, and it holds wherever a bot is pointed rather
 than only in a practice room.
 
 - **`part` alone, as the entire message**, in the room: the whole band leaves.
-- **`hollis, part`**: that one leaves.
+- **`delvo, part`**: that one leaves.
 - Anywhere inside a sentence: nothing. "what's your part", "the bass part",
   "learn my part" are ordinary jam chat and by far the commonest use of the
   word. The match is on the trimmed message being exactly `part`, which is what
@@ -338,13 +340,13 @@ the accident is likely -- a practice room is restarted from Antiphon's own UI
 in one click -- and expensive in the case where it is not, which is somebody
 else's bots in a real room.
 
-#### Two bots called Hollis
+#### Two bots called Delvo
 
 Names are picked at join and never change, because Ninjam sets a username at
 authentication and there is no rename.
 
-The full username -- `Hollis[bass-bot]` -- is unambiguous and always works. The
-short handle `hollis` is a convenience, and it is **withdrawn the moment it
+The full username -- `Delvo[bass-bot]` -- is unambiguous and always works. The
+short handle `delvo` is a convenience, and it is **withdrawn the moment it
 becomes ambiguous**: if any other participant's name matches or contains it, the
 bot stops accepting the bare handle and answers only to its full username or to
 its instrument. Silence beats a wrong answer, and this is the same rule as
@@ -365,17 +367,50 @@ first names, and real first names are exactly what people use as handles. What
 is wanted is a coined word -- pronounceable, unambiguously spelled, and not
 something anybody is called:
 
-- two syllables, four to six letters, one obvious pronunciation;
-- **different first letters**, and at least two edits apart from each other, so
-  the near-miss row in the table above stays unambiguous;
-- not an English word, not a name, not a brand;
-- sayable out loud, because a screen reader will read it and because "say a
-  name" has to mean something you can say.
+- **not an ordinary English word, a name, or a brand**, so it can be matched
+  anywhere in a sentence safely;
+- **one obvious pronunciation.** `Ravo` and `Pemo` were dropped for failing
+  this: RAY-vo or RAH-vo, PEE-mo or PEH-mo, with nothing to decide between
+  them;
+- **a rime an English reader already owns.** This turned out to matter more
+  than syllable count, which is what an earlier draft asked for instead.
+  `Mirn` is one syllable and reads instantly, because `-irn` is *fern*, *burn*,
+  *turn*. `Nolm`, `Selm`, `Velk` and `Cralt` are also one syllable and were all
+  rejected on sight: `-olm`, `-elm`, `-elk` and `Cr-`/`-alt` are clusters with
+  no familiar English pattern behind them, so they read as truncations, as
+  though a letter were missing;
+- **one token, no spaces**, so `/msg` reaches it in every client;
+- **distinct first letters, and at least two edits apart**, so the near-miss row
+  in the table above stays unambiguous. `Vurn` was dropped for failing the
+  spirit of this rather than the letter: it is two edits from `Mirn` but shares
+  its rime, and two names that are near-homophones aloud are the one thing a
+  spoken address cannot afford.
 
-A candidate pool, offered to be argued with rather than as a decision:
-`Kepa`, `Tolm`, `Vessa`, `Riso`, `Nurl`, `Damek`, `Fenko`, `Suli`, `Weft`,
-`Zabo`, `Miten`, `Orvo`. The band is four of them, deterministically from the
-room seed, so the same seed brings the same players back.
+**The band: `Mirn`, `Delvo`, `Pundo`, `Quado`.** Chosen by searching thirty
+candidates and keeping the least occupied -- not by counting results, which no
+search tool reports, but by asking the question that actually matters: is this
+word already a person, a handle, or a brand that somebody might turn up using?
+Eighteen were struck for being exactly that, including a Premier League
+goalkeeper (`Kepa`), a techno producer on Drumcode (`Weska`, the worst possible
+collision for a music program), an AI chat app (`Fenko`), and several ordinary
+given names. What is left is owned by a dog chew, some industrial screwdrivers,
+a Bhutanese stone-throwing sport and a gas-meter acronym.
+
+Which name goes to which instrument comes from the room seed, so the same seed
+brings the same players back and a shake does not.
+
+**The tutor is not one of them: it is called `Tutor`.** It is a role rather
+than a bandmate, and you address a role by what it is -- `tutor:` is what
+anybody would type without being told, and nobody says the word casually in a
+jam. It is matched in the address position only, exactly like `band`, for the
+same reason.
+
+**The pool is currently the same size as the band, which is a known gap.** §5
+wants spares so that a name colliding with somebody already in the room can be
+skipped at join; with four names and four players there is nothing to skip to,
+and a collision falls straight through to the instrument fallback. That works,
+but it is the degraded path rather than the intended one, and the fix is to
+vet another handful of names against the criteria above.
 
 #### The deliberate exception
 
@@ -385,7 +420,7 @@ line each, because that is what was asked for.
 These are matched **in the address position only**, unlike a name. "band" is an
 ordinary word in a room full of musicians -- "nice band", "the band's tight" --
 and a bot that answers those is the poltergeist this section is about. A name
-like `hollis` is rare enough to be matched anywhere in a sentence; `band` is
+like `delvo` is rare enough to be matched anywhere in a sentence; `band` is
 not, and the difference is exactly why the names are what they are (§8).
 
 #### One answer, without any coordination
@@ -401,22 +436,22 @@ A worked case, with four bots and two humans in the room:
 ```
 you: what are you playing
 (nobody -- not addressed)
-you: hollis
-Hollis[bass-bot]: here -- roots on the changes, D minor.
+you: delvo
+Delvo[bass-bot]: here -- roots on the changes, D minor.
 you: and your sound?
-Hollis[bass-bot]: fingered, fairly dark.
+Delvo[bass-bot]: fingered, fairly dark.
 you: dave what pedal is that
 (nobody -- that is for dave)
 dave: what are you playing
-(nobody -- dave has not addressed anyone, and Hollis's window is yours)
-you: hollis, ridley, can you turn it up
-Hollis[bass-bot]: up 2 dB.
-Ridley[kit-bot]: up 2 dB.
+(nobody -- dave has not addressed anyone, and Delvo's window is yours)
+you: delvo, mirn, can you turn it up
+Delvo[bass-bot]: up 2 dB.
+Mirn[kit-bot]: up 2 dB.
 you: band, what are you playing
-Ridley[kit-bot]: five over eight, accents on 1 and 4.
-Hollis[bass-bot]: roots, on the changes and the kick.
-Wren[keys-bot]: the chart, held, one chord a bar.
-Sabine[lead-bot]: eighths over D minor, resting on the weak beats.
+Mirn[kit-bot]: five over eight, accents on 1 and 4.
+Delvo[bass-bot]: roots, on the changes and the kick.
+Pundo[keys-bot]: the chart, held, one chord a bar.
+Quado[lead-bot]: eighths over D minor, resting on the weak beats.
 ```
 
 `test/fixtures/bot-addressing.txt` is the corpus for this, and it is separate
@@ -511,11 +546,11 @@ the first one's reasoning for free.
   feels like a wall, and it is nearly free: the bot already knows which two
   things it was torn between, so it can name them.
   > `you: tell me about your kick`
-  > `Ridley[kit-bot]: the part or the sound? "what are you playing" or "what do you sound like".`
+  > `Mirn[kit-bot]: the part or the sound? "what are you playing" or "what do you sound like".`
 - **Nothing** -- below the floor. Even here it should not be a shrug. Report the
   concepts it *did* recognise, because that turns a dead end into a hint:
   > `you: is the snare a bit much on the turnaround`
-  > `Ridley[kit-bot]: i caught "snare" but not the question. i can tell you my part, my sound, the key, the chords or the tempo -- and i cannot hear you, so i am no judge of what is too much.`
+  > `Mirn[kit-bot]: i caught "snare" but not the question. i can tell you my part, my sound, the key, the chords or the tempo -- and i cannot hear you, so i am no judge of what is too much.`
 
 The last clause of that is worth keeping: it is honest, it is the answer to a
 whole class of questions people will reasonably ask, and it says the limitation
@@ -528,9 +563,9 @@ they cost almost nothing: remember the last intent and slot per conversant, for
 a few turns.
 
 > `you: what key are we in`
-> `Hollis[bass-bot]: D minor, as announced in chat.`
+> `Delvo[bass-bot]: D minor, as announced in chat.`
 > `you: and the chords?`
-> `Hollis[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.`
+> `Delvo[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.`
 
 `and the chords?` has no verb, no subject and no question word. It resolves
 because the previous turn established that we are talking about the room's
@@ -605,16 +640,16 @@ In a practice room, where the room controls the timing, the whole thing is
 deterministic:
 
 ```
-t+0.0   Marlow[tutor-bot] joins        (if a tutor was asked for)
-t+0.5   Ridley[kit-bot] joins          (sees no other bot: it will announce)
-t+1.0   Hollis[bass-bot] joins         (sees Ridley: not its job)
-t+1.5   Wren[keys-bot] joins
-t+2.0   Sabine[lead-bot] joins
+t+0.0   Tutor[bot] joins        (if a tutor was asked for)
+t+0.5   Mirn[kit-bot] joins          (sees no other bot: it will announce)
+t+1.0   Delvo[bass-bot] joins         (sees Mirn: not its job)
+t+1.5   Pundo[keys-bot] joins
+t+2.0   Quado[lead-bot] joins
 
-t+2.0   Marlow[tutor-bot]: hello -- i am the tutor. the band is coming in now.
-t+5.5   Ridley[kit-bot]: The Understudies -- Ridley (kit), Hollis (bass),
-                         Wren (keys), Sabine (lead).
-t+5.5   Ridley[kit-bot]: say a name to talk to one of us. say "part" and we all
+t+2.0   Tutor[bot]: hello -- i am the tutor. the band is coming in now.
+t+5.5   Mirn[kit-bot]: The Understudies -- Mirn (kit), Delvo (bass),
+                         Pundo (keys), Quado (lead).
+t+5.5   Mirn[kit-bot]: say a name to talk to one of us. say "part" and we all
                          go home.
 ```
 
@@ -630,7 +665,7 @@ calling them one would be a small lie in the first line anybody reads.
 because of what it did or did not see: every bot waits the same five seconds
 after connecting, and a bot that saw a roster posted during its own wait was
 covered by it and stays quiet. One that did not was too late, and says
-`Wren[keys-bot]: keys, joining the others.` No roster is ever posted twice --
+`Pundo[keys-bot]: keys, joining the others.` No roster is ever posted twice --
 a roster is a thing you post once.
 
 **A human arriving later has missed it**, which is the one real gap. In a
@@ -745,18 +780,18 @@ ADDRESS, and the addressing model in section 5 turns out to need one that is
 rare.
 
 Consider "the bass is too loud", in a room where the bass player is called
-`Hollis[bass-bot]`. The token `bass` is present, section 5 scores a name appearing
+`Delvo[bass-bot]`. The token `bass` is present, section 5 scores a name appearing
 anywhere in a sentence as strong, and the bass bot answers "roots, on the
 changes" into a conversation about mixing. That is precisely the failure this
 document exists to prevent, and it is caused by the name being an ordinary
 word. The same collision makes the near-miss row in that table unusable:
-edit distance one from `hollis` is safe, and edit distance one from `bass`
+edit distance one from `delvo` is safe, and edit distance one from `bass`
 covers `base`, `bas` and `bass` itself.
 
 So the two sections were already in conflict before anybody proposed a change.
 Section 5 needs names rare enough to match anywhere in a sentence; section 8
 forbade exactly that. Rare names are what make the natural forms work --
-`what are the changes hollis`, `hey hollis whats your part` -- and without them
+`what are the changes delvo`, `hey delvo whats your part` -- and without them
 addressing collapses back to a rigid `name:` prefix, which is command syntax
 wearing a conversation's clothes.
 
@@ -768,9 +803,9 @@ What a name has to be, then, and none of these is about character:
   `bot_3` is not a thing anybody says;
 - **paired with the instrument somewhere**, so the room stays legible.
 
-`Hollis[bass-bot]` satisfies all four: `hollis` is the handle, `bass` says what
+`Delvo[bass-bot]` satisfies all four: `delvo` is the handle, `bass` says what
 it plays, `bot` is the marker bots recognise each other by, and there is no
-space anywhere. The alternative of a bare `Hollis` with a channel named `bass`
+space anywhere. The alternative of a bare `Delvo` with a channel named `bass`
 is cleaner to say and worse to read in a client that does not show channels.
 
 **The cost, stated plainly.** A human name raises expectations of human
@@ -778,8 +813,8 @@ conversation, and rule 3 then has to disappoint them. That is real, and it is
 the strongest argument for the position being abandoned here. What keeps it
 tolerable is that everything else about the bot is machine-shaped: the username
 is visibly a label rather than a person, the first thing it ever says is a
-terse fact about its part, and it never claims to be anything else. Hollis has
-a bass line. Hollis does not have a day.
+terse fact about its part, and it never claims to be anything else. Delvo has
+a bass line. Delvo does not have a day.
 
 ### Should the band have a name?
 
@@ -795,7 +830,7 @@ Where it earns itself is the **join announcement**, which is the one line the
 band gets to introduce itself with (§5) and the only real answer to
 discoverability:
 
-> `The Understudies: Hollis (bass), Ridley (kit), Wren (keys), Sabine (lead).`
+> `The Understudies: Delvo (bass), Mirn (kit), Pundo (keys), Quado (lead).`
 > `Say a name to talk to one.`
 
 That reads as a band arriving. A bare list of four usernames reads as four
@@ -847,16 +882,16 @@ The most reviewable part. If these read as annoying, the design is wrong.
 **Joining a practice room**
 
 ```
-*** Ridley[kit-bot] joined
-*** Hollis[bass-bot] joined
-*** Wren[keys-bot] joined
-*** Sabine[lead-bot] joined
-*** Marlow[tutor-bot] joined
-Marlow[tutor-bot]: practice room. four players, all bots. say "part" to any of them
+*** Mirn[kit-bot] joined
+*** Delvo[bass-bot] joined
+*** Pundo[keys-bot] joined
+*** Quado[lead-bot] joined
+*** Tutor[bot] joined
+Tutor[bot]: practice room. four players, all bots. say "part" to any of them
              and it goes home.
 you: /key Dm
 ~~ [key: D minor]
-Hollis[bass-bot]: got it, D minor.
+Delvo[bass-bot]: got it, D minor.
 ```
 
 Five bots, two lines in the first minute, and only the bass acknowledged the
@@ -875,13 +910,13 @@ That is the design working.
 
 ```
 you: hey kit, whats ur groove?
-Ridley[kit-bot]: five over eight, accents on 1 and 4. fill every fourth interval.
+Mirn[kit-bot]: five over eight, accents on 1 and 4. fill every fourth interval.
 you: could you tell me what key we're supposed to be in
-Hollis[bass-bot]: D minor, as announced in chat.
+Delvo[bass-bot]: D minor, as announced in chat.
 you: and the chords?
-Hollis[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.
+Delvo[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.
 you: bass, giv me somthing else
-Hollis[bass-bot]: shook. four onsets now, off the kick rather than on it.
+Delvo[bass-bot]: shook. four onsets now, off the kick rather than on it.
 ```
 
 Not one of those is a command word. Vocative and filler stripped, `ur` expanded,
@@ -892,12 +927,12 @@ resolved from the previous turn.
 
 ```
 you: tell me about your kick
-Ridley[kit-bot]: the part or the sound? "what are you playing", or "what do you sound like".
+Mirn[kit-bot]: the part or the sound? "what are you playing", or "what do you sound like".
 you: the sound
-Ridley[kit-bot]: deep kick, soft beater. tuned low, and the beater is soft enough to
+Mirn[kit-bot]: deep kick, soft beater. tuned low, and the beater is soft enough to
            lose the click.
 you: is the snare a bit much on the turnaround?
-Ridley[kit-bot]: i caught "snare" but not the question. i can tell you my part, my
+Mirn[kit-bot]: i caught "snare" but not the question. i can tell you my part, my
            sound, the key, the chords or the tempo -- and i cannot hear you, so
            i am no judge of what is too much.
 you: thanks!
@@ -914,16 +949,16 @@ is the wall this design is trying not to be.
 **The tutor finishing**
 
 ```
-Marlow[tutor-bot]: that's the whole of it -- i'll get out of the way. the band will
+Tutor[bot]: that's the whole of it -- i'll get out of the way. the band will
              keep playing.
-*** Marlow[tutor-bot] left
+*** Tutor[bot] left
 ```
 
 **In a real room, uninvited**
 
 ```
-*** Ridley[kit-bot] joined
-Ridley[kit-bot]: kit here. "part" sends me home.
+*** Mirn[kit-bot] joined
+Mirn[kit-bot]: kit here. "part" sends me home.
 (silence, whatever happens, unless someone addresses it)
 ```
 
@@ -1062,9 +1097,15 @@ Rough size:
    does, for the owner alone and for the one check in §7, and that needs real
    decoded audio rather than presence -- so the presence-only idea is dropped
    rather than deferred. Musical listening beyond that is §14.
-3. **What are the bots actually called?** The criteria are settled (§5): coined,
-   two syllables, distinct first letters, at least two edits apart, not a
-   plausible human handle. The pool itself is a taste call and is not made.
+3. ~~What are the bots actually called?~~ **Decided: `Mirn`, `Delvo`, `Pundo`
+   and `Quado`, with the tutor called `Tutor`.** Thirty candidates searched and
+   the least occupied kept; see §5 for the criteria, including the one that
+   only emerged from reading them aloud -- a familiar rime matters more than
+   syllable count.
+
+   Still open underneath it: **the pool has no spares**, so a name colliding
+   with a player already in the room falls straight to the instrument fallback
+   rather than being skipped at join. Another handful wants vetting.
 
 4. ~~Do bots take room chat, or private messages only?~~ **Decided: room chat
    with an explicit address is the primary path, and a private message is an
