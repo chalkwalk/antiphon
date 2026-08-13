@@ -780,6 +780,80 @@ future dependencies cannot leak into the client -- for a fraction of the cost,
 and it makes the eventual split mechanical because the hard part of a split is
 discovering the boundary.
 
+#### A shared library across the Chalkwalk projects
+
+Wider than this repository and not scheduled, but the split is the moment to
+think about it, because extracting a layer here and extracting it for everybody
+are nearly the same piece of work.
+
+**The argument for it is not theoretical, it is something that already happened
+to us.** `polyBlep` was ported here from seq_play, and porting it meant testing
+it, and testing it found that the correction was being ADDED where it should
+have been subtracted -- so seq_play's oscillators had been aliasing 82% worse
+than no correction at all, for its whole life. Worse, one of its tests was
+passing *because* of the bug. That fix had to be made twice, and
+arps-euclidya may still carry it. `Svf` and `hermite4` came the other way, from
+seq_play to here. Copy-paste means a bug found in one place stays broken in the
+others, and "do X like seq_play does" is a citation that cannot be compiled.
+
+**But the research says the obvious contents are the wrong contents.**
+
+General DSP primitives are thoroughly covered by libraries that are better
+tested than ours will ever be: Signalsmith Audio's header-only C++11 library --
+whose stated goal is measuring the actual audio characteristics of its tools,
+frequency response and aliasing, which is the same discipline this project
+arrived at independently -- plus DaisySP (MIT) and chowdsp_utils, catalogued in
+`awesome-audio-dsp`. `Svf`, `DelayLine`, `hermite4` and `polyBlep` are
+commodities. The interesting question for those is not "should we share ours"
+but "should we be using somebody else's", and the honest answer is probably yes.
+
+What is genuinely thin ground is the layer above:
+
+- **Music theory in C++ is poorly served.** What exists is either tied to a
+  framework (`ofxMusicTheory` needs openFrameworks), narrow (`Septima` does
+  seventh-chord voice leading and little else), or a MIDI scoring environment
+  (`CFugue`). Nothing offers a dependency-free, tested chord/chart/key library.
+  `Harmony.h` -- charts with bar timing, roman numerals, key inference from a
+  progression, cyclic voice leading by dynamic programming -- is more capable
+  than most of them for what it does, and it is 900 lines.
+- **Measurement as a shared instrument.** `libebur128` (MIT) does loudness
+  properly and ours is redundant beside it. What is not redundant is
+  `AudioMeasure` as a WHOLE: peak, rms, crest, spectral brightness,
+  autocorrelation pitch and integrated loudness behind one interface, used by
+  the tuning tool and asserted by the tests so that tuning by ear and setting a
+  threshold cannot disagree. That combination is the thing this project got
+  right, and it is the thing every one of these projects needs.
+- **The generative vocabulary** -- Euclidean rhythms, metric strength, contour
+  shapes, the salted-seed discipline. Shared between arps-euclidya and here
+  already, by retyping.
+
+**Three costs, stated before anybody gets enthusiastic.**
+
+The rule of three is not quite met. `Svf` has two consumers, `hermite4` two,
+Euclidean two. Two is where you guess at an interface; three is where you know
+it. `mpe_phys` may be the third, but it is early enough that its needs are not
+yet evidence.
+
+A shared library inherits the STRICTEST constraint of any consumer. Antiphon
+forbids allocation, locks and logging on the audio thread, keeps its DSP
+JUCE-free so it can be tested headlessly, and requires ASCII source. Anything
+shared has to meet all of that whether or not the other projects care, because
+the alternative is a library Antiphon cannot use.
+
+And the extraction is not free where it looks freest: `MusicalKey.h` and
+`Harmony.h` include `<JuceHeader.h>` for `juce::String` alone. Making them
+portable means `std::string` throughout and a sweep of every call site -- purely
+mechanical, and exactly the kind of cost that only appears once you try.
+
+**The shape I would argue for**, if and when it happens: one repository, four
+small headers-plus-tests rather than a framework, JUCE-free, with a stated scope
+so it does not become a junk drawer -- *music theory, generative rhythm and
+melody, and audio measurement*. Explicitly NOT general DSP primitives, which
+somebody else already maintains better.
+
+Not scheduled. Worth revisiting when `mpe_phys` is far enough along to be a
+third genuine consumer rather than a hoped-for one.
+
 #### Why this is not the next thing
 
 The benefits are all anticipated: independent reuse by somebody who is not us,
