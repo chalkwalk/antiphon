@@ -17,6 +17,21 @@ public:
   virtual void onDisconnected(const juce::String &) {}
   virtual void onServerConfig(int, int) {}
   virtual void onUserInfoChange() {}
+
+  // Somebody joined or left, carrying WHO rather than only that something
+  // changed.
+  //
+  // This exists because `getRoomMembers()` cannot answer the question. The set
+  // is maintained on the network thread the instant a JOIN or PART arrives,
+  // while listener callbacks are dispatched to the message thread afterwards --
+  // so a listener asking "is this person here now?" is asking about a list that
+  // may already have moved on. A player who joins and leaves inside one
+  // message-thread gap is, from the listener's side, someone who was never
+  // there at all.
+  //
+  // The event carries the fact instead, and a fact does not go stale.
+  virtual void onRoomMembershipChange(const juce::String & /*username*/,
+                                      bool /*joined*/) {}
   virtual void onChatMessage(const juce::String &type,
                              const juce::String &username,
                              const juce::String &text) {}

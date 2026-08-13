@@ -242,6 +242,50 @@ public:
       }, 8000), "the bot outlived the player who brought it");
     }
 
+    beginTest("an owner who comes and goes unseen still takes the bots");
+    {
+      // The regression test for a race that made the suite intermittently
+      // flaky and, on a real server, would have made a bot immortal.
+      //
+      // `roomMembers` is maintained on the NETWORK thread the instant a JOIN or
+      // PART arrives; listener callbacks reach the bot on the MESSAGE thread
+      // afterwards. So a bot that answers "is my owner here?" by scanning that
+      // set is asking about a list which may already have moved on -- and an
+      // owner who joins and leaves inside one message-thread gap was, as far as
+      // the scan can tell, never there at all. The bot never records having
+      // seen them, so it never leaves.
+      //
+      // Reproducing that needs the gap to be real rather than hoped for, which
+      // is why this test does its joining and leaving WITHOUT pumping the
+      // message loop: `juce::Thread::sleep` on the message thread lets the
+      // network thread run and dispatches nothing. Both events are therefore
+      // certain to be processed before any callback fires. An earlier version
+      // of this test used the ordinary helper, which pumps, and consequently
+      // passed with the bug still in place.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner watcher;
+      expect(watcher.join(room, "watcher"));
+      const auto botName = room.botNames()[0];
+      expect(waitUntil([&] {
+        return watcher.client.getRemoteUsers().count(botName) > 0;
+      }, 5000), "the bot never appeared");
+
+      {
+        NinjamClient you;
+        you.setSampleRate(48000.0);
+        you.connectToServer(PracticeRoom::host(), room.port(), "you", "");
+        juce::Thread::sleep(700);  // on the wire, off the message loop
+        you.disconnectFromServer();
+        juce::Thread::sleep(300);
+      }
+
+      expect(waitUntil([&] {
+        return watcher.client.getRemoteUsers().count(botName) == 0;
+      }, 8000), "a bot outlived an owner it never saw arrive");
+    }
+
     beginTest("a bot does not leave before its owner has ever arrived");
     {
       // Bots connect before the player does, so "owner absent" must not mean
