@@ -501,6 +501,18 @@ inputs, identical deterministic function, agreement for free.
 - [ ] Deviation, so the form does not become its own kind of stale: an
       occasional departure whose likelihood grows the longer a phrase has
       repeated.
+- [ ] **Tab completion in the chat field.** Complete `/` commands from the
+      command list, and usernames after `/msg` and `/kick` from the room's user
+      list -- and a name at the start of a line, which is how a bot is addressed
+      (`docs/BOT-CHAT.md` section 5). Common prefix first, then cycling.
+      Accessibility is half the point: the completion and the candidate list
+      both want announcing, and a name nobody can spell is a name nobody can
+      reach.
+- [ ] **Resolve `/msg` and `/kick` against the user list, not whitespace.**
+      Both split on the first space, so neither can reach a username containing
+      one. Longest match against the names actually in the room fixes it, and
+      is what makes tab completion and hand-typing agree.
+
 - [ ] **A seed should not change the volume.** The kit's integrated loudness
       varies by 3.7 LU across seeds, purely because a busy Euclidean figure has
       more hits in it than a sparse one -- so `shake` currently changes how loud
