@@ -665,10 +665,6 @@ void renderKeys(const Settings &s, float *out, float *right, int numSamples) {
   // player lifting both hands cleanly between every chord, which nobody does,
   // and it reads as chopped however gentle the release is made.
   //
-  // The tail is bounded by the buffer, so the last chord of an interval keeps
-  // whatever room is left and no more. That is a real limitation of rendering
-  // one interval at a time rather than a choice -- a Ninjam interval is a
-  // closed unit and nothing can sound across the join.
   const double longestRelease = 2.0;
   const int tail = (int)(longestRelease * s.sampleRate);
 
@@ -690,6 +686,43 @@ void renderKeys(const Settings &s, float *out, float *right, int numSamples) {
                           saltedSeed(Voice::Keys, s.seed) +
                               2654435761u * (std::uint32_t)note +
                               97u * (std::uint32_t)span.from);
+  }
+
+  // The interval wraps onto itself.
+  //
+  // The last chord's release runs past the end of the buffer, and a Ninjam
+  // interval is a closed unit, so that tail has nowhere to go: every four
+  // seconds the pad was cut off mid-release and started again. Audible as a
+  // seam, and the more audible the longer the release -- which is exactly the
+  // direction the envelopes were just moved in.
+  //
+  // But the chart is the same every interval, so what was sounding at the end
+  // of the previous one is not merely knowable, it is IDENTICAL to what is
+  // sounding at the end of this one. So the last chord is rendered once more
+  // into a scratch buffer, and the part of it that falls past the boundary is
+  // added at the head. The result is a genuinely continuous instrument built
+  // out of intervals that are still closed units, with no state carried
+  // between calls and nothing to break determinism.
+  //
+  // Costs one chord's worth of rendering per interval, on the conductor
+  // thread, which is allowed to allocate.
+  if (!spans.empty()) {
+    const auto &last = spans.back();
+    const int at = atStep(last.from);
+    const int hold = std::min(numSamples - at, atStep(last.to) - at);
+    if (hold > 0) {
+      std::vector<float> scratch((size_t)(hold + tail), 0.0f);
+      for (int note : voicings[(size_t)last.chord])
+        BotVoice::renderPad(scratch.data(), hold + tail, hold, s.sampleRate,
+                            BotVoice::midiToHz((double)note), 0.85f, patch,
+                            saltedSeed(Voice::Keys, s.seed) +
+                                2654435761u * (std::uint32_t)note +
+                                97u * (std::uint32_t)last.from);
+
+      const int carried = std::min(numSamples, tail);
+      for (int i = 0; i < carried; ++i)
+        out[i] += scratch[(size_t)(hold + i)];
+    }
   }
 
   BotDsp::Chorus chorus;
@@ -760,6 +793,54 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
                          velocity, instrument,
                          saltedSeed(Voice::Lead, s.seed) +
                              613u * (std::uint32_t)step);
+  }
+
+  // And the note that was still ringing when the last interval ended, for the
+  // reason renderKeys documents: an interval is a closed unit, so without this
+  // a plucked or struck lead is chopped off every four seconds.
+  //
+  // The lead's line is rerolled per interval, so unlike the chart this is not
+  // the same note -- it has to be worked out from the PREVIOUS interval's line,
+  // which is a pure function of the seed and the index and so costs nothing but
+  // the arithmetic. The first interval a bot ever plays genuinely has no
+  // predecessor, and is left alone.
+  if (intervalIndex > 0) {
+    const auto previous = leadLine(s, intervalIndex - 1);
+    int lastStep = -1;
+    for (int step = (int)previous.size() - 1; step >= 0; --step)
+      if (previous[(size_t)step] >= 0) {
+        lastStep = step;
+        break;
+      }
+
+    if (lastStep >= 0) {
+      const int at = lastStep * eighth;
+      int held = std::min(numSamples - at,
+                          (int)((int)previous.size() - lastStep) * eighth);
+
+      // A colour note is cut short wherever it falls, so if it was one it had
+      // already stopped well before the boundary and there is nothing to carry.
+      const auto &chord = Harmony::chordAtStep(layout, lastStep);
+      if (noteTier(previous[(size_t)lastStep], chord) == 2)
+        held = std::min(held, eighth);
+
+      if (held > 0 && at + held >= numSamples) {
+        const int strength = metricStrength(lastStep, s.bpi);
+        const float velocity =
+            strength >= 3 ? 0.85f : (strength >= 1 ? 0.7f : 0.5f);
+
+        std::vector<float> scratch((size_t)(held + tail), 0.0f);
+        BotVoice::renderLead(scratch.data(), held + tail, held, s.sampleRate,
+                             BotVoice::midiToHz((double)previous[(size_t)lastStep]),
+                             velocity, instrument,
+                             saltedSeed(Voice::Lead, s.seed) +
+                                 613u * (std::uint32_t)lastStep);
+
+        const int carried = std::min(numSamples, tail);
+        for (int i = 0; i < carried; ++i)
+          out[i] += scratch[(size_t)(held + i)];
+      }
+    }
   }
 }
 
