@@ -151,6 +151,63 @@ bool PracticeBot::handleBandCommand(const juce::String &text) {
   return false;
 }
 
+juce::String PracticeBot::handlePrivateCommand(const juce::String &text) {
+  if (!playing.load())
+    return {};
+
+  const auto t = text.trim().toLowerCase();
+
+  // Only the soloist answers to these. A drummer asked to play the guitar
+  // should say so rather than silently accepting a setting it will never read.
+  const bool leadWords = t == "epiano" || t == "piano" || t == "rhodes" ||
+                         t == "guitar" || t == "synth";
+  if (leadWords) {
+    if (bandVoice != BotBand::Voice::Lead)
+      return botName + " plays the " +
+             juce::String(BotBand::voiceName(bandVoice)).toLowerCase() +
+             ". Ask the lead.";
+
+    int wanted = (int)BotVoice::LeadInstrument::Synth;
+    if (t == "epiano" || t == "piano" || t == "rhodes")
+      wanted = (int)BotVoice::LeadInstrument::EPiano;
+    else if (t == "guitar")
+      wanted = (int)BotVoice::LeadInstrument::Guitar;
+
+    juce::ScopedLock sl(stateMutex);
+    settings.leadOverride = wanted;
+    return botName + " on " +
+           BotVoice::leadInstrumentName((BotVoice::LeadInstrument)wanted) + ".";
+  }
+
+  // What are you playing? The one question worth being able to ask, because
+  // the seed picks the answer and there is otherwise no way to find out.
+  if (t == "sound" || t == "what" || t == "kit") {
+    BotBand::Settings copy;
+    {
+      juce::ScopedLock sl(stateMutex);
+      copy = settings;
+    }
+
+    switch (bandVoice) {
+    case BotBand::Voice::Lead:
+      return botName + " is playing " +
+             BotVoice::leadInstrumentName(BotBand::leadInstrument(copy)) + ".";
+    case BotBand::Voice::Keys:
+      return botName + " is playing a " +
+             BotVoice::padCharacterName(BotBand::keysPatch(copy).character) +
+             " patch.";
+    case BotBand::Voice::Bass:
+      return botName + " is playing " +
+             BotVoice::bassTechniqueName(BotBand::bassTechnique(copy)) +
+             " bass.";
+    case BotBand::Voice::Drums:
+      return botName + " is playing the kit.";
+    }
+  }
+
+  return {};
+}
+
 bool PracticeBot::isPartCommand(const juce::String &text) {
   const auto t = text.trim().toLowerCase();
   for (const auto *cmd : kPartCommands)
@@ -287,6 +344,13 @@ void PracticeBot::onChatMessage(const juce::String &type,
 
   if (text.trim().toLowerCase() == "help") {
     netClient.sendPrivateMessage(username, helpLine(botName));
+    return;
+  }
+
+  // Things only one player is asked, and which room chat does not take.
+  const auto reply = handlePrivateCommand(text);
+  if (reply.isNotEmpty()) {
+    netClient.sendPrivateMessage(username, reply);
     return;
   }
 

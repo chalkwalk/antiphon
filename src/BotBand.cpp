@@ -53,24 +53,6 @@ Harmony::Layout layoutOf(const Settings &s) {
   return Harmony::layoutChart(s.chart, s.bpi);
 }
 
-// How this bass player plays, chosen once and then held for the whole session.
-//
-// A FRESH Rng with its own constant rather than a draw from the figure's
-// sequence: taking a value out of an existing stream shifts every subsequent
-// draw and silently rewrites the notes (see renderDrums' hat rotation for the
-// same trick and the same reason).
-BotVoice::BassTechnique bassTechnique(const Settings &s) {
-  Rng rng(saltedSeed(Voice::Bass, s.seed) ^ 0x27D4EB2Fu);
-  switch (rng.range(0, 2)) {
-  case 0:
-    return BotVoice::BassTechnique::Picked;
-  case 1:
-    return BotVoice::BassTechnique::Muted;
-  default:
-    return BotVoice::BassTechnique::Fingered;
-  }
-}
-
 // The kick's figure, needed by the bass as well as the drums: a bass line that
 // rolls its own rhythm fights the kick instead of locking to it, which is what
 // real bass playing mostly does not do.
@@ -735,6 +717,14 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
   if (eighth <= 0)
     return;
 
+  const auto instrument = leadInstrument(s);
+
+  // Two of the three instruments are struck or plucked and go on ringing after
+  // the hand leaves, so a note is given room past the slot it was played in --
+  // the same arrangement the keys use, and for the same reason: a line whose
+  // every note stops dead at the next one is a sequencer.
+  const int tail = (int)(1.5 * s.sampleRate);
+
   for (size_t step = 0; step < line.size(); ++step) {
     if (line[step] < 0)
       continue;
@@ -765,8 +755,11 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
     if (noteTier(line[step], chord) == 2)
       held = std::min(length, eighth);
 
-    BotVoice::renderLead(out + at, held, s.sampleRate,
-                         BotVoice::midiToHz((double)line[step]), velocity);
+    BotVoice::renderLead(out + at, std::min(numSamples - at, held + tail), held,
+                         s.sampleRate, BotVoice::midiToHz((double)line[step]),
+                         velocity, instrument,
+                         saltedSeed(Voice::Lead, s.seed) +
+                             613u * (std::uint32_t)step);
   }
 }
 
@@ -824,6 +817,41 @@ inline constexpr float kVoiceTrim[kNumVoices] = {
     0.32f, // Keys
     1.15f, // Lead
 };
+
+// How this bass player plays, chosen once and then held for the whole session.
+//
+// A FRESH Rng with its own constant rather than a draw from the figure's
+// sequence: taking a value out of an existing stream shifts every subsequent
+// draw and silently rewrites the notes (see renderDrums' hat rotation for the
+// same trick and the same reason).
+BotVoice::BassTechnique bassTechnique(const Settings &s) {
+  Rng rng(saltedSeed(Voice::Bass, s.seed) ^ 0x27D4EB2Fu);
+  switch (rng.range(0, 2)) {
+  case 0:
+    return BotVoice::BassTechnique::Picked;
+  case 1:
+    return BotVoice::BassTechnique::Muted;
+  default:
+    return BotVoice::BassTechnique::Fingered;
+  }
+}
+
+BotVoice::LeadInstrument leadInstrument(const Settings &s) {
+  if (s.leadOverride >= 0 && s.leadOverride <= 2)
+    return (BotVoice::LeadInstrument)s.leadOverride;
+
+  // A fresh generator with its own constant, for the reason bassTechnique
+  // documents.
+  Rng rng(saltedSeed(Voice::Lead, s.seed) ^ 0x68E31DA4u);
+  switch (rng.range(0, 2)) {
+  case 0:
+    return BotVoice::LeadInstrument::EPiano;
+  case 1:
+    return BotVoice::LeadInstrument::Guitar;
+  default:
+    return BotVoice::LeadInstrument::Synth;
+  }
+}
 
 BotVoice::PadPatch keysPatch(const Settings &s) {
   // A fresh generator with its own constant, for the reason bassTechnique

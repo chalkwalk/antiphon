@@ -48,6 +48,20 @@ struct Settings {
   // every instrument the same shape -- the mistake seq_play's MelodyGen
   // documents having made and fixed.
   std::uint32_t seed = 1;
+
+  // Which instrument the soloist is holding, or negative for whatever the seed
+  // chose, which is the default.
+  //
+  // It SURVIVES a shake, deliberately. Shake rerolls what the band plays, and
+  // somebody who asked for a guitar because they came to practise keyboards
+  // has not changed their mind about that by asking for a different tune.
+  //
+  // This is the only thing about the band a player can pin, and it is the one
+  // worth pinning: the lead is the part you mute so you can play it, and
+  // whether it is in your way depends on what you brought. Everything else is
+  // a property of the seed and stays that way, because a band with a dozen
+  // settings is a band you configure instead of play with.
+  int leadOverride = -1;
 };
 
 // Fills a complete, valid Settings for a key, using the mode-aware default
@@ -101,6 +115,14 @@ int noteTier(int midiNote, const Harmony::Chord &chord);
 // entry per eighth. Exposed so the note choices can be asserted exactly,
 // where the audio can only be measured.
 std::vector<int> leadLine(const Settings &s, int intervalIndex);
+
+// How the bass player plays, chosen once from the seed and then held for the
+// whole session.
+BotVoice::BassTechnique bassTechnique(const Settings &s);
+
+// Which instrument the lead is playing: the seed's choice, unless a player has
+// asked for one.
+BotVoice::LeadInstrument leadInstrument(const Settings &s);
 
 // The patch the keyboard player is using this session, chosen from the seed.
 //
