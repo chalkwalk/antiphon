@@ -786,13 +786,38 @@ Wider than this repository and not scheduled, but the split is the moment to
 plan it, because extracting a layer here and extracting it for everybody are
 nearly the same work.
 
-**The argument is not theoretical.** `polyBlep` was ported here from seq_play;
-porting it meant testing it, and testing it found the correction being ADDED
-where it should have been subtracted -- so seq_play's oscillators aliased 82%
-worse than no correction at all, for its whole life, with one of its own tests
-passing *because* of the bug. That fix had to be made twice, and arps-euclidya
-may still carry it. `Svf` and `hermite4` came the other way. "Do X like seq_play
-does" is a citation that cannot be compiled.
+**The argument is not theoretical, and reading the other repositories made it
+stronger than the version written from memory.**
+
+`polyBlep` was ported here from seq_play; porting it meant testing it, and
+testing it found the correction being ADDED where it should have been
+subtracted -- so seq_play's oscillators aliased 82% worse than no correction at
+all, for its whole life, with one of its own tests passing *because* of the bug.
+`Svf` and `hermite4` came the other way. (An earlier draft here guessed that
+arps-euclidya carried the same oscillator bug. It does not: it has no
+oscillators. It is a MIDI generator.)
+
+**Euclidean rhythm is implemented three times, and the three do not agree.**
+
+| | Where | Formulation |
+|---|---|---|
+| Antiphon | `src/Euclidean.h` | `(i * pulses) % length < pulses` |
+| seq_play | `src/core/Euclidean.h` | the same, under the name `bjorklund` -- which it is not; Bjorklund's is the recursive one |
+| arps-euclidya | `src/EuclideanMath.cpp` | Bresenham with the error term seeded at `steps / 2` |
+
+That seeding is not cosmetic. It rotates the pattern:
+
+```
+E(3,8)   x..x..x.   vs   .x..x.x.
+E(5,16)  x...x..x..x..x..   vs   .x..x...x..x..x.
+E(5,8)   x.x.xx.x   vs   x.x.xx.x        (agree)
+```
+
+Same necklace, different phase -- so a figure that lands on the downbeat in two
+of these projects lands off it in the third, and Antiphon's kick relies on
+exactly that ("the kick lands on the downbeat; everything else moves"). Three
+implementations, three names, two behaviours, one author. **The rule of three is
+met today, without waiting for `mpe_phys`.**
 
 ##### The rule for taking a dependency
 
@@ -905,10 +930,36 @@ FluidLite gets driven directly. A resampler would be used directly.
 
 ##### Ordering
 
+##### What the other repositories actually contain
+
+Read rather than assumed, because the plan above was drafted from memory and two
+of its guesses were wrong:
+
+| Project | `src/` lines | What it is | Overlap |
+|---|---|---|---|
+| seq_play | 74 000 | Sequencer, tape machine, drum and analog machines, Push 1 surface | The largest by far, and the source of `Svf`, `hermite4`, `polyBlep`, the scale model and the scatter resampler |
+| Antiphon | 19 600 | This | Harmony, measurement, the band's voices |
+| arps-euclidya | 19 000 | A MIDI generator -- no audio DSP at all | Euclidean, and nothing else |
+| mpe_phys | 2 500 | Physical modelling: `BowedExciter`, `WaveguideResonator` | The third consumer for STRINGS AND RESONATORS, not for theory |
+
+Two consequences the earlier draft got wrong. `mpe_phys` is not a future
+consumer of the music-theory layer; it is a present one of the physical-modelling
+layer, which is where `PluckedString` and `ModalBank` live. And a grep for
+shared concepts has to be read carefully: `brightness` appears in all four and
+means three different things -- scale brightness in seq_play, spectral centroid
+in Antiphon and mpe_phys, and UI colour in arps-euclidya.
+
+##### Ordering
+
 Not now, and not before the in-repository separation above -- the shared library
 is the same boundary discovery repeated across four codebases, and doing it here
-first is the cheap rehearsal. `mpe_phys` becoming a real consumer is the signal
-that the interfaces are known rather than guessed.
+first is the cheap rehearsal.
+
+The first extraction should be **Euclidean**, because it is the smallest, it has
+three real consumers today, and the three disagree -- so it is the one where
+sharing fixes a live defect rather than merely preventing a future one. Deciding
+which phase is correct is a musical decision somebody has to make once, which is
+precisely the argument for one implementation.
 
 #### Why this is not the next thing
 
