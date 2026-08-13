@@ -283,6 +283,159 @@ inline double firstNoteHz(const float *data, int numSamples, double sampleRate,
   return fundamentalHz(data + onset, span, sampleRate, lowHz, highHz);
 }
 
+// Loudness, as ITU-R BS.1770 / EBU R128 hears it.
+//
+// RMS is not loudness, and the difference matters most for exactly the
+// comparison the band needs: a kick and a hi-hat at the same RMS are nowhere
+// near the same loudness, because the ear is far less sensitive at 50 Hz than
+// at 8 kHz. Balancing a band by RMS therefore flatters whatever is lowest, and
+// the drums were the thing being balanced.
+//
+// Two pieces. K-weighting is a pair of biquads -- a high shelf for the head's
+// effect on incoming sound, then a high-pass that discounts the very low end --
+// and gating throws away the quiet parts so that a sparse part is measured by
+// how loud it is when it plays rather than by how much silence surrounds it.
+//
+// Validated against ffmpeg's ebur128 rather than against itself; see
+// AudioMeasureTests.
+
+inline constexpr double kSilenceLufs = -70.0;
+
+struct Biquad {
+  double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
+  double x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0;
+
+  double process(double x) {
+    const double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1;
+    x1 = x;
+    y2 = y1;
+    y1 = y;
+    return y;
+  }
+};
+
+// The two stages of K-weighting, for any sample rate. The constants are the
+// analogue prototype's, so 44.1 and 96 kHz are as right as 48.
+inline void kWeighting(double sampleRate, Biquad &shelf, Biquad &highpass) {
+  {
+    const double f0 = 1681.974450955533;
+    const double gain = 3.999843853973347;
+    const double q = 0.7071752369554196;
+    const double k = std::tan(kPi * f0 / sampleRate);
+    const double vh = std::pow(10.0, gain / 20.0);
+    const double vb = std::pow(vh, 0.4996667741545416);
+    const double a0 = 1.0 + k / q + k * k;
+
+    shelf.b0 = (vh + vb * k / q + k * k) / a0;
+    shelf.b1 = 2.0 * (k * k - vh) / a0;
+    shelf.b2 = (vh - vb * k / q + k * k) / a0;
+    shelf.a1 = 2.0 * (k * k - 1.0) / a0;
+    shelf.a2 = (1.0 - k / q + k * k) / a0;
+  }
+  {
+    const double f0 = 38.13547087602444;
+    const double q = 0.5003270373238773;
+    const double k = std::tan(kPi * f0 / sampleRate);
+    const double denom = 1.0 + k / q + k * k;
+
+    highpass.b0 = 1.0;
+    highpass.b1 = -2.0;
+    highpass.b2 = 1.0;
+    highpass.a1 = 2.0 * (k * k - 1.0) / denom;
+    highpass.a2 = (1.0 - k / q + k * k) / denom;
+  }
+}
+
+// Integrated loudness in LUFS. `right` may be null for a single channel.
+//
+// Needs at least one 400 ms block; anything shorter returns the silence floor,
+// because the standard has nothing to say about a shorter measurement and
+// inventing an answer would be worse than admitting there is not one.
+inline double integratedLufs(const float *left, const float *right,
+                             int numSamples, double sampleRate) {
+  if (left == nullptr || numSamples <= 0 || sampleRate <= 0.0)
+    return kSilenceLufs;
+
+  const int blockSamples = (int)(0.4 * sampleRate);
+  const int hopSamples = (int)(0.1 * sampleRate);
+  if (blockSamples <= 0 || hopSamples <= 0 || numSamples < blockSamples)
+    return kSilenceLufs;
+
+  const int channels = right != nullptr ? 2 : 1;
+
+  // K-weight the whole thing once, then square it: the blocks overlap by 75%,
+  // so filtering per block would do the work four times and, worse, would
+  // restart the filter state at every block boundary.
+  std::vector<double> squared((size_t)numSamples, 0.0);
+  for (int ch = 0; ch < channels; ++ch) {
+    const float *in = ch == 0 ? left : right;
+    Biquad shelf, highpass;
+    kWeighting(sampleRate, shelf, highpass);
+    for (int i = 0; i < numSamples; ++i) {
+      const double y = highpass.process(shelf.process((double)in[i]));
+      squared[(size_t)i] += y * y;
+    }
+  }
+
+  // Mean square per block, which is the sum over channels already.
+  std::vector<double> blocks;
+  for (int start = 0; start + blockSamples <= numSamples; start += hopSamples) {
+    double sum = 0.0;
+    for (int i = start; i < start + blockSamples; ++i)
+      sum += squared[(size_t)i];
+    blocks.push_back(sum / (double)blockSamples);
+  }
+  if (blocks.empty())
+    return kSilenceLufs;
+
+  auto loudnessOf = [](double meanSquare) {
+    return meanSquare > 0.0 ? -0.691 + 10.0 * std::log10(meanSquare)
+                            : kSilenceLufs;
+  };
+
+  // The absolute gate: anything under -70 LUFS is silence and is not part of
+  // the programme.
+  double sum = 0.0;
+  int kept = 0;
+  for (double z : blocks)
+    if (loudnessOf(z) > kSilenceLufs) {
+      sum += z;
+      ++kept;
+    }
+  if (kept == 0)
+    return kSilenceLufs;
+
+  // The relative gate, which is what makes this a measure of the music rather
+  // than of how much room was left around it: blocks more than 10 LU below the
+  // ungated average are dropped and the average taken again.
+  const double relative = loudnessOf(sum / (double)kept) - 10.0;
+
+  double finalSum = 0.0;
+  int finalKept = 0;
+  for (double z : blocks)
+    if (loudnessOf(z) > kSilenceLufs && loudnessOf(z) > relative) {
+      finalSum += z;
+      ++finalKept;
+    }
+  if (finalKept == 0)
+    return kSilenceLufs;
+
+  return loudnessOf(finalSum / (double)finalKept);
+}
+
+inline double integratedLufs(const float *data, int numSamples,
+                             double sampleRate) {
+  return integratedLufs(data, nullptr, numSamples, sampleRate);
+}
+
+// The gain that moves a measured loudness onto a target one.
+inline double gainForLufs(double measuredLufs, double targetLufs) {
+  if (measuredLufs <= kSilenceLufs)
+    return 1.0;
+  return std::pow(10.0, (targetLufs - measuredLufs) / 20.0);
+}
+
 // MIDI note number for a frequency, and its pitch class. Handy wherever a
 // measured frequency has to be compared with a chord root.
 inline double midiForHz(double hz) {

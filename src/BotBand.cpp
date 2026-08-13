@@ -675,6 +675,24 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 // kDefaultRemoteChannelVolume and with a fader of its own. What is NOT free is
 // crest factor, so the anchor is set where the kit needs only gentle limiting
 // rather than wherever a target number happened to fall.
+//
+// Set by rms and then checked by LOUDNESS, which is the unit that matters and
+// is not the same thing: rms weights a kick and a hi-hat equally and the ear
+// does not. Measured with AudioMeasure::integratedLufs over five seeds, as the
+// stereo pair each bot actually transmits:
+//
+//   Bass  -11.74 LUFS      Kit  -13.36 LUFS
+//   Lead  -12.74 LUFS      Keys -16.70 LUFS
+//
+// which is the intended shape, and within 0.7 dB of it on every voice. The two
+// units agreed to about half a LU here because all four voices carry real
+// midrange -- the bass is not a sub -- so K-weighting had little to separate.
+//
+// Left exactly where rms put it, deliberately: the corrections would have been
+// under 0.7 dB, and the KIT'S OWN loudness varies by 3.7 LU from seed to seed
+// depending on how busy the figure is. Tuning a trim by half a dB against
+// material that moves by four is false precision. Making a seed's density not
+// change the band's level is a real piece of work and is on the roadmap.
 inline constexpr float kVoiceTrim[kNumVoices] = {
     2.02f, // Drums
     1.76f, // Bass
