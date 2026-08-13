@@ -53,6 +53,24 @@ Harmony::Layout layoutOf(const Settings &s) {
   return Harmony::layoutChart(s.chart, s.bpi);
 }
 
+// How this bass player plays, chosen once and then held for the whole session.
+//
+// A FRESH Rng with its own constant rather than a draw from the figure's
+// sequence: taking a value out of an existing stream shifts every subsequent
+// draw and silently rewrites the notes (see renderDrums' hat rotation for the
+// same trick and the same reason).
+BotVoice::BassTechnique bassTechnique(const Settings &s) {
+  Rng rng(saltedSeed(Voice::Bass, s.seed) ^ 0x27D4EB2Fu);
+  switch (rng.range(0, 2)) {
+  case 0:
+    return BotVoice::BassTechnique::Picked;
+  case 1:
+    return BotVoice::BassTechnique::Muted;
+  default:
+    return BotVoice::BassTechnique::Fingered;
+  }
+}
+
 // The kick's figure, needed by the bass as well as the drums: a bass line that
 // rolls its own rhythm fights the kick instead of locking to it, which is what
 // real bass playing mostly does not do.
@@ -461,6 +479,7 @@ void renderBass(const Settings &s, float *out, int numSamples) {
   Rng rng(saltedSeed(Voice::Bass, s.seed));
 
   const auto layout = layoutOf(s);
+  const auto technique = bassTechnique(s);
 
   // The figure runs finer than the beat, so a step is a fraction of one.
   const int stepsPerBeat = std::max(1, f.steps / std::max(1, s.bpi));
@@ -551,8 +570,31 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     const int lowest = (chord.bass >= 0 && onChange) ? chord.bass : chord.root;
     const double midi =
         kBassAnchorMidi + (double)lowest + (double)semitoneAboveRoot;
-    BotVoice::renderBass(out + at, length, s.sampleRate,
-                         BotVoice::midiToHz(midi), 0.7f);
+
+    // Dynamics, which this voice had none of: every note was velocity 0.7.
+    //
+    // A bass player does not hit everything equally. The chord change is the
+    // note the part exists to state, so it is the hardest; a note that lands
+    // with the kick is next; a passing note between them is the softest. That
+    // ordering is what makes a line sound phrased rather than typed, and it is
+    // also what gives velocity something to articulate -- the string gets
+    // brighter as it is played harder, continuously.
+    float velocity = 0.45f;
+    if (onChange)
+      velocity = 1.0f;
+    else if (step % stepsPerBeat == 0 &&
+             Euclidean::hit(step / stepsPerBeat, kick.steps, kick.pulses,
+                            kick.rotation))
+      velocity = 0.72f;
+
+    // A few percent either way, so two notes of the same weight are not the
+    // same note. Deterministic, like everything else here.
+    velocity *= 0.94f + 0.12f * (float)rng.range(0, 100) / 100.0f;
+
+    BotVoice::renderBassString(out + at, length, s.sampleRate,
+                               BotVoice::midiToHz(midi), velocity, technique,
+                               saltedSeed(Voice::Bass, s.seed) +
+                                   131u * (std::uint32_t)step);
   }
 }
 
@@ -695,7 +737,7 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 // change the band's level is a real piece of work and is on the roadmap.
 inline constexpr float kVoiceTrim[kNumVoices] = {
     2.02f, // Drums
-    1.76f, // Bass
+    1.50f, // Bass
     0.43f, // Keys
     1.15f, // Lead
 };

@@ -256,15 +256,31 @@ struct PluckedString {
 
     // The excitation. Noise through a lowpass set by brightness, so a hard
     // pick is a wideband burst and a thumb is a dull one.
+    //
+    // Scaled by the note rather than fixed in Hz, which is the difference
+    // between a model and a lookup table. A string's brightness is about WHICH
+    // HARMONIC it reaches, not which frequency: a bass string at 65 Hz excited
+    // to its twentieth partial is a bass, and a guitar string at 330 Hz excited
+    // to its twentieth is a guitar. With an absolute cutoff the same number
+    // gives a dull guitar and a bass with a spectral centroid of 1.7 kHz --
+    // which is what it did, measured seven times brighter than the sustained
+    // voice it replaced.
+    // Two poles rather than one, because a real pluck's spectrum falls away
+    // fast above the first few harmonics and a single lowpass leaves a burst
+    // that is nearly flat up to its corner. With one pole the bass measured a
+    // spectral centroid of 835 Hz on a 65 Hz note -- energy centred around the
+    // twelfth harmonic, which is a guitar.
     Noise noise(seed);
-    Svf shaper;
-    const double excitationCutoff = 400.0 + 7000.0 * brightness;
-    shaper.set(excitationCutoff, 0.7, sampleRate);
+    Svf shaperA, shaperB;
+    const double partials = 4.0 + 18.0 * brightness;
+    shaperA.set(hz * partials, 0.7, sampleRate);
+    shaperB.set(hz * partials * 1.2, 0.6, sampleRate);
 
     const int length = (int)period;
     std::array<float, (size_t)kStringCapacity> burst{};
     for (int i = 0; i < length; ++i)
-      burst[(size_t)i] = shaper.process(noise.next(), Svf::LowPass);
+      burst[(size_t)i] = shaperB.process(
+          shaperA.process(noise.next(), Svf::LowPass), Svf::LowPass);
 
     // Pick position, as a comb: plucking a string a fifth of the way along
     // cannot excite the harmonics with a node there, which is why a bridge
@@ -506,13 +522,23 @@ inline float softClip(float x, float knee = 0.70f,
 // The DC blocker is not decoration: asymmetric shaping produces a DC offset,
 // and a DC offset eats headroom in a mix that has none to spare.
 struct Cabinet {
-  Svf lowpass;
+  // Two pole pairs, because one is not a cabinet.
+  //
+  // A speaker in a box is a fourth-order rolloff or steeper, and the
+  // difference is audible rather than academic: at 12 dB per octave a bass amp
+  // still passes enough two-kilohertz content to sound like a very low guitar,
+  // which is exactly what the first version of the plucked bass did -- a
+  // spectral centroid of 1 kHz against a pad's 336.
+  Svf lowpassA, lowpassB;
   float dcX1 = 0.0f, dcY1 = 0.0f;
   float drive = 1.0f;
 
   void prepare(double sampleRate, double cutoffHz, double driveAmount) noexcept {
-    lowpass.set(cutoffHz, 0.8, sampleRate);
-    lowpass.reset();
+    // Staggered slightly so the pair does not resonate as one.
+    lowpassA.set(cutoffHz, 0.8, sampleRate);
+    lowpassB.set(cutoffHz * 1.15, 0.6, sampleRate);
+    lowpassA.reset();
+    lowpassB.reset();
     dcX1 = dcY1 = 0.0f;
     drive = (float)(driveAmount < 0.0 ? 0.0 : driveAmount);
   }
@@ -525,7 +551,7 @@ struct Cabinet {
       x = x > 0.0f ? std::tanh(g * x) / std::tanh(g)
                    : std::tanh(0.7f * g * x) / std::tanh(0.7f * g);
     }
-    x = lowpass.process(x, Svf::LowPass);
+    x = lowpassB.process(lowpassA.process(x, Svf::LowPass), Svf::LowPass);
 
     const float y = x - dcX1 + 0.995f * dcY1;
     dcX1 = x;

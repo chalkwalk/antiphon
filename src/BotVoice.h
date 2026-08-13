@@ -257,6 +257,152 @@ inline void renderHat(float *out, int numSamples, double sampleRate,
   }
 }
 
+// How the string is set in motion. A choice a player makes for a whole part,
+// not something that changes note to note.
+//
+// This axis exists SEPARATELY from velocity, and the separation is the point.
+// Playing harder does not turn a fingerstyle bassist into a plectrum player;
+// it makes the same technique brighter and more percussive. So technique is
+// picked once from the seed and velocity moves continuously inside it, which
+// means no note can ever land on the wrong side of a threshold and arrive
+// sounding like a different instrument.
+enum class BassTechnique { Fingered, Picked, Muted };
+
+inline const char *bassTechniqueName(BassTechnique t) {
+  switch (t) {
+  case BassTechnique::Fingered:
+    return "fingered";
+  case BassTechnique::Picked:
+    return "picked";
+  case BassTechnique::Muted:
+    return "muted";
+  }
+  return "fingered";
+}
+
+// A plucked bass string.
+//
+// Karplus-Strong, which is a delay line the length of the period, a bridge
+// that loses a little on every round trip and loses the top first, and an
+// excitation injected at one point along the string. What that buys over the
+// four summed sines it replaces is the thing no additive voice has: the timbre
+// changes AS the note decays, bright for a tenth of a second and dark for the
+// rest of its life. That shape is most of what makes a note sound played
+// rather than switched on.
+//
+// It also reopens a decision. `f82d9ce` made this voice sustained rather than
+// plucked, because the plucked version it replaced was a sine with a fast
+// decay -- which is the definition of a kick drum, in the same octave as one.
+// That commit's actual argument was that SHAPE AND TIMBRE have to separate a
+// bass from a kick, since pitch cannot. A string that rings for seconds with a
+// full set of harmonics satisfies it; a decaying sine never did.
+//
+// Velocity does three things at once here, and all three are what a real
+// instrument does when you dig in: the note is louder, its excitation is
+// brighter, and the contact noise of finger or plectrum is more prominent.
+// None of them is a switch.
+inline void renderBassString(float *out, int numSamples, double sampleRate,
+                             double hz, float velocity, BassTechnique technique,
+                             std::uint32_t seed) {
+  if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
+    return;
+
+  const float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
+
+  // Each technique is a RANGE that velocity moves along, never a point.
+  double pickPosition = 0.25, brightnessFloor = 0.18, brightnessSpan = 0.24;
+  double decaySeconds = 3.0, contact = 0.15;
+
+  // A technique that lets the string ring puts far more energy into the room
+  // than one that stops it, so the same velocity is not the same loudness. A
+  // player compensates by digging in, and so does this: without it a muted
+  // part measures 6 LU under a fingered one and the bass drops out of the band
+  // whenever the seed happens to choose it.
+  double techniqueGain = 1.0;
+  switch (technique) {
+  case BassTechnique::Fingered:
+    // The flesh of a finger, over the end of the neck: round, and it damps the
+    // string a little as it leaves.
+    break;
+  case BassTechnique::Picked:
+    // Nearer the bridge and much harder, so more of the upper modes survive
+    // the pluck and the contact is a click rather than a thump.
+    pickPosition = 0.11;
+    brightnessFloor = 0.32;
+    brightnessSpan = 0.30;
+    decaySeconds = 2.4;
+    contact = 0.40;
+    techniqueGain = 1.15;
+    break;
+  case BassTechnique::Muted:
+    // The heel of the hand resting on the bridge. Same pluck, far shorter
+    // string life, which is the whole of what a palm mute is.
+    //
+    // Not as short as it wants to be, and the reason is level rather than
+    // physics: at 0.45 s the note carries so little energy that the gain
+    // needed to keep it in the band pushed single notes to 1.19, and a voice
+    // that lives in the ceiling is a voice being limited rather than played.
+    // 0.7 s is still unmistakably muted and needs half the compensation.
+    pickPosition = 0.16;
+    brightnessFloor = 0.14;
+    brightnessSpan = 0.20;
+    decaySeconds = 0.70;
+    contact = 0.18;
+    techniqueGain = 1.5;
+    break;
+  }
+
+  const double brightness = brightnessFloor + brightnessSpan * (double)v;
+
+  BotDsp::PluckedString string;
+  string.pluck(hz, sampleRate, 0.85f * (0.18f + 0.82f * v), pickPosition,
+               brightness, decaySeconds, seed);
+
+  // The body: an instrument is not only its string. A bandpass around the
+  // lowest air resonance, mixed under, is what stops the note sounding like a
+  // synthesiser playing the right frequency.
+  BotDsp::Svf body;
+  body.set(95.0, 2.2, sampleRate);
+
+  // The sound of the finger or plectrum meeting the string, which is not the
+  // string and does not ring.
+  BotDsp::Noise noise(seed ^ 0x5BD1E995u);
+  BotDsp::Svf contactTone;
+  contactTone.set(technique == BassTechnique::Picked ? 2600.0 : 1300.0, 1.1,
+                  sampleRate);
+
+  // A bass cabinet is a DARK box: a 15-inch driver in a sealed cab does
+  // essentially nothing above two kilohertz, and that limit is most of why an
+  // amplified bass sounds like one rather than like a very low guitar.
+  BotDsp::Cabinet cabinet;
+  cabinet.prepare(sampleRate, 2200.0, 0.25);
+
+  // The note is damped rather than cut. A string stopped by a player dies over
+  // a few tens of milliseconds with its highs going first, and gating it at the
+  // buffer's end would be a click.
+  const double total = (double)numSamples / sampleRate;
+  const double release = std::min(0.06, total * 0.25);
+  const int releaseAt = numSamples - (int)(release * sampleRate);
+
+  for (int i = 0; i < numSamples; ++i) {
+    if (i == releaseAt)
+      string.mute(sampleRate, release);
+
+    const double t = (double)i / sampleRate;
+    const float s = string.next();
+
+    // The contact is a detail on the front of the note, not a component of
+    // it: audible as articulation, never as a second instrument sitting on
+    // top of the string.
+    const float attack = 0.35f * (float)contact * (0.4f + 0.6f * v) *
+                         contactTone.process(noise.next(), BotDsp::Svf::BandPass) *
+                         decayAt(t, 0.004);
+
+    const float withBody = s + 0.35f * body.process(s, BotDsp::Svf::BandPass);
+    out[i] += 0.55f * (float)techniqueGain * cabinet.process(withBody + attack);
+  }
+}
+
 // A sustained, harmonically rich bass -- deliberately NOT a plucked one.
 //
 // The first version was a sine with a fast exponential decay, which is very
