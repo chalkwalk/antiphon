@@ -35,6 +35,15 @@ public:
     int bpi = 8;
     double sampleRate = 48000.0;
     juce::String ownerName = "you";
+
+    // What the band calls itself, used once in the arrival roster.
+    //
+    // Not an address -- `band`, `everyone` and `all` are the words people
+    // actually type, and a name would only be a fourth synonym. It earns its
+    // place in the one line the band gets to introduce itself with, because
+    // "The Understudies: Mirn (kit), ..." reads as a band arriving where four
+    // usernames read as four processes starting.
+    juce::String bandName = "The Understudies";
     juce::String topic = "Practice room -- play, nobody is listening";
 
     // What the band plays in. Announcing `[key: D minor]` in chat changes it
