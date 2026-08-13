@@ -41,6 +41,11 @@ struct Options {
   // Bass articulation.
   BotVoice::BassTechnique technique = BotVoice::BassTechnique::Fingered;
 
+  // Which polysynth patch. Named on the command line, or left alone to take
+  // whatever --seed would have given the keyboard player.
+  bool patchNamed = false;
+  BotVoice::PadCharacter patchCharacter = BotVoice::PadCharacter::Poly;
+
   // Sweep.
   juce::String sweepParam;
   double sweepLo = 0.0, sweepHi = 1.0;
@@ -58,11 +63,12 @@ void usage() {
       "\n"
       "  AntiphonVoiceLab <voice> [options]\n"
       "\n"
-      "voices: kick snare hat bass lead pad kit band\n"
+      "voices: kick snare hat bass lead pad kit keys band\n"
       "  file <paths...>  measure WAVs that already exist, and with --lufs\n"
       "                   write matched copies -- for comparing renders from\n"
       "                   builds you can no longer reproduce\n"
-      "  kit and band go through the real path, with the room, in stereo\n"
+      "  kit, keys and band go through the real path -- with the kit's room and\n"
+      "  the keyboard's chorus -- in stereo\n"
       "\n"
       "  -o <path>          output file, or directory when sweeping\n"
       "  --sr <rate>        sample rate (default 48000)\n"
@@ -72,6 +78,7 @@ void usage() {
       "  --seed <n>         noise seed, and the band's seed\n"
       "  --open             open hat\n"
       "  --technique <name> bass articulation: fingered, picked or muted\n"
+      "  --patch <name>     polysynth patch: strings, brass or poly\n"
       "  --repeats <n>      render n hits (default 1)\n"
       "  --spacing <s>      seconds between repeats (default 0.5)\n"
       "  --sweep p=lo:hi:n  one file per value of p; p is velocity or note\n"
@@ -119,6 +126,23 @@ bool parseNote(const juce::String &text, int &midiOut) {
   return true;
 }
 
+// The patch to audition.
+//
+// Naming one on the command line does NOT override the fields of whatever the
+// seed gave -- the ranges are per-character, so a strings patch with a brass
+// label would be a sound the band can never produce. It walks the seed forward
+// until it lands on the character asked for, so what gets rendered is always a
+// patch the seed could really have chosen.
+BotVoice::PadPatch patchFor(const Options &o, std::uint32_t seed) {
+  auto patch = BotVoice::padPatchFor(seed);
+  if (!o.patchNamed)
+    return patch;
+
+  for (int tries = 0; tries < 64 && patch.character != o.patchCharacter; ++tries)
+    patch = BotVoice::padPatchFor(seed + 2654435761u * (std::uint32_t)(tries + 1));
+  return patch;
+}
+
 // One hit or note of a single voice, rendered into a fresh buffer.
 std::vector<float> renderOne(const Options &o) {
   const int hit = juce::jmax(1, (int)(o.seconds * o.sampleRate));
@@ -148,9 +172,17 @@ std::vector<float> renderOne(const Options &o) {
     else if (o.voice == "lead")
       BotVoice::renderLead(out, juce::jmin(room, hit), o.sampleRate, hz,
                            o.velocity);
-    else if (o.voice == "pad")
+    else if (o.voice == "pad") {
+      const auto patch = patchFor(o, seed);
+      if (r == 0)
+        std::printf("  patch %s: detune %.1f cents, cutoff %.1f partials, "
+                    "res %.2f, env x%.1f, attack %.0f ms, drive %.2f\n",
+                    BotVoice::padCharacterName(patch.character),
+                    patch.detuneCents, patch.cutoffPartials, patch.resonance,
+                    patch.envAmount, 1000.0 * patch.attackSeconds, patch.drive);
       BotVoice::renderPad(out, juce::jmin(room, hit), o.sampleRate, hz,
-                          o.velocity);
+                          o.velocity, patch, seed);
+    }
   }
   return buf;
 }
@@ -510,6 +542,19 @@ int main(int argc, char *argv[]) {
         std::fprintf(stderr, "voicelab: technique is fingered, picked or muted\n");
         return 1;
       }
+    } else if (arg == "--patch") {
+      const auto name = next().toLowerCase();
+      o.patchNamed = true;
+      if (name == "strings")
+        o.patchCharacter = BotVoice::PadCharacter::Strings;
+      else if (name == "brass")
+        o.patchCharacter = BotVoice::PadCharacter::Brass;
+      else if (name == "poly")
+        o.patchCharacter = BotVoice::PadCharacter::Poly;
+      else {
+        std::fprintf(stderr, "voicelab: patch is strings, brass or poly\n");
+        return 1;
+      }
     } else if (arg == "--lufs") {
       o.matchLufs = true;
       o.targetLufs = next().getDoubleValue();
@@ -558,8 +603,8 @@ int main(int argc, char *argv[]) {
     return failures;
   }
 
-  const juce::StringArray known{"kick", "snare", "hat",  "bass", "lead",
-                                "pad",  "kit",   "band"};
+  const juce::StringArray known{"kick", "snare", "hat", "bass", "lead",
+                                "pad",  "kit",   "keys", "band"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -588,13 +633,46 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
-  if (o.voice == "kit") {
+  if (o.voice == "kit" || o.voice == "keys") {
+    const bool isKeys = o.voice == "keys";
     if (o.out == juce::File())
-      o.out = juce::File::getCurrentWorkingDirectory().getChildFile("kit.wav");
+      o.out = juce::File::getCurrentWorkingDirectory().getChildFile(o.voice +
+                                                                   ".wav");
+
+    if (isKeys) {
+      auto key = MusicalKey::parseName(o.keyName);
+      if (!key.valid)
+        key = MusicalKey::parseName("C major");
+
+      // --patch here means "find me a seed whose keyboard player brought
+      // that", rather than overriding what the seed chose. The band's patch
+      // has to stay a pure function of its seed or the audition would be of a
+      // sound the room can never produce.
+      if (o.patchNamed)
+        for (int tries = 0; tries < 64; ++tries) {
+          const auto probe =
+              BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+          if (BotBand::keysPatch(probe).character == o.patchCharacter)
+            break;
+          o.seed += 1u;
+        }
+
+      const auto settings =
+          BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+      const auto patch = BotBand::keysPatch(settings);
+      std::printf("keys  seed %u  patch %s: detune %.1f cents, cutoff %.1f "
+                  "partials, res %.2f, env x%.1f, attack %.0f ms, drive %.2f\n",
+                  (unsigned)o.seed,
+                  BotVoice::padCharacterName(patch.character), patch.detuneCents,
+                  patch.cutoffPartials, patch.resonance, patch.envAmount,
+                  1000.0 * patch.attackSeconds, patch.drive);
+    }
+
     std::vector<float> l, r;
-    renderVoice(o, BotBand::Voice::Drums, l, r);
+    renderVoice(o, isKeys ? BotBand::Voice::Keys : BotBand::Voice::Drums, l, r);
     matchLoudness(o, l, &r);
-    report("kit (with room)", l, o.sampleRate, &r);
+    report(isKeys ? "keys (with chorus)" : "kit (with room)", l, o.sampleRate,
+           &r);
     if (!writeWav(o.out, l, o.sampleRate, &r)) {
       std::fprintf(stderr, "voicelab: could not write %s\n",
                    o.out.getFullPathName().toRawUTF8());

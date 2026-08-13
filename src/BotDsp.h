@@ -560,6 +560,68 @@ struct Cabinet {
   }
 };
 
+// Enough for a 30 ms delay at 96 kHz.
+inline constexpr int kChorusCapacity = 4096;
+
+// A stereo chorus, of the kind bolted to the output of every stage polysynth
+// of the period.
+//
+// Worth having as a primitive rather than as a general effect, because on a
+// Juno or a Polysix it is not an effect at all -- it is part of the instrument,
+// switched on for most of the factory patches, and a large share of what people
+// are remembering when they call that sound lush. Underneath it is one short
+// delay, modulated, added back to the dry signal: the delay's movement detunes
+// the copy slightly and the two beat against each other.
+//
+// The two sides read the SAME delay line at points a quarter cycle apart. In
+// quadrature rather than in antiphase, which is the choice worth explaining:
+// antiphase is what the hardware does and is wider, but it also means the two
+// sides are always moving in opposite directions, so a mono fold-down cancels
+// whatever the modulation has separated. Quadrature is nearly as wide and folds
+// down without a comb filter in it -- and a Ninjam room is full of people
+// listening on one speaker.
+//
+// The read is Hermite rather than linear because this delay is swept
+// continuously. Linear interpolation's error changes with the fractional part,
+// so a slowly moving tap modulates its own high end and the result is a faint
+// warble on top of the intended one. It is not in a feedback loop, so the
+// stability argument that keeps DelayLine::readLinear inside the string does
+// not apply here.
+struct Chorus {
+  DelayLine<kChorusCapacity> line;
+  double phase = 0.0, increment = 0.0;
+  double baseSamples = 0.0, depthSamples = 0.0;
+  float mix = 0.5f;
+
+  void prepare(double sampleRate, double rateHz, double baseMs, double depthMs,
+               float wetMix) noexcept {
+    line.clear();
+    phase = 0.0;
+    increment = sampleRate > 0.0 ? rateHz / sampleRate : 0.0;
+    baseSamples = baseMs * sampleRate / 1000.0;
+    depthSamples = depthMs * sampleRate / 1000.0;
+    // The tap must never reach the write head: Hermite needs two samples
+    // either side of it, and a delay of zero is a comb filter at DC.
+    if (baseSamples - depthSamples < 4.0)
+      depthSamples = std::max(0.0, baseSamples - 4.0);
+    mix = wetMix;
+  }
+
+  void process(float in, float &outL, float &outR) noexcept {
+    line.push(in);
+
+    const double angle = 2.0 * kPi * phase;
+    phase += increment;
+    if (phase >= 1.0)
+      phase -= 1.0;
+
+    outL = in + mix * line.readHermite(baseSamples +
+                                       depthSamples * std::sin(angle));
+    outR = in + mix * line.readHermite(baseSamples +
+                                       depthSamples * std::cos(angle));
+  }
+};
+
 // Enough for a 37 ms tap and a 47 ms comb at 96 kHz, and small enough that a
 // voice can hold one on the stack: three lines at 8192 floats is 98 KB.
 inline constexpr int kRoomCapacity = 8192;

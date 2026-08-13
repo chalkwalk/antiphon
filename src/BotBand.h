@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BotVoice.h"
 #include "Harmony.h"
 #include "MusicalKey.h"
 #include <cstdint>
@@ -101,13 +102,22 @@ int noteTier(int midiNote, const Harmony::Chord &chord);
 // where the audio can only be measured.
 std::vector<int> leadLine(const Settings &s, int intervalIndex);
 
+// The patch the keyboard player is using this session, chosen from the seed.
+//
+// Exposed because it is worth asserting exactly -- every field has a range it
+// must stay inside, and that constraint is what makes a seed-chosen timbre safe
+// rather than a lottery -- and because it is a thing a bot can eventually be
+// asked about in words.
+BotVoice::PadPatch keysPatch(const Settings &s);
+
 // Whether a voice fills both channels or only the left.
 //
-// Only the kit, and only because of the room it is heard in: two mics over a
-// drummer are not in the same place, so its early reflections differ side to
-// side and that difference IS the stereo image. Everything else is a
-// close-miked instrument standing in one spot, and stays mono so the listener's
-// pan control decides where it sits.
+// Two voices, and each has a physical reason rather than a width effect. The
+// kit is heard through a pair of overheads, so its early reflections differ
+// side to side and that difference IS the image. The keyboard is heard through
+// the stereo chorus on its own output, which is a front-panel switch on the
+// instruments it is modelled on. Bass and lead are close-miked and stay mono,
+// so the listener's pan control decides where they sit.
 bool isStereo(Voice voice);
 
 // Renders one interval into `left`, and into `right` when the voice is stereo.

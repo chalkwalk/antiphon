@@ -598,11 +598,37 @@ void renderBass(const Settings &s, float *out, int numSamples) {
   }
 }
 
-void renderKeys(const Settings &s, float *out, int numSamples) {
+// The keyboard's output stage, after every voice has been summed.
+//
+// Two things live here rather than in the voice, and for the same reason the
+// kit's room lives in renderDrums rather than in renderKick: on the instrument
+// being modelled they are downstream of the whole keyboard, not per note. A
+// chorus applied to each note separately would be six chorus units, which is
+// not what is inside any of these machines and would smear each voice against
+// itself instead of spreading them against each other.
+//
+// The chorus is the more visible of the two. On a Juno or a Polysix it is a
+// front-panel switch that most factory patches leave on, and it is a large
+// part of what people are hearing when they call these instruments lush. It is
+// also the only thing making this voice stereo.
+inline constexpr double kKeysChorusRate = 0.55;   // Hz
+inline constexpr double kKeysChorusBase = 12.0;   // ms
+inline constexpr double kKeysChorusDepth = 3.2;   // ms
+inline constexpr float kKeysChorusMix = 0.55f;
+
+// And the output amplifier. Gentle -- this is the last of the several places
+// the signal is shaped rather than the one doing the work, and the point of
+// spreading saturation along a chain is that no single stage has to be pushed
+// far enough to be heard as distortion.
+inline constexpr double kKeysDrive = 1.2;
+
+void renderKeys(const Settings &s, float *out, float *right, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
   const auto layout = layoutOf(s);
   if (beatSamples <= 0 || layout.empty())
     return;
+
+  const auto patch = keysPatch(s);
 
   // Sample positions are worked out from the beat rather than accumulated per
   // step, so a beat length that is not even does not drift across the interval.
@@ -642,8 +668,26 @@ void renderKeys(const Settings &s, float *out, int numSamples) {
       break;
 
     for (int note : voicings[(size_t)span.chord])
+      // Seeded by the NOTE and by where it falls, so the voices of a chord
+      // drift apart from each other and the same chord played twice is not the
+      // same waveform twice.
       BotVoice::renderPad(out + at, length, s.sampleRate,
-                          BotVoice::midiToHz((double)note), 0.85f);
+                          BotVoice::midiToHz((double)note), 0.85f, patch,
+                          saltedSeed(Voice::Keys, s.seed) +
+                              2654435761u * (std::uint32_t)note +
+                              97u * (std::uint32_t)span.from);
+  }
+
+  BotDsp::Chorus chorus;
+  chorus.prepare(s.sampleRate, kKeysChorusRate, kKeysChorusBase,
+                 kKeysChorusDepth, kKeysChorusMix);
+
+  for (int i = 0; i < numSamples; ++i) {
+    float wetL = 0.0f, wetR = 0.0f;
+    chorus.process(out[i], wetL, wetR);
+    out[i] = BotVoice::saturate(wetL, kKeysDrive);
+    if (right != nullptr)
+      right[i] = BotVoice::saturate(wetR, kKeysDrive);
   }
 }
 
@@ -738,11 +782,24 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 inline constexpr float kVoiceTrim[kNumVoices] = {
     2.02f, // Drums
     1.50f, // Bass
-    0.43f, // Keys
+    0.50f, // Keys
     1.15f, // Lead
 };
 
-bool isStereo(Voice voice) { return voice == Voice::Drums; }
+BotVoice::PadPatch keysPatch(const Settings &s) {
+  // A fresh generator with its own constant, for the reason bassTechnique
+  // documents: drawing from an existing sequence shifts every later draw and
+  // silently rewrites the notes.
+  return BotVoice::padPatchFor(saltedSeed(Voice::Keys, s.seed) ^ 0x1D2C6FE3u);
+}
+
+// Two voices are stereo, and each has earned it by being a real thing rather
+// than a width effect: the kit is heard through overheads in a room, and the
+// keyboard through the stereo chorus on its own output. Bass and lead are
+// close-miked and centred, which is where they belong.
+bool isStereo(Voice voice) {
+  return voice == Voice::Drums || voice == Voice::Keys;
+}
 
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
                     float *left, float *right, int numSamples) {
@@ -765,7 +822,7 @@ void renderInterval(Voice voice, const Settings &s, int intervalIndex,
     renderBass(s, out, numSamples);
     break;
   case Voice::Keys:
-    renderKeys(s, out, numSamples);
+    renderKeys(s, out, right, numSamples);
     break;
   case Voice::Lead:
     renderLead(s, intervalIndex, out, numSamples);

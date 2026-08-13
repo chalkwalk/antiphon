@@ -509,6 +509,15 @@ inputs, identical deterministic function, agreement for free.
       at render time would fix both. `AudioMeasure::integratedLufs` is the
       instrument; the cost is one extra pass over the interval.
 
+      Half of this is already done for the keys, and the half that is done is
+      the half a constant can fix. A brass patch is a driven near-square through
+      a filter that opens on every note and a strings patch is two saws barely
+      driven, so the seed's choice of patch was worth 6.4 LU on its own;
+      `PadPatch::level` is a measured per-character correction and takes the
+      spread across fourteen seeds to 2.4 LU. What is left is the same thing
+      the kit has -- how many notes the voicing put where -- and no constant
+      touches it.
+
 **One interlock to get right.** `test/BotBandTests.cpp` asserts that two
 consecutive drum intervals are not bit-identical -- today the hat rotation
 carries that -- and genuine repetition is exactly what would break it. The

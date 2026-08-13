@@ -61,6 +61,7 @@ public:
     runSeedTests();
     runFigureTests();
     runAudioTests();
+    runKeysTests();
     runLeadTests();
     runHarmonyFollowingTests();
     runRobustnessTests();
@@ -444,14 +445,54 @@ public:
              "the sides are at different levels: " + juce::String(l, 4) +
                  " against " + juce::String(r, 4));
 
-      // The room shows up as energy after the last drum has stopped. Rendered
-      // dry, the tail of a bar is much quieter than it is with reflections in
-      // it -- which is what "the kit is in a room" means, measurably.
-      for (auto voice : {BotBand::Voice::Bass, BotBand::Voice::Keys,
-                         BotBand::Voice::Lead})
+      // Bass and lead are one player standing in one spot, so they stay mono
+      // and the listener's pan control decides where they are. The keys are
+      // stereo for a reason of their own -- the chorus on the instrument's
+      // output -- and are checked separately below.
+      for (auto voice : {BotBand::Voice::Bass, BotBand::Voice::Lead})
         expect(!BotBand::isStereo(voice),
                juce::String(BotBand::voiceName(voice)) +
                    " should be a close-miked instrument, not a room");
+    }
+
+    beginTest("the keyboard is heard through its chorus, and it is stereo");
+    {
+      const auto s = settingsFor("C major", 120, 8, 1u);
+      const int n = intervalSamplesFor(s);
+      std::vector<float> left((size_t)n, 0.0f), right((size_t)n, 0.0f);
+      BotBand::renderInterval(BotBand::Voice::Keys, s, 0, left.data(),
+                              right.data(), n);
+
+      expect(BotBand::isStereo(BotBand::Voice::Keys));
+      expect(left != right, "both sides of the keyboard are identical");
+
+      const float l = rms(left, 0, n), r = rms(right, 0, n);
+      expect(l > 0.01f && r > 0.01f, "a side was silent");
+
+      // Within a decibel of each other, and much tighter than the kit's room
+      // is allowed to be. The two sides read the same delay line a quarter
+      // cycle apart, so they carry the same energy by construction -- a real
+      // difference in level would mean the modulation had reached a point
+      // where one tap was interpolating badly, or that the chorus had turned
+      // into a pan.
+      expect(std::abs(l - r) < 0.12f * juce::jmax(l, r),
+             "the sides are at different levels: " + juce::String(l, 4) +
+                 " against " + juce::String(r, 4));
+
+      // The sides must DIFFER in a way that a fixed offset cannot explain,
+      // which is what separates a chorus from a delay. Correlate them at zero
+      // lag: identical signals give 1, and a moving comb between them takes it
+      // down. Measured 0.87 with the chorus and 1.000 with it bypassed.
+      double num = 0.0, dl = 0.0, dr = 0.0;
+      for (int i = 0; i < n; ++i) {
+        num += (double)left[(size_t)i] * right[(size_t)i];
+        dl += (double)left[(size_t)i] * left[(size_t)i];
+        dr += (double)right[(size_t)i] * right[(size_t)i];
+      }
+      const double correlation = num / std::sqrt(juce::jmax(1.0e-12, dl * dr));
+      expect(correlation < 0.97 && correlation > 0.2,
+             "the sides correlate at " + juce::String(correlation, 3) +
+                 ", which is a copy rather than a chorus");
     }
 
     beginTest("a mono caller gets the kit without touching a right channel");
@@ -824,8 +865,10 @@ public:
       // the plucked string centred on the twelfth harmonic and would fail this
       // by a factor of two.
       //
-      // Restoring the bass-against-pad ordering once the pad is real is on the
-      // roadmap; it is a mix check rather than a synthesis one.
+      // The pad is now a real subtractive voice and the ordering has been
+      // restored, as "the keyboard sits above the bass" below. This assertion
+      // stays as well, because the two say different things: that one is about
+      // the mix, and this one is about the instrument.
       for (const char *keyName : {"C major", "D minor", "F# major"}) {
         for (std::uint32_t seed : {1u, 55u, 900u}) {
           const auto s = settingsFor(keyName, 120, 8, seed);
@@ -874,6 +917,275 @@ public:
       expect(render(BotBand::Voice::Drums, s, 0) !=
                  render(BotBand::Voice::Drums, s, 1),
              "every interval was the same");
+    }
+  }
+
+  void runKeysTests() {
+    beginTest("the seed picks a patch, and every patch is one somebody made");
+    {
+      // The point of the whole arrangement: the seed is allowed near the front
+      // panel, and this is what stops that being a lottery. Every control has
+      // a floor and a ceiling that were chosen by listening to both ends, and
+      // no seed may produce a setting outside them.
+      //
+      // These are the OUTER bounds across all three characters, not the
+      // per-character ranges, so the test does not simply restate the table it
+      // is checking -- it says what a keyboard is allowed to be at all.
+      int strings = 0, brass = 0, poly = 0;
+
+      for (std::uint32_t seed = 1; seed <= 400; ++seed) {
+        const auto p = BotVoice::padPatchFor(seed * 2654435761u);
+        const juce::String at = " at seed " + juce::String((int)seed);
+
+        switch (p.character) {
+        case BotVoice::PadCharacter::Strings: ++strings; break;
+        case BotVoice::PadCharacter::Brass: ++brass; break;
+        case BotVoice::PadCharacter::Poly: ++poly; break;
+        }
+
+        expect(p.detuneCents >= 4.0 && p.detuneCents <= 16.0,
+               "detune " + juce::String(p.detuneCents, 2) + at);
+        expect(p.driftCents >= 1.0 && p.driftCents <= 5.0,
+               "drift " + juce::String(p.driftCents, 2) + at);
+        expect(p.pulseWidth >= 0.20 && p.pulseWidth <= 0.55,
+               "pulse width " + juce::String(p.pulseWidth, 3) + at);
+        expect(p.noiseLevel >= 0.0 && p.noiseLevel <= 0.06,
+               "noise " + juce::String(p.noiseLevel, 3) + at);
+        expect(p.cutoffPartials >= 4.0 && p.cutoffPartials <= 18.0,
+               "cutoff " + juce::String(p.cutoffPartials, 2) + at);
+
+        // The one that would be audible as a mistake rather than as a taste.
+        // A four-pole lowpass self-oscillates as Q climbs, and a pad that
+        // whistles is not a pad. 1.5 is well short of it.
+        expect(p.resonance >= 0.5 && p.resonance <= 1.5,
+               "resonance " + juce::String(p.resonance, 2) + at);
+
+        expect(p.envAmount >= 1.0 && p.envAmount <= 5.5,
+               "filter envelope " + juce::String(p.envAmount, 2) + at);
+        expect(p.envDecay >= 0.3 && p.envDecay <= 2.0,
+               "envelope decay " + juce::String(p.envDecay, 2) + at);
+
+        // An attack longer than a chord means the chord never arrives. At 120
+        // bpm a chord in an eight-beat interval can be as short as a beat, so
+        // the ceiling has to be well inside half a second.
+        expect(p.attackSeconds >= 0.05 && p.attackSeconds <= 0.60,
+               "attack " + juce::String(p.attackSeconds, 3) + at);
+        expect(p.releaseSeconds >= 0.15 && p.releaseSeconds <= 0.85,
+               "release " + juce::String(p.releaseSeconds, 3) + at);
+        expect(p.drive >= 0.4 && p.drive <= 1.7,
+               "drive " + juce::String(p.drive, 2) + at);
+        expect(p.movementHz > 0.0 && p.movementHz <= 0.25,
+               "movement " + juce::String(p.movementHz, 3) + at);
+        expect(p.level > 0.5 && p.level < 2.0,
+               "level " + juce::String(p.level, 2) + at);
+
+        // Two oscillators means two you can tune. The second sits at unison, an
+        // octave below, or a fifth above -- and nowhere else, because anything
+        // else is an interval the keyboard player did not agree to add to
+        // every chord.
+        expect(p.secondSemitones == 0 || p.secondSemitones == -12 ||
+                   p.secondSemitones == 7,
+               "second oscillator at " + juce::String(p.secondSemitones) +
+                   " semitones" + at);
+        expect(p.secondLevel > 0.3 && p.secondLevel <= 1.0,
+               "second oscillator level " + juce::String(p.secondLevel, 2) +
+                   at);
+      }
+
+      // And all three are reachable. A character that no seed produces is dead
+      // code wearing a name.
+      expect(strings > 40 && brass > 40 && poly > 40,
+             "the characters came up " + juce::String(strings) + " / " +
+                 juce::String(brass) + " / " + juce::String(poly) +
+                 " times in 400 seeds");
+    }
+
+    beginTest("a pad plays the note it was asked for");
+    {
+      // Detune is a detune and not an instrument that is out of tune: the two
+      // oscillators sit either side of the note, so the pair stays centred on
+      // it. Pulling both sharp is the easy mistake and this is what catches it.
+      //
+      // Checked at unison only. When the seed puts the second oscillator an
+      // octave down or a fifth up, the "pitch" of the pair is a chord rather
+      // than a note and autocorrelation is the wrong instrument for it.
+      //
+      // The drift is stilled first, and that is the whole reason this test is
+      // shaped the way it is. Each oscillator wanders a few cents on its own
+      // slow path -- by design, since that is what an analogue polysynth does
+      // and most of why a held chord breathes -- so the INSTANTANEOUS pitch of
+      // a note is several cents off wherever you sample it. Measured against
+      // its own detune, a strings patch read 7.6 cents flat at one moment and
+      // would have read sharp at another. Averaging that out needs twenty
+      // seconds of audio per note; setting driftCents to zero says the same
+      // thing in one line, and leaves the tolerance tight enough to matter.
+      //
+      // Which it has to be: the mistake this is here to catch is a detune that
+      // pulls both oscillators the same way, and that moves the pair by only
+      // half the detune. A flat 1% tolerance passed that mutation and was
+      // worth nothing.
+      for (int midi : {48, 55, 60, 67, 72}) {
+        const double want = BotVoice::midiToHz((double)midi);
+
+        for (std::uint32_t seed = 1; seed <= 30; ++seed) {
+          auto patch = BotVoice::padPatchFor(seed * 40503u);
+          if (patch.secondSemitones != 0)
+            continue;
+          patch.driftCents = 0.0;
+
+          const int n = (int)(1.5 * 48000.0);
+          std::vector<float> buf((size_t)n, 0.0f);
+          BotVoice::renderPad(buf.data(), n, 48000.0, want, 0.85f, patch, seed);
+
+          // Past the attack, where the filter envelope has settled.
+          const int from = (int)(0.7 * 48000.0);
+          const double got = AudioMeasure::fundamentalHz(
+              buf.data() + from, n - from, 48000.0, want * 0.6, want * 1.6);
+
+          // 0.3%, a little over five cents, and the number is set by what can
+          // be measured rather than by what would be nice.
+          //
+          // Autocorrelation on this signal -- a filtered, saturated,
+          // noise-bearing pair of saws -- floors at 0.16%, measured as the
+          // worst error over these notes and thirty patches with the drift
+          // stilled, and it does not improve with a wider search band. So the
+          // threshold is twice the floor.
+          //
+          // What that does and does not catch is worth being plain about. The
+          // both-sharp mutation moves the pair by half the detune: 8 cents on
+          // a wide strings patch, which this fails by a comfortable margin,
+          // and 2 cents on a narrow one, which it cannot see -- but 2 cents is
+          // also not a tuning fault anybody would hear against a band. The
+          // test is calibrated to catch the error where it would be audible.
+          const double tolerance = 0.003 * want;
+
+          expect(got > 0.0 && std::abs(got - want) < tolerance,
+                 "asked for " + juce::String(want, 1) + " Hz and got " +
+                     juce::String(got, 1) + ", off by " +
+                     juce::String(std::abs(got - want), 3) + " Hz against a " +
+                     juce::String(tolerance, 3) + " Hz tolerance (seed " +
+                     juce::String((int)seed) + ")");
+        }
+      }
+    }
+
+    beginTest("a pad does not stab, and does not sit still");
+    {
+      // Two claims that between them are most of what makes a pad a pad.
+      //
+      // It arrives softly: the amplifier envelope has a real attack, so the
+      // first few milliseconds are far below the body of the note. A synth
+      // whose envelope was bypassed would fail this immediately.
+      //
+      // And it does not hold still: two oscillators a few cents apart beat
+      // against each other, each drifts on its own slow path, and the filter
+      // wanders. Measured as the variation in level from window to window
+      // through the middle of a held note -- a single oscillator through a
+      // static filter gives essentially zero.
+      for (std::uint32_t seed : {3u, 17u, 91u, 404u}) {
+        const auto patch = BotVoice::padPatchFor(seed * 2246822519u);
+        const int n = (int)(4.0 * 48000.0);
+        std::vector<float> buf((size_t)n, 0.0f);
+        BotVoice::renderPad(buf.data(), n, 48000.0, 220.0, 0.85f, patch, seed);
+
+        const juce::String at =
+            juce::String(" (") + BotVoice::padCharacterName(patch.character) +
+            ", seed " + juce::String((int)seed) + ")";
+
+        const float onset = rms(buf, 0, (int)(0.010 * 48000.0));
+        const float body =
+            rms(buf, (int)(1.0 * 48000.0), (int)(2.0 * 48000.0));
+        expect(onset < body * 0.25f,
+               "the first 10 ms are at " + juce::String(onset, 4) +
+                   " against a body of " + juce::String(body, 4) + at);
+
+        // Movement, over the sustained middle where no envelope is acting.
+        const int from = (int)(1.0 * 48000.0);
+        const int window = (int)(0.05 * 48000.0);
+        double lowest = 1.0e9, highest = 0.0;
+        for (int w = 0; w < 40; ++w) {
+          const float level = rms(buf, from + w * window,
+                                  from + (w + 1) * window);
+          lowest = std::min(lowest, (double)level);
+          highest = std::max(highest, (double)level);
+        }
+        expect(highest > lowest * 1.05,
+               "a held note varied by only " +
+                   juce::String(20.0 * std::log10(highest / lowest), 2) +
+                   " dB across two seconds, so nothing is moving" + at);
+      }
+    }
+
+    beginTest("changing patch is not changing volume");
+    {
+      // The other half of "a safe scope". A seed that picks a different
+      // keyboard must not also turn the keyboard up: the patches differ in
+      // waveform, drive and filter envelope, and all three happen to affect
+      // loudness. Measured at 6 LU between brass and strings before the
+      // per-character output level was fitted.
+      //
+      // Loudness rather than rms, because that is the unit the complaint would
+      // be made in, and measured as the stereo pair the bot transmits.
+      double quietest = 0.0, loudest = -200.0;
+      juce::String quietestAt, loudestAt;
+
+      for (std::uint32_t seed : {1u, 2u, 3u, 5u, 8u, 13u, 21u, 34u, 55u, 89u,
+                                 144u, 233u, 777u, 4242u}) {
+        const auto s = settingsFor("C major", 120, 8, seed);
+        const int n = intervalSamplesFor(s);
+        std::vector<float> left((size_t)n, 0.0f), right((size_t)n, 0.0f);
+        BotBand::renderInterval(BotBand::Voice::Keys, s, 0, left.data(),
+                                right.data(), n);
+
+        const double lufs =
+            AudioMeasure::integratedLufs(left.data(), right.data(), n,
+                                         s.sampleRate);
+        const juce::String at =
+            juce::String(BotVoice::padCharacterName(
+                BotBand::keysPatch(s).character)) +
+            " at seed " + juce::String((int)seed);
+
+        if (lufs > loudest) { loudest = lufs; loudestAt = at; }
+        if (quietest == 0.0 || lufs < quietest) { quietest = lufs; quietestAt = at; }
+      }
+
+      // 3 LU, which is deliberately looser than the 2.4 measured. What is left
+      // is not the patch -- it is how many notes the voicing put where, and no
+      // output level fixes that. The kit varies by 3.7 LU across seeds for the
+      // same kind of reason.
+      expect(loudest - quietest < 3.0,
+             "the keyboard spans " + juce::String(loudest - quietest, 1) +
+                 " LU, from " + quietestAt + " to " + loudestAt);
+    }
+
+    beginTest("the keyboard sits above the bass");
+    {
+      // The ordering the plucked string broke and left on the roadmap.
+      //
+      // It is a MIX claim rather than a synthesis one: a bass brighter than the
+      // chords over it means the two are fighting for the same part of the
+      // spectrum, and on a laptop speaker the one that wins is whichever is
+      // louder that second. When the plucked bass first landed it measured
+      // 835 Hz against a pad's 336 and the ordering was inverted; both are now
+      // real instruments and it is the right way round again.
+      for (const char *keyName : {"C major", "D minor"}) {
+        for (std::uint32_t seed : {1u, 55u, 900u, 4242u}) {
+          const auto s = settingsFor(keyName, 120, 8, seed);
+          const auto bass = render(BotBand::Voice::Bass, s);
+          const auto keys = render(BotBand::Voice::Keys, s);
+
+          const double bassHz = AudioMeasure::brightnessHz(
+              bass.data(), (int)bass.size(), s.sampleRate);
+          const double keysHz = AudioMeasure::brightnessHz(
+              keys.data(), (int)keys.size(), s.sampleRate);
+
+          expect(keysHz > bassHz * 1.2,
+                 juce::String(keyName) + " seed " + juce::String((int)seed) +
+                     ": keys at " + juce::String(keysHz, 0) +
+                     " Hz against a bass at " + juce::String(bassHz, 0) +
+                     " Hz");
+        }
+      }
     }
   }
 

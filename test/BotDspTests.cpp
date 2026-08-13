@@ -65,6 +65,7 @@ public:
     runOscillatorTests();
     runCabinetTests();
     runRoomTests();
+    runChorusTests();
   }
 
   void runFilterTests() {
@@ -699,6 +700,120 @@ public:
         room.process(in[i], l[i], r[i]);
       expect(l == in, "a zero mix changed the signal");
       expect(r == in, "a zero mix changed the signal");
+    }
+  }
+
+  void runChorusTests() {
+    beginTest("a dry chorus is the signal itself");
+    {
+      BotDsp::Chorus chorus;
+      chorus.prepare(kSr, 0.5, 12.0, 3.0, 0.0f);
+      const auto in = sine(330.0, 0.2);
+      std::vector<float> l((size_t)in.size()), r((size_t)in.size());
+      for (size_t i = 0; i < in.size(); ++i)
+        chorus.process(in[i], l[i], r[i]);
+      expect(l == in, "a zero mix changed the signal");
+      expect(r == in, "a zero mix changed the signal");
+    }
+
+    beginTest("a chorus separates the two sides without moving the level");
+    {
+      // The claim being tested is precisely what distinguishes a chorus from a
+      // pan and from a plain delay: the two sides must carry the same energy
+      // and yet not be the same signal.
+      BotDsp::Chorus chorus;
+      chorus.prepare(kSr, 0.6, 12.0, 3.2, 0.55f);
+
+      BotDsp::Noise noise(11u);
+      const int n = (int)(4.0 * kSr);
+      std::vector<float> l((size_t)n), r((size_t)n);
+      for (int i = 0; i < n; ++i)
+        chorus.process(0.4f * noise.next(), l[(size_t)i], r[(size_t)i]);
+
+      expect(allFinite(l) && allFinite(r));
+
+      const int skip = (int)(0.1 * kSr);
+      double dl = 0.0, dr = 0.0, num = 0.0;
+      for (int i = skip; i < n; ++i) {
+        dl += (double)l[(size_t)i] * l[(size_t)i];
+        dr += (double)r[(size_t)i] * r[(size_t)i];
+        num += (double)l[(size_t)i] * r[(size_t)i];
+      }
+
+      const double levelRatio = std::sqrt(dl / dr);
+      expect(levelRatio > 0.95 && levelRatio < 1.05,
+             "the sides differ in level by a factor of " +
+                 juce::String(levelRatio, 3) + ", which is a pan");
+
+      const double correlation = num / std::sqrt(dl * dr);
+      expect(correlation < 0.9,
+             "the sides correlate at " + juce::String(correlation, 3) +
+                 ", so nothing was separated");
+    }
+
+    beginTest("a chorus moves its delay, and that is what makes it one");
+    {
+      // A fixed delay added to the dry signal is a comb filter, which sounds
+      // like a tube rather than like an ensemble. What makes it a chorus is
+      // that the tap MOVES, so the copy is continuously detuned. Measured on
+      // the pitch of the wet path alone: a steady tone comes back with its
+      // frequency wandering either side of where it went in.
+      // The settings the keyboard actually uses, since the size of the effect
+      // is what is being claimed and a faster or deeper sweep would prove
+      // something the instrument does not do.
+      const double rate = 0.55;
+      BotDsp::Chorus chorus;
+      chorus.prepare(kSr, rate, 12.0, 3.2, 1.0f);
+
+      const double hz = 300.0;
+      const auto in = sine(hz, 2.0);
+      std::vector<float> wet((size_t)in.size());
+      for (size_t i = 0; i < in.size(); ++i) {
+        float l = 0.0f, r = 0.0f;
+        chorus.process(in[i], l, r);
+        wet[i] = l - in[i]; // the delayed copy on its own
+      }
+
+      // Two windows a half cycle apart, at the points where the tap is moving
+      // fastest and in opposite directions.
+      const int quarter = (int)(0.25 / rate * kSr);
+      const int window = (int)(0.15 * kSr);
+      const double up =
+          AudioMeasure::fundamentalHz(wet.data() + quarter / 2, window, kSr,
+                                      200.0, 400.0);
+      const double down = AudioMeasure::fundamentalHz(
+          wet.data() + quarter / 2 + 2 * quarter, window, kSr, 200.0, 400.0);
+
+      expect(std::abs(up - down) > 1.0,
+             "the copy came back at " + juce::String(up, 2) + " Hz and " +
+                 juce::String(down, 2) + " Hz, so the delay never moved");
+      // And it is a detune rather than a transposition: a few cents, not a
+      // semitone. A depth this size sweeps about 1% either way.
+      expect(std::abs(up - hz) < 0.05 * hz && std::abs(down - hz) < 0.05 * hz,
+             "the copy is off by more than a chorus would be: " +
+                 juce::String(up, 2) + " and " + juce::String(down, 2));
+    }
+
+    beginTest("a chorus stays in bounds and goes properly silent");
+    {
+      BotDsp::Chorus chorus;
+      chorus.prepare(kSr, 0.5, 12.0, 3.0, 0.6f);
+
+      const int n = (int)(1.0 * kSr);
+      std::vector<float> l((size_t)n), r((size_t)n);
+      for (int i = 0; i < n; ++i)
+        chorus.process(i < n / 2 ? 0.9f * std::sin(0.05 * (double)i) : 0.0f,
+                       l[(size_t)i], r[(size_t)i]);
+
+      expect(AudioMeasure::peak(l.data(), n) < 1.6f &&
+                 AudioMeasure::peak(r.data(), n) < 1.6f,
+             "the chorus can output more than dry plus wet");
+
+      // There is no feedback path here, so once the line has run dry the
+      // output is exactly the input, which is exactly zero.
+      const int after = n / 2 + (int)(0.05 * kSr);
+      expectEquals(AudioMeasure::peak(l.data() + after, n - after), 0.0f);
+      expectEquals(AudioMeasure::peak(r.data() + after, n - after), 0.0f);
     }
   }
 };
