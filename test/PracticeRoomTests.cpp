@@ -376,6 +376,102 @@ public:
       expect(!PracticeBot::isShakeCommand(""));
     }
 
+    beginTest("nobody answers a question that was not aimed at anybody");
+    {
+      // The failure this whole addressing layer exists to prevent, tested end
+      // to end rather than in the corpus: four bots answering one question.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
+      }, 5000), "the band never arrived");
+
+      const int before = you.snapshot().size();
+      you.client.sendChatMessage("what are you playing");
+      you.client.sendChatMessage("what key are we in");
+      you.client.sendChatMessage("the bass is a bit loud");
+
+      // Give them every chance to misbehave.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(1500);
+
+      juce::StringArray fromBots;
+      for (const auto &line : you.snapshot())
+        if (line.startsWith("MSG|") && line.contains("-bot]"))
+          fromBots.add(line);
+      expect(fromBots.isEmpty(),
+             "unaddressed chat was answered: " + fromBots.joinIntoString(" / "));
+      expect(you.snapshot().size() >= before);
+    }
+
+    beginTest("addressing a bot by name gets exactly that bot");
+    {
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      const auto keys = botPlaying(room, "keys");
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(keys) > 0;
+      }, 5000), "the band never arrived");
+
+      // Its name alone, which is the opener: it should say what it is playing.
+      const auto handle =
+          juce::String(BotNames::handleOf(keys.toStdString()));
+      you.client.sendChatMessage(handle);
+
+      expect(waitUntil([&] {
+        for (const auto &line : you.snapshot())
+          if (line.startsWith("MSG|" + keys + "|"))
+            return true;
+        return false;
+      }, 4000), "the bot did not answer to its own name");
+
+      // And nobody else did.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(800);
+      juce::StringArray others;
+      for (const auto &line : you.snapshot())
+        if (line.startsWith("MSG|") && line.contains("-bot]") &&
+            !line.startsWith("MSG|" + keys + "|"))
+          others.add(line);
+      expect(others.isEmpty(),
+             "another bot answered too: " + others.joinIntoString(" / "));
+    }
+
+    beginTest("bots do not answer each other");
+    {
+      // The invariant that makes a feedback loop impossible rather than
+      // unlikely. A bot's own roster line names every other bot, so if this
+      // were wrong the room would fill in its opening second.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      const auto keys = botPlaying(room, "keys");
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(keys) > 0;
+      }, 5000), "the band never arrived");
+
+      // Speak as a bot, naming another bot as plainly as possible.
+      const auto kit = botPlaying(room, "kit");
+      room.practiceServer().broadcastChat(
+          kit, juce::String(BotNames::handleOf(keys.toStdString())) +
+                   " what are you playing");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(1500);
+
+      juce::StringArray replies;
+      for (const auto &line : you.snapshot())
+        if (line.startsWith("MSG|") && line.contains("-bot]") &&
+            !line.contains("what are you playing"))
+          replies.add(line);
+      expect(replies.isEmpty(),
+             "a bot answered a bot: " + replies.joinIntoString(" / "));
+    }
+
     beginTest("a bot follows a key announced in room chat");
     {
       PracticeRoom room;

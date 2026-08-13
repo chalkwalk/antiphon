@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BotAddress.h"
 #include "BotBand.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
@@ -101,6 +102,27 @@ private:
   // private messages take the same commands.
   bool handleBandCommand(const juce::String &text);
 
+  // The subset that needs no address, because its SYNTAX is unmistakable: a
+  // `[key: Dm]` tag and a `| Am | F |` chart. Nobody writes either by accident,
+  // and both are things the whole band must agree about, so they are acted on
+  // wherever they appear and answered by nobody.
+  //
+  // Deliberately excludes `shake`, which is an ordinary English word and needs
+  // to be aimed at somebody.
+  bool handleStructured(const juce::String &text);
+
+  // The room as the addressing engine understands it: who is here, which of
+  // them are bots, what each is called and what their channel is named. Built
+  // fresh per message, because it is small and staleness here means answering
+  // somebody who has left.
+  BotAddress::Room currentRoom() const;
+
+  // A short, factual line about what this bot is playing. Used as the greeting
+  // when somebody says its name and nothing else -- an acknowledgement that
+  // teaches nothing would be a promise rule 3 cannot keep, so the greeting
+  // doubles as a menu of what can be asked.
+  juce::String describeSelf() const;
+
   // Instructions to ONE player, which room chat deliberately does not take.
   //
   // The key and the chords are things the whole band must agree about, so they
@@ -125,6 +147,10 @@ private:
 
   NinjamClient netClient;
   juce::AudioBuffer<float> renderBuffer;
+
+  // One conversation, with one person. Belongs to whoever opened it, not to
+  // the room -- two other people talking are not talking to the bot.
+  BotAddress::Attention attention;
 
   std::atomic<bool> active{false};
   std::atomic<bool> sawOwner{false};
