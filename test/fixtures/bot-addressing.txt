@@ -23,6 +23,12 @@
 # Format, tab or spaces separated:
 #   <expected answerer>  <message>
 #
+# A message SPOKEN BY somebody other than the default player is written with the
+# speaker in angle brackets: `<dave> and the chords?`. A trailing colon --
+# `dave: what are you playing` -- is an ADDRESS to dave, which is a different
+# thing entirely. An earlier version of this file used the colon for both and
+# was ambiguous in three places.
+#
 # Expected answerer is one of KIT BASS KEYS LEAD TUTOR ALL NOBODY.
 # Section headers set the conversational context the message arrives in.
 
@@ -215,16 +221,16 @@ NOBODY  more guitar
 # causes no reply -- the invariant that makes a feedback loop impossible rather
 # than unlikely.
 [COLD]
-NOBODY  Delvo[bass-bot]: mirn, what are you playing
-NOBODY  Mirn[kit-bot]: delvo
-NOBODY  Tutor[bot]: band, what are you playing
+NOBODY  <Delvo[bass-bot]> mirn, what are you playing
+NOBODY  <Mirn[kit-bot]> delvo
+NOBODY  <Tutor[bot]> band, what are you playing
 
 # The window belongs to whoever opened it. Somebody else talking is not a
 # follow-up, which is the commonest way a design like this becomes insufferable.
 [AFTER you: delvo]
 BASS    and the chords?
-NOBODY  dave: and the chords?
-NOBODY  sam: what are you playing
+NOBODY  <dave> and the chords?
+NOBODY  <sam> what are you playing
 
 # Leaving. The one command that works with no address at all, because the
 # failure mode of getting this wrong is bots nobody can remove.
