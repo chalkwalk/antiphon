@@ -178,9 +178,24 @@ inline double fundamentalHz(const float *data, int numSamples,
     return 0.0;
 
   const int minLag = std::max(2, (int)(sampleRate / highHz));
-  const int maxLag = std::min(numSamples / 2, (int)(sampleRate / lowHz));
+  int maxLag = std::min(numSamples / 2, (int)(sampleRate / lowHz));
   if (maxLag <= minLag)
     return 0.0;
+
+  // Only as much signal as the question needs.
+  //
+  // This is O(samples x lags), so measuring half a second at 96 kHz costs a
+  // hundred million multiply-adds per call -- and it buys nothing, because a
+  // correlation is settled by a handful of periods of the lowest candidate.
+  // Six of them is generous. Without this bound the string tests alone took
+  // 43 seconds and pushed the whole suite past its ctest timeout.
+  const int enough = 6 * maxLag;
+  if (numSamples > enough) {
+    numSamples = enough;
+    maxLag = std::min(numSamples / 2, maxLag);
+    if (maxLag <= minLag)
+      return 0.0;
+  }
 
   auto scoreAt = [&](int lag) {
     double sum = 0.0, normA = 0.0, normB = 0.0;

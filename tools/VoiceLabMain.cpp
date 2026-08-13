@@ -38,6 +38,9 @@ struct Options {
   juce::String keyName = "C major";
   int bpm = 120, bpi = 8, bars = 4;
 
+  // Bass articulation.
+  BotVoice::BassTechnique technique = BotVoice::BassTechnique::Fingered;
+
   // Sweep.
   juce::String sweepParam;
   double sweepLo = 0.0, sweepHi = 1.0;
@@ -68,6 +71,7 @@ void usage() {
       "  --note <name|midi> pitch for pitched voices: E1, A#2, Bb3, or 40\n"
       "  --seed <n>         noise seed, and the band's seed\n"
       "  --open             open hat\n"
+      "  --technique <name> bass articulation: fingered, picked or muted\n"
       "  --repeats <n>      render n hits (default 1)\n"
       "  --spacing <s>      seconds between repeats (default 0.5)\n"
       "  --sweep p=lo:hi:n  one file per value of p; p is velocity or note\n"
@@ -139,8 +143,8 @@ std::vector<float> renderOne(const Options &o) {
     else if (o.voice == "hat")
       BotVoice::renderHat(out, room, o.sampleRate, o.velocity, seed, o.open);
     else if (o.voice == "bass")
-      BotVoice::renderBass(out, juce::jmin(room, hit), o.sampleRate, hz,
-                           o.velocity);
+      BotVoice::renderBassString(out, juce::jmin(room, hit), o.sampleRate, hz,
+                                 o.velocity, o.technique, seed);
     else if (o.voice == "lead")
       BotVoice::renderLead(out, juce::jmin(room, hit), o.sampleRate, hz,
                            o.velocity);
@@ -304,6 +308,15 @@ void report(const juce::String &label, const std::vector<float> &buf,
               loudness.toRawUTF8(), AudioMeasure::crest(buf.data(), n),
               AudioMeasure::fundamentalHz(buf.data(), n, sampleRate),
               AudioMeasure::brightnessHz(buf.data(), n, sampleRate));
+
+  // A bare voice has no ceiling on it -- that lives in BotBand, so what the
+  // band renders can never clip and what the lab renders can. Overlapping
+  // repeats are the usual way to get there, and a clipped file listened to as
+  // a comparison is a comparison of the clipping.
+  if (AudioMeasure::peak(buf.data(), n) > 0.99f)
+    std::printf("  WARNING: peaks at %.2f and will clip in the file. Lower "
+                "--velocity, or space the repeats so they do not overlap.\n",
+                AudioMeasure::peak(buf.data(), n));
 }
 
 // Bring a render onto a target loudness, so an A/B is about timbre rather than
@@ -485,7 +498,19 @@ int main(int argc, char *argv[]) {
       o.bpi = next().getIntValue();
     else if (arg == "--bars")
       o.bars = next().getIntValue();
-    else if (arg == "--lufs") {
+    else if (arg == "--technique") {
+      const auto name = next().toLowerCase();
+      if (name == "picked")
+        o.technique = BotVoice::BassTechnique::Picked;
+      else if (name == "muted")
+        o.technique = BotVoice::BassTechnique::Muted;
+      else if (name == "fingered")
+        o.technique = BotVoice::BassTechnique::Fingered;
+      else {
+        std::fprintf(stderr, "voicelab: technique is fingered, picked or muted\n");
+        return 1;
+      }
+    } else if (arg == "--lufs") {
       o.matchLufs = true;
       o.targetLufs = next().getDoubleValue();
     }
