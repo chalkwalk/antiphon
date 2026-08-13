@@ -62,6 +62,25 @@ struct Settings {
   // a property of the seed and stays that way, because a band with a dozen
   // settings is a band you configure instead of play with.
   int leadOverride = -1;
+
+  // Explicit patches and trims, for the band lab and nothing else.
+  //
+  // The room never sets these: a bot's sound is a function of its seed, which
+  // is what makes "shake" meaningful and a session reproducible. But a person
+  // tuning by ear needs to hear a number they just moved, not the nearest one
+  // a seed happened to pick, so the render path takes an override when one is
+  // offered and derives everything as usual when it is not.
+  //
+  // Kept here rather than as extra arguments so that every caller -- the bots,
+  // the tests, both tools -- keeps working unchanged, and so that "what the
+  // room would play" and "what the lab is playing" differ by exactly one flag.
+  bool usePatchOverrides = false;
+  BotVoice::PadPatch keysPatchOverride;
+  BotVoice::BassPatch bassPatchOverride;
+  BotVoice::LeadPatch leadPatchOverride;
+
+  // Negative for "use the measured constant", which is the normal case.
+  double trimOverride[4] = {-1.0, -1.0, -1.0, -1.0};
 };
 
 // Fills a complete, valid Settings for a key, using the mode-aware default
@@ -119,6 +138,11 @@ std::vector<int> leadLine(const Settings &s, int intervalIndex);
 // How the bass player plays, chosen once from the seed and then held for the
 // whole session.
 BotVoice::BassTechnique bassTechnique(const Settings &s);
+
+// The patch each voice is actually rendered with: the seed's, or the override
+// if one has been set.
+BotVoice::BassPatch bassPatch(const Settings &s);
+BotVoice::LeadPatch leadPatch(const Settings &s);
 
 // Which instrument the lead is playing: the seed's choice, unless a player has
 // asked for one.

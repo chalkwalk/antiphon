@@ -36,6 +36,7 @@ target_sources(NinjamTests
         HarmonyTests.cpp
         AudioMeasureTests.cpp
         BotDspTests.cpp
+        BandPatchTests.cpp
         BotBandTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
@@ -60,6 +61,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
+        ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp

@@ -799,7 +799,7 @@ public:
         const float v = 0.2f + 0.1f * (float)i;
         std::vector<float> buf((size_t)n, 0.0f);
         BotVoice::renderBassString(buf.data(), n, 48000.0, 65.4, v,
-                                   BotVoice::BassTechnique::Fingered, 4242u);
+                                   BotVoice::bassPatchFor(BotVoice::BassTechnique::Fingered), 4242u);
         brightness.push_back(
             AudioMeasure::brightnessHz(buf.data(), n, 48000.0));
       }
@@ -867,7 +867,8 @@ public:
       const int n = (int)(1.5 * 48000.0);
       auto render1 = [&](BotVoice::BassTechnique t) {
         std::vector<float> buf((size_t)n, 0.0f);
-        BotVoice::renderBassString(buf.data(), n, 48000.0, 65.4, 0.8f, t, 7u);
+        BotVoice::renderBassString(buf.data(), n, 48000.0, 65.4, 0.8f,
+                                   BotVoice::bassPatchFor(t), 7u);
         return buf;
       };
 
@@ -908,8 +909,8 @@ public:
         for (int k = 0; k < 2; ++k) {
           std::vector<float> buf((size_t)n, 0.0f);
           BotVoice::renderBassString(buf.data(), n, 48000.0,
-                                     k == 0 ? 41.20 : 82.41, 0.8f, technique,
-                                     7u);
+                                     k == 0 ? 41.20 : 82.41, 0.8f,
+                                     BotVoice::bassPatchFor(technique), 7u);
           centroid[k] = AudioMeasure::brightnessHz(buf.data(), n, 48000.0);
         }
 

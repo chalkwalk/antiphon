@@ -473,7 +473,7 @@ void renderBass(const Settings &s, float *out, int numSamples) {
   Rng rng(saltedSeed(Voice::Bass, s.seed));
 
   const auto layout = layoutOf(s);
-  const auto technique = bassTechnique(s);
+  const auto patch = bassPatch(s);
 
   // The figure runs finer than the beat, so a step is a fraction of one.
   const int stepsPerBeat = std::max(1, f.steps / std::max(1, s.bpi));
@@ -586,7 +586,7 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     velocity *= 0.94f + 0.12f * (float)rng.range(0, 100) / 100.0f;
 
     BotVoice::renderBassString(out + at, length, s.sampleRate,
-                               BotVoice::midiToHz(midi), velocity, technique,
+                               BotVoice::midiToHz(midi), velocity, patch,
                                saltedSeed(Voice::Bass, s.seed) +
                                    131u * (std::uint32_t)step);
   }
@@ -750,7 +750,7 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
   if (eighth <= 0)
     return;
 
-  const auto instrument = leadInstrument(s);
+  const auto patch = leadPatch(s);
 
   // Two of the three instruments are struck or plucked and go on ringing after
   // the hand leaves, so a note is given room past the slot it was played in --
@@ -790,7 +790,7 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 
     BotVoice::renderLead(out + at, std::min(numSamples - at, held + tail), held,
                          s.sampleRate, BotVoice::midiToHz((double)line[step]),
-                         velocity, instrument,
+                         velocity, patch,
                          saltedSeed(Voice::Lead, s.seed) +
                              613u * (std::uint32_t)step);
   }
@@ -832,7 +832,7 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
         std::vector<float> scratch((size_t)(held + tail), 0.0f);
         BotVoice::renderLead(scratch.data(), held + tail, held, s.sampleRate,
                              BotVoice::midiToHz((double)previous[(size_t)lastStep]),
-                             velocity, instrument,
+                             velocity, patch,
                              saltedSeed(Voice::Lead, s.seed) +
                                  613u * (std::uint32_t)lastStep);
 
@@ -917,6 +917,20 @@ BotVoice::BassTechnique bassTechnique(const Settings &s) {
   }
 }
 
+BotVoice::BassPatch bassPatch(const Settings &s) {
+  if (s.usePatchOverrides)
+    return s.bassPatchOverride;
+  return BotVoice::bassPatchFor(bassTechnique(s));
+}
+
+BotVoice::LeadPatch leadPatch(const Settings &s) {
+  if (s.usePatchOverrides)
+    return s.leadPatchOverride;
+  BotVoice::LeadPatch p;
+  p.instrument = leadInstrument(s);
+  return p;
+}
+
 BotVoice::LeadInstrument leadInstrument(const Settings &s) {
   if (s.leadOverride >= 0 && s.leadOverride <= 2)
     return (BotVoice::LeadInstrument)s.leadOverride;
@@ -935,6 +949,9 @@ BotVoice::LeadInstrument leadInstrument(const Settings &s) {
 }
 
 BotVoice::PadPatch keysPatch(const Settings &s) {
+  if (s.usePatchOverrides)
+    return s.keysPatchOverride;
+
   // A fresh generator with its own constant, for the reason bassTechnique
   // documents: drawing from an existing sequence shifts every later draw and
   // silently rewrites the notes.
@@ -985,7 +1002,9 @@ void renderInterval(Voice voice, const Settings &s, int intervalIndex,
   // distortion. With it here, no voice can clip whatever a trim, a seed or a
   // future character does, which is a stronger guarantee than a measured
   // headroom constant can give.
-  const float trim = kVoiceTrim[(int)voice];
+  const float trim = s.trimOverride[(int)voice] >= 0.0
+                         ? (float)s.trimOverride[(int)voice]
+                         : kVoiceTrim[(int)voice];
   for (int i = 0; i < numSamples; ++i)
     out[i] = BotDsp::softClip(out[i] * trim);
   if (right != nullptr && isStereo(voice))
