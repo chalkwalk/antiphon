@@ -501,6 +501,13 @@ inputs, identical deterministic function, agreement for free.
 - [ ] Deviation, so the form does not become its own kind of stale: an
       occasional departure whose likelihood grows the longer a phrase has
       repeated.
+- [ ] **A seed should not change the volume.** The kit's integrated loudness
+      varies by 3.7 LU across seeds, purely because a busy Euclidean figure has
+      more hits in it than a sparse one -- so `shake` currently changes how loud
+      the band is as well as what it plays, and it bounds how precisely the
+      band can be balanced at all. Normalising each voice to a loudness target
+      at render time would fix both. `AudioMeasure::integratedLufs` is the
+      instrument; the cost is one extra pass over the interval.
 
 **One interlock to get right.** `test/BotBandTests.cpp` asserts that two
 consecutive drum intervals are not bit-identical -- today the hat rotation

@@ -85,7 +85,7 @@ src/
   StemRender.h              # one clip into one interval, resampled and aligned
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
   IntervalProbe.h           # shared test signal: plugin Test Tone and the tests
-  AudioMeasure.h            # peak, rms, crest, pitch, brightness: one instrument
+  AudioMeasure.h            # peak, rms, crest, pitch, brightness, LUFS: one instrument
   ChatFormat.{h,cpp}        # chat rendering: vote lines, chord progressions
   # --- UI ---
   LocalChannelStrip.{h,cpp} # 90px vertical strip per local input channel
@@ -143,6 +143,9 @@ ctest --test-dir build --output-on-failure
 # against, so tuning by ear and setting a threshold use one instrument.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab kick --seconds 0.6
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab band --seed 12345
+# Comparing two renders for timbre rather than for level: --lufs normalises to
+# an integrated loudness. It warns when a target would clip a sparse voice.
+./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab hat --lufs -27
 ```
 
 Targets: `Antiphon_Standalone` (easiest for iteration), `Antiphon_VST3`. CLAP is

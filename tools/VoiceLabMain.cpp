@@ -42,6 +42,11 @@ struct Options {
   juce::String sweepParam;
   double sweepLo = 0.0, sweepHi = 1.0;
   int sweepCount = 5;
+
+  // Normalise the output to this integrated loudness, so two renders can be
+  // compared for timbre without one of them simply being louder.
+  bool matchLufs = false;
+  double targetLufs = -18.0;
 };
 
 void usage() {
@@ -63,6 +68,8 @@ void usage() {
       "  --repeats <n>      render n hits (default 1)\n"
       "  --spacing <s>      seconds between repeats (default 0.5)\n"
       "  --sweep p=lo:hi:n  one file per value of p; p is velocity or note\n"
+      "  --lufs <target>    normalise the output to this integrated loudness,\n"
+      "                     so an A/B is about timbre and not about level\n"
       "\n"
       "band mode only:\n"
       "  --key <name>       C major, D minor, F# Dorian (default C major)\n"
@@ -197,10 +204,15 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
         r = l;
 
       if (interval == 0) {
-        std::printf("  %-6s peak %.3f  rms %.4f (%6.1f dBFS)  brightness %7.1f Hz%s\n",
+        // As the pair that goes out: a mono voice is duplicated by the bot, so
+        // measuring one channel would report it 3 LU under the kit for no
+        // reason but arithmetic.
+        const double lufs = AudioMeasure::integratedLufs(l.data(), r.data(), n,
+                                                         o.sampleRate);
+        std::printf("  %-6s peak %.3f  rms %6.1f dBFS  %6.1f LUFS  "
+                    "brightness %7.1f Hz%s\n",
                     BotBand::voiceName(voice), AudioMeasure::peak(l.data(), n),
-                    AudioMeasure::rms(l.data(), n),
-                    AudioMeasure::toDb(AudioMeasure::rms(l.data(), n)),
+                    AudioMeasure::toDb(AudioMeasure::rms(l.data(), n)), lufs,
                     AudioMeasure::brightnessHz(l.data(), n, o.sampleRate),
                     BotBand::isStereo(voice) ? "  stereo" : "");
       }
@@ -264,16 +276,75 @@ std::vector<float> renderBand(const Options &o) {
 }
 
 void report(const juce::String &label, const std::vector<float> &buf,
-            double sampleRate) {
+            double sampleRate, const std::vector<float> *right = nullptr) {
   const int n = (int)buf.size();
-  std::printf("%-22s peak %.3f  rms %.4f (%6.1f dBFS)  crest %.2f  "
+
+  // Measured as the pair that actually goes out, because a bot always
+  // transmits two channels -- so a mono voice is measured duplicated, which is
+  // what the listener hears, rather than 3 LU quieter than the kit for no
+  // reason but arithmetic.
+  const double lufs =
+      right != nullptr
+          ? AudioMeasure::integratedLufs(buf.data(), right->data(), n,
+                                         sampleRate)
+          : AudioMeasure::integratedLufs(buf.data(), buf.data(), n, sampleRate);
+
+  juce::String loudness = lufs <= AudioMeasure::kSilenceLufs
+                              ? juce::String("  --  ")
+                              : juce::String(lufs, 1);
+
+  std::printf("%-22s peak %.3f  rms %.4f (%6.1f dBFS)  %6s LUFS  crest %.2f  "
               "f0 %7.1f Hz  brightness %7.1f Hz\n",
               label.toRawUTF8(), AudioMeasure::peak(buf.data(), n),
               AudioMeasure::rms(buf.data(), n),
               AudioMeasure::toDb(AudioMeasure::rms(buf.data(), n)),
-              AudioMeasure::crest(buf.data(), n),
+              loudness.toRawUTF8(), AudioMeasure::crest(buf.data(), n),
               AudioMeasure::fundamentalHz(buf.data(), n, sampleRate),
               AudioMeasure::brightnessHz(buf.data(), n, sampleRate));
+}
+
+// Bring a render onto a target loudness, so an A/B is about timbre rather than
+// about which one is louder. Reports what it did, because a comparison that
+// silently changed the level is a comparison you cannot trust.
+void matchLoudness(const Options &o, std::vector<float> &left,
+                   std::vector<float> *right) {
+  if (!o.matchLufs || left.empty())
+    return;
+
+  const int n = (int)left.size();
+  const double measured =
+      right != nullptr
+          ? AudioMeasure::integratedLufs(left.data(), right->data(), n,
+                                         o.sampleRate)
+          : AudioMeasure::integratedLufs(left.data(), left.data(), n,
+                                         o.sampleRate);
+  if (measured <= AudioMeasure::kSilenceLufs) {
+    std::printf("  (too short or too quiet to match loudness)\n");
+    return;
+  }
+
+  const double gain = AudioMeasure::gainForLufs(measured, o.targetLufs);
+  for (auto &x : left)
+    x = (float)(x * gain);
+  if (right != nullptr)
+    for (auto &x : *right)
+      x = (float)(x * gain);
+
+  std::printf("  matched %.1f -> %.1f LUFS (%+.1f dB)\n", measured,
+              o.targetLufs, 20.0 * std::log10(gain));
+
+  // A loudness target and a peak ceiling are different things, and a sparse
+  // percussive voice hits the second long before the first: matching a hi-hat
+  // to -18 LUFS wants +11 dB and sends its peaks to 1.5. The file would be
+  // clipped on the way out and the comparison would be of distortion, so say
+  // so and name the target that would have fitted.
+  const float peak = AudioMeasure::peak(left.data(), n);
+  if (peak > 0.99f) {
+    const double headroom = 20.0 * std::log10((double)peak);
+    std::printf("  WARNING: peaks at %.2f, so this file WILL clip. This voice "
+                "is too sparse for %.1f LUFS -- try --lufs %.1f\n",
+                peak, o.targetLufs, o.targetLufs - headroom - 0.5);
+  }
 }
 
 bool writeWav(const juce::File &file, const std::vector<float> &buf,
@@ -352,6 +423,10 @@ int main(int argc, char *argv[]) {
       o.bpi = next().getIntValue();
     else if (arg == "--bars")
       o.bars = next().getIntValue();
+    else if (arg == "--lufs") {
+      o.matchLufs = true;
+      o.targetLufs = next().getDoubleValue();
+    }
     else if (arg == "--note") {
       if (!parseNote(next(), o.midiNote)) {
         std::fprintf(stderr, "voicelab: not a note\n");
@@ -399,7 +474,8 @@ int main(int argc, char *argv[]) {
                 o.bpm, o.bpi, (unsigned)o.seed);
     std::vector<float> mix, mixR;
     renderBandStereo(o, mix, mixR);
-    report("band (mixed)", mix, o.sampleRate);
+    matchLoudness(o, mix, &mixR);
+    report("band (mixed)", mix, o.sampleRate, &mixR);
     if (!writeWav(o.out, mix, o.sampleRate, &mixR)) {
       std::fprintf(stderr, "voicelab: could not write %s\n",
                    o.out.getFullPathName().toRawUTF8());
@@ -414,7 +490,8 @@ int main(int argc, char *argv[]) {
       o.out = juce::File::getCurrentWorkingDirectory().getChildFile("kit.wav");
     std::vector<float> l, r;
     renderVoice(o, BotBand::Voice::Drums, l, r);
-    report("kit (with room)", l, o.sampleRate);
+    matchLoudness(o, l, &r);
+    report("kit (with room)", l, o.sampleRate, &r);
     if (!writeWav(o.out, l, o.sampleRate, &r)) {
       std::fprintf(stderr, "voicelab: could not write %s\n",
                    o.out.getFullPathName().toRawUTF8());
@@ -480,7 +557,8 @@ int main(int argc, char *argv[]) {
     o.out =
         juce::File::getCurrentWorkingDirectory().getChildFile(o.voice + ".wav");
 
-  const auto buf = renderOne(o);
+  auto buf = renderOne(o);
+  matchLoudness(o, buf, nullptr);
   report(o.voice, buf, o.sampleRate);
   if (!writeWav(o.out, buf, o.sampleRate)) {
     std::fprintf(stderr, "voicelab: could not write %s\n",

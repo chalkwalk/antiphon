@@ -48,6 +48,7 @@ public:
   void runTest() override {
     runLevelTests();
     runBrightnessTests();
+    runLoudnessTests();
     runPitchTests();
     runRobustnessTests();
   }
@@ -157,6 +158,140 @@ public:
           AudioMeasure::brightnessHz(s.data(), (int)s.size(), kSr);
       expectWithinAbsoluteError(crossings, 300.0, 5.0);
       expectWithinAbsoluteError(slope, 300.0, 5.0);
+    }
+  }
+
+  void runLoudnessTests() {
+    beginTest("loudness agrees with an independent meter");
+    {
+      // Cross-checked against ffmpeg's ebur128 rather than against itself,
+      // which is the only way a loudness figure means anything (`PRINCIPLES
+      // §5`). Every number on the right came out of:
+      //
+      //   ffmpeg -i x.wav -filter_complex ebur128 -f null -
+      //
+      // and the agreement is inside 0.05 LU on all five.
+      struct Case {
+        double hz;
+        float amp;
+        bool stereo;
+        double expected; // what ffmpeg said
+      };
+      const Case cases[] = {
+          // The calibration point of the whole standard: a 1 kHz sine at
+          // -20 dBFS in both channels is -20 LUFS, which is what the -0.691
+          // offset in the formula exists to make true.
+          {1000.0, 0.1f, true, -20.0},
+          // The same signal in one channel is 3 dB quieter, because half the
+          // energy is missing rather than because anything is weighted.
+          {1000.0, 0.1f, false, -23.0},
+          {1000.0, 0.5f, true, -6.0},
+          // And the reason this measure exists at all: identical rms, nearly
+          // 7 LU apart, because the ear is not a power meter.
+          {60.0, 0.1f, true, -23.6},
+          {8000.0, 0.1f, true, -16.7},
+      };
+
+      for (const auto &c : cases) {
+        const auto tone = sine(c.hz, 10.0, c.amp);
+        const double measured =
+            c.stereo ? AudioMeasure::integratedLufs(tone.data(), tone.data(),
+                                                    (int)tone.size(), kSr)
+                     : AudioMeasure::integratedLufs(tone.data(),
+                                                    (int)tone.size(), kSr);
+        expectWithinAbsoluteError(measured, c.expected, 0.15,
+                                  juce::String(c.hz) + " Hz at " +
+                                      juce::String(c.amp) +
+                                      (c.stereo ? " stereo" : " mono"));
+      }
+    }
+
+    beginTest("loudness is not rms wearing a hat");
+    {
+      // The property the band's balance now depends on. Two signals at the
+      // same rms, one low and one high: rms calls them equal and the ear does
+      // not.
+      const auto low = sine(60.0, 5.0, 0.1f);
+      const auto high = sine(8000.0, 5.0, 0.1f);
+
+      expectWithinAbsoluteError(AudioMeasure::rms(low.data(), (int)low.size()),
+                                AudioMeasure::rms(high.data(), (int)high.size()),
+                                0.001f, "the two tones are at the same rms");
+
+      const double lowLufs =
+          AudioMeasure::integratedLufs(low.data(), (int)low.size(), kSr);
+      const double highLufs =
+          AudioMeasure::integratedLufs(high.data(), (int)high.size(), kSr);
+      expect(highLufs > lowLufs + 5.0,
+             "8 kHz should be much louder than 60 Hz at equal rms: " +
+                 juce::String(lowLufs, 1) + " against " +
+                 juce::String(highLufs, 1));
+    }
+
+    beginTest("silence between the notes does not count against them");
+    {
+      // What the relative gate buys, and why a sparse drum part can be
+      // measured at all: five seconds of tone followed by five of nothing is
+      // very nearly as loud as five seconds of tone.
+      const auto tone = sine(1000.0, 5.0, 0.1f);
+      std::vector<float> padded = tone;
+      padded.resize(tone.size() * 2, 0.0f);
+
+      const double dense =
+          AudioMeasure::integratedLufs(tone.data(), (int)tone.size(), kSr);
+      const double sparse =
+          AudioMeasure::integratedLufs(padded.data(), (int)padded.size(), kSr);
+      expectWithinAbsoluteError(sparse, dense, 1.0,
+                                "the gate did not discount the silence");
+    }
+
+    beginTest("a gain is a gain");
+    {
+      const auto quiet = sine(1000.0, 5.0, 0.05f);
+      const auto loud = sine(1000.0, 5.0, 0.1f);
+      const double a =
+          AudioMeasure::integratedLufs(quiet.data(), (int)quiet.size(), kSr);
+      const double b =
+          AudioMeasure::integratedLufs(loud.data(), (int)loud.size(), kSr);
+      expectWithinAbsoluteError(b - a, 6.02, 0.1, "doubling should be 6 dB");
+
+      // And the gain that would close that gap is the one you would apply.
+      expectWithinAbsoluteError((double)AudioMeasure::gainForLufs(a, b), 2.0,
+                                0.02);
+      expectWithinAbsoluteError((double)AudioMeasure::gainForLufs(b, b), 1.0,
+                                0.001);
+    }
+
+    beginTest("loudness holds across sample rates");
+    {
+      // The coefficients are derived from the analogue prototype rather than
+      // tabulated for 48 kHz, so this is the test that says so.
+      for (double sr : {44100.0, 48000.0, 96000.0}) {
+        const auto tone = sine(1000.0, 8.0, 0.1f, sr);
+        expectWithinAbsoluteError(
+            AudioMeasure::integratedLufs(tone.data(), tone.data(),
+                                         (int)tone.size(), sr),
+            -20.0, 0.2, "1 kHz at " + juce::String(sr));
+      }
+    }
+
+    beginTest("too short to measure says so");
+    {
+      // A block is 400 ms and the standard has nothing to say about less, so
+      // neither does this: inventing a number would be worse than admitting
+      // there is not one.
+      const auto brief = sine(1000.0, 0.2, 0.5f);
+      expectEquals(
+          AudioMeasure::integratedLufs(brief.data(), (int)brief.size(), kSr),
+          AudioMeasure::kSilenceLufs);
+
+      std::vector<float> silence((size_t)(2.0 * kSr), 0.0f);
+      expectEquals(AudioMeasure::integratedLufs(silence.data(),
+                                                (int)silence.size(), kSr),
+                   AudioMeasure::kSilenceLufs);
+
+      expectEquals(AudioMeasure::integratedLufs(nullptr, 48000, kSr),
+                   AudioMeasure::kSilenceLufs);
     }
   }
 
