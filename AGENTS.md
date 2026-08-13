@@ -146,6 +146,10 @@ ctest --test-dir build --output-on-failure
 # Comparing two renders for timbre rather than for level: --lufs normalises to
 # an integrated loudness. It warns when a target would clip a sparse voice.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab hat --lufs -27
+# Comparing renders from builds you can no longer reproduce: measure the WAVs,
+# and write copies matched to one loudness so the A/B is about the sound.
+./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab file a.wav b.wav
+./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab file a.wav --lufs -20 -o a-matched.wav
 ```
 
 Targets: `Antiphon_Standalone` (easiest for iteration), `Antiphon_VST3`. CLAP is
