@@ -57,6 +57,7 @@ target_sources(Antiphon
         Harmony.cpp
         BotBand.cpp
         BandPatch.cpp
+        BotAddress.cpp
         BotNames.cpp
         PracticeServer.cpp
         PracticeBot.cpp
