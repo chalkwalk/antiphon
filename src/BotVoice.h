@@ -514,55 +514,283 @@ inline void renderBass(float *out, int numSamples, double sampleRate, double hz,
   }
 }
 
-// A lead voice: bright enough to sit above the chords and articulate enough to
-// hear as a line rather than a texture.
+// What the soloist brought.
 //
-// Distinct from the pad by attack (fast, not soft) and from the bass by
-// register and by having odd harmonics rather than a full stack -- closer to a
-// clarinet or a square-ish synth than to either. It has to be recognisable as
-// "the part someone would otherwise be playing", because the point of the lead
-// bot is that you can mute it and play that part yourself.
-inline void renderLead(float *out, int numSamples, double sampleRate, double hz,
-                       float velocity) {
+// Three instruments rather than one, and the reason is what the lead bot is
+// FOR: it plays the part you are most likely to want to take over, so you can
+// mute it and play that part yourself. Which instrument is in your way depends
+// entirely on what you are holding. A guitarist does not want to practise
+// against a guitar; a keyboard player does not want to practise against an
+// electric piano. Being able to say "synth" and have the room change is worth
+// more here than it would be on any other voice.
+enum class LeadInstrument { EPiano, Guitar, Synth };
+
+inline const char *leadInstrumentName(LeadInstrument i) {
+  switch (i) {
+  case LeadInstrument::EPiano:
+    return "electric piano";
+  case LeadInstrument::Guitar:
+    return "guitar";
+  case LeadInstrument::Synth:
+    return "lead synth";
+  }
+  return "lead synth";
+}
+
+// An electric piano, as a struck tine.
+//
+// The thing being modelled is a metal bar clamped at one end and hit with a
+// felt hammer, with a pickup a millimetre away from its tip. That construction
+// is why the instrument sounds like nothing else: the modes of a cantilever
+// are nowhere near harmonic -- the first overtone is around six times the
+// fundamental, not twice -- so the sound is metallic and bell-like rather than
+// pitched the way a string is.
+//
+// Velocity does something on these that it does not do anywhere else in the
+// band, and it is the whole character of the instrument: played gently it is
+// almost a sine, and played hard the upper mode barks. That is not a filter
+// opening. It is the hammer exciting a mode it was too soft to reach.
+inline constexpr int kTineModes = 3;
+inline constexpr double kTineRatios[kTineModes] = {1.0, 3.86, 6.27};
+
+inline void renderEPiano(float *out, int numSamples, int holdSamples,
+                         double sampleRate, double hz, float velocity,
+                         std::uint32_t seed) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
     return;
 
-  const double total = (double)numSamples / sampleRate;
-  const double attack = std::min(0.006, total * 0.1);
-  const double release = std::min(0.08, total * 0.4);
-  double p1 = 0.0, p3 = 0.0, p5 = 0.0;
+  if (holdSamples < 1)
+    holdSamples = 1;
+  if (holdSamples > numSamples)
+    holdSamples = numSamples;
 
-  // A little vibrato, late in the note. Nothing says "played" like a pitch
-  // that is not perfectly steady, and it costs one oscillator.
-  double vib = 0.0;
+  const float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
+
+  BotDsp::ModalBank tine;
+  tine.prepare(sampleRate);
+
+  // The fundamental rings for seconds; the bark is gone in a fifth of one.
+  const double decays[kTineModes] = {2.4, 0.60, 0.17};
+  const float gains[kTineModes] = {1.0f, (float)(0.30 * (0.25 + 0.75 * v)),
+                                   (float)(0.55 * v * v)};
+  for (int m = 0; m < kTineModes; ++m)
+    tine.addMode(hz * kTineRatios[m], decays[m], gains[m]);
+
+  // The tonebar: an aluminium resonator alongside the tine, tuned near it and
+  // ringing longer than anything the hammer does.
+  BotDsp::Svf bar;
+  bar.set(hz * 2.0, 3.0, sampleRate);
+
+  BotDsp::Noise noise(seed);
+  BotDsp::Svf hammerTone;
+  hammerTone.set(hz * (5.0 + 7.0 * (double)v), 0.9, sampleRate);
+
+  // The amplifier the instrument is nearly always heard through.
+  BotDsp::Cabinet cabinet;
+  cabinet.prepare(sampleRate, 5000.0, 0.35);
+
+  // Tremolo, which every one of these has and which most players leave on. It
+  // is amplitude and not pitch, whatever the panel calls it.
+  const double tremoloHz = 5.1;
+  const double tremoloDepth = 0.16;
+
+  const double holdTime = (double)holdSamples / sampleRate;
+  const double release = 0.18;
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
 
-    float env = 1.0f;
-    if (t < attack)
-      env = (float)(t / attack);
-    else if (t > total - release)
-      env = (float)((total - t) / release);
-    if (env < 0.0f)
-      env = 0.0f;
-    if (env > 1.0f)
-      env = 1.0f;
+    // The hammer: felt on metal, so a thud rather than a click, and shorter
+    // and brighter the harder it is thrown.
+    const float strike = (i == 0 ? 1.0f : 0.0f) +
+                         0.4f * hammerTone.process(noise.next(),
+                                                   BotDsp::Svf::BandPass) *
+                             decayAt(t, 0.006 + 0.010 * (1.0 - (double)v));
+
+    float body = tine.process(strike);
+    body += 0.25f * bar.process(body, BotDsp::Svf::BandPass);
+
+    const double tremolo =
+        1.0 - tremoloDepth + tremoloDepth * std::sin(2.0 * kPi * tremoloHz * t);
+
+    // The damper felt returning to the tine when the key comes up.
+    double env = 1.0;
+    if (t > holdTime) {
+      const double r = (t - holdTime) / release;
+      env = r >= 1.0 ? 0.0 : (1.0 - r) * (1.0 - r);
+    }
+
+    out[i] += (float)(0.48 * (double)v * tremolo * env) *
+              cabinet.process(0.8f * body);
+  }
+}
+
+// A guitar: the same string as the bass, at a different length.
+//
+// One model and two instruments, which is the argument for having built a
+// physical one at all. What separates them is not the code -- it is the pick
+// position, how much the bridge damps, how long the note is allowed to ring,
+// and what box it is heard through. Every one of those is a number a player
+// would recognise as a property of the instrument rather than of the synthesis.
+inline void renderGuitar(float *out, int numSamples, int holdSamples,
+                         double sampleRate, double hz, float velocity,
+                         std::uint32_t seed) {
+  if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
+    return;
+
+  if (holdSamples < 1)
+    holdSamples = 1;
+  if (holdSamples > numSamples)
+    holdSamples = numSamples;
+
+  const float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
+
+  // Nearer the bridge and much brighter than the bass, and it rings for a
+  // fraction as long: a guitar string is a tenth the mass over a shorter
+  // length, so it loses its energy far faster.
+  BotDsp::PluckedString string;
+  string.pluck(hz, sampleRate, 0.80f * (0.22f + 0.78f * v), 0.13,
+               0.42 + 0.30 * (double)v, 1.7, seed);
+
+  // The soundbox, which on a guitar is a much bigger part of the sound than a
+  // solid bass's body is: the lowest air resonance of a dreadnought sits near
+  // 100 Hz and the first top mode near 200.
+  BotDsp::Svf air, top;
+  air.set(105.0, 2.0, sampleRate);
+  top.set(210.0, 1.6, sampleRate);
+
+  // Tracks the note, for the reason the bass's does: brightness is about which
+  // HARMONIC survives, not which frequency, so a fixed corner makes the bottom
+  // of the register buzz and the top of it dull.
+  BotDsp::Svf tone;
+  tone.set(hz * (11.0 + 7.0 * (double)v), 0.7, sampleRate);
+
+  BotDsp::Noise noise(seed ^ 0x3C6EF372u);
+  BotDsp::Svf pickTone;
+  pickTone.set(3200.0, 1.2, sampleRate);
+
+  BotDsp::Cabinet cabinet;
+  cabinet.prepare(sampleRate, 4200.0, 0.45);
+
+  const double holdTime = (double)holdSamples / sampleRate;
+  const double release = 0.12;
+  const int releaseAt = (int)(holdTime * sampleRate);
+
+  for (int i = 0; i < numSamples; ++i) {
+    if (i == releaseAt)
+      string.mute(sampleRate, release);
+
+    const double t = (double)i / sampleRate;
+    const float s = string.next();
+
+    const float pick = 0.30f * (0.3f + 0.7f * v) *
+                       pickTone.process(noise.next(), BotDsp::Svf::BandPass) *
+                       decayAt(t, 0.003);
+
+    const float withBody = s + 0.30f * air.process(s, BotDsp::Svf::BandPass) +
+                           0.22f * top.process(s, BotDsp::Svf::BandPass);
+
+    out[i] += 1.15f * cabinet.process(
+                          tone.process(withBody + pick, BotDsp::Svf::LowPass));
+  }
+}
+
+// A lead synth: one oscillator, a filter with an envelope on it, and vibrato.
+//
+// Monophonic and deliberately simpler than the pad, because a line does not
+// need to be wide -- it needs to cut. So there is no detuned second
+// oscillator and no chorus: those make a sound sit in a mix, and this one has
+// to sit on top of it.
+//
+// The vibrato is the piece worth keeping from the voice this replaces. It is
+// the one thing about the old lead that already sounded played, and it arrives
+// late in the note, which is what a player does rather than what an LFO does.
+inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
+                            double sampleRate, double hz, float velocity,
+                            std::uint32_t seed) {
+  if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0 || hz <= 0.0)
+    return;
+
+  if (holdSamples < 1)
+    holdSamples = 1;
+  if (holdSamples > numSamples)
+    holdSamples = numSamples;
+
+  const float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
+
+  const double holdTime = (double)holdSamples / sampleRate;
+  const double attack = std::min(0.010, holdTime * 0.3);
+  const double release = 0.09;
+
+  Noise seeder(seed);
+  double phase = 0.5 * (double)seeder.next() + 0.5;
+  double vib = 0.0;
+
+  BotDsp::Svf filterA, filterB;
+
+  // Well up the harmonic series so the line is heard over a full band, and it
+  // opens with velocity like everything else here.
+  const double partials = 7.0 + 9.0 * (double)v;
+
+  for (int i = 0; i < numSamples; ++i) {
+    const double t = (double)i / sampleRate;
+
+    double env = t < attack ? t / attack : 1.0;
+    if (t > holdTime) {
+      const double r = (t - holdTime) / release;
+      env *= r >= 1.0 ? 0.0 : 1.0 - r;
+    }
+    if (env <= 0.0) {
+      out[i] += 0.0f;
+      continue;
+    }
+
+    // The filter envelope: a short sweep down into the note, which is what
+    // gives a synth line its attack without a transient to make one from.
+    const double fenv = 1.0 + 1.6 * std::exp(-t / 0.09);
+    if (i % 32 == 0) {
+      filterA.set(hz * partials * fenv, 1.1, sampleRate);
+      filterB.set(hz * partials * fenv, 0.6, sampleRate);
+    }
 
     vib += 2.0 * kPi * 5.2 / sampleRate;
     const double depth = std::min(1.0, t / 0.25) * 0.004;
     const double f = hz * (1.0 + depth * std::sin(vib));
 
-    p1 += 2.0 * kPi * f / sampleRate;
-    p3 += 2.0 * kPi * f * 3.0 / sampleRate;
-    p5 += 2.0 * kPi * f * 5.0 / sampleRate;
+    const double inc = f / sampleRate;
+    phase += inc;
+    if (phase >= 1.0)
+      phase -= 1.0;
 
-    // Odd harmonics only: hollow rather than buzzy, and it keeps the lead from
-    // masking the keys, whose triads are full of even-harmonic content.
-    const double tone =
-        std::sin(p1) + 0.32 * std::sin(p3) + 0.12 * std::sin(p5);
+    // A pulse rather than a saw: hollow rather than buzzy, which keeps the
+    // line out of the way of the keys, whose saws are full of even harmonics.
+    const float osc = BotDsp::polyBlepPulse(phase, inc, 0.32);
+    const float shaped = saturate(0.55f * osc, 1.2);
 
-    out[i] += velocity * 0.30f * (float)tone * env;
+    out[i] += (float)(0.20 * env) *
+              filterB.process(filterA.process(shaped, BotDsp::Svf::LowPass),
+                              BotDsp::Svf::LowPass);
+  }
+}
+
+// The lead, whichever instrument is holding it.
+//
+// `holdSamples` is where the note is released; the buffer may be longer, and a
+// struck or plucked instrument uses that room to ring on. A synth barely does.
+inline void renderLead(float *out, int numSamples, int holdSamples,
+                       double sampleRate, double hz, float velocity,
+                       LeadInstrument instrument, std::uint32_t seed) {
+  switch (instrument) {
+  case LeadInstrument::EPiano:
+    renderEPiano(out, numSamples, holdSamples, sampleRate, hz, velocity, seed);
+    return;
+  case LeadInstrument::Guitar:
+    renderGuitar(out, numSamples, holdSamples, sampleRate, hz, velocity, seed);
+    return;
+  case LeadInstrument::Synth:
+    renderLeadSynth(out, numSamples, holdSamples, sampleRate, hz, velocity,
+                    seed);
+    return;
   }
 }
 

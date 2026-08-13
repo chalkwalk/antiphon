@@ -99,6 +99,15 @@ private:
   // private messages take the same commands.
   bool handleBandCommand(const juce::String &text);
 
+  // Instructions to ONE player, which room chat deliberately does not take.
+  //
+  // The key and the chords are things the whole band must agree about, so they
+  // are shouted. What instrument the soloist is holding is nobody else's
+  // business, and "guitar" is a word that turns up in ordinary conversation --
+  // a room where saying it silently reconfigures a bot is a room with a
+  // poltergeist in it. Returns a reply, or an empty string for "not for me".
+  juce::String handlePrivateCommand(const juce::String &text);
+
   // False once the bot has parted because its owner left.
   bool checkOwnerStillHere();
 

@@ -1487,6 +1487,85 @@ public:
       }
     }
 
+    beginTest("the seed hands the lead a different instrument");
+    {
+      // All three must be reachable, and reachable often enough that a player
+      // meets them. An instrument no seed produces is dead code wearing a name.
+      int epiano = 0, guitar = 0, synth = 0;
+      for (std::uint32_t seed = 1; seed <= 300; ++seed) {
+        const auto s2 = settingsFor("C major", 120, 8, seed);
+        switch (BotBand::leadInstrument(s2)) {
+        case BotVoice::LeadInstrument::EPiano: ++epiano; break;
+        case BotVoice::LeadInstrument::Guitar: ++guitar; break;
+        case BotVoice::LeadInstrument::Synth: ++synth; break;
+        }
+      }
+      expect(epiano > 50 && guitar > 50 && synth > 50,
+             "the instruments came up " + juce::String(epiano) + " / " +
+                 juce::String(guitar) + " / " + juce::String(synth) +
+                 " times in 300 seeds");
+    }
+
+    beginTest("asking for an instrument overrides the seed, and only that");
+    {
+      // The one thing about the band a player can pin. It has to actually
+      // stick -- including across a shake, since somebody who asked for a
+      // guitar because they came to practise keyboards has not changed their
+      // mind about that by asking for a different tune.
+      auto s2 = settingsFor("C major", 120, 8, 1u);
+      expect(BotBand::leadInstrument(s2) != BotVoice::LeadInstrument::Guitar,
+             "seed 1 already gives a guitar, so this proves nothing");
+
+      s2.leadOverride = (int)BotVoice::LeadInstrument::Guitar;
+      expect(BotBand::leadInstrument(s2) == BotVoice::LeadInstrument::Guitar,
+             "the override was ignored");
+
+      const auto beforeShake = render(BotBand::Voice::Lead, s2);
+      s2.seed = 909u;
+      expect(BotBand::leadInstrument(s2) == BotVoice::LeadInstrument::Guitar,
+             "a new seed took the instrument back");
+      expect(render(BotBand::Voice::Lead, s2) != beforeShake,
+             "a new seed changed nothing, so the shake is not working either");
+
+      // And nonsense goes back to the seed rather than to a wrong instrument.
+      s2.leadOverride = 47;
+      expect(BotBand::leadInstrument(s2) ==
+                 BotBand::leadInstrument(settingsFor("C major", 120, 8, 909u)),
+             "an out-of-range override was taken seriously");
+    }
+
+    beginTest("the three instruments are three different instruments");
+    {
+      // Each has to be recognisably a different thing in the room, or the
+      // choice is decoration. Measured on what separates them by ear: the
+      // guitar and the piano are struck and decay, the synth is held; the
+      // guitar is far brighter than the piano, whose energy sits close to its
+      // fundamental because a tine is nearly a sine until it is hit hard.
+      double bright[3] = {0.0, 0.0, 0.0};
+      double crest[3] = {0.0, 0.0, 0.0};
+
+      for (int i = 0; i < 3; ++i) {
+        auto s2 = settingsFor("C major", 120, 8, 4242u);
+        s2.leadOverride = i;
+        const auto buf = render(BotBand::Voice::Lead, s2);
+        bright[i] = AudioMeasure::brightnessHz(buf.data(), (int)buf.size(),
+                                               s2.sampleRate);
+        crest[i] = AudioMeasure::crest(buf.data(), (int)buf.size());
+      }
+
+      const juce::String at =
+          " (epiano " + juce::String(bright[0], 0) + " Hz crest " +
+          juce::String(crest[0], 2) + ", guitar " + juce::String(bright[1], 0) +
+          " Hz crest " + juce::String(crest[1], 2) + ", synth " +
+          juce::String(bright[2], 0) + " Hz crest " +
+          juce::String(crest[2], 2) + ")";
+
+      expect(bright[1] > bright[0] * 1.5,
+             "the guitar should be much brighter than the electric piano" + at);
+      expect(crest[1] > crest[2] * 1.5,
+             "a plucked line should be peakier than a held one" + at);
+    }
+
     beginTest("the lead sits above the chords");
     {
       const auto s = settingsFor("C major", 120, 16);

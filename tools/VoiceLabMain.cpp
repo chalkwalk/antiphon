@@ -46,6 +46,10 @@ struct Options {
   bool patchNamed = false;
   BotVoice::PadCharacter patchCharacter = BotVoice::PadCharacter::Poly;
 
+  // And which instrument the soloist is holding.
+  BotVoice::LeadInstrument instrument = BotVoice::LeadInstrument::Synth;
+  bool instrumentNamed = false;
+
   // Sweep.
   juce::String sweepParam;
   double sweepLo = 0.0, sweepHi = 1.0;
@@ -63,7 +67,7 @@ void usage() {
       "\n"
       "  AntiphonVoiceLab <voice> [options]\n"
       "\n"
-      "voices: kick snare hat bass lead pad kit keys band\n"
+      "voices: kick snare hat bass lead pad kit keys solo band\n"
       "  file <paths...>  measure WAVs that already exist, and with --lufs\n"
       "                   write matched copies -- for comparing renders from\n"
       "                   builds you can no longer reproduce\n"
@@ -79,6 +83,7 @@ void usage() {
       "  --open             open hat\n"
       "  --technique <name> bass articulation: fingered, picked or muted\n"
       "  --patch <name>     polysynth patch: strings, brass or poly\n"
+      "  --instrument <n>   what the soloist is holding: epiano, guitar, synth\n"
       "  --repeats <n>      render n hits (default 1)\n"
       "  --spacing <s>      seconds between repeats (default 0.5)\n"
       "  --sweep p=lo:hi:n  one file per value of p; p is velocity or note\n"
@@ -169,9 +174,11 @@ std::vector<float> renderOne(const Options &o) {
     else if (o.voice == "bass")
       BotVoice::renderBassString(out, juce::jmin(room, hit), o.sampleRate, hz,
                                  o.velocity, o.technique, seed);
-    else if (o.voice == "lead")
-      BotVoice::renderLead(out, juce::jmin(room, hit), o.sampleRate, hz,
-                           o.velocity);
+    else if (o.voice == "lead") {
+      const int span = juce::jmin(room, hit);
+      BotVoice::renderLead(out, span, (int)(0.6 * span), o.sampleRate, hz,
+                           o.velocity, o.instrument, seed);
+    }
     else if (o.voice == "pad") {
       const auto patch = patchFor(o, seed);
       if (r == 0)
@@ -545,6 +552,19 @@ int main(int argc, char *argv[]) {
         std::fprintf(stderr, "voicelab: technique is fingered, picked or muted\n");
         return 1;
       }
+    } else if (arg == "--instrument") {
+      const auto name = next().toLowerCase();
+      o.instrumentNamed = true;
+      if (name == "epiano" || name == "piano")
+        o.instrument = BotVoice::LeadInstrument::EPiano;
+      else if (name == "guitar")
+        o.instrument = BotVoice::LeadInstrument::Guitar;
+      else if (name == "synth")
+        o.instrument = BotVoice::LeadInstrument::Synth;
+      else {
+        std::fprintf(stderr, "voicelab: instrument is epiano, guitar or synth\n");
+        return 1;
+      }
     } else if (arg == "--patch") {
       const auto name = next().toLowerCase();
       o.patchNamed = true;
@@ -606,8 +626,8 @@ int main(int argc, char *argv[]) {
     return failures;
   }
 
-  const juce::StringArray known{"kick", "snare", "hat", "bass", "lead",
-                                "pad",  "kit",   "keys", "band"};
+  const juce::StringArray known{"kick", "snare", "hat",  "bass", "lead",
+                                "pad",  "kit",   "keys", "solo", "band"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -628,6 +648,41 @@ int main(int argc, char *argv[]) {
     matchLoudness(o, mix, &mixR);
     report("band (mixed)", mix, o.sampleRate, &mixR);
     if (!writeWav(o.out, mix, o.sampleRate, &mixR)) {
+      std::fprintf(stderr, "voicelab: could not write %s\n",
+                   o.out.getFullPathName().toRawUTF8());
+      return 1;
+    }
+    std::printf("wrote %s\n", o.out.getFullPathName().toRawUTF8());
+    return 0;
+  }
+
+  if (o.voice == "solo") {
+    // The lead through the real path, so the instrument, the note choices and
+    // the ring-on are all the ones the room would hear.
+    if (o.out == juce::File())
+      o.out = juce::File::getCurrentWorkingDirectory().getChildFile("solo.wav");
+
+    auto key = MusicalKey::parseName(o.keyName);
+    if (!key.valid)
+      key = MusicalKey::parseName("C major");
+    auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+    if (o.instrumentNamed)
+      settings.leadOverride = (int)o.instrument;
+
+    std::printf("solo  seed %u  %s\n", (unsigned)o.seed,
+                BotVoice::leadInstrumentName(BotBand::leadInstrument(settings)));
+
+    const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
+    std::vector<float> mix;
+    for (int interval = 0; interval < o.bars; ++interval) {
+      std::vector<float> one((size_t)n, 0.0f);
+      BotBand::renderInterval(BotBand::Voice::Lead, settings, interval,
+                              one.data(), n);
+      mix.insert(mix.end(), one.begin(), one.end());
+    }
+    matchLoudness(o, mix, nullptr);
+    report("solo", mix, o.sampleRate);
+    if (!writeWav(o.out, mix, o.sampleRate)) {
       std::fprintf(stderr, "voicelab: could not write %s\n",
                    o.out.getFullPathName().toRawUTF8());
       return 1;
