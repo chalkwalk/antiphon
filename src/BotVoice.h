@@ -540,16 +540,27 @@ inline const char *leadInstrumentName(LeadInstrument i) {
 // An electric piano, as a struck tine.
 //
 // The thing being modelled is a metal bar clamped at one end and hit with a
-// felt hammer, with a pickup a millimetre away from its tip. That construction
-// is why the instrument sounds like nothing else: the modes of a cantilever
-// are nowhere near harmonic -- the first overtone is around six times the
-// fundamental, not twice -- so the sound is metallic and bell-like rather than
-// pitched the way a string is.
+// soft hammer, with an electromagnetic pickup a millimetre from its tip, going
+// into an amplifier that is being asked for more than it has.
 //
-// Velocity does something on these that it does not do anywhere else in the
-// band, and it is the whole character of the instrument: played gently it is
-// almost a sine, and played hard the upper mode barks. That is not a filter
-// opening. It is the hammer exciting a mode it was too soft to reach.
+// The first version of this got the balance between those wrong in a way worth
+// writing down, because it is the difference between a Rhodes and a xylophone.
+// A cantilever's modes are wildly inharmonic -- the first overtone is around
+// six times the fundamental, not twice -- and leaning on that gives you a
+// struck metal bar, which is a glockenspiel. The pickup is what makes it a
+// Rhodes: it sits at the tip where the fundamental has almost all of its
+// motion, so what comes out is very nearly a sine, and the inharmonic modes
+// are a detail on the attack rather than the sound.
+//
+// The growl of a hard-played Rhodes is therefore NOT the tine. It is the amp.
+// The instrument is quiet, so it is amplified hard, and digging in pushes the
+// preamp into distortion -- which is why the bark arrives with volume rather
+// than at some particular pitch, and why it sounds like overdrive rather than
+// like a bell. Velocity here drives the amplifier, not the mode gains.
+//
+// And it rings for a long time, for the same reason: a tine on its own is
+// barely audible after a second, and what you hear sustaining is the amplified
+// tail of something very quiet.
 inline constexpr int kTineModes = 3;
 inline constexpr double kTineRatios[kTineModes] = {1.0, 3.86, 6.27};
 
@@ -569,25 +580,34 @@ inline void renderEPiano(float *out, int numSamples, int holdSamples,
   BotDsp::ModalBank tine;
   tine.prepare(sampleRate);
 
-  // The fundamental rings for seconds; the bark is gone in a fifth of one.
-  const double decays[kTineModes] = {2.4, 0.60, 0.17};
-  const float gains[kTineModes] = {1.0f, (float)(0.30 * (0.25 + 0.75 * v)),
-                                   (float)(0.55 * v * v)};
+  // The fundamental rings for seconds and carries almost everything. The two
+  // inharmonic modes are the sound of the hammer arriving and are gone before
+  // the note has properly started -- present enough to hear as a strike, not
+  // enough to make the instrument metallic.
+  const double decays[kTineModes] = {4.5, 0.35, 0.07};
+  const float gains[kTineModes] = {1.0f, (float)(0.09 + 0.07 * (double)v),
+                                   (float)(0.10 * (double)v * (double)v)};
   for (int m = 0; m < kTineModes; ++m)
     tine.addMode(hz * kTineRatios[m], decays[m], gains[m]);
 
-  // The tonebar: an aluminium resonator alongside the tine, tuned near it and
-  // ringing longer than anything the hammer does.
+  // The tonebar: an aluminium resonator alongside the tine, tuned near it.
   BotDsp::Svf bar;
   bar.set(hz * 2.0, 3.0, sampleRate);
 
+  // A soft hammer. Neoprene on metal is a thud with very little edge to it,
+  // and the first version's bright contact burst was most of what made this
+  // read as a mallet on wood.
   BotDsp::Noise noise(seed);
   BotDsp::Svf hammerTone;
-  hammerTone.set(hz * (5.0 + 7.0 * (double)v), 0.9, sampleRate);
+  hammerTone.set(hz * (2.0 + 2.5 * (double)v), 0.9, sampleRate);
 
-  // The amplifier the instrument is nearly always heard through.
-  BotDsp::Cabinet cabinet;
-  cabinet.prepare(sampleRate, 5000.0, 0.35);
+  // The amplifier, and the one place velocity really acts.
+  //
+  // Driven by how hard the note was played, so the bark grows with the volume
+  // rather than sitting at a fixed frequency. That is the whole character of
+  // the instrument and it is one line: the same tine, amplified harder.
+  BotDsp::Cabinet amp;
+  amp.prepare(sampleRate, 3800.0, 0.4 + 3.2 * (double)v * (double)v);
 
   // Tremolo, which every one of these has and which most players leave on. It
   // is amplitude and not pitch, whatever the panel calls it.
@@ -595,43 +615,57 @@ inline void renderEPiano(float *out, int numSamples, int holdSamples,
   const double tremoloDepth = 0.16;
 
   const double holdTime = (double)holdSamples / sampleRate;
-  const double release = 0.18;
+  // The damper is felt on a tine that is barely moving, so it takes its time.
+  const double release = 0.45;
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
 
-    // The hammer: felt on metal, so a thud rather than a click, and shorter
-    // and brighter the harder it is thrown.
-    const float strike = (i == 0 ? 1.0f : 0.0f) +
-                         0.4f * hammerTone.process(noise.next(),
-                                                   BotDsp::Svf::BandPass) *
-                             decayAt(t, 0.006 + 0.010 * (1.0 - (double)v));
+    const float strike =
+        (i == 0 ? 1.0f : 0.0f) +
+        0.22f * hammerTone.process(noise.next(), BotDsp::Svf::BandPass) *
+            decayAt(t, 0.008 + 0.012 * (1.0 - (double)v));
 
     float body = tine.process(strike);
-    body += 0.25f * bar.process(body, BotDsp::Svf::BandPass);
+    body += 0.12f * bar.process(body, BotDsp::Svf::BandPass);
 
     const double tremolo =
         1.0 - tremoloDepth + tremoloDepth * std::sin(2.0 * kPi * tremoloHz * t);
 
-    // The damper felt returning to the tine when the key comes up.
     double env = 1.0;
     if (t > holdTime) {
       const double r = (t - holdTime) / release;
       env = r >= 1.0 ? 0.0 : (1.0 - r) * (1.0 - r);
     }
 
-    out[i] += (float)(0.48 * (double)v * tremolo * env) *
-              cabinet.process(0.8f * body);
+    // Amplified BEFORE the level, so a quiet note and a loud one are the same
+    // instrument at two settings rather than two instruments.
+    out[i] += (float)(0.30 * (0.35 + 0.65 * (double)v) * tremolo * env) *
+              amp.process(1.4f * body);
   }
 }
 
-// A guitar: the same string as the bass, at a different length.
+// An acoustic guitar: the same string as the bass, at a different length.
 //
 // One model and two instruments, which is the argument for having built a
 // physical one at all. What separates them is not the code -- it is the pick
 // position, how much the bridge damps, how long the note is allowed to ring,
 // and what box it is heard through. Every one of those is a number a player
 // would recognise as a property of the instrument rather than of the synthesis.
+//
+// Two things had to change before it stopped sounding like a hammered dulcimer.
+//
+// A guitar played softly is very nearly a sine, and the harmonics arrive as
+// you dig in. The excitation used to start bright and only get brighter, so
+// every note arrived with its full harmonic series regardless of how it was
+// played -- which is what a struck instrument does and what a plucked one does
+// not.
+//
+// And its brightness dies far faster than its body tone. A real string loses
+// its top within a few tenths of a second while the fundamental rings on for
+// seconds, so the note DARKENS as it decays. The string model does some of that
+// by itself through the loop filter, but not nearly enough, and the pick
+// transient was loud enough on top to read as a mallet strike besides.
 inline void renderGuitar(float *out, int numSamples, int holdSamples,
                          double sampleRate, double hz, float velocity,
                          std::uint32_t seed) {
@@ -645,12 +679,12 @@ inline void renderGuitar(float *out, int numSamples, int holdSamples,
 
   const float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
 
-  // Nearer the bridge and much brighter than the bass, and it rings for a
-  // fraction as long: a guitar string is a tenth the mass over a shorter
-  // length, so it loses its energy far faster.
+  // Nearly a sine at the bottom of the velocity range, and a full spread of
+  // harmonics at the top -- a range of three to one rather than the four-to-
+  // three it had.
   BotDsp::PluckedString string;
   string.pluck(hz, sampleRate, 0.80f * (0.22f + 0.78f * v), 0.13,
-               0.42 + 0.30 * (double)v, 1.7, seed);
+               0.14 + 0.44 * (double)v, 1.7, seed);
 
   // The soundbox, which on a guitar is a much bigger part of the sound than a
   // solid bass's body is: the lowest air resonance of a dreadnought sits near
@@ -659,18 +693,26 @@ inline void renderGuitar(float *out, int numSamples, int holdSamples,
   air.set(105.0, 2.0, sampleRate);
   top.set(210.0, 1.6, sampleRate);
 
-  // Tracks the note, for the reason the bass's does: brightness is about which
-  // HARMONIC survives, not which frequency, so a fixed corner makes the bottom
-  // of the register buzz and the top of it dull.
+  // The tone control, and it CLOSES as the note decays.
+  //
+  // Tracked to the note for the reason the bass's is -- brightness is about
+  // which harmonic survives, not which frequency -- and swept down over the
+  // first third of a second, which is the string shedding its top. Without the
+  // sweep the note is as bright at two seconds as at ten milliseconds, and a
+  // string that never darkens does not sound like one.
   BotDsp::Svf tone;
-  tone.set(hz * (11.0 + 7.0 * (double)v), 0.7, sampleRate);
+  const double toneFloor = 5.0 + 5.0 * (double)v;
+  const double toneOpen = 4.0 + 8.0 * (double)v;
+  const double toneFall = 0.30;
 
   BotDsp::Noise noise(seed ^ 0x3C6EF372u);
   BotDsp::Svf pickTone;
-  pickTone.set(3200.0, 1.2, sampleRate);
+  pickTone.set(2000.0, 1.2, sampleRate);
 
-  BotDsp::Cabinet cabinet;
-  cabinet.prepare(sampleRate, 4200.0, 0.45);
+  // The box, close-miked. Gentle: an acoustic guitar is not going through an
+  // amplifier, and the shaping here is the wood rather than a valve.
+  BotDsp::Cabinet box;
+  box.prepare(sampleRate, 3400.0, 0.15);
 
   const double holdTime = (double)holdSamples / sampleRate;
   const double release = 0.12;
@@ -681,16 +723,24 @@ inline void renderGuitar(float *out, int numSamples, int holdSamples,
       string.mute(sampleRate, release);
 
     const double t = (double)i / sampleRate;
+
+    if (i % 32 == 0)
+      tone.set(hz * (toneFloor + toneOpen * std::exp(-t / toneFall)), 0.7,
+               sampleRate);
+
     const float s = string.next();
 
-    const float pick = 0.30f * (0.3f + 0.7f * v) *
+    // The fingernail or plectrum meeting the string: a detail on the front of
+    // the note. At four times this level it was the note's attack rather than
+    // a detail on it, and the ear hears that as something being struck.
+    const float pick = 0.08f * (0.3f + 0.7f * v) *
                        pickTone.process(noise.next(), BotDsp::Svf::BandPass) *
-                       decayAt(t, 0.003);
+                       decayAt(t, 0.004);
 
     const float withBody = s + 0.30f * air.process(s, BotDsp::Svf::BandPass) +
                            0.22f * top.process(s, BotDsp::Svf::BandPass);
 
-    out[i] += 1.15f * cabinet.process(
+    out[i] += 1.45f * box.process(
                           tone.process(withBody + pick, BotDsp::Svf::LowPass));
   }
 }
@@ -765,11 +815,20 @@ inline void renderLeadSynth(float *out, int numSamples, int holdSamples,
     // A pulse rather than a saw: hollow rather than buzzy, which keeps the
     // line out of the way of the keys, whose saws are full of even harmonics.
     const float osc = BotDsp::polyBlepPulse(phase, inc, 0.32);
-    const float shaped = saturate(0.55f * osc, 1.2);
 
-    out[i] += (float)(0.20 * env) *
-              filterB.process(filterA.process(shaped, BotDsp::Svf::LowPass),
-                              BotDsp::Svf::LowPass);
+    // Driven twice, before the filter and after it, and that is what makes a
+    // lead sound like a lead rather than a clean tone that happens to be
+    // higher up. A line has to be heard over a whole band, and the way that is
+    // done on every record anybody would name is not a brighter oscillator --
+    // it is an overdriven amplifier, which adds harmonics that MOVE with the
+    // note instead of sitting at a fixed cutoff, and which compresses the line
+    // so it stays present between the loud parts of the bar.
+    const float shaped = saturate(0.85f * osc, 2.2);
+    const float filtered =
+        filterB.process(filterA.process(shaped, BotDsp::Svf::LowPass),
+                        BotDsp::Svf::LowPass);
+
+    out[i] += (float)(0.16 * env) * saturate(1.5f * filtered, 1.6);
   }
 }
 
