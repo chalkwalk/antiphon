@@ -1,3 +1,4 @@
+#include "../src/BotNames.h"
 #include "../src/PracticeBot.h"
 #include "../src/PracticeRoom.h"
 #include "FakeNinjamServer.h" // for waitUntil
@@ -44,6 +45,16 @@ struct Joiner : public NinjamClientListener {
     return waitUntil([this] { return client.isConnected(); }, 5000);
   }
 };
+
+// The bot playing a given instrument, whatever it happens to be called this
+// session. Names come from the seed now, so a test that wants "the keys bot"
+// has to ask rather than assume.
+juce::String botPlaying(const PracticeRoom &room, const juce::String &instrument) {
+  for (const auto &n : room.botNames())
+    if (n.contains("[" + instrument + "-bot]"))
+      return n;
+  return {};
+}
 
 PracticeRoom::Config testConfig(const juce::String &owner = "you") {
   PracticeRoom::Config c;
@@ -139,13 +150,32 @@ public:
              "a bot arrived with no channels");
     }
 
-    beginTest("bot names say they are bots");
+    beginTest("bot names say they are bots, and can be sent a message");
     {
-      // A human reading the mixer deserves to know which strips are not people.
+      // A human reading the mixer deserves to know which strips are not people,
+      // and every client sends a private message by splitting on the first
+      // space -- so a name with one in it cannot be reached at all. Both
+      // properties are checked here because the second is invisible until
+      // somebody tries to talk to a bot and nothing happens.
       PracticeRoom room;
       expect(room.start(testConfig()));
-      for (const auto &n : room.botNames())
-        expect(n.contains("[bot]"), "bot name does not identify itself: " + n);
+
+      juce::StringArray handles;
+      for (const auto &n : room.botNames()) {
+        expect(n.endsWith("-bot]"),
+               "bot name does not identify itself: " + n);
+        expect(!n.containsChar(' '),
+               "a name with a space cannot be sent a private message: " + n);
+
+        // The handle is what a player types to address it, and two bots
+        // sharing one would make both unaddressable.
+        const auto handle = juce::String(BotNames::handleOf(n.toStdString()));
+        expect(handle.isNotEmpty(), "no handle in " + n);
+        expect(!handles.contains(handle),
+               "two bots answer to the same handle: " + handle);
+        handles.add(handle);
+      }
+      expectEquals(handles.size(), 4);
     }
   }
 
@@ -165,8 +195,8 @@ public:
 
     beginTest("the help line says how to remove the bot");
     {
-      const auto help = PracticeBot::helpLine("Kit [bot]");
-      expect(help.contains("Kit [bot]"));
+      const auto help = PracticeBot::helpLine("Mirn[kit-bot]");
+      expect(help.contains("Mirn[kit-bot]"));
       expect(help.contains("part"), "help does not name the command");
     }
 
@@ -308,16 +338,24 @@ public:
       expect(room.start(testConfig()));
       expectEquals(room.botCount(), BotBand::kNumVoices);
 
+      // Which NAME goes to which instrument comes from the room seed, so the
+      // assertion is about the instruments being covered rather than about any
+      // particular player turning up.
       const auto names = room.botNames();
-      expect(names.contains("Kit [bot]"));
-      expect(names.contains("Bass [bot]"));
-      expect(names.contains("Keys [bot]"));
-      expect(names.contains("Lead [bot]"));
+      for (const char *instrument : {"kit", "bass", "keys", "lead"}) {
+        int found = 0;
+        for (const auto &n : names)
+          if (n.contains(juce::String("[") + instrument + "-bot]"))
+            ++found;
+        expectEquals(found, 1, juce::String("no single bot plays ") +
+                                   instrument + ": " +
+                                   names.joinIntoString(", "));
+      }
     }
 
     beginTest("shake changes the figures");
     {
-      PracticeBot bot("Kit [bot]", {"Kit"});
+      PracticeBot bot("Mirn[kit-bot]", {"kit"});
       bot.playAs(BotBand::Voice::Drums, MusicalKey::parseName("C major"), 120,
                  8, 48000.0, 7);
       const auto before = bot.currentSettings().seed;
@@ -348,7 +386,7 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count("Keys [bot]") > 0;
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
       }, 5000));
 
       you.client.sendChatMessage("[key: D minor]");
@@ -375,7 +413,7 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count("Keys [bot]") > 0;
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
       }, 5000));
 
       you.client.sendChatMessage("| Am | F | C | G |");
@@ -398,7 +436,7 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count("Keys [bot]") > 0;
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
       }, 5000));
 
       const auto before = room.bandSettings();
@@ -442,7 +480,7 @@ public:
       PracticeServer server;
       expect(server.start(120, 8));
 
-      PracticeBot bot("Kit [bot]", {"Kit"});
+      PracticeBot bot("Mirn[kit-bot]", {"kit"});
       expect(bot.join(PracticeRoom::host(), server.port(), 48000.0));
       expect(waitUntil([&] { return bot.client().isConnected(); }, 5000));
       expect(bot.isActive());
@@ -463,7 +501,7 @@ public:
       PracticeServer server;
       expect(server.start(120, 8));
 
-      PracticeBot bot("Kit [bot]", {"Kit"});
+      PracticeBot bot("Mirn[kit-bot]", {"kit"});
       expect(bot.join(PracticeRoom::host(), server.port(), 48000.0));
       expect(waitUntil([&] { return bot.client().isConnected(); }, 5000));
 

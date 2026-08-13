@@ -1,5 +1,7 @@
 #include "PracticeRoom.h"
 
+#include "BotNames.h"
+
 #include "IntervalClock.h"
 
 PracticeRoom::PracticeRoom() = default;
@@ -36,14 +38,34 @@ bool PracticeRoom::start(const Config &config) {
     const BotBand::Voice voices[] = {
         BotBand::Voice::Drums, BotBand::Voice::Bass, BotBand::Voice::Keys,
         BotBand::Voice::Lead};
-    std::uint32_t seed = cfg.seed;
-    for (auto voice : voices) {
-      const juce::String instrument = BotBand::voiceName(voice);
 
-      // The marker is for the human reading the mixer: a strip that is not a
-      // person should say so. It identifies nothing -- the echo bot is told who
-      // to listen to rather than working it out from a name.
-      auto bot = std::make_unique<PracticeBot>(instrument + " [bot]",
+    // Names before players, because a name has to be checked against the room.
+    //
+    // The owner is already in it -- or about to be -- so their name is what a
+    // bot's handle must not collide with. See BotNames.h for why the handle
+    // matters enough to pick around: it is what lets "what are the changes
+    // delvo" work, and an ambiguous one costs the bot natural address for the
+    // whole session.
+    std::vector<std::string> taken;
+    if (cfg.ownerName.isNotEmpty())
+      taken.push_back(cfg.ownerName.toStdString());
+    const auto chosen = BotNames::bandFor(4, cfg.seed, taken);
+
+    std::uint32_t seed = cfg.seed;
+    int index = 0;
+    for (auto voice : voices) {
+      const juce::String instrument =
+          juce::String(BotBand::voiceName(voice)).toLowerCase();
+
+      // One token, no spaces, so `/msg` can reach it in every client. The
+      // marker is for the human reading the mixer -- a strip that is not a
+      // person should say so -- and for other bots deciding whether to answer.
+      // It identifies nothing and is spoofable, which is fine, because it
+      // decides only who talks.
+      const juce::String botUsername = BotNames::usernameFor(
+          chosen[(size_t)index++], instrument.toStdString());
+
+      auto bot = std::make_unique<PracticeBot>(botUsername,
                                                juce::StringArray{instrument});
       bot->setOwner(cfg.ownerName);
       bot->playAs(voice, cfg.key, cfg.bpm, cfg.bpi, cfg.sampleRate, seed);

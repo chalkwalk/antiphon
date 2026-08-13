@@ -62,6 +62,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
