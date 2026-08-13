@@ -44,11 +44,32 @@ SAMPLE_PADDING = 46
 
 # What Antiphon would actually use. Bank 0 programs, General MIDI numbering.
 SETS = {
+    # One of each family, for a first experiment.
+    "minimal": [0, 24, 40, 48, 56, 65, 71, 73],
+
     # Everything a physical model will not do well, and nothing else.
     "core": [0, 11, 12, 16, 19, 24, 25, 40, 42, 45, 48, 52,
              56, 57, 58, 60, 61, 64, 65, 66, 68, 71, 73],
-    # One of each family, for a first experiment.
-    "minimal": [0, 24, 40, 48, 56, 65, 71, 73],
+
+    # `core` plus the instruments the band itself plays: five basses, the
+    # electric guitars, both electric pianos, harpsichord and clavinet.
+    #
+    # These overlap what the synthesis already does, and that is the point --
+    # having both is how you find out which is better, and the answer is
+    # unlikely to be the same for a fingered bass as for a Rhodes.
+    "band": [0, 4, 5, 6, 7, 11, 12, 16, 19, 24, 25, 26, 27, 28, 29, 30,
+             32, 33, 34, 35, 36, 37, 40, 42, 45, 48, 52,
+             56, 57, 58, 60, 61, 64, 65, 66, 68, 71, 73],
+
+    # Everything except the synthesisers (80-103), the sound effects (120-127)
+    # and the two synth basses.
+    #
+    # Worth knowing before choosing it: this is the set most people would name
+    # first, and it saves the LEAST. Synths and effects together are 11% of the
+    # bytes, because they are short and thin. All the weight is in the acoustic
+    # multisampling, which is exactly what any of these sets is keeping.
+    "acoustic": ([p for p in range(0, 38)] + [p for p in range(40, 80)]
+                 + [p for p in range(104, 120)]),
 }
 
 # Drum kits live in bank 128, and they are the bargain in this file.
@@ -64,8 +85,15 @@ SETS = {
 # timbales, agogo, guiro, cabasa, shaker, whistle and woodblock. None of that is
 # a physical model we are ever going to write, and percussion one-shots are also
 # the best case for Ogg compression, since nothing is looped.
-DRUM_KITS = [0, 8, 16, 24, 25, 32, 40, 48]  # Standard, Room, Power, Electronic,
-                                            # 808/909, Jazz, Brush, Orchestral
+# The acoustic ones. Electronic and 808/909 are dropped because the modelled kit
+# is already a synthesised one and does that job better -- it varies with
+# velocity and never repeats, which is what a drum machine sample cannot do.
+# Room is dropped because the kit is put in a room of our own (BotDsp::Room), and
+# baking a second one into the samples would be two rooms.
+DRUM_KITS = [0, 16, 32, 40, 48]  # Standard, Power, Jazz, Brush, Orchestral
+
+# All of them, including the electronic kits, for comparison.
+DRUM_KITS_ALL = [0, 8, 16, 24, 25, 32, 40, 48]
 
 
 def chunks(buf, start, end):
@@ -298,7 +326,9 @@ def main():
     ap.add_argument("--set", choices=sorted(SETS),
                     help="keep a named set of bank 0 programs")
     ap.add_argument("--drums", action="store_true",
-                    help="keep the eight drum kits in bank 128")
+                    help="keep the five acoustic drum kits in bank 128")
+    ap.add_argument("--all-drums", action="store_true",
+                    help="keep all eight, including the electronic kits")
     ap.add_argument("--list", action="store_true",
                     help="print the presets in the input and stop")
     args = ap.parse_args()
@@ -319,6 +349,8 @@ def main():
         keep |= {(0, p) for p in SETS[args.set]}
     if args.drums:
         keep |= {(128, p) for p in DRUM_KITS}
+    if args.all_drums:
+        keep |= {(128, p) for p in DRUM_KITS_ALL}
     if not keep:
         raise SystemExit("nothing to keep: pass --preset or --set")
 
