@@ -3,6 +3,7 @@
 #include "../src/BotVoice.h"
 #include "../src/Euclidean.h"
 #include "TestSignal.h"
+#include <map>
 #include <JuceHeader.h>
 
 // Two kinds of assertion here, and the split is the point (AGENTS.md).
@@ -424,6 +425,43 @@ public:
       const float level = rms(buf, 0, (int)buf.size());
       expect(level > 0.12f,
              "the kit came out at rms " + juce::String(level, 5));
+    }
+
+    beginTest("the snare is a drum with a rattle under it");
+    {
+      // It read as a piccolo snare, or a rim. The body was never the reason --
+      // 185 Hz is about right for a 14-inch drum -- because what the ear takes
+      // as the pitch of a snare is mostly the wires and the stick, and those
+      // sat at 4.2 kHz and 1.6 kHz. All three moved down, and the balance moved
+      // off the wires and onto the body.
+      //
+      // The pitch assertion is the one with teeth: before the change,
+      // autocorrelation found no fundamental at all, because the body was too
+      // far under the noise to be one. A drum that has a pitch you can measure
+      // is a drum rather than a burst.
+      const int n = (int)(1.0 * 48000.0);
+      std::vector<float> buf((size_t)n, 0.0f);
+      BotVoice::renderSnare(buf.data(), n, 48000.0, 0.8f, 5u);
+
+      // Searched between 120 and 320 Hz, which is where a snare body is, and
+      // that narrowing is part of the question rather than a way of getting
+      // the answer. The two body modes are INHARMONIC -- a shell pitch and an
+      // overtone a little over a fifth above it -- so the pair has no single
+      // period, and over a longer decay autocorrelation will happily report a
+      // slow beat between them as the fundamental. It found 81 Hz that way.
+      // What is being asked here is not "what is the pitch of this signal", to
+      // which the honest answer is that a drum does not have one; it is
+      // whether there is a body ringing where a snare's body rings.
+      const double f0 =
+          AudioMeasure::fundamentalHz(buf.data(), n, 48000.0, 120.0, 320.0);
+      expect(f0 > 130.0 && f0 < 200.0,
+             "the snare's body reads at " + juce::String(f0, 1) + " Hz");
+
+      const double centroid =
+          AudioMeasure::brightnessHz(buf.data(), n, 48000.0);
+      expect(centroid < 4500.0,
+             "the snare's energy centres at " + juce::String(centroid, 0) +
+                 " Hz, which is a rim rather than a drum");
     }
 
     beginTest("the kit is heard in a room, and the room has two sides");
@@ -848,6 +886,43 @@ public:
              "a muted note should be gone while a fingered one still rings");
     }
 
+    beginTest("the bass has a tone control, and it follows the note");
+    {
+      // Every other filter in the bass has a cutoff fixed in hertz, and rightly
+      // so: a body resonance is an air cavity and a cabinet is a speaker in a
+      // box, and neither moves when you play a different note. But that cannot
+      // be the whole answer, because it makes the instrument's brightness
+      // depend on which note it is playing -- a 2.2 kHz corner is the fifth
+      // harmonic of a high note and the fiftieth of a low one, so the bottom of
+      // the register came out buzzing with partials no bass would pass.
+      //
+      // So one filter tracks the note. This is what says so: an octave up must
+      // bring the energy up with it. With the fixed filters alone the two notes
+      // land within a few percent of each other, since the corner they are both
+      // hitting is the same one.
+      for (auto technique : {BotVoice::BassTechnique::Fingered,
+                             BotVoice::BassTechnique::Picked,
+                             BotVoice::BassTechnique::Muted}) {
+        const int n = (int)(2.0 * 48000.0);
+        double centroid[2] = {0.0, 0.0};
+        for (int k = 0; k < 2; ++k) {
+          std::vector<float> buf((size_t)n, 0.0f);
+          BotVoice::renderBassString(buf.data(), n, 48000.0,
+                                     k == 0 ? 41.20 : 82.41, 0.8f, technique,
+                                     7u);
+          centroid[k] = AudioMeasure::brightnessHz(buf.data(), n, 48000.0);
+        }
+
+        const double ratio = centroid[1] / centroid[0];
+        expect(ratio > 1.4,
+               juce::String(BotVoice::bassTechniqueName(technique)) +
+                   ": E1 centres at " + juce::String(centroid[0], 0) +
+                   " Hz and E2 at " + juce::String(centroid[1], 0) +
+                   " Hz, a ratio of " + juce::String(ratio, 2) +
+                   " over an octave");
+      }
+    }
+
     beginTest("the bass is a bass and not a low guitar");
     {
       // This used to compare the bass's brightness against the pad's, and the
@@ -951,7 +1026,7 @@ public:
                "pulse width " + juce::String(p.pulseWidth, 3) + at);
         expect(p.noiseLevel >= 0.0 && p.noiseLevel <= 0.06,
                "noise " + juce::String(p.noiseLevel, 3) + at);
-        expect(p.cutoffPartials >= 4.0 && p.cutoffPartials <= 18.0,
+        expect(p.cutoffPartials >= 1.0 && p.cutoffPartials <= 18.0,
                "cutoff " + juce::String(p.cutoffPartials, 2) + at);
 
         // The one that would be audible as a mistake rather than as a taste.
@@ -960,17 +1035,26 @@ public:
         expect(p.resonance >= 0.5 && p.resonance <= 1.5,
                "resonance " + juce::String(p.resonance, 2) + at);
 
-        expect(p.envAmount >= 1.0 && p.envAmount <= 5.5,
+        expect(p.envAmount >= 1.0 && p.envAmount <= 14.5,
                "filter envelope " + juce::String(p.envAmount, 2) + at);
+        // The filter envelope has to arrive within the note or the swell that
+        // is the whole point of it happens after the chord has gone.
+        expect(p.envAttack >= 0.05 && p.envAttack <= 0.50,
+               "filter attack " + juce::String(p.envAttack, 3) + at);
         expect(p.envDecay >= 0.3 && p.envDecay <= 2.0,
                "envelope decay " + juce::String(p.envDecay, 2) + at);
 
-        // An attack longer than a chord means the chord never arrives. At 120
-        // bpm a chord in an eight-beat interval can be as short as a beat, so
-        // the ceiling has to be well inside half a second.
-        expect(p.attackSeconds >= 0.05 && p.attackSeconds <= 0.60,
+        // An attack longer than a chord would mean the chord never arrives.
+        // renderPad clamps it to a fraction of the note rather than letting
+        // that happen, so what this bounds is the setting itself: slow enough
+        // to be a pad, quick enough that the chord is stated in the bar it
+        // belongs to.
+        expect(p.attackSeconds >= 0.10 && p.attackSeconds <= 0.90,
                "attack " + juce::String(p.attackSeconds, 3) + at);
-        expect(p.releaseSeconds >= 0.15 && p.releaseSeconds <= 0.85,
+        // The release runs on PAST the note-off and overlaps the next chord,
+        // so it is not bounded by the slot the way the attack is. What bounds
+        // it is the tail renderKeys reserves, which is two seconds.
+        expect(p.releaseSeconds >= 0.35 && p.releaseSeconds <= 1.30,
                "release " + juce::String(p.releaseSeconds, 3) + at);
         expect(p.drive >= 0.4 && p.drive <= 1.7,
                "drive " + juce::String(p.drive, 2) + at);
@@ -1035,7 +1119,8 @@ public:
 
           const int n = (int)(1.5 * 48000.0);
           std::vector<float> buf((size_t)n, 0.0f);
-          BotVoice::renderPad(buf.data(), n, 48000.0, want, 0.85f, patch, seed);
+          BotVoice::renderPad(buf.data(), n, n, 48000.0, want, 0.85f, patch,
+                              seed);
 
           // Past the attack, where the filter envelope has settled.
           const int from = (int)(0.7 * 48000.0);
@@ -1086,7 +1171,8 @@ public:
         const auto patch = BotVoice::padPatchFor(seed * 2246822519u);
         const int n = (int)(4.0 * 48000.0);
         std::vector<float> buf((size_t)n, 0.0f);
-        BotVoice::renderPad(buf.data(), n, 48000.0, 220.0, 0.85f, patch, seed);
+        BotVoice::renderPad(buf.data(), n, n, 48000.0, 220.0, 0.85f, patch,
+                            seed);
 
         const juce::String at =
             juce::String(" (") + BotVoice::padCharacterName(patch.character) +
@@ -1116,46 +1202,148 @@ public:
       }
     }
 
+    beginTest("the brass patch swells into the note");
+    {
+      // What makes a subtractive synth sound blown rather than switched on: the
+      // filter starts closed and opens as the note arrives. It had no attack at
+      // all -- widest on the first sample, closing from there, which is the
+      // shape of something plucked -- and the brass patch consequently sounded
+      // like nothing in particular.
+      //
+      // Measured as brightness in the first 30 ms against brightness at the top
+      // of the filter envelope. With the attack removed the second window is
+      // DARKER than the first, so this fails in the right direction rather than
+      // merely failing.
+      int checked = 0;
+      for (std::uint32_t seed = 1; seed <= 60; ++seed) {
+        const auto patch = BotVoice::padPatchFor(seed * 2654435761u);
+        if (patch.character != BotVoice::PadCharacter::Brass)
+          continue;
+        ++checked;
+
+        const int n = (int)(2.0 * 48000.0);
+        std::vector<float> buf((size_t)n, 0.0f);
+        BotVoice::renderPad(buf.data(), n, n, 48000.0, 261.63, 0.85f, patch,
+                            seed);
+
+        const int window = (int)(0.030 * 48000.0);
+        const int top = (int)(patch.envAttack * 48000.0);
+        const double closed =
+            AudioMeasure::brightnessHz(buf.data(), window, 48000.0);
+        const double open =
+            AudioMeasure::brightnessHz(buf.data() + top, window, 48000.0);
+
+        expect(open > closed * 1.3,
+               "seed " + juce::String((int)seed) + ": the filter went from " +
+                   juce::String(closed, 0) + " Hz to " + juce::String(open, 0) +
+                   " Hz, which is not a swell");
+      }
+      expect(checked >= 3, "no brass patches were exercised");
+    }
+
+    beginTest("a chord is let go rather than cut off");
+    {
+      // The release runs on past the note-off, so a chord overlaps the one
+      // that replaces it. An envelope whose release has to finish inside its
+      // own slot is a player lifting both hands cleanly between every chord,
+      // and it reads as chopped however gentle the release is made.
+      for (std::uint32_t seed : {3u, 17u, 91u}) {
+        const auto patch = BotVoice::padPatchFor(seed * 2246822519u);
+        const int n = (int)(4.0 * 48000.0);
+        const int hold = (int)(1.0 * 48000.0);
+        std::vector<float> buf((size_t)n, 0.0f);
+        BotVoice::renderPad(buf.data(), n, hold, 48000.0, 261.63, 0.85f, patch,
+                            seed);
+
+        const juce::String at =
+            juce::String(" (") + BotVoice::padCharacterName(patch.character) +
+            ", release " + juce::String(patch.releaseSeconds, 2) + " s)";
+
+        const float held = rms(buf, (int)(0.6 * 48000.0), hold);
+        const float after = rms(buf, hold + (int)(0.15 * 48000.0),
+                                hold + (int)(0.35 * 48000.0));
+
+        // Still clearly sounding a fifth of a second after the key came up.
+        expect(after > held * 0.25f,
+               "the note fell from " + juce::String(held, 4) + " to " +
+                   juce::String(after, 4) + " within 350 ms of note-off" + at);
+
+        // And it does end. The release is linear to zero, so past its length
+        // the buffer is exactly silent -- which also says the tail cannot run
+        // on into whatever the caller renders next.
+        const int done = hold + (int)((patch.releaseSeconds + 0.05) * 48000.0);
+        if (done < n)
+          expectEquals(AudioMeasure::peak(buf.data() + done, n - done), 0.0f,
+                       "the note never stopped" + at);
+      }
+    }
+
     beginTest("changing patch is not changing volume");
     {
       // The other half of "a safe scope". A seed that picks a different
       // keyboard must not also turn the keyboard up: the patches differ in
-      // waveform, drive and filter envelope, and all three happen to affect
-      // loudness. Measured at 6 LU between brass and strings before the
-      // per-character output level was fitted.
+      // waveform, drive, filter envelope and release length, and every one of
+      // those affects loudness. Measured at 6.4 LU between brass and strings
+      // before the per-character output level was fitted.
+      //
+      // The claim is made about the CHARACTER MEANS rather than about every
+      // render, and that split is the whole point of the test. A constant can
+      // only correct what the patch does; it cannot correct how many notes the
+      // voicing happened to put where, and with releases now ringing over the
+      // chord changes that varies by about three decibels from seed to seed.
+      // Asserting a tight bound on the total spread would mean either a
+      // toothless threshold or a level knob being asked to fix an arrangement.
       //
       // Loudness rather than rms, because that is the unit the complaint would
       // be made in, and measured as the stereo pair the bot transmits.
+      std::map<juce::String, std::vector<double>> byCharacter;
       double quietest = 0.0, loudest = -200.0;
-      juce::String quietestAt, loudestAt;
 
       for (std::uint32_t seed : {1u, 2u, 3u, 5u, 8u, 13u, 21u, 34u, 55u, 89u,
                                  144u, 233u, 777u, 4242u}) {
-        const auto s = settingsFor("C major", 120, 8, seed);
-        const int n = intervalSamplesFor(s);
+        const auto s2 = settingsFor("C major", 120, 8, seed);
+        const int n = intervalSamplesFor(s2);
         std::vector<float> left((size_t)n, 0.0f), right((size_t)n, 0.0f);
-        BotBand::renderInterval(BotBand::Voice::Keys, s, 0, left.data(),
+        BotBand::renderInterval(BotBand::Voice::Keys, s2, 0, left.data(),
                                 right.data(), n);
 
-        const double lufs =
-            AudioMeasure::integratedLufs(left.data(), right.data(), n,
-                                         s.sampleRate);
-        const juce::String at =
-            juce::String(BotVoice::padCharacterName(
-                BotBand::keysPatch(s).character)) +
-            " at seed " + juce::String((int)seed);
+        const double lufs = AudioMeasure::integratedLufs(
+            left.data(), right.data(), n, s2.sampleRate);
 
-        if (lufs > loudest) { loudest = lufs; loudestAt = at; }
-        if (quietest == 0.0 || lufs < quietest) { quietest = lufs; quietestAt = at; }
+        byCharacter[juce::String(BotVoice::padCharacterName(
+                        BotBand::keysPatch(s2).character))]
+            .push_back(lufs);
+
+        if (lufs > loudest) loudest = lufs;
+        if (quietest == 0.0 || lufs < quietest) quietest = lufs;
       }
 
-      // 3 LU, which is deliberately looser than the 2.4 measured. What is left
-      // is not the patch -- it is how many notes the voicing put where, and no
-      // output level fixes that. The kit varies by 3.7 LU across seeds for the
-      // same kind of reason.
-      expect(loudest - quietest < 3.0,
+      expectEquals((int)byCharacter.size(), 3,
+                   "not every character was exercised");
+
+      double lowestMean = 1.0e9, highestMean = -1.0e9;
+      juce::String detail;
+      for (const auto &entry : byCharacter) {
+        double mean = 0.0;
+        for (double v : entry.second)
+          mean += v;
+        mean /= (double)entry.second.size();
+        lowestMean = std::min(lowestMean, mean);
+        highestMean = std::max(highestMean, mean);
+        detail += " " + entry.first + " " + juce::String(mean, 2);
+      }
+
+      // This is what the level constants control, so this is where the tight
+      // bound belongs. Measured at 0.18 LU.
+      expect(highestMean - lowestMean < 0.7,
+             "the characters sit " + juce::String(highestMean - lowestMean, 2) +
+                 " LU apart:" + detail);
+
+      // And a loose bound on the whole range, so a patch that blew up in some
+      // other way still gets caught.
+      expect(loudest - quietest < 3.5,
              "the keyboard spans " + juce::String(loudest - quietest, 1) +
-                 " LU, from " + quietestAt + " to " + loudestAt);
+                 " LU across seeds");
     }
 
     beginTest("the keyboard sits above the bass");
