@@ -623,19 +623,36 @@ Observed rather than configured, which matters for three reasons: a bot that
 failed to connect is not announced as present, bots brought by two different
 people still produce one sensible list, and nothing has to be told to anybody.
 
-**Who announces needs no agreement: it is the lowest-named bot in the room five
-seconds in.** A pure function of what everybody can see, evaluated at the one
-moment when everybody sees the same thing. Every bot sorts the same list and
-reaches the same answer, with nothing sent between them -- the "identical
-inputs, identical function, no coordination" trick used for key changes.
+**The rule is one question, asked by each bot about itself: has somebody
+announced ME?** If not, it announces -- itself and every bot it can see. If so,
+it stays quiet.
 
-**And that is the second job the five seconds do.** An earlier draft of this
-section had a bot decide at CONNECT time, by looking for other bots and
-concluding it was first if it saw none. Building it showed why that cannot work:
-the membership list has not arrived when a client finishes authenticating, so
-every bot sees an empty room and every bot believes it is the first. The delay
-is what lets the lists converge, and only then is the question answerable at
-all. It is not merely a pause for the reader.
+Self-referential on purpose, and that is what makes it work. A bot cannot know
+whether it is the FIRST to arrive: the membership list has not come through when
+a client finishes authenticating, so every bot sees an empty room and every one
+of them believes it is first. But a bot can always know whether it has been
+INTRODUCED, because that is something it observes rather than something it has
+to infer.
+
+Everything falls out of that one question, including two cases a tiebreak
+cannot reach:
+
+- **Ordinary startup.** Whoever wakes first sees the whole band and names all of
+  them; the rest find themselves already announced and say nothing. One roster.
+- **A bot that joins an hour later.** It was in nobody's roster, so it speaks --
+  and it names the band it can see, which by then is everybody. **The
+  announcement lands when the band is complete** rather than being lost because
+  the moment passed. This is the case the whole design is for: bands assemble
+  raggedly.
+- **A band whose other members never connected.** It announces itself alone,
+  correctly, rather than waiting for a quorum that is not coming.
+
+**The wait is four seconds plus up to two more, and the spread is doing real
+work.** Without it every bot wakes at the same instant, nobody has been
+announced yet, and all four announce at once -- which is what happens if you
+remove it. With it, whoever wakes first names the others and the question
+answers itself for everybody else. Derived from the bot's name rather than drawn
+randomly, so a room stays reproducible.
 
 In a practice room, where the room controls the timing, the whole thing is
 deterministic:
@@ -662,16 +679,13 @@ The band's NAME is used only when every bot in the list is one the announcer was
 spawned alongside. Two strangers' bots in one room are a list, not a band, and
 calling them one would be a small lie in the first line anybody reads.
 
-**A bot that arrives later says nothing at all**, and that is a change from an
-earlier draft which had it introduce itself in one line. The rule it needed --
-"did I hear a bot during my own wait?" -- cannot tell a late arrival from a bot
-that simply lost the tiebreak, because during startup every bot is waiting at
-once. Building it produced four introductions and no roster.
-
-The fix is not a better discriminator but a smaller promise: only the announcer
-speaks. A bot that joins afterwards is visible in the user list and can be
-asked, and a line of chat nobody requested is worse than a quiet arrival.
-Silence is the default here, and it survives contact with the awkward case.
+**A bot that arrives later announces the band as it now stands**, which is the
+same rule rather than an exception to it -- it was not in the roster, so it
+posts one. Two implementations were tried and discarded before this: "did any
+bot speak during my wait", which cannot tell a late arrival from a bot that lost
+a race and produced four introductions and no roster; and a name tiebreak, which
+produces one clean roster at startup and then leaves every later arrival silent
+forever. Asking about oneself is the version that needs no exceptions.
 
 **A human arriving later has missed it**, which is the one real gap. In a
 practice room -- your own room, quiet by definition -- the roster is repeated

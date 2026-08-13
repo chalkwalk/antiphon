@@ -166,15 +166,15 @@ private:
 
   // The arrival choreography (docs/BOT-CHAT.md section 6).
   //
-  // Who speaks is decided five seconds in, by every bot evaluating the same
-  // function over the same sorted list of who is present. Nothing is agreed and
-  // nothing is sent between them.
+  // A bot announces the band unless somebody has already announced IT.
   //
-  // It cannot be decided at connect time, which an earlier version tried: the
-  // membership list has not arrived when `onConnected` fires, so every bot sees
-  // an empty room and believes itself the first. `heardABot` covers the
-  // remaining case, where somebody else has already introduced the room.
-  std::atomic<bool> heardABot{false};
+  // Self-referential on purpose. A bot cannot know whether it is the first to
+  // arrive -- the membership list has not come through when `onConnected`
+  // fires, so every bot sees an empty room -- but it can always know whether it
+  // has been introduced, because that is observed rather than inferred. One
+  // question covers the ordinary startup, a bot arriving an hour late, and a
+  // band whose other members never connected.
+  std::atomic<bool> announcedMe{false};
   std::atomic<bool> arrivalDone{false};
   juce::StringArray bandmates;
   juce::String bandName;
