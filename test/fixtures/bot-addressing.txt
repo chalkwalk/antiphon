@@ -12,8 +12,8 @@
 # naming two bots should get two answers. What must be impossible is a bot
 # answering something not aimed at it.)
 #
-# Room for every case below: bots Ridley[kit-bot], Hollis[bass-bot],
-# Wren[keys-bot], Sabine[lead-bot], Marlow[tutor-bot]; humans you, dave, sam.
+# Room for every case below: bots Mirn[kit-bot], Delvo[bass-bot],
+# Pundo[keys-bot], Quado[lead-bot], Tutor[bot]; humans you, dave, sam.
 # Channels are named after the instruments, and dave's is called "guitar".
 #
 # Both forms of address are valid and both are tested: the bot's NAME, which is
@@ -32,7 +32,7 @@ KIT     kit: what are you playing
 KIT     kit, what are you playing
 KIT     @kit what are you playing
 KIT     kit - what are you playing
-KIT     Ridley[kit-bot]: what are you playing
+KIT     Mirn[kit-bot]: what are you playing
 KIT     kit what are you playing
 KIT     hey kit whats your part
 KIT     what is kit playing
@@ -169,30 +169,30 @@ NOBODY  makes sense
 
 # By name rather than by instrument. The whole reason the names are rare words:
 # these forms are unsafe with a name like "bass" and fine with one like
-# "hollis", which is what lets a sentence sound like a sentence.
+# "delvo", which is what lets a sentence sound like a sentence.
 [COLD]
-KIT     ridley: what are you playing
-KIT     ridley what are you playing
-KIT     hey ridley whats your part
-BASS    hollis, what are the changes
-BASS    what are the changes hollis
-BASS    what is hollis playing
-KEYS    wren: what voicing is that
-LEAD    ask sabine what key
-TUTOR   marlow i am lost
+KIT     mirn: what are you playing
+KIT     mirn what are you playing
+KIT     hey mirn whats your part
+BASS    delvo, what are the changes
+BASS    what are the changes delvo
+BASS    what is delvo playing
+KEYS    pundo: what voicing is that
+LEAD    ask quado what key
+TUTOR   tutor i am lost
 
 # The name alone. An opener, and the cheapest discovery there is: somebody
 # types a name out of curiosity and finds out the room answers.
 [COLD]
-BASS    hollis
-KIT     ridley
-KIT     ridley?
+BASS    delvo
+KIT     mirn
+KIT     mirn?
 
 # Several at once. Two names, two answers -- the case "at most one bot answers"
 # got wrong.
 [COLD]
-BASS,KIT        hollis, ridley, can you turn it up
-BASS,KEYS       hollis and wren, quieter please
+BASS,KIT        delvo, mirn, can you turn it up
+BASS,KEYS       delvo and pundo, quieter please
 
 # The collision the rename exists to prevent. Every one of these contains an
 # instrument word and none of them is addressed to anybody.
@@ -215,13 +215,13 @@ NOBODY  more guitar
 # causes no reply -- the invariant that makes a feedback loop impossible rather
 # than unlikely.
 [COLD]
-NOBODY  Hollis[bass-bot]: ridley, what are you playing
-NOBODY  Ridley[kit-bot]: hollis
-NOBODY  Marlow[tutor-bot]: band, what are you playing
+NOBODY  Delvo[bass-bot]: mirn, what are you playing
+NOBODY  Mirn[kit-bot]: delvo
+NOBODY  Tutor[bot]: band, what are you playing
 
 # The window belongs to whoever opened it. Somebody else talking is not a
 # follow-up, which is the commonest way a design like this becomes insufferable.
-[AFTER you: hollis]
+[AFTER you: delvo]
 BASS    and the chords?
 NOBODY  dave: and the chords?
 NOBODY  sam: what are you playing
@@ -230,9 +230,9 @@ NOBODY  sam: what are you playing
 # failure mode of getting this wrong is bots nobody can remove.
 [COLD]
 ALL     part
-BASS    hollis, part
-BASS    hollis: part
-KIT     ridley part
+BASS    delvo, part
+BASS    delvo: part
+KIT     mirn part
 
 # ...and the word in every other context, which is most of them. "part" is
 # ordinary jam vocabulary and only the whole message counts.
@@ -243,10 +243,10 @@ NOBODY  im learning my part
 NOBODY  can you play that part again
 NOBODY  part of the chart is wrong
 
-# A human called Hollis has joined. The short handle is ambiguous and is
+# A human called Delvo has joined. The short handle is ambiguous and is
 # withdrawn; the full username and the instrument still work. Silence beats a
 # wrong answer.
-[ROOM you, dave, hollis]
-NOBODY  hollis, what are the changes
-BASS    Hollis[bass-bot]: what are the changes
+[ROOM you, dave, delvo]
+NOBODY  delvo, what are the changes
+BASS    Delvo[bass-bot]: what are the changes
 BASS    bass, what are the changes
