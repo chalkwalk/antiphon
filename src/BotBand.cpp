@@ -360,8 +360,16 @@ inline constexpr double kKitDrive = 1.8;
 // Overheads rather than a reverb send: enough that muting it sounds wrong and
 // not enough to be audible as an effect. The early reflections do the work --
 // the pattern of the first bounces is what says how big a room is -- so this
-// can stay low and still place the kit somewhere.
-inline constexpr float kRoomMix = 0.12f;
+// does not need to be large to place the kit somewhere.
+//
+// It was 0.12, which turned out to be too careful to hear. The dry signal is
+// common to both channels and only the wet differs, so the mix number IS the
+// stereo image, and at 0.12 the kit measured 22 dB of mid against side and a
+// left-right correlation of 0.988 -- which is a mono kit with a hint of
+// something behind it. Measured across the range: 0.22 gives -16.8 dB, 0.32
+// gives -13.6 dB and a correlation of 0.92, and 0.45 gives -10.9 dB and starts
+// sounding like a reverb rather than a room. 0.32 costs 0.2 LU of level.
+inline constexpr float kRoomMix = 0.32f;
 
 void renderDrums(const Settings &s, int intervalIndex, float *out,
                  float *right, int numSamples) {
@@ -404,8 +412,12 @@ void renderDrums(const Settings &s, int intervalIndex, float *out,
     const int at = step * beatSamples;
     if (at >= numSamples)
       break;
+    // Raised from 0.55 with the snare's retuning. Moving its weight off the
+    // wires and onto the body cost 2.4 LU -- a drum body is a narrower thing
+    // than a burst of noise -- and without this the kit came back with the
+    // backbeat sitting under the kick and the hats.
     BotVoice::renderSnare(out + at, numSamples - at, s.sampleRate,
-                          kDrumHeadroom * 0.55f,
+                          kDrumHeadroom * 0.72f,
                           saltedSeed(Voice::Drums, s.seed) + (std::uint32_t)step);
   }
 
@@ -439,7 +451,7 @@ void renderDrums(const Settings &s, int intervalIndex, float *out,
       if (at < 0 || at >= numSamples)
         continue;
       BotVoice::renderSnare(out + at, numSamples - at, s.sampleRate,
-                            kDrumHeadroom * (0.35f + 0.12f * (float)sub),
+                            kDrumHeadroom * (0.46f + 0.16f * (float)sub),
                             saltedSeed(Voice::Drums, s.seed) + 31u * (std::uint32_t)sub);
     }
   }
@@ -614,7 +626,11 @@ void renderBass(const Settings &s, float *out, int numSamples) {
 inline constexpr double kKeysChorusRate = 0.55;   // Hz
 inline constexpr double kKeysChorusBase = 12.0;   // ms
 inline constexpr double kKeysChorusDepth = 3.2;   // ms
-inline constexpr float kKeysChorusMix = 0.55f;
+// Raised from 0.55 for the same reason and by the same measurement: at 0.55
+// the keyboard's side channel sat 11.6 dB under its mid, which is a real
+// chorus but a polite one. 0.75 gives -9.6 dB. These instruments were not
+// polite about it.
+inline constexpr float kKeysChorusMix = 0.75f;
 
 // And the output amplifier. Gentle -- this is the last of the several places
 // the signal is shaped rather than the one doing the work, and the point of
@@ -658,20 +674,36 @@ void renderKeys(const Settings &s, float *out, float *right, int numSamples) {
   if (voicings.size() != sounding.size())
     return;
 
-  // One sustained chord per slot: held, not stabbed.
+  // One sustained chord per slot: held, not stabbed -- and let go rather than
+  // cut off.
+  //
+  // The hands come up at the end of the slot and the notes ring on past it, so
+  // a chord overlaps the one that replaces it. That overlap is not a detail:
+  // an envelope whose release has to finish inside its own slot is a keyboard
+  // player lifting both hands cleanly between every chord, which nobody does,
+  // and it reads as chopped however gentle the release is made.
+  //
+  // The tail is bounded by the buffer, so the last chord of an interval keeps
+  // whatever room is left and no more. That is a real limitation of rendering
+  // one interval at a time rather than a choice -- a Ninjam interval is a
+  // closed unit and nothing can sound across the join.
+  const double longestRelease = 2.0;
+  const int tail = (int)(longestRelease * s.sampleRate);
+
   for (const auto &span : spans) {
     const int at = atStep(span.from);
     if (at >= numSamples)
       break;
-    const int length = std::min(numSamples - at, atStep(span.to) - at);
-    if (length <= 0)
+    const int hold = std::min(numSamples - at, atStep(span.to) - at);
+    if (hold <= 0)
       break;
+    const int length = std::min(numSamples - at, hold + tail);
 
     for (int note : voicings[(size_t)span.chord])
       // Seeded by the NOTE and by where it falls, so the voices of a chord
       // drift apart from each other and the same chord played twice is not the
       // same waveform twice.
-      BotVoice::renderPad(out + at, length, s.sampleRate,
+      BotVoice::renderPad(out + at, length, hold, s.sampleRate,
                           BotVoice::midiToHz((double)note), 0.85f, patch,
                           saltedSeed(Voice::Keys, s.seed) +
                               2654435761u * (std::uint32_t)note +
@@ -767,22 +799,29 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 // does not. Measured with AudioMeasure::integratedLufs over five seeds, as the
 // stereo pair each bot actually transmits:
 //
-//   Bass  -11.74 LUFS      Kit  -13.36 LUFS
-//   Lead  -12.74 LUFS      Keys -16.70 LUFS
+//   Bass  -12.2 LUFS      Kit  -13.0 LUFS
+//   Lead  -13.4 LUFS      Keys -18.2 LUFS
 //
-// which is the intended shape, and within 0.7 dB of it on every voice. The two
-// units agreed to about half a LU here because all four voices carry real
-// midrange -- the bass is not a sub -- so K-weighting had little to separate.
+// The keys sit further down than the others, and further down than an equal
+// loudness would put them, which is the one place a measurement had to be
+// overruled by a judgement. Loudness says how loud a thing is, not how much
+// room it takes up: the pad was two sines and is now a pair of filtered saws,
+// and at the SAME integrated loudness the second masks far more of the band
+// than the first because it occupies far more of the spectrum. Levelled by the
+// meter it was audibly in the way. This is what a mixer would have done, and
+// the meter has no opinion about it.
 //
-// Left exactly where rms put it, deliberately: the corrections would have been
-// under 0.7 dB, and the KIT'S OWN loudness varies by 3.7 LU from seed to seed
-// depending on how busy the figure is. Tuning a trim by half a dB against
-// material that moves by four is false precision. Making a seed's density not
-// change the band's level is a real piece of work and is on the roadmap.
+// Every number here was re-measured after the kit, bass and keys were retuned;
+// they move whenever a voice does, which is why they are quoted rather than
+// derived. The KIT'S OWN loudness still varies by 3.7 LU from seed to seed
+// depending on how busy the figure is, so nothing here is fitted more finely
+// than about half a decibel -- tuning a trim against material that moves by
+// four would be false precision. Making a seed's density not change the band's
+// level is a real piece of work and is on the roadmap.
 inline constexpr float kVoiceTrim[kNumVoices] = {
-    2.02f, // Drums
-    1.50f, // Bass
-    0.50f, // Keys
+    1.71f, // Drums
+    1.67f, // Bass
+    0.32f, // Keys
     1.15f, // Lead
 };
 

@@ -180,7 +180,10 @@ std::vector<float> renderOne(const Options &o) {
                     BotVoice::padCharacterName(patch.character),
                     patch.detuneCents, patch.cutoffPartials, patch.resonance,
                     patch.envAmount, 1000.0 * patch.attackSeconds, patch.drive);
-      BotVoice::renderPad(out, juce::jmin(room, hit), o.sampleRate, hz,
+      // Held for most of the render, so the release is heard as part of the
+      // note rather than falling off the end of the file.
+      const int span = juce::jmin(room, hit);
+      BotVoice::renderPad(out, span, (int)(0.6 * span), o.sampleRate, hz,
                           o.velocity, patch, seed);
     }
   }
