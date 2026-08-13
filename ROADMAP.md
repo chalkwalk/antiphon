@@ -537,6 +537,33 @@ Ardour vendors a trimmed FluidSynth in `libs/fluidsynth`, which is a worked
 precedent for a GPL audio project doing exactly this. A submodule is preferable
 to a fork we would then own.
 
+**The other compatible players were surveyed, and only one is a real
+alternative -- which turns out to be a lighter fork of the same engine.**
+
+| Player | Library form? | Verdict |
+|---|---|---|
+| BASSMIDI | Yes, cross-platform | **Out on licence.** BASS is proprietary and closed, free only for non-commercial use. GPLv3 cannot link against it and be distributed, whatever its quality. |
+| MuseScore | Not separable | **It is FluidSynth.** MuseScore's SF2 engine is a modified FluidSynth; its own Zerberus synth is SFZ-only and was removed in MuseScore 4. A second vendoring precedent rather than a second option. |
+| SynthFont2 / VSTSynthFont | No | Closed source, Windows only. Out twice over. |
+| **FluidLite** | Yes | **The real alternative, and possibly the better one.** |
+
+FluidLite is a stripped fork of FluidSynth built to have no external
+dependencies at all -- standard C only -- and to keep just the settings and
+synth. It deliberately omits MIDI file reading, realtime MIDI and audio output,
+which is precisely the surface we do not want, because the conductor drives the
+notes and JUCE takes the audio. LGPL-2-or-later, so the licence reasoning below
+is unchanged. There is no glib question because there was never a glib.
+
+Two things to establish before preferring it. It is derived from FluidSynth
+**1.x**, and GeneralUser GS wants 1.0.9 or later, so it is nominally in range --
+but whether the fork kept full modulator support is a question to answer by
+RENDERING something and listening, not by reading a README. And it is less
+actively maintained than mainline, across several forks (divideconcept, katyo,
+batlogic), which is a real cost against a build that is otherwise much simpler.
+
+So: FluidLite first if it renders the bank correctly, mainline FluidSynth as the
+known-good fallback. Both are the same licence and the same reasoning.
+
 **Licensing is a non-issue, which is not obvious.** FluidSynth is
 LGPL-2.1-or-later, and LGPL's static-linking condition is that the user must be
 able to relink against a modified library. Antiphon is GPLv3, so the entire
@@ -592,7 +619,9 @@ rather than articulation. Samples lose for everything the band currently plays
 and win for what we will never model -- an acoustic piano, a brass section,
 bowed strings, reeds.
 
-- [ ] FluidSynth as a submodule, glib-free, drivers off; `THIRDPARTY.md` entry.
+- [ ] Decide between FluidLite and mainline FluidSynth by rendering the bank
+      through both and listening for the modulator-dependent presets. Submodule,
+      not a fork; `THIRDPARTY.md` entry either way.
 - [ ] Load an SF2 from a path the player chooses. No bundled bank, so no
       packaging or provenance question yet.
 - [ ] One shared synth, a channel per voice, driven from the conductor thread.
