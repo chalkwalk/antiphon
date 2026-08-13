@@ -602,21 +602,56 @@ cheap to remedy.
 
 **SF3 changes the weight question, and costs us nothing to support.** SoundFont
 3 is the same format with the samples Ogg Vorbis compressed -- an extension
-Werner Schweer created for MuseScore for exactly this reason. GeneralUser GS is
-29.8 MB as SF2; converted with `sf3convert` it lands somewhere near a quarter of
-that, which moves the argument below from "a hundred and twenty megabytes
-installed" to something like thirty, or under ten if it is one shared data file.
+Werner Schweer created for MuseScore for exactly this reason. The decompression
+is free to us: FluidLite builds SF3 support against Xiph's libogg and libvorbis,
+**which this repository already vendors as submodules** because the Ninjam codec
+needs them. So the whole feature adds one small library and no new third-party
+code at all.
 
-And the decompression is free to us. FluidLite builds SF3 support with
-`-DENABLE_SF3=YES` against Xiph's libogg and libvorbis -- **which this repository
-already vendors as submodules**, because the Ninjam codec needs them. So the
-whole feature adds one small library and no new third-party code at all.
+**Measured, by converting the bank at every quality setting:**
 
-The catch is quality rather than size: lossy compression on short looped samples
-is where artifacts show, which is why the conversion guidance is Ogg quality 0.8
-with the samples attenuated a decibel. Whether that is audible on a practice
-band is a listening question, and it is one we can answer directly by rendering
-the same part from the SF2 and the SF3 and measuring both.
+| quality | size | of SF2 | marginal cost per 0.1 step |
+|---|---|---|---|
+| 0.1 | 5.85 MB | 19.0% | -- |
+| 0.3 | 6.74 MB | 21.9% | +436 KB |
+| 0.5 | 8.00 MB | 26.0% | +760 KB |
+| **0.8** | **10.07 MB** | **32.7%** | +856 KB |
+| 0.9 | 11.34 MB | 36.8% | +1304 KB |
+| 1.0 | 13.38 MB | 43.4% | +2092 KB |
+| SF2 | 30.82 MB | 100% | -- |
+
+Two things fall out of that curve. **The knee is at 0.8**, which is also where
+the conversion guidance sits for quality reasons -- below it each step costs
+about 550 KB and above it about 1400, nearly twice as steep, so the last fifth
+of the quality range buys the least and costs the most. And **even the top
+setting is 2.3x smaller than the SF2**, so there is no configuration in which
+shipping the uncompressed bank makes sense.
+
+**At 10 MB the weight objection largely dissolves**, which is a change from the
+position recorded above against 30. It has to be a data file rather than JUCE
+binary data -- embedded it would be 40 MB across four plugin formats, and in git
+it would be permanent -- but 10 MB fetched at package time and verified by hash
+is unremarkable.
+
+**The better question these numbers raise is why ship 128 instruments at all.**
+The musical case established above is narrow: samples lose for everything the
+band currently plays and win only for what we will never model -- an acoustic
+piano, a brass section, bowed strings, reeds. That is a handful of presets, not
+a General MIDI bank. A trimmed bank at 0.8 would plausibly be one to three
+megabytes, at which point there is nothing left to argue about, and Polyphone
+prunes the unreferenced samples when presets are removed. **Trim first, then
+decide about bundling.**
+
+The catch is quality rather than size, and it lands unevenly across exactly the
+instruments we want. Lossy compression shows on short LOOPED samples, so a
+sustained string or organ tone is the risk and a piano -- one-shot, long, never
+looped -- is not. Since the wanted set includes both, the setting cannot be
+chosen from the size table alone.
+
+It can be chosen by measurement, with what is already here: render the same part
+through the SF2 and through each SF3, and compare with `AudioMeasure` and by
+ear, which is the loop the voice lab exists for. `antiphon-voicelab file a.wav
+b.wav --lufs` already does the level-matched A/B.
 
 So the bundling decision is worth reopening once a voice exists to judge, rather
 than settled now. What follows is the argument as it stands against the
@@ -1216,21 +1251,56 @@ cheap to remedy.
 
 **SF3 changes the weight question, and costs us nothing to support.** SoundFont
 3 is the same format with the samples Ogg Vorbis compressed -- an extension
-Werner Schweer created for MuseScore for exactly this reason. GeneralUser GS is
-29.8 MB as SF2; converted with `sf3convert` it lands somewhere near a quarter of
-that, which moves the argument below from "a hundred and twenty megabytes
-installed" to something like thirty, or under ten if it is one shared data file.
+Werner Schweer created for MuseScore for exactly this reason. The decompression
+is free to us: FluidLite builds SF3 support against Xiph's libogg and libvorbis,
+**which this repository already vendors as submodules** because the Ninjam codec
+needs them. So the whole feature adds one small library and no new third-party
+code at all.
 
-And the decompression is free to us. FluidLite builds SF3 support with
-`-DENABLE_SF3=YES` against Xiph's libogg and libvorbis -- **which this repository
-already vendors as submodules**, because the Ninjam codec needs them. So the
-whole feature adds one small library and no new third-party code at all.
+**Measured, by converting the bank at every quality setting:**
 
-The catch is quality rather than size: lossy compression on short looped samples
-is where artifacts show, which is why the conversion guidance is Ogg quality 0.8
-with the samples attenuated a decibel. Whether that is audible on a practice
-band is a listening question, and it is one we can answer directly by rendering
-the same part from the SF2 and the SF3 and measuring both.
+| quality | size | of SF2 | marginal cost per 0.1 step |
+|---|---|---|---|
+| 0.1 | 5.85 MB | 19.0% | -- |
+| 0.3 | 6.74 MB | 21.9% | +436 KB |
+| 0.5 | 8.00 MB | 26.0% | +760 KB |
+| **0.8** | **10.07 MB** | **32.7%** | +856 KB |
+| 0.9 | 11.34 MB | 36.8% | +1304 KB |
+| 1.0 | 13.38 MB | 43.4% | +2092 KB |
+| SF2 | 30.82 MB | 100% | -- |
+
+Two things fall out of that curve. **The knee is at 0.8**, which is also where
+the conversion guidance sits for quality reasons -- below it each step costs
+about 550 KB and above it about 1400, nearly twice as steep, so the last fifth
+of the quality range buys the least and costs the most. And **even the top
+setting is 2.3x smaller than the SF2**, so there is no configuration in which
+shipping the uncompressed bank makes sense.
+
+**At 10 MB the weight objection largely dissolves**, which is a change from the
+position recorded above against 30. It has to be a data file rather than JUCE
+binary data -- embedded it would be 40 MB across four plugin formats, and in git
+it would be permanent -- but 10 MB fetched at package time and verified by hash
+is unremarkable.
+
+**The better question these numbers raise is why ship 128 instruments at all.**
+The musical case established above is narrow: samples lose for everything the
+band currently plays and win only for what we will never model -- an acoustic
+piano, a brass section, bowed strings, reeds. That is a handful of presets, not
+a General MIDI bank. A trimmed bank at 0.8 would plausibly be one to three
+megabytes, at which point there is nothing left to argue about, and Polyphone
+prunes the unreferenced samples when presets are removed. **Trim first, then
+decide about bundling.**
+
+The catch is quality rather than size, and it lands unevenly across exactly the
+instruments we want. Lossy compression shows on short LOOPED samples, so a
+sustained string or organ tone is the risk and a piano -- one-shot, long, never
+looped -- is not. Since the wanted set includes both, the setting cannot be
+chosen from the size table alone.
+
+It can be chosen by measurement, with what is already here: render the same part
+through the SF2 and through each SF3, and compare with `AudioMeasure` and by
+ear, which is the loop the voice lab exists for. `antiphon-voicelab file a.wav
+b.wav --lufs` already does the level-matched A/B.
 
 So the bundling decision is worth reopening once a voice exists to judge, rather
 than settled now. What follows is the argument as it stands against the
