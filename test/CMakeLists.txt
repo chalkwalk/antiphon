@@ -38,6 +38,7 @@ target_sources(NinjamTests
         BotDspTests.cpp
         BandPatchTests.cpp
         BotBandTests.cpp
+        BotNamesTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
         RunGateTests.cpp
