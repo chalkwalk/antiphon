@@ -300,10 +300,10 @@ public:
       Member a;
       expect(a.join(server.port(), "alice"));
 
-      server.broadcastChat("Kit [bot]", "counting you in");
+      server.broadcastChat("Mirn[kit-bot]", "counting you in");
       expect(waitUntil([&] {
         for (const auto &line : a.listener.snapshot())
-          if (line == "MSG|Kit [bot]|counting you in")
+          if (line == "MSG|Mirn[kit-bot]|counting you in")
             return true;
         return false;
       }), "a server-originated line never arrived");
