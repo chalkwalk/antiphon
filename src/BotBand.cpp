@@ -1,5 +1,6 @@
 #include "BotBand.h"
 
+#include "BotDsp.h"
 #include "BotVoice.h"
 #include "Euclidean.h"
 #include <algorithm>
@@ -653,6 +654,34 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 
 } // namespace
 
+// What each voice is trimmed to, and why a band needs this at all.
+//
+// The four voices were never levelled against each other, and it showed: the
+// pad sat 10 dB ABOVE the drums, so a rebuilt kit could improve as much as it
+// liked and still be buried. A backing band you play along to wants the
+// opposite shape -- drums and bass carrying it, chords underneath, the melody
+// present without owning the room.
+//
+// Targets, as rms over an interval, and the reasoning for each:
+//
+//   Kit    -16 dBFS   the anchor
+//   Bass   -14 dBFS   2 dB up: the bass carries a jam
+//   Keys   -19 dBFS   3 dB down: chords are the floor, not the feature
+//   Lead   -16 dBFS   level with the kit
+//
+// Absolute level is close to a free parameter here, which is worth saying
+// because it makes the numbers above less precious than they look: every
+// remote channel arrives at the listener multiplied by
+// kDefaultRemoteChannelVolume and with a fader of its own. What is NOT free is
+// crest factor, so the anchor is set where the kit needs only gentle limiting
+// rather than wherever a target number happened to fall.
+inline constexpr float kVoiceTrim[kNumVoices] = {
+    2.02f, // Drums
+    1.76f, // Bass
+    0.43f, // Keys
+    1.15f, // Lead
+};
+
 bool isStereo(Voice voice) { return voice == Voice::Drums; }
 
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
@@ -671,17 +700,32 @@ void renderInterval(Voice voice, const Settings &s, int intervalIndex,
   switch (voice) {
   case Voice::Drums:
     renderDrums(s, intervalIndex, out, right, numSamples);
-    return;
+    break;
   case Voice::Bass:
     renderBass(s, out, numSamples);
-    return;
+    break;
   case Voice::Keys:
     renderKeys(s, out, numSamples);
-    return;
+    break;
   case Voice::Lead:
     renderLead(s, intervalIndex, out, numSamples);
-    return;
+    break;
   }
+
+  // Balance, then a ceiling.
+  //
+  // The ceiling is a backstop rather than a sound: it is exactly transparent
+  // below its knee, so the only thing it ever touches is a peak that would
+  // have clipped the encoder -- and Vorbis turns a clipped sample into real
+  // distortion. With it here, no voice can clip whatever a trim, a seed or a
+  // future character does, which is a stronger guarantee than a measured
+  // headroom constant can give.
+  const float trim = kVoiceTrim[(int)voice];
+  for (int i = 0; i < numSamples; ++i)
+    out[i] = BotDsp::softClip(out[i] * trim);
+  if (right != nullptr && isStereo(voice))
+    for (int i = 0; i < numSamples; ++i)
+      right[i] = BotDsp::softClip(right[i] * trim);
 }
 
 } // namespace BotBand
