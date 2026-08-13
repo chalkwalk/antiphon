@@ -225,3 +225,28 @@ NOBODY  Marlow[tutor-bot]: band, what are you playing
 BASS    and the chords?
 NOBODY  dave: and the chords?
 NOBODY  sam: what are you playing
+
+# Leaving. The one command that works with no address at all, because the
+# failure mode of getting this wrong is bots nobody can remove.
+[COLD]
+ALL     part
+BASS    hollis, part
+BASS    hollis: part
+KIT     ridley part
+
+# ...and the word in every other context, which is most of them. "part" is
+# ordinary jam vocabulary and only the whole message counts.
+[COLD]
+NOBODY  whats your part
+NOBODY  the bass part is tricky
+NOBODY  im learning my part
+NOBODY  can you play that part again
+NOBODY  part of the chart is wrong
+
+# A human called Hollis has joined. The short handle is ambiguous and is
+# withdrawn; the full username and the instrument still work. Silence beats a
+# wrong answer.
+[ROOM you, dave, hollis]
+NOBODY  hollis, what are the changes
+BASS    Hollis[bass-bot]: what are the changes
+BASS    bass, what are the changes
