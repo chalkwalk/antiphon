@@ -101,15 +101,33 @@ int noteTier(int midiNote, const Harmony::Chord &chord);
 // where the audio can only be measured.
 std::vector<int> leadLine(const Settings &s, int intervalIndex);
 
-// Renders one interval into `out`, which must hold `numSamples` frames. Mono:
-// the caller decides how it is placed.
+// Whether a voice fills both channels or only the left.
 //
-// `out` must be this voice's own buffer, cleared by the caller. Notes within a
-// voice add into it so overlapping ones mix, but the kit finishes by shaping
-// the whole buffer as a bus, which would shape anything else that was already
-// there.
+// Only the kit, and only because of the room it is heard in: two mics over a
+// drummer are not in the same place, so its early reflections differ side to
+// side and that difference IS the stereo image. Everything else is a
+// close-miked instrument standing in one spot, and stays mono so the listener's
+// pan control decides where it sits.
+bool isStereo(Voice voice);
+
+// Renders one interval into `left`, and into `right` when the voice is stereo.
+// Both must hold `numSamples` frames.
+//
+// The buffers must be this voice's own and cleared by the caller. Notes within
+// a voice add into them so overlapping ones mix, but the kit finishes by
+// shaping the whole buffer as a bus, which would shape anything else that was
+// already there.
+//
+// `right` may be null, which renders a stereo voice's left channel only. A
+// mono voice never touches `right` at all, so the caller mirrors it.
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
-                    float *out, int numSamples);
+                    float *left, float *right, int numSamples);
+
+// Mono, for callers that do not care: the same thing with no right channel.
+inline void renderInterval(Voice voice, const Settings &s, int intervalIndex,
+                           float *out, int numSamples) {
+  renderInterval(voice, s, intervalIndex, out, nullptr, numSamples);
+}
 
 // The seed a voice actually uses. Salting matters enough to be testable on its
 // own: without it, one seed makes the bass and the drums the same shape.

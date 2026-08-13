@@ -424,6 +424,63 @@ public:
              "the kit came out at rms " + juce::String(level, 5));
     }
 
+    beginTest("the kit is heard in a room, and the room has two sides");
+    {
+      const auto s = settingsFor("C major", 120, 8, 1u);
+      const int n = intervalSamplesFor(s);
+      std::vector<float> left((size_t)n, 0.0f), right((size_t)n, 0.0f);
+      BotBand::renderInterval(BotBand::Voice::Drums, s, 0, left.data(),
+                              right.data(), n);
+
+      expect(BotBand::isStereo(BotBand::Voice::Drums));
+      expect(left != right, "both sides of the kit are identical");
+
+      // Different, but the same drummer: the sides must not diverge in level,
+      // or the kit is panned rather than in a room.
+      const float l = rms(left, 0, n), r = rms(right, 0, n);
+      expect(l > 0.01f && r > 0.01f, "a side was silent");
+      expect(std::abs(l - r) < 0.25f * juce::jmax(l, r),
+             "the sides are at different levels: " + juce::String(l, 4) +
+                 " against " + juce::String(r, 4));
+
+      // The room shows up as energy after the last drum has stopped. Rendered
+      // dry, the tail of a bar is much quieter than it is with reflections in
+      // it -- which is what "the kit is in a room" means, measurably.
+      for (auto voice : {BotBand::Voice::Bass, BotBand::Voice::Keys,
+                         BotBand::Voice::Lead})
+        expect(!BotBand::isStereo(voice),
+               juce::String(BotBand::voiceName(voice)) +
+                   " should be a close-miked instrument, not a room");
+    }
+
+    beginTest("a mono caller gets the kit without touching a right channel");
+    {
+      // PracticeBot mirrors mono voices, so it has to be able to tell. A null
+      // right channel must render the left exactly as the stereo call does.
+      const auto s = settingsFor("C major", 120, 8, 1u);
+      const int n = intervalSamplesFor(s);
+
+      std::vector<float> stereoL((size_t)n, 0.0f), stereoR((size_t)n, 0.0f);
+      BotBand::renderInterval(BotBand::Voice::Drums, s, 0, stereoL.data(),
+                              stereoR.data(), n);
+
+      std::vector<float> monoL((size_t)n, 0.0f);
+      BotBand::renderInterval(BotBand::Voice::Drums, s, 0, monoL.data(), n);
+
+      expect(monoL == stereoL,
+             "the left channel depends on whether a right one was asked for");
+
+      // And a mono voice must leave a right channel entirely alone.
+      std::vector<float> untouched((size_t)n, 0.0f), bassL((size_t)n, 0.0f);
+      BotBand::renderInterval(BotBand::Voice::Bass, s, 0, bassL.data(),
+                              untouched.data(), n);
+      for (float x : untouched)
+        if (x != 0.0f) {
+          expect(false, "a mono voice wrote into the right channel");
+          break;
+        }
+    }
+
     beginTest("nothing clips");
     {
       // Three voices are summed by the room, so each must leave headroom.
