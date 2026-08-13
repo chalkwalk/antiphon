@@ -1,5 +1,8 @@
 #pragma once
 
+#include "BotDsp.h"
+
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -77,92 +80,180 @@ inline float decayAt(double t, double seconds) {
   return (float)std::exp(-6.9078 * t / seconds);
 }
 
-// A pitch sweep is what separates a kick drum from a low beep: the click at the
-// front is the first few milliseconds of a much higher pitch.
+// A kick drum is a struck membrane, and modelling it as one is the difference
+// between a drum and a low beep with an envelope.
 //
-// The beater click on top of that is not decoration. The body lands at 50 Hz,
-// which a laptop or a small monitor does not reproduce at all, so without
-// something up where the speaker works the kick is inaudible on most of the
-// machines this will be played on.
+// Three physical facts, and each is a few lines. A circular membrane has modes
+// at INHARMONIC ratios -- 1, 1.59, 2.14, 2.30, 2.65, from the zeros of the
+// Bessel functions -- not at multiples of a fundamental, which is why a drum
+// does not sound like a pitched note. The high modes die far faster than the
+// low one, so the sound darkens within its first tenth of a second. And the
+// strike stretches the head, so the tension and with it the pitch fall as it
+// relaxes; that drop is what the old exponential sweep was imitating without
+// the modes underneath it.
 //
-// Saturation is the other half of that argument, and it is why the kick was
-// the quietest thing in the kit: a pure sine is the least loud waveform there
-// is for a given peak, so the drum spent all its headroom on a fundamental
-// nobody could hear. Shaping it fills in harmonics at 100 and 150 Hz, where
-// small speakers work, and the peak barely moves.
+// The beater is separate from the head. It contributes a burst of contact noise
+// that does not ring, which is what makes a kick sound hit rather than played.
+// It also does the job the old 1.4 kHz sine did: the body lands near 50 Hz,
+// which a laptop does not reproduce at all, so without something up where the
+// speaker works the drum is inaudible on most of the machines this reaches.
+//
+// Saturation stays, and for the same reason as before: a bare low sine is the
+// least loud waveform there is for a given peak, and shaping it fills in
+// harmonics a small speaker can actually pass.
 inline constexpr double kKickDrive = 2.0;
+
+// Bessel-zero ratios for a circular membrane, which is what makes this a drum.
+inline constexpr int kKickModes = 4;
+inline constexpr double kMembraneRatios[kKickModes] = {1.0, 1.593, 2.136,
+                                                       2.653};
 
 inline void renderKick(float *out, int numSamples, double sampleRate,
                        float velocity) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0)
     return;
 
-  const double startHz = 190.0, endHz = 50.0;
-  const double sweep = 0.030, decay = 0.30;
-  const double clickDecay = 0.004;
-  double phase = 0.0, clickPhase = 0.0;
+  const double baseHz = 50.0;
+  // How far the head is stretched by the strike, and how fast it relaxes.
+  const double bendDepth = 2.6, bendTime = 0.028;
+
+  BotDsp::ModalBank head;
+  head.prepare(sampleRate);
+  // The fundamental carries the weight and rings; the upper modes are the
+  // strike and are gone almost immediately.
+  const double decays[kKickModes] = {0.34, 0.09, 0.05, 0.03};
+  const float gains[kKickModes] = {1.0f, 0.30f, 0.18f, 0.10f};
+  for (int m = 0; m < kKickModes; ++m)
+    head.addMode(baseHz * kMembraneRatios[m] * (1.0 + bendDepth), decays[m],
+                 gains[m]);
+
+  BotDsp::Noise noise(0x9E3779B9u);
+  BotDsp::Svf beaterTone;
+  beaterTone.set(2200.0, 1.2, sampleRate);
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
 
-    const double hz = endHz + (startHz - endHz) * std::exp(-t / sweep);
-    phase += 2.0 * kPi * hz / sampleRate;
-    const float body = (float)std::sin(phase) * decayAt(t, decay);
+    // Tension falling back after the strike, applied to every mode at once so
+    // the head stays one object rather than four detuning oscillators.
+    if (i % 32 == 0) {
+      const double bend = 1.0 + bendDepth * std::exp(-t / bendTime);
+      for (int m = 0; m < kKickModes; ++m)
+        head.setModeFrequency(m, baseHz * kMembraneRatios[m] * bend);
+    }
 
-    clickPhase += 2.0 * kPi * 1400.0 / sampleRate;
-    const float click =
-        0.28f * (float)std::sin(clickPhase) * decayAt(t, clickDecay);
+    // The strike: an impulse into the head, plus a couple of milliseconds of
+    // contact noise so it is a beater rather than a mathematical excitation.
+    const float strike =
+        (i == 0 ? 1.0f : 0.0f) + 0.5f * noise.next() * decayAt(t, 0.0025);
+    const float body = head.process(strike);
+
+    // The beater's own sound, which does not ring: bandpassed noise, gone in
+    // four milliseconds, and the part of a kick a small speaker reproduces.
+    const float beater = 0.5f * beaterTone.process(noise.next(), BotDsp::Svf::BandPass) *
+                         decayAt(t, 0.004);
 
     // Shaped before the velocity rather than after it, so a quiet hit and an
     // accented one are the same drum at two levels instead of two drums.
-    out[i] += velocity * saturate(body + click, kKickDrive);
+    out[i] += velocity * saturate(0.62f * body + beater, kKickDrive);
   }
 }
 
+// A snare is two instruments in one shell, and the reason the old one sounded
+// like a filtered click is that it treated them as one.
+//
+// The head is a struck membrane like the kick, tuned far higher and damped
+// hard. The wires underneath rattle against it, and they have their OWN
+// envelope -- they are shaken into life by the strike and keep going after the
+// head has stopped, which is most of what makes a snare sound like a snare
+// rather than a burst of noise with a tone under it.
 inline void renderSnare(float *out, int numSamples, double sampleRate,
                         float velocity, std::uint32_t seed) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0)
     return;
 
-  Noise noise(seed);
-  const double decay = 0.18, toneDecay = 0.09;
-  double phase = 0.0;
-  float lowpassed = 0.0f;
+  BotDsp::ModalBank head;
+  head.prepare(sampleRate);
+  // Two body modes a little over a fifth apart: the shell's own pitch and its
+  // first overtone, both damped hard by the hand-tightened head above them.
+  head.addMode(185.0, 0.11, 1.0f);
+  head.addMode(295.0, 0.06, 0.55f);
+
+  BotDsp::Noise noise(seed);
+  BotDsp::Svf wireTone;
+  wireTone.set(4200.0, 0.8, sampleRate);
+  BotDsp::Svf snapTone;
+  snapTone.set(1600.0, 1.5, sampleRate);
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
 
-    // A one-pole lowpass takes the fizz off white noise and leaves something
-    // closer to a drum head.
-    const float n = noise.next();
-    lowpassed += 0.45f * (n - lowpassed);
+    const float strike = (i == 0 ? 1.0f : 0.0f) +
+                         0.35f * noise.next() * decayAt(t, 0.002);
+    const float body = head.process(strike);
 
-    phase += 2.0 * kPi * 185.0 / sampleRate;
-    const float body = 0.5f * (float)std::sin(phase) * decayAt(t, toneDecay);
+    // The wires: bandpassed noise on a longer envelope than the head, which is
+    // the whole trick.
+    const float wires =
+        wireTone.process(noise.next(), BotDsp::Svf::BandPass) * decayAt(t, 0.16);
 
-    out[i] += velocity * (0.7f * lowpassed * decayAt(t, decay) + body);
+    // And the crack of the stick, which is neither.
+    const float snap =
+        snapTone.process(noise.next(), BotDsp::Svf::BandPass) * decayAt(t, 0.006);
+
+    out[i] += velocity * (0.55f * body + 0.75f * wires + 0.5f * snap);
   }
 }
+
+// A hi-hat is metal, and metal is inharmonic.
+//
+// Six square oscillators at ratios that are deliberately not whole numbers,
+// which is the 808's answer and still the cheapest convincing one. Filtered
+// noise alone -- what this used to be -- gives fizz with no pitch structure at
+// all, and the ear hears that as a noise gate rather than as a cymbal.
+//
+// The ratio table is lifted from chalkwalk/seq_play src/machine/DrumMachine.cpp,
+// whose Cymbal voice is the one part of that machine doing something a sine
+// could not.
+inline constexpr int kHatPartials = 6;
+inline constexpr double kMetalRatios[kHatPartials] = {2.0, 3.0, 3.7,
+                                                      5.3, 5.9, 6.4};
 
 inline void renderHat(float *out, int numSamples, double sampleRate,
                       float velocity, std::uint32_t seed, bool open = false) {
   if (out == nullptr || numSamples <= 0 || sampleRate <= 0.0)
     return;
 
-  Noise noise(seed);
-  const double decay = open ? 0.22 : 0.045;
-  float previous = 0.0f;
+  const double decay = open ? 0.30 : 0.055;
+  const double baseHz = 2000.0;
+
+  BotDsp::Noise noise(seed);
+  BotDsp::Svf metal;
+  metal.set(7000.0, 0.7, sampleRate);
+  BotDsp::Svf sizzle;
+  sizzle.set(9000.0, 0.7, sampleRate);
+
+  std::array<double, (size_t)kHatPartials> phases{};
 
   for (int i = 0; i < numSamples; ++i) {
     const double t = (double)i / sampleRate;
 
-    // A one-pole highpass, by subtraction: the opposite of the snare's filter,
-    // and what makes this read as metal rather than as a snare.
-    const float n = noise.next();
-    const float highpassed = n - previous;
-    previous = n;
+    float sum = 0.0f;
+    for (int p = 0; p < kHatPartials; ++p) {
+      phases[(size_t)p] += baseHz * kMetalRatios[p] / sampleRate;
+      if (phases[(size_t)p] >= 1.0)
+        phases[(size_t)p] -= 1.0;
+      sum += phases[(size_t)p] < 0.5 ? 1.0f : -1.0f;
+    }
+    const float clang = metal.process(sum / (float)kHatPartials,
+                                      BotDsp::Svf::HighPass);
 
-    out[i] += velocity * 0.35f * highpassed * decayAt(t, decay);
+    // A little noise on a shorter envelope: the sound of the two cymbals
+    // meeting, as opposed to the metal ringing afterwards.
+    const float hiss = sizzle.process(noise.next(), BotDsp::Svf::HighPass) *
+                       decayAt(t, decay * 0.4);
+
+    out[i] += velocity * 0.55f * (clang * decayAt(t, decay) + 0.5f * hiss);
   }
 }
 

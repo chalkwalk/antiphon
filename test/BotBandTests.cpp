@@ -385,11 +385,18 @@ public:
 
     beginTest("the kick is shaped, not just loud");
     {
-      // A decaying sine is the least loud waveform there is for a given peak,
-      // and that is exactly why the kick was the quietest thing in the kit.
-      // Crest factor is what changes when it is shaped: measured 3.58
-      // unshaped against 2.42 as it stands, so a limit of 3.0 fails if the
-      // saturation is taken out and passes with room as it is.
+      // A drum that is only a resonating membrane is the least loud waveform
+      // there is for a given peak, and that is why the kick was once the
+      // quietest thing in the kit. Crest factor is what changes when it is
+      // shaped: re-measured for the modal kick at 3.52 unshaped against 2.50
+      // as it stands, so a limit of 3.0 still fails if the saturation is taken
+      // out and passes with room as it is.
+      //
+      // Crest rather than brightness, and that is worth recording because the
+      // obvious choice is wrong here: saturating a kick RAISES its low-order
+      // harmonics, which pulls the energy-weighted mean frequency DOWN, from
+      // 165 Hz to 150. Brightness would have read the shaped kick as the duller
+      // one.
       std::vector<float> kick(7200, 0.0f);
       BotVoice::renderKick(kick.data(), (int)kick.size(), 48000.0, 1.0f);
 
@@ -406,9 +413,10 @@ public:
 
     beginTest("the kit carries level and not only peaks");
     {
-      // Both saturation stages together, in one number. Measured 0.077 as it
-      // stands, 0.059 with only the kick shaped, 0.053 with only the bus, so
-      // this fails if either one is removed.
+      // Both saturation stages together, in one number. Re-measured for the
+      // modal kit: 0.078 as it stands, 0.049 with the kick's own shaping
+      // removed, 0.043 with the bus stage removed, so this still fails if
+      // either one goes.
       const auto buf = render(BotBand::Voice::Drums,
                               settingsFor("C major", 120, 8, 1u));
       const float level = rms(buf, 0, (int)buf.size());
