@@ -251,12 +251,35 @@ Stated as a property of what can cause speech at all, a loop is structurally
 impossible rather than merely unlikely, because the chain has no step that a
 bot's own output can start.
 
-The mechanism underneath it is the ` [bot]` marker in the username, which is
-how bots recognise each other and is spoofable -- so it decides who talks and
-nothing more, exactly as recorded for how the echo bot identifies the human.
-When it fails, two further limits bound the damage: a bot answers a given
-speaker at most once every few seconds, and a hard cap on lines per minute. A
-spoofed name then costs one exchange rather than an afternoon.
+This is load-bearing from the very first line, which is worth seeing clearly:
+**the arrival roster names every bot in the band.** If bot messages were not
+excluded, that one line would address all four at once, and each reply might
+name others again. The feature would fail in its opening second.
+
+So how a bot knows another bot is a bot matters, and there are two answers for
+two situations.
+
+**Bots we spawned: exactly.** A practice room creates its band and knows every
+name in it, so it tells each bot its siblings. That is an exact list, not a
+guess, and it covers the case that actually exists today -- the only way bots
+enter a room at present is that somebody started a room full of them.
+
+**Bots we did not spawn: the `-bot]` marker in the username, and that is
+enough.** It is spoofable, but consider what spoofing buys: a human deliberately
+naming themselves `Hollis[bass-bot]` to make bots ignore them. That is a person
+choosing to be ignored, which is not an attack. The reverse -- a human causing a
+loop -- requires them to impersonate a bot AND to keep emitting lines that
+address other bots, at which point they are the loop rather than the bots, and
+they can be evicted like anyone else.
+
+Two further limits bound the damage if identification fails anyway: a bot
+answers a given speaker at most once every few seconds, and there is a hard cap
+on lines per minute. A spoofed name costs one exchange rather than an afternoon.
+
+What is deliberately NOT relied on is anything cleverer -- no handshake, no
+capability probe, no behavioural heuristic. A protocol between bots is state
+they would have to agree about, and this whole design's advantage is that they
+never have to.
 
 #### Answer where you were asked
 
@@ -285,6 +308,74 @@ not ship. And Antiphon resolves `/msg` and `/kick` against the room's user list
 by longest match rather than against whitespace, which additionally reaches
 humans whose names have spaces in them. Tab completion over the same list is
 the obvious companion and is tracked in `ROADMAP.md`.
+
+#### Leaving: the one thing that must work unaddressed
+
+`part` is the exception to "nobody is addressed by default", and it is the only
+one. Everything else can safely require a name; this cannot, because its failure
+mode is a room full of bots that somebody cannot get rid of. That property
+outranks conversational tidiness, and it holds wherever a bot is pointed rather
+than only in a practice room.
+
+- **`part` alone, as the entire message**, in the room: the whole band leaves.
+- **`hollis, part`**: that one leaves.
+- Anywhere inside a sentence: nothing. "what's your part", "the bass part",
+  "learn my part" are ordinary jam chat and by far the commonest use of the
+  word. The match is on the trimmed message being exactly `part`, which is what
+  `isPartCommand` already does.
+
+**The arrival line must not invite it.** A first-time player who types the first
+command they are shown, out of curiosity, and watches the whole band vanish has
+had a bad first minute -- so the roster leads with the interesting thing and
+states the destructive one in terms nobody types idly:
+
+> `say a name to talk to one of us. say "part" and we all go home.`
+
+That is a judgement with a cost, and the cost is worth writing down: naming it
+at all is a small invitation, and not naming it leaves the eviction instruction
+only in `help`. Safety wins, because the recovery is cheap in the case where
+the accident is likely -- a practice room is restarted from Antiphon's own UI
+in one click -- and expensive in the case where it is not, which is somebody
+else's bots in a real room.
+
+#### Two bots called Hollis
+
+Names are picked at join and never change, because Ninjam sets a username at
+authentication and there is no rename.
+
+The full username -- `Hollis[bass-bot]` -- is unambiguous and always works. The
+short handle `hollis` is a convenience, and it is **withdrawn the moment it
+becomes ambiguous**: if any other participant's name matches or contains it, the
+bot stops accepting the bare handle and answers only to its full username or to
+its instrument. Silence beats a wrong answer, and this is the same rule as
+"never answer a message aimed at somebody else" seen from the other side.
+
+Two things keep that from happening often:
+
+- **The pool is bigger than the band.** Names are drawn from a list of a dozen
+  or more, and any that collide with somebody already in the room are skipped at
+  join. A collision then requires a human to arrive later AND to be called the
+  same thing.
+- **The names are chosen not to be plausible usernames**, which is the real
+  answer and is what makes the rest of this rare enough to ignore.
+
+That last criterion is harder than it sounds, and it is worth being explicit
+that an earlier suggestion failed it: `Hollis`, `Wren` and `Sabine` are real
+first names, and real first names are exactly what people use as handles. What
+is wanted is a coined word -- pronounceable, unambiguously spelled, and not
+something anybody is called:
+
+- two syllables, four to six letters, one obvious pronunciation;
+- **different first letters**, and at least two edits apart from each other, so
+  the near-miss row in the table above stays unambiguous;
+- not an English word, not a name, not a brand;
+- sayable out loud, because a screen reader will read it and because "say a
+  name" has to mean something you can say.
+
+A candidate pool, offered to be argued with rather than as a decision:
+`Kepa`, `Tolm`, `Vessa`, `Riso`, `Nurl`, `Damek`, `Fenko`, `Suli`, `Weft`,
+`Zabo`, `Miten`, `Orvo`. The band is four of them, deterministically from the
+room seed, so the same seed brings the same players back.
 
 #### The deliberate exception
 
@@ -463,17 +554,9 @@ Total: roughly 400 lines of mechanism, most of it table.
 
 The short list. Each is `notice`-class, guarded, and on a topic cooldown.
 
-- **On arriving**: ONE line for the whole band, once, from one bot -- not one
-  line each, which is four lines of chat before anybody has said anything.
-
-  > `The Understudies: Hollis (bass), Ridley (kit), Wren (keys), Sabine (lead).`
-  > `Say a name to talk to one, or "part" to send us home.`
-
-  Which bot says it is decided by a rule they can all evaluate without talking
-  to each other, exactly as for the key change below. This is the only line I
-  would make unconditional, because it carries both the eviction instruction and
-  the answer to discoverability (§5): without it, a room full of people who do
-  not know the bots can be spoken to is a room where they never are.
+- **On arriving**: see the choreography below. One line for the whole band
+  rather than one line each, which would be four lines of chat before anybody
+  has said anything.
 - **When the key changes**: at most one bot acknowledges, not all four. Which one
   is decided by a rule they can all evaluate without talking to each other --
   lowest instrument first, say -- so there is no coordination protocol.
@@ -490,6 +573,72 @@ That is the entire list, and it is short on purpose. Everything else I
 considered went on the list of things not to say -- including every idea that
 began "when the player...", all of which need ears the bots do not have and are
 not getting here. See §9.
+
+### Arriving, in order
+
+The opening ten seconds are the only ones where every player is definitely
+reading the chat, so they are worth choreographing rather than leaving to
+whoever connects first.
+
+The awkwardness to design around is that a band is one thing and the bots are
+five separate clients that join at slightly different moments. The answer is
+that the band is announced ONCE, by the first bot to arrive, five seconds later,
+listing **every bot it can see at that moment** -- not a roster it was handed.
+Observed rather than configured, which matters for three reasons: a bot that
+failed to connect is not announced as present, bots brought by two different
+people still produce one sensible list, and nothing has to be told to anybody.
+
+**Who announces needs no agreement.** A bot arriving looks at the user list it
+is given on connect. If it sees no other bot, it is the first, and the job is
+its own -- a local observation with no coordination in it at all.
+
+**And the five seconds are what make that safe.** Two bots connecting close
+enough together may each see a room without the other, and both would think
+themselves first. So the decision is re-checked at the moment of speaking: by
+five seconds in, both can see each other, and a fixed tiebreak on the name
+leaves exactly one talking. This is the same "identical inputs, identical
+function, no coordination" trick used for key changes -- but applied at the one
+instant when it is sound, rather than at connect time when the user lists have
+not converged. The delay is not only there to let people read.
+
+In a practice room, where the room controls the timing, the whole thing is
+deterministic:
+
+```
+t+0.0   Marlow[tutor-bot] joins        (if a tutor was asked for)
+t+0.5   Ridley[kit-bot] joins          (sees no other bot: it will announce)
+t+1.0   Hollis[bass-bot] joins         (sees Ridley: not its job)
+t+1.5   Wren[keys-bot] joins
+t+2.0   Sabine[lead-bot] joins
+
+t+2.0   Marlow[tutor-bot]: hello -- i am the tutor. the band is coming in now.
+t+5.5   Ridley[kit-bot]: The Understudies -- Ridley (kit), Hollis (bass),
+                         Wren (keys), Sabine (lead).
+t+5.5   Ridley[kit-bot]: say a name to talk to one of us. say "part" and we all
+                         go home.
+```
+
+The tutor speaks first and briefly, because the first line a new player sees
+should be addressed to them rather than being a roster. Then the roster, once
+every bot is in and the join notices have finished scrolling.
+
+The band's NAME is used only when every bot in the list is one the announcer was
+spawned alongside. Two strangers' bots in one room are a list, not a band, and
+calling them one would be a small lie in the first line anybody reads.
+
+**A bot that arrives later introduces itself, once, in one line.** It knows to
+because of what it did or did not see: every bot waits the same five seconds
+after connecting, and a bot that saw a roster posted during its own wait was
+covered by it and stays quiet. One that did not was too late, and says
+`Wren[keys-bot]: keys, joining the others.` No roster is ever posted twice --
+a roster is a thing you post once.
+
+**A human arriving later has missed it**, which is the one real gap. In a
+practice room -- your own room, quiet by definition -- the roster is repeated
+once for them, rate-limited to at most once every few minutes. In any other
+room it is not, because unprompted speech outside practice is already the
+narrower rule (§9), and a band that greets every arrival is a band that gets
+kicked.
 
 ---
 
@@ -913,7 +1062,11 @@ Rough size:
    does, for the owner alone and for the one check in §7, and that needs real
    decoded audio rather than presence -- so the presence-only idea is dropped
    rather than deferred. Musical listening beyond that is §14.
-3. ~~Do bots take room chat, or private messages only?~~ **Decided: room chat
+3. **What are the bots actually called?** The criteria are settled (§5): coined,
+   two syllables, distinct first letters, at least two edits apart, not a
+   plausible human handle. The pool itself is a taste call and is not made.
+
+4. ~~Do bots take room chat, or private messages only?~~ **Decided: room chat
    with an explicit address is the primary path, and a private message is an
    equal alternative.** Private-message-only was implemented once and was wrong
    three ways: no client can reach a username with a space in it, so it did not
@@ -921,16 +1074,23 @@ Rough size:
    discovered by anyone watching; and the evidence actually gathered was against
    BARE KEYWORDS in room chat, not against room chat. See §5.
 
-4. **How much should bots know about each other?** Today they share nothing and
+5. **How much should bots know about each other?** Today they share nothing and
    converge only by hearing the same chat. Letting the drummer say "the bass is
    on the offbeat too" needs shared state and I suspect it is not worth it.
-5. **Should `quiet` persist across a rejoin?** It cannot, since a bot that parts
+
+   Narrowed by §5: they now know each other's NAMES, told to them by whatever
+   spawned them, because the loop invariant needs an exact list rather than a
+   marker that can be spoofed. That is the smallest possible amount of shared
+   state -- a list of strings fixed at startup, never updated, never agreed
+   about -- and it is worth noticing that it is not nothing, since the previous
+   answer was.
+6. **Should `quiet` persist across a rejoin?** It cannot, since a bot that parts
    is gone forever, but the room could remember it.
-6. **Anything in the room, or practice only?** I have assumed unprompted speech
+7. **Anything in the room, or practice only?** I have assumed unprompted speech
    is practice-only and replies work anywhere. The alternative -- fully silent
    outside practice, even when asked -- is more conservative and I could be
    argued into it.
-7. ~~Is the flat fallback too cold?~~ **Decided: yes, and it is replaced.** §5
+8. ~~Is the flat fallback too cold?~~ **Decided: yes, and it is replaced.** §5
    is now three outcomes rather than two -- answer, clarify, or report what was
    recognised -- with courtesy getting silence and the fallback rate treated as
    a defect to measure and drive down.
