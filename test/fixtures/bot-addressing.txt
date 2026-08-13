@@ -5,11 +5,20 @@
 # question that decides whether the feature is tolerable at all. See
 # docs/BOT-CHAT.md section 5.
 #
-# The rule under test: at most one bot ever answers, cold silence is the
-# default, and first contact must be explicit.
+# The rule under test: exactly the bots that were addressed answer, cold
+# silence is the default, and first contact must be explicit.
 #
-# Room for every case below: bots Kit [bot], Bass [bot], Keys [bot],
-# Lead [bot], Tutor [bot]; humans you, dave, sam.
+# ("At most one" is what an earlier draft said, and it was the wrong number:
+# naming two bots should get two answers. What must be impossible is a bot
+# answering something not aimed at it.)
+#
+# Room for every case below: bots Ridley[kit-bot], Hollis[bass-bot],
+# Wren[keys-bot], Sabine[lead-bot], Marlow[tutor-bot]; humans you, dave, sam.
+# Channels are named after the instruments, and dave's is called "guitar".
+#
+# Both forms of address are valid and both are tested: the bot's NAME, which is
+# rare enough to be matched anywhere in a sentence, and the INSTRUMENT, which is
+# only safe in the position a name would occupy. See docs/BOT-CHAT.md section 5.
 #
 # Format, tab or spaces separated:
 #   <expected answerer>  <message>
@@ -23,7 +32,7 @@ KIT     kit: what are you playing
 KIT     kit, what are you playing
 KIT     @kit what are you playing
 KIT     kit - what are you playing
-KIT     Kit [bot]: what are you playing
+KIT     Ridley[kit-bot]: what are you playing
 KIT     kit what are you playing
 KIT     hey kit whats your part
 KIT     what is kit playing
@@ -157,3 +166,62 @@ NOBODY  ok
 NOBODY  cool
 NOBODY  got it
 NOBODY  makes sense
+
+# By name rather than by instrument. The whole reason the names are rare words:
+# these forms are unsafe with a name like "bass" and fine with one like
+# "hollis", which is what lets a sentence sound like a sentence.
+[COLD]
+KIT     ridley: what are you playing
+KIT     ridley what are you playing
+KIT     hey ridley whats your part
+BASS    hollis, what are the changes
+BASS    what are the changes hollis
+BASS    what is hollis playing
+KEYS    wren: what voicing is that
+LEAD    ask sabine what key
+TUTOR   marlow i am lost
+
+# The name alone. An opener, and the cheapest discovery there is: somebody
+# types a name out of curiosity and finds out the room answers.
+[COLD]
+BASS    hollis
+KIT     ridley
+KIT     ridley?
+
+# Several at once. Two names, two answers -- the case "at most one bot answers"
+# got wrong.
+[COLD]
+BASS,KIT        hollis, ridley, can you turn it up
+BASS,KEYS       hollis and wren, quieter please
+
+# The collision the rename exists to prevent. Every one of these contains an
+# instrument word and none of them is addressed to anybody.
+[COLD]
+NOBODY  the bass is too loud
+NOBODY  i love that bass sound
+NOBODY  can someone turn the keys down
+NOBODY  my guitar is out of tune
+NOBODY  nice band
+NOBODY  the band is really tight
+NOBODY  im switching to guitar
+
+# dave's channel is called "guitar", so a bare "guitar" is about dave. The room
+# says what its common nouns mean and nothing has to be inferred.
+[COLD]
+NOBODY  guitar sounds great
+NOBODY  more guitar
+
+# Bots never trigger bots. Whatever a bot says, and however it is addressed, it
+# causes no reply -- the invariant that makes a feedback loop impossible rather
+# than unlikely.
+[COLD]
+NOBODY  Hollis[bass-bot]: ridley, what are you playing
+NOBODY  Ridley[kit-bot]: hollis
+NOBODY  Marlow[tutor-bot]: band, what are you playing
+
+# The window belongs to whoever opened it. Somebody else talking is not a
+# follow-up, which is the commonest way a design like this becomes insufferable.
+[AFTER you: hollis]
+BASS    and the chords?
+NOBODY  dave: and the chords?
+NOBODY  sam: what are you playing

@@ -157,66 +157,175 @@ and four humans this is the question that decides whether the feature is
 tolerable. Four bots answering one question is the failure this whole design
 exists to avoid, and it would happen on the very first "what are you playing".
 
-**The rule: at most one bot ever answers, and cold silence is the default.**
+**The rule: exactly the bots that were addressed answer, and nobody is
+addressed by default.**
 
-A bot scores how strongly a message is addressed to it, from strongest down:
+That is a correction to an earlier draft, which said "at most one bot ever
+answers". One was standing in for "not all four", but it is the wrong number:
+`hollis, ridley, can you turn it up` names two people and should get two
+answers, exactly as it would from two humans. What has to be impossible is a
+bot answering something that was not aimed at it -- not two bots answering
+something that was aimed at both.
+
+#### Not a grammar: a scan for names it already knows
+
+There is no parsing of sentence structure here and there does not need to be.
+A bot knows every username in the room from `USERINFO`, and that list is short
+-- a jam is a handful of people. So addressing is a scan of the message's tokens
+against a known, tiny vocabulary of proper nouns, which is a different and far
+easier problem than working out what a sentence is doing.
+
+Matching is on whole tokens, case-insensitively, with punctuation stripped, so
+`hollis`, `Hollis,` and `@hollis` are one thing and `hollisters` is not. Where
+in the message the name falls changes only how strongly it counts:
 
 | Signal | Example | Strength |
 |---|---|---|
 | private message | (any) | certain |
-| name first, with a separator | `kit: what are you playing`, `kit, ...`, `@kit ...`, `kit - ...` | very strong |
-| name anywhere | `what is kit playing` | strong |
-| instrument noun where the name would be | `drums, what are you playing`, `whats the bass doing` | strong |
-| near-miss on a name | `kt:`, `kitt`, `bas`, `keyz` | strong, if unambiguous |
-| continuation of a conversation it is already in | `and the chords?` | moderate |
+| name first, with a separator | `hollis: what are the changes`, `hollis, ...`, `@hollis ...` | very strong |
+| name last | `what are the changes hollis` | very strong |
+| the name alone | `hollis` | very strong -- see below |
+| name anywhere | `what is hollis playing` | strong |
+| several names | `hollis, ridley, turn it up` | each is addressed |
+| instrument noun in the name position | `bass, what are you playing` | strong |
+| near-miss on a name | `holis:`, `hollos` | strong, if unambiguous |
+| continuation, from the person who opened it | `and the chords?` | moderate |
 | nothing at all | `what are you playing` | none -- **nobody answers** |
 
 The last row is the important one. **First contact has to be explicit.** An
 unaddressed question in a room with eight participants is not a question for a
-bot, and answering it is presumptuous. Once you have addressed a bot, follow-ups
-work without repeating its name for a few turns or a minute, whichever ends
-first -- which is what makes it feel like a conversation rather than a series of
-commands.
+bot, and answering it is presumptuous.
+
+#### The name on its own, and the attention window
+
+Saying just `hollis` is the most natural way there is to start talking to
+somebody, and it should work:
+
+> `you: hollis`
+> `Hollis[bass-bot]: here -- roots on the changes, D minor.`
+> `you: what are the changes`
+> `Hollis[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.`
+
+The greeting is doing two jobs and the second one is why it is phrased that
+way. It acknowledges, and it says what this bot is in a position to talk about
+-- so a player who typed a name out of curiosity now knows what to ask next. A
+bare "hey, what's up" would acknowledge and teach nothing, and rule 3 makes
+that phrasing a promise we cannot keep anyway.
+
+Being addressed in any form opens an **attention window** on that bot, and
+while it is open the bot will answer follow-ups without being named again. That
+is what makes it a conversation rather than a series of commands.
+
+**The window belongs to a person, not to the room.** Only messages from
+whoever opened it count as follow-ups; two other people talking to each other
+are not talking to the bot, and the commonest way a design like this becomes
+insufferable is by assuming otherwise. The window closes on a timeout of about
+a minute, after a few turns, or when its owner addresses somebody else --
+whichever comes first.
+
+#### The room tells you who a message is not for
+
+The strongest signal available is a negative one, and it costs nothing.
 
 **Never answer a message aimed at somebody else.** A bot knows the room's user
-list from `USERINFO`, so a message beginning with any other participant's name
--- human or bot -- is not for it, and that test comes before every other signal.
-`dave, what pedal is that` is answered by nobody.
+list, so a message naming any other participant -- human or bot -- is not for
+it. `dave, what pedal is that` is answered by nobody, with no understanding of
+the sentence required.
 
-**One answer, without any coordination.** Every bot sees the same chat and the
-same user list, so every bot can compute every other bot's score for the same
-message and answer only if it wins. Ties break on a fixed order all of them
-know. There is no protocol, no election and no shared state -- the same trick as
-one bot acknowledging a key change, and the reason it works is that the inputs
-are identical for everyone.
+**Channel names are evidence too.** Ninjam channels carry names, and players
+name them after what they are playing. If a human in the room has a channel
+called `guitar`, then the bare word "guitar" in chat is far more likely to be
+about that person than to be an instruction, and it should not be treated as
+one. The room is telling you what its common nouns refer to; the list is right
+there in `USERINFO` and nothing else has to be inferred.
 
-Bots recognise each other by the ` [bot]` suffix on the username. That is
-spoofable, and it only decides who talks, so it is a legibility mechanism rather
-than a security boundary -- the same reasoning already recorded for how the echo
-bot identifies the human.
+#### Bots never trigger bots
 
-**The deliberate exception**: `everyone`, `all`, `band`, `you lot`. Then they all
-answer, in a fixed order, one short line each, because that is what was asked
-for.
+Four bots that can hear each other and answer each other is a room that fills
+with chat and cannot be stopped, and it is the failure that would end this
+feature permanently. It is worth more than a convention.
+
+**The invariant: only a message from a human ever causes a bot to speak.** Not
+"bots should ignore each other" -- that is the mechanism, and mechanisms fail.
+Stated as a property of what can cause speech at all, a loop is structurally
+impossible rather than merely unlikely, because the chain has no step that a
+bot's own output can start.
+
+The mechanism underneath it is the ` [bot]` marker in the username, which is
+how bots recognise each other and is spoofable -- so it decides who talks and
+nothing more, exactly as recorded for how the echo bot identifies the human.
+When it fails, two further limits bound the damage: a bot answers a given
+speaker at most once every few seconds, and a hard cap on lines per minute. A
+spoofed name then costs one exchange rather than an afternoon.
+
+#### Answer where you were asked
+
+Rule 4, made concrete. A private message is answered privately; a room message
+is answered in the room. Nothing else is natural -- a public question answered
+in a PM looks like no answer at all, and a private one answered publicly is a
+small betrayal.
+
+This matters more than it looks, because **the public path is how anybody finds
+out the feature exists.** A player watching somebody ask the keys bot to switch
+to guitar has just learned that they can too. A design that only takes private
+messages is undiscoverable by construction, however well it works.
+
+#### One practical trap, already hit
+
+Bot usernames must not contain spaces. Every Ninjam client sends a private
+message as `/msg <user> <text>` and splits on the first space, so a bot called
+`Wren[keys-bot]` cannot be sent one at all: `/msg Wren[keys-bot] guitar` addresses a
+user called `Keys`, who does not exist, and fails silently. Antiphon's own
+client does this (`PluginEditor.cpp`), and so, being the same one-line parse,
+will everyone else's.
+
+Two separate fixes, and both are worth doing because they fail differently.
+The names lose their spaces, which fixes every client including the ones we do
+not ship. And Antiphon resolves `/msg` and `/kick` against the room's user list
+by longest match rather than against whitespace, which additionally reaches
+humans whose names have spaces in them. Tab completion over the same list is
+the obvious companion and is tracked in `ROADMAP.md`.
+
+#### The deliberate exception
+
+`everyone`, `all`, `band`. Then they all answer, in a fixed order, one short
+line each, because that is what was asked for.
+
+These are matched **in the address position only**, unlike a name. "band" is an
+ordinary word in a room full of musicians -- "nice band", "the band's tight" --
+and a bot that answers those is the poltergeist this section is about. A name
+like `hollis` is rare enough to be matched anywhere in a sentence; `band` is
+not, and the difference is exactly why the names are what they are (§8).
+
+#### One answer, without any coordination
+
+Every bot sees the same chat and the same user list, so every bot can compute
+every other bot's score for the same message and speak only if it is addressed.
+Ties break on a fixed order all of them know. There is no protocol, no election
+and no shared state -- the same trick as one bot acknowledging a key change,
+and it works because the inputs are identical for everyone.
 
 A worked case, with four bots and two humans in the room:
 
 ```
 you: what are you playing
 (nobody -- not addressed)
-you: kit what are you playing
-Kit [bot]: five over eight, accents on 1 and 4.
+you: hollis
+Hollis[bass-bot]: here -- roots on the changes, D minor.
 you: and your sound?
-Kit [bot]: deep kick, soft beater.
+Hollis[bass-bot]: fingered, fairly dark.
 you: dave what pedal is that
 (nobody -- that is for dave)
 dave: what are you playing
-(nobody -- dave has not addressed anyone)
+(nobody -- dave has not addressed anyone, and Hollis's window is yours)
+you: hollis, ridley, can you turn it up
+Hollis[bass-bot]: up 2 dB.
+Ridley[kit-bot]: up 2 dB.
 you: band, what are you playing
-Kit [bot]: five over eight, accents on 1 and 4.
-Bass [bot]: roots, on the changes and the kick.
-Keys [bot]: the chart, held, one chord a bar.
-Lead [bot]: eighths over D minor, resting on the weak beats.
+Ridley[kit-bot]: five over eight, accents on 1 and 4.
+Hollis[bass-bot]: roots, on the changes and the kick.
+Wren[keys-bot]: the chart, held, one chord a bar.
+Sabine[lead-bot]: eighths over D minor, resting on the weak beats.
 ```
 
 `test/fixtures/bot-addressing.txt` is the corpus for this, and it is separate
@@ -311,11 +420,11 @@ the first one's reasoning for free.
   feels like a wall, and it is nearly free: the bot already knows which two
   things it was torn between, so it can name them.
   > `you: tell me about your kick`
-  > `Kit [bot]: the part or the sound? "what are you playing" or "what do you sound like".`
+  > `Ridley[kit-bot]: the part or the sound? "what are you playing" or "what do you sound like".`
 - **Nothing** -- below the floor. Even here it should not be a shrug. Report the
   concepts it *did* recognise, because that turns a dead end into a hint:
   > `you: is the snare a bit much on the turnaround`
-  > `Kit [bot]: i caught "snare" but not the question. i can tell you my part, my sound, the key, the chords or the tempo -- and i cannot hear you, so i am no judge of what is too much.`
+  > `Ridley[kit-bot]: i caught "snare" but not the question. i can tell you my part, my sound, the key, the chords or the tempo -- and i cannot hear you, so i am no judge of what is too much.`
 
 The last clause of that is worth keeping: it is honest, it is the answer to a
 whole class of questions people will reasonably ask, and it says the limitation
@@ -328,9 +437,9 @@ they cost almost nothing: remember the last intent and slot per conversant, for
 a few turns.
 
 > `you: what key are we in`
-> `Bass [bot]: D minor, as announced in chat.`
+> `Hollis[bass-bot]: D minor, as announced in chat.`
 > `you: and the chords?`
-> `Bass [bot]: | Dm | Bb | F | C | -- i VI III VII.`
+> `Hollis[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.`
 
 `and the chords?` has no verb, no subject and no question word. It resolves
 because the previous turn established that we are talking about the room's
@@ -354,9 +463,17 @@ Total: roughly 400 lines of mechanism, most of it table.
 
 The short list. Each is `notice`-class, guarded, and on a topic cooldown.
 
-- **On arriving**: one line, once. "Kit [bot] here -- deep kick, soft beater.
-  Say `part` to send me home." This is the only line I would make unconditional,
-  because it is also the eviction instruction.
+- **On arriving**: ONE line for the whole band, once, from one bot -- not one
+  line each, which is four lines of chat before anybody has said anything.
+
+  > `The Understudies: Hollis (bass), Ridley (kit), Wren (keys), Sabine (lead).`
+  > `Say a name to talk to one, or "part" to send us home.`
+
+  Which bot says it is decided by a rule they can all evaluate without talking
+  to each other, exactly as for the key change below. This is the only line I
+  would make unconditional, because it carries both the eviction instruction and
+  the answer to discoverability (§5): without it, a room full of people who do
+  not know the bots can be spoken to is a room where they never are.
 - **When the key changes**: at most one bot acknowledges, not all four. Which one
   is decided by a rule they can all evaluate without talking to each other --
   lowest instrument first, say -- so there is no coordination protocol.
@@ -464,8 +581,81 @@ That is not a personality trait, it is a division of labour, and it produces the
 same effect for none of the risk.
 
 I would deliberately **not** give them moods, opinions about your playing,
-jokes, emoji, or names beyond their instrument. Every one of those is a thing
-that is funny twice.
+jokes, or emoji. Every one of those is a thing that is funny twice.
+
+### Names, and a position reversed
+
+An earlier draft of this section also refused them **names beyond their
+instrument**, on the same grounds. That was wrong, and it is worth saying why
+rather than quietly changing it, because the objection was sound and the
+conclusion still did not follow.
+
+The objection was to personality. A name given for charm is charm, and charm is
+the thing that is funny twice. But a name is not only charm -- it is an
+ADDRESS, and the addressing model in section 5 turns out to need one that is
+rare.
+
+Consider "the bass is too loud", in a room where the bass player is called
+`Hollis[bass-bot]`. The token `bass` is present, section 5 scores a name appearing
+anywhere in a sentence as strong, and the bass bot answers "roots, on the
+changes" into a conversation about mixing. That is precisely the failure this
+document exists to prevent, and it is caused by the name being an ordinary
+word. The same collision makes the near-miss row in that table unusable:
+edit distance one from `hollis` is safe, and edit distance one from `bass`
+covers `base`, `bas` and `bass` itself.
+
+So the two sections were already in conflict before anybody proposed a change.
+Section 5 needs names rare enough to match anywhere in a sentence; section 8
+forbade exactly that. Rare names are what make the natural forms work --
+`what are the changes hollis`, `hey hollis whats your part` -- and without them
+addressing collapses back to a rigid `name:` prefix, which is command syntax
+wearing a conversation's clothes.
+
+What a name has to be, then, and none of these is about character:
+
+- **not an ordinary English word**, so it can be matched anywhere safely;
+- **one token, no spaces**, so `/msg` reaches it in every client (§5);
+- **pronounceable**, because a screen reader will read it aloud and
+  `bot_3` is not a thing anybody says;
+- **paired with the instrument somewhere**, so the room stays legible.
+
+`Hollis[bass-bot]` satisfies all four: `hollis` is the handle, `bass` says what
+it plays, `bot` is the marker bots recognise each other by, and there is no
+space anywhere. The alternative of a bare `Hollis` with a channel named `bass`
+is cleaner to say and worse to read in a client that does not show channels.
+
+**The cost, stated plainly.** A human name raises expectations of human
+conversation, and rule 3 then has to disappoint them. That is real, and it is
+the strongest argument for the position being abandoned here. What keeps it
+tolerable is that everything else about the bot is machine-shaped: the username
+is visibly a label rather than a person, the first thing it ever says is a
+terse fact about its part, and it never claims to be anything else. Hollis has
+a bass line. Hollis does not have a day.
+
+### Should the band have a name?
+
+Probably, and for a narrower reason than it first appears.
+
+It is **not** needed as an address. `band`, `everyone` and `all` are the words
+people actually type, they are already the deliberate exception in section 5,
+and a band name would only be a fourth synonym for them -- while being a
+two-word phrase in most naturally chosen cases, which is exactly what the
+matcher does not want.
+
+Where it earns itself is the **join announcement**, which is the one line the
+band gets to introduce itself with (§5) and the only real answer to
+discoverability:
+
+> `The Understudies: Hollis (bass), Ridley (kit), Wren (keys), Sabine (lead).`
+> `Say a name to talk to one.`
+
+That reads as a band arriving. A bare list of four usernames reads as four
+processes starting. If the name is one word it can be an address as well, at no
+extra cost; if it is two, it stays a label and nothing is lost.
+
+The worry that a real band might be in the room does not survive contact: human
+players do not introduce themselves collectively in jam chat, and if they did,
+they would not answer to `band,` as a command prefix.
 
 ---
 
@@ -508,16 +698,16 @@ The most reviewable part. If these read as annoying, the design is wrong.
 **Joining a practice room**
 
 ```
-*** Kit [bot] joined
-*** Bass [bot] joined
-*** Keys [bot] joined
-*** Lead [bot] joined
-*** Tutor [bot] joined
-Tutor [bot]: practice room. four players, all bots. say "part" to any of them
+*** Ridley[kit-bot] joined
+*** Hollis[bass-bot] joined
+*** Wren[keys-bot] joined
+*** Sabine[lead-bot] joined
+*** Marlow[tutor-bot] joined
+Marlow[tutor-bot]: practice room. four players, all bots. say "part" to any of them
              and it goes home.
 you: /key Dm
 ~~ [key: D minor]
-Bass [bot]: got it, D minor.
+Hollis[bass-bot]: got it, D minor.
 ```
 
 Five bots, two lines in the first minute, and only the bass acknowledged the
@@ -536,13 +726,13 @@ That is the design working.
 
 ```
 you: hey kit, whats ur groove?
-Kit [bot]: five over eight, accents on 1 and 4. fill every fourth interval.
+Ridley[kit-bot]: five over eight, accents on 1 and 4. fill every fourth interval.
 you: could you tell me what key we're supposed to be in
-Bass [bot]: D minor, as announced in chat.
+Hollis[bass-bot]: D minor, as announced in chat.
 you: and the chords?
-Bass [bot]: | Dm | Bb | F | C | -- i VI III VII.
+Hollis[bass-bot]: | Dm | Bb | F | C | -- i VI III VII.
 you: bass, giv me somthing else
-Bass [bot]: shook. four onsets now, off the kick rather than on it.
+Hollis[bass-bot]: shook. four onsets now, off the kick rather than on it.
 ```
 
 Not one of those is a command word. Vocative and filler stripped, `ur` expanded,
@@ -553,12 +743,12 @@ resolved from the previous turn.
 
 ```
 you: tell me about your kick
-Kit [bot]: the part or the sound? "what are you playing", or "what do you sound like".
+Ridley[kit-bot]: the part or the sound? "what are you playing", or "what do you sound like".
 you: the sound
-Kit [bot]: deep kick, soft beater. tuned low, and the beater is soft enough to
+Ridley[kit-bot]: deep kick, soft beater. tuned low, and the beater is soft enough to
            lose the click.
 you: is the snare a bit much on the turnaround?
-Kit [bot]: i caught "snare" but not the question. i can tell you my part, my
+Ridley[kit-bot]: i caught "snare" but not the question. i can tell you my part, my
            sound, the key, the chords or the tempo -- and i cannot hear you, so
            i am no judge of what is too much.
 you: thanks!
@@ -575,16 +765,16 @@ is the wall this design is trying not to be.
 **The tutor finishing**
 
 ```
-Tutor [bot]: that's the whole of it -- i'll get out of the way. the band will
+Marlow[tutor-bot]: that's the whole of it -- i'll get out of the way. the band will
              keep playing.
-*** Tutor [bot] left
+*** Marlow[tutor-bot] left
 ```
 
 **In a real room, uninvited**
 
 ```
-*** Kit [bot] joined
-Kit [bot]: kit here. "part" sends me home.
+*** Ridley[kit-bot] joined
+Ridley[kit-bot]: kit here. "part" sends me home.
 (silence, whatever happens, unless someone addresses it)
 ```
 
@@ -723,16 +913,24 @@ Rough size:
    does, for the owner alone and for the one check in §7, and that needs real
    decoded audio rather than presence -- so the presence-only idea is dropped
    rather than deferred. Musical listening beyond that is §14.
-3. **How much should bots know about each other?** Today they share nothing and
+3. ~~Do bots take room chat, or private messages only?~~ **Decided: room chat
+   with an explicit address is the primary path, and a private message is an
+   equal alternative.** Private-message-only was implemented once and was wrong
+   three ways: no client can reach a username with a space in it, so it did not
+   work at all; a private exchange is invisible, so the feature could never be
+   discovered by anyone watching; and the evidence actually gathered was against
+   BARE KEYWORDS in room chat, not against room chat. See §5.
+
+4. **How much should bots know about each other?** Today they share nothing and
    converge only by hearing the same chat. Letting the drummer say "the bass is
    on the offbeat too" needs shared state and I suspect it is not worth it.
-4. **Should `quiet` persist across a rejoin?** It cannot, since a bot that parts
+5. **Should `quiet` persist across a rejoin?** It cannot, since a bot that parts
    is gone forever, but the room could remember it.
-5. **Anything in the room, or practice only?** I have assumed unprompted speech
+6. **Anything in the room, or practice only?** I have assumed unprompted speech
    is practice-only and replies work anywhere. The alternative -- fully silent
    outside practice, even when asked -- is more conservative and I could be
    argued into it.
-6. ~~Is the flat fallback too cold?~~ **Decided: yes, and it is replaced.** §5
+7. ~~Is the flat fallback too cold?~~ **Decided: yes, and it is replaced.** §5
    is now three outcomes rather than two -- answer, clarify, or report what was
    recognised -- with courtesy getting silence and the fallback rate treated as
    a defect to measure and drive down.
