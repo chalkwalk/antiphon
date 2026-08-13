@@ -413,14 +413,15 @@ public:
 
     beginTest("the kit carries level and not only peaks");
     {
-      // Both saturation stages together, in one number. Re-measured for the
-      // modal kit: 0.078 as it stands, 0.049 with the kick's own shaping
-      // removed, 0.043 with the bus stage removed, so this still fails if
-      // either one goes.
+      // Both saturation stages together, in one number. Re-derived after the
+      // balance pass, because the output trim lifted every figure here and the
+      // old floor of 0.068 had stopped discriminating: 0.152 as it stands,
+      // 0.096 with the kick's own shaping removed, 0.087 with the bus stage
+      // removed. A floor of 0.12 still fails if either one goes.
       const auto buf = render(BotBand::Voice::Drums,
                               settingsFor("C major", 120, 8, 1u));
       const float level = rms(buf, 0, (int)buf.size());
-      expect(level > 0.068f,
+      expect(level > 0.12f,
              "the kit came out at rms " + juce::String(level, 5));
     }
 
@@ -481,9 +482,53 @@ public:
         }
     }
 
+    beginTest("the band is balanced against itself");
+    {
+      // The four voices were never levelled against each other and the pad sat
+      // 10 dB ABOVE the drums, so a rebuilt kit could improve as much as it
+      // liked and stay buried. This is the shape a backing band wants: bass
+      // carrying, chords underneath, nothing more than a few dB from the kit.
+      //
+      // Asserted as an ordering plus a spread rather than as four numbers,
+      // because the exact levels move with the seed and the ordering is the
+      // part that matters.
+      for (std::uint32_t seed : {1u, 55u, 900u}) {
+        const auto s2 = settingsFor("C major", 120, 8, seed);
+        const int n = intervalSamplesFor(s2);
+
+        double kit = 0.0, bass = 0.0, keys = 0.0, lead = 0.0;
+        for (int v = 0; v < 4; ++v) {
+          const auto buf = render((BotBand::Voice)v, s2);
+          const double db = AudioMeasure::toDb(rms(buf, 0, n));
+          switch ((BotBand::Voice)v) {
+          case BotBand::Voice::Drums: kit = db; break;
+          case BotBand::Voice::Bass: bass = db; break;
+          case BotBand::Voice::Keys: keys = db; break;
+          case BotBand::Voice::Lead: lead = db; break;
+          }
+        }
+
+        const juce::String at = " (seed " + juce::String((int)seed) + ")";
+        expect(bass > kit, "the bass should carry, above the kit" + at);
+        expect(keys < kit, "the chords should sit under the kit" + at);
+        expect(keys < bass && keys < lead, "the chords should be the floor" + at);
+
+        // And nothing buried: the old failure was a 10 dB spread the wrong way
+        // round, so the width of the band is the thing to bound.
+        const double loudest = juce::jmax(juce::jmax(kit, bass), juce::jmax(keys, lead));
+        const double quietest = juce::jmin(juce::jmin(kit, bass), juce::jmin(keys, lead));
+        expect(loudest - quietest < 8.0,
+               "the band spans " + juce::String(loudest - quietest, 1) +
+                   " dB, which is a mix rather than a balance" + at);
+      }
+    }
+
     beginTest("nothing clips");
     {
-      // Three voices are summed by the room, so each must leave headroom.
+      // Guaranteed by the ceiling in renderInterval rather than by a measured
+      // headroom constant, so this now checks that the ceiling is applied at
+      // all -- and the assertion below checks it is not doing the job of a
+      // fader.
       for (int bpi : {4, 8, 16})
         for (std::uint32_t seed : {1u, 55u, 900u}) {
           const auto s = settingsFor("C major", 120, bpi, seed);
@@ -498,6 +543,28 @@ public:
                                      " (bpi " + juce::String(bpi) + ")");
           }
         }
+    }
+
+    beginTest("the ceiling is a backstop, not a sound");
+    {
+      // A ceiling makes "nothing clips" true by construction, which would let a
+      // trim be cranked to ten and still pass while sounding like a brick wall.
+      // So: how much of the signal reaches it at all. Measured 1.6% of samples
+      // above the knee for the kit, which is peak limiting; a fader doing the
+      // job of a fader.
+      const auto s2 = settingsFor("C major", 120, 8, 1u);
+      const int n = intervalSamplesFor(s2);
+      const auto buf = render(BotBand::Voice::Drums, s2);
+
+      int aboveKnee = 0;
+      for (float x : buf)
+        if (std::abs(x) > 0.70f)
+          ++aboveKnee;
+
+      const double percent = 100.0 * (double)aboveKnee / (double)n;
+      expect(percent < 5.0,
+             "the kit spends " + juce::String(percent, 2) +
+                 "% of its time in the limiter, which is a brick wall");
     }
 
     beginTest("the interval opens with a downbeat");

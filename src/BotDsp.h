@@ -469,6 +469,32 @@ inline float polyBlepPulse(double phase, double increment,
   return s;
 }
 
+// A transparent ceiling, lifted from chalkwalk/seq_play src/dsp/SoftClip.h.
+//
+// The distinction from `saturate` is the whole reason both exist. Saturation
+// shapes everything it touches, so using it to raise a level costs the same
+// number of dB in transient that it gains in loudness -- measured on the kit,
+// pushing the bus drive from 1.8 to 5.0 bought 6 dB of level and spent 5 dB of
+// crest factor, which is the punch the modal drums were built for. This is
+// exactly the identity below the knee and only engages above it, so the body
+// of the signal is untouched and only the peaks that would have clipped are
+// caught.
+//
+// Level is set by gain, and the ceiling is what makes that gain safe.
+inline float softClip(float x, float knee = 0.70f,
+                      float ceiling = 0.95f) noexcept {
+  const float range = ceiling - knee;
+  if (range <= 0.0f)
+    return x;
+
+  const float a = std::abs(x);
+  if (a <= knee)
+    return x; // transparent
+
+  const float shaped = knee + range * std::tanh((a - knee) / range);
+  return std::copysign(shaped, x);
+}
+
 // A speaker cabinet, close-miked.
 //
 // Two things and no more. A lowpass, because a guitar or bass cabinet does
