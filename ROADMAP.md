@@ -919,6 +919,73 @@ already exists and is retyped rather than shared:
 - **Measurement** -- `AudioMeasure`, wrapping `libebur128` for loudness rather
   than reimplementing it, but keeping the combined interface.
 
+##### Melody generation: the two versions diverged usefully
+
+Antiphon's `leadLine` was ported from seq_play's `MelodyGen.h`, so they share a
+spine -- metric strength drives note choice, four contour shapes, a seeded RNG,
+nearest-candidate-to-target with jitter. What is interesting is what each gained
+afterwards, because they went in complementary directions and neither is simply
+better.
+
+**What seq_play does better, and Antiphon should take:**
+
+- **Onset placement by strength class.** This is the standout. Antiphon draws
+  the lead's onsets from a Euclidean figure, which is even but metrically blind:
+  it will happily put a note on the third sixteenth and leave the downbeat
+  empty. seq_play sorts every step by metric strength and fills class by class --
+  all the downbeats, then all the half-bars, then the quarters -- and only when
+  the density budget runs out MID-CLASS does it Euclidean-spread the remainder
+  within that class. So density becomes a musical dial: turn it up and the line
+  fills in progressively weaker subdivisions, which is what a player does.
+- **Metric strength as a trailing-zero count.** `pos == 0` is the downbeat;
+  otherwise the strength is how many times the position divides by two. It
+  generalises to any length for free, where Antiphon's is a hand-written ladder
+  keyed to eighths and BPI.
+- **Strength-scaled sustain, capped to the next onset.** A weak note is short,
+  so what is left over becomes a rest that bridges into the next stronger onset.
+  Antiphon holds every note until the next one and gets its rests from an
+  explicit one-in-three dice roll on weak beats -- cruder, and less connected to
+  the metre.
+- **`stepLeap` and `coreBias` as dials** -- how far the line may leap, and how
+  wide the note pool is (triad, pentatonic arc, everything). Antiphon hardcodes
+  both.
+- **`snapToRank`**: search outward from the contour target for the nearest
+  candidate the beat allows, ties resolving flatter. Cleaner than building an
+  allowed-set and linear-scanning it, and the tie-break is defined rather than
+  incidental.
+
+**What Antiphon does better, and seq_play should take:**
+
+- **Chord awareness, which is the big one.** seq_play ranks notes by
+  fifths-distance from the KEY's root -- an elegant continuous ranking, and
+  chord-blind. Antiphon ranks them against the CHORD SOUNDING AT THAT STEP, so
+  the line follows a progression rather than a key. Over `| Dm | Bb | F | C |`
+  seq_play would play D-minor-ish material throughout; Antiphon lands on chord
+  tones as the chart moves.
+- **The avoid-note rule, derived rather than listed.** A scale tone a semitone
+  above a chord tone is the one that clashes. That gives the flat sixth in
+  Aeolian, the fourth in Ionian, the flat second in Phrygian -- and correctly
+  leaves Lydian's sharp fourth alone, because it is a whole tone above the third
+  and is the characteristic note of the mode. Porting beat strength without this
+  is what made an early Antiphon lead sound wrong in minor keys.
+- **Colour notes pass rather than sit.** A tier-2 note is capped to one eighth
+  whatever its beat would allow. seq_play scales sustain by strength alone, so a
+  dissonance on a weak beat can still be held into the next chord.
+- **A contour rerolled per interval**, so the line develops across a phrase
+  instead of repeating. seq_play's contour is a fixed parameter.
+
+**The synthesis** is a generator that ranks candidates on BOTH axes: fifths
+distance from the key, which always exists, and relation to the current chord,
+which exists when there is a chart. The chord relation dominates where it
+applies and the fifths rank carries the rest -- so the same generator serves a
+sequencer track with no harmony and a bot following a progression, which is
+exactly the pair of cases these two projects have.
+
+Two of these are worth taking into Antiphon **independently of any sharing**,
+because they are improvements here on their own terms: onset placement by
+strength class, and strength-scaled sustain. Both are contained inside
+`leadLine`.
+
 ##### Shims: only where they clean something up
 
 Preference is to port call sites to third-party interfaces directly. The one
