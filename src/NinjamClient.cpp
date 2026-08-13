@@ -645,6 +645,12 @@ bool NinjamClient::handleMessage(juce::uint8 type,
     if (parsed.type.isNotEmpty()) {
       ChatMessage msg;
       msg.type = parsed.type;
+
+      // Captured here and delivered with the callback below, because the room
+      // member set is updated on this thread and read on another one. See
+      // NinjamClientListener::onRoomMembershipChange.
+      juce::String membershipChanged;
+      bool membershipJoined = false;
       if (msg.type == "MSG" || msg.type == "PRIVMSG") {
         msg.username = parsed.p1;
         msg.text = parsed.p2;
@@ -655,15 +661,23 @@ bool NinjamClient::handleMessage(juce::uint8 type,
         msg.username = "Server";
         msg.text = parsed.p1 + " joined";
         if (parsed.p1.isNotEmpty()) {
-          juce::ScopedLock sl(usersMutex);
-          roomMembers.insert(parsed.p1);
+          {
+            juce::ScopedLock sl(usersMutex);
+            roomMembers.insert(parsed.p1);
+          }
+          membershipChanged = parsed.p1;
+          membershipJoined = true;
         }
       } else if (msg.type == "PART") {
         msg.username = "Server";
         msg.text = parsed.p1 + " left";
         if (parsed.p1.isNotEmpty()) {
-          juce::ScopedLock sl(usersMutex);
-          roomMembers.erase(parsed.p1);
+          {
+            juce::ScopedLock sl(usersMutex);
+            roomMembers.erase(parsed.p1);
+          }
+          membershipChanged = parsed.p1;
+          membershipJoined = false;
         }
       } else {
         msg.username = "Server";
@@ -678,7 +692,11 @@ bool NinjamClient::handleMessage(juce::uint8 type,
       }
 
       callAsyncIfAlive([this, type = msg.type, user = msg.username,
-                        text = msg.text]() {
+                        text = msg.text, who = membershipChanged,
+                        joined = membershipJoined]() {
+        if (who.isNotEmpty())
+          listeners.call(&NinjamClientListener::onRoomMembershipChange, who,
+                         joined);
         listeners.call(&NinjamClientListener::onChatMessage, type, user, text);
       });
     }

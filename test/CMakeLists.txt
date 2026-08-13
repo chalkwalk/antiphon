@@ -97,7 +97,19 @@ target_link_libraries(NinjamTests
 target_include_directories(NinjamTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME ninjam-unit-tests COMMAND NinjamTests)
-set_tests_properties(ninjam-unit-tests PROPERTIES TIMEOUT 120)
+# Raised from 120, which the suite outgrew rather than regressed into.
+#
+# Roughly: BotBand 57 s, Loopback 22 s, PracticeRoom 17 s, BotDsp 17 s,
+# AudioLoopback 13 s. Most of that is rendering audio and measuring it, which is
+# the work these tests exist to do -- the band is now the largest part of the
+# codebase and it is tested by listening to it with instruments rather than by
+# checking flags.
+#
+# A timeout is a backstop against a hang, not a performance budget, so it is set
+# well clear of the real figure. The real figure is still worth watching: two
+# minutes is a long time to wait between edits, and `ROADMAP.md` tracks
+# shortening it.
+set_tests_properties(ninjam-unit-tests PROPERTIES TIMEOUT 300)
 
 # Source-level guard; see the script for why this one is worth a test of its
 # own. The bug it catches is invisible in the standalone, which is where we do

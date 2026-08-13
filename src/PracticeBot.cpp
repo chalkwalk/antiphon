@@ -239,18 +239,55 @@ void PracticeBot::onDisconnected(const juce::String &) {
   active = false;
 }
 
+void PracticeBot::onRoomMembershipChange(const juce::String &username,
+                                         bool joined) {
+  // The authoritative way to know whether the owner is here, and the only one
+  // that is not a race.
+  //
+  // `checkOwnerStillHere` below scans the room member list, which is maintained
+  // on the network thread while this callback arrives on the message thread. A
+  // player who joins and leaves inside one message-thread gap is, by the time
+  // the scan runs, someone who was never in the list at all -- so the bot never
+  // records having seen its owner, and therefore never leaves. On a real server
+  // that is a bot outliving a player whose connection blipped at the wrong
+  // moment, which is precisely the failure the eviction rules exist to prevent.
+  //
+  // An event does not go stale. A JOIN naming the owner means they arrived; a
+  // PART naming them means they left, and it means they were here to leave,
+  // which is why this path does not consult `sawOwner` at all.
+  juce::String ownerName;
+  {
+    juce::ScopedLock sl(stateMutex);
+    ownerName = owner;
+  }
+  if (ownerName.isEmpty() || username != ownerName)
+    return;
+
+  if (joined) {
+    sawOwner = true;
+    return;
+  }
+
+  netClient.sendChatMessage(botName + " leaving -- " + ownerName + " has gone.");
+  part();
+}
+
 bool PracticeBot::checkOwnerStillHere() {
   // Leave when the player who brought the bot leaves. On a real server this is
   // the rule that matters most: walking away is enough to clean up after
   // yourself, with nothing to remember.
   //
+  // This is the SECONDARY path, and it covers one case the membership events
+  // above cannot: an owner who was already in the room before the bot arrived
+  // never produces a JOIN the bot can hear, so their presence has to be
+  // discovered by looking.
+  //
   // Called from BOTH the user-info and the chat callbacks, because membership
   // is maintained from both and the departure order is not the obvious one. A
   // leaving player produces a USER_INFO_CHANGE marking their channels inactive
-  // and then a PART; only the PART removes the name from roomMembers
-  // (NinjamClient.cpp:652). Checking on user-info alone therefore looks while
-  // the owner is still listed, finds them present, and never looks again --
-  // which is exactly the bug this comment replaces.
+  // and then a PART; only the PART removes the name from roomMembers.
+  // Checking on user-info alone therefore looks while the owner is still
+  // listed, finds them present, and never looks again.
   juce::String ownerName;
   {
     juce::ScopedLock sl(stateMutex);

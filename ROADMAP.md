@@ -501,6 +501,13 @@ inputs, identical deterministic function, agreement for free.
 - [ ] Deviation, so the form does not become its own kind of stale: an
       occasional departure whose likelihood grows the longer a phrase has
       repeated.
+- [ ] **The unit suite takes two minutes, and that is now an iteration cost.**
+      It grew honestly -- most of it is rendering audio and measuring it, which
+      is what the band tests are for -- but BotBand alone is 57 seconds and the
+      loop between an edit and an answer is long enough to discourage running it.
+      Worth an hour with a profile: shorter renders where a defect shows in the
+      first note, fewer redundant seeds, and possibly a `--quick` subset for the
+      edit loop with the full sweep left to CI.
 - [ ] **Tab completion in the chat field.** Complete `/` commands from the
       command list, and usernames after `/msg` and `/kick` from the room's user
       list -- and a name at the start of a line, which is how a bot is addressed
@@ -593,6 +600,28 @@ is a judgement rather than a bar, and the honest reading is that bundling is
 defensible with a residual risk that is disclosed, accepted by others, and
 cheap to remedy.
 
+**SF3 changes the weight question, and costs us nothing to support.** SoundFont
+3 is the same format with the samples Ogg Vorbis compressed -- an extension
+Werner Schweer created for MuseScore for exactly this reason. GeneralUser GS is
+29.8 MB as SF2; converted with `sf3convert` it lands somewhere near a quarter of
+that, which moves the argument below from "a hundred and twenty megabytes
+installed" to something like thirty, or under ten if it is one shared data file.
+
+And the decompression is free to us. FluidLite builds SF3 support with
+`-DENABLE_SF3=YES` against Xiph's libogg and libvorbis -- **which this repository
+already vendors as submodules**, because the Ninjam codec needs them. So the
+whole feature adds one small library and no new third-party code at all.
+
+The catch is quality rather than size: lossy compression on short looped samples
+is where artifacts show, which is why the conversion guidance is Ogg quality 0.8
+with the samples attenuated a decibel. Whether that is audible on a practice
+band is a listening question, and it is one we can answer directly by rendering
+the same part from the SF2 and the SF3 and measuring both.
+
+So the bundling decision is worth reopening once a voice exists to judge, rather
+than settled now. What follows is the argument as it stands against the
+uncompressed bank; halve or quarter every number for SF3.
+
 What actually argues against bundling is weight, not licence:
 
 - Thirty megabytes as JUCE binary data, in four plugin formats, is roughly a
@@ -621,7 +650,8 @@ bowed strings, reeds.
 
 - [ ] Decide between FluidLite and mainline FluidSynth by rendering the bank
       through both and listening for the modulator-dependent presets. Submodule,
-      not a fork; `THIRDPARTY.md` entry either way.
+      not a fork; `THIRDPARTY.md` entry either way. Build SF3 support against the
+      libogg and libvorbis already vendored here.
 - [ ] Load an SF2 from a path the player chooses. No bundled bank, so no
       packaging or provenance question yet.
 - [ ] One shared synth, a channel per voice, driven from the conductor thread.
@@ -633,8 +663,60 @@ bowed strings, reeds.
       machine-gunning.
 - [ ] Layering -- a sampled attack over a modelled body -- once a single sampled
       voice has been lived with.
-- [ ] Only then, and only if it earned its place: whether to ship a bank, and
-      which.
+- [ ] Compare an SF3 conversion against the SF2 on the same part, measured, to
+      see whether the compression is audible on looped samples.
+- [ ] Only then, and only if it earned its place: whether to ship a bank, in
+      which format, and fetched at package time rather than committed.
+
+### Three layers, one repository -- for now
+
+Not scheduled. Prompted by the soundfont question, which is the first thing that
+would put a dependency on one part of this program that the other parts have no
+use for.
+
+`src/` is 19 600 lines and has grown three distinct concerns, which is worth
+saying plainly because `AGENTS.md` still describes it as "about 6 000 lines" and
+that stopped being true somewhere in the band work:
+
+| Layer | Lines | What it is |
+|---|---|---|
+| The Ninjam client | 3 700 | Protocol, codec, SHA1, the interval clock. Genuinely reusable, and depends on nothing else here |
+| The bots | 7 100 | The band, the synthesis, the harmony, the chat. The largest of the three and the newest |
+| The plugin | 5 000 | The processor, the editor, the UI, the standalone shell |
+
+The dependency direction is already one-way in practice -- bots and plugin both
+use the client; the client uses neither -- but nothing enforces it, so it holds
+by habit rather than by construction.
+
+**The case for splitting** is that these have different audiences and are
+acquiring different dependencies. A Ninjam client library is useful to somebody
+who does not want a practice band; a practice band that grows FluidLite and a
+soundfont should not force either on a plugin user who only wants to jam.
+
+**The case against doing it as three repositories now** is that this project
+refactors across all three layers constantly -- most sessions have touched two
+of them -- and cross-repository refactoring with submodules is where that
+velocity goes to die. It is also three CI configurations, three release
+cadences, and a submodule dance on every clone, in a repository that already
+patches two submodules at configure time.
+
+**So: separate CMake libraries inside one repository first,** with the
+dependency direction enforced by the build rather than remembered. That gets the
+layering, keeps the bots' dependencies out of the client, and makes an eventual
+repository split mechanical rather than exploratory -- the hard part of a split
+is discovering the boundary, and this discovers it while the cost of being wrong
+is one commit.
+
+The repository split earns itself when somebody outside this project wants the
+client library, or when the bots' dependency footprint would otherwise be
+imposed on plugin users who do not want a band. Neither is true yet.
+
+- [ ] Three CMake targets with the dependency direction declared and enforced.
+- [ ] Move the shared JUCE-free modules to whichever layer owns them, and say
+      which in `AGENTS.md`. `MusicalKey`, `AudioMeasure` and `IntervalClock` are
+      each used by more than one and want deciding rather than assuming.
+- [ ] Correct the line count in `AGENTS.md`, which is out by a factor of three.
+- [ ] Only then, and only on evidence: separate repositories.
 
 - [ ] **A seed should not change the volume.** The kit's integrated loudness
       varies by 3.7 LU across seeds, purely because a busy Euclidean figure has

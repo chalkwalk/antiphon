@@ -92,6 +92,8 @@ private:
   void onDisconnected(const juce::String &reason) override;
   void onServerConfig(int bpm, int bpi) override;
   void onUserInfoChange() override;
+  void onRoomMembershipChange(const juce::String &username,
+                              bool joined) override;
   void onChatMessage(const juce::String &type, const juce::String &username,
                      const juce::String &text) override;
 
