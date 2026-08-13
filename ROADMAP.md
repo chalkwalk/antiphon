@@ -517,72 +517,95 @@ inputs, identical deterministic function, agreement for free.
 
 Not scheduled, and deliberately not started while the synthesis plan has three
 steps left -- two half-finished engines would be worse than one finished one.
-Recorded now because the analysis is done and the conclusion is not the obvious
-one.
+Recorded because the analysis is done, and because checking it changed the
+answer twice.
 
-**The idea.** A General MIDI SoundFont is a few tens of megabytes and gives you
-128 instruments at once. GeneralUser GS is the usual suggestion. An SF2 reader
-is a bounded piece of work -- TinySoundFont is one MIT header -- and sits at the
-same layer as the vendored Ogg and Vorbis decoders rather than being a
-framework, so `PRINCIPLES §6` is satisfiable.
+**The player has to be FluidSynth, and that is now practical.** GeneralUser GS
+makes heavy use of SoundFont modulators, and its own documentation names the
+synths that render it correctly: FluidSynth 1.0.9 or later, BASSMIDI, MuseScore
+2.0.3+, SynthFont2, VSTSynthFont. TinySoundFont is not among them, so the
+one-MIT-header option is out for this bank.
 
-**What the gate says.** It passes: the form is untouched (a bot renders an
-interval; how it made the sound is nobody's business), nothing crosses the wire
-differently (§4, §10), loading is file I/O on the conductor thread and never the
-audio thread (§7), and no fence in the catalogue refuses it. The closest call is
-fence #2, since "load a sound file to change how it sounds" is a step toward
-being a sampler, which is a DAW's job -- but the DAW cannot do it *here*,
-because the bots' notes never leave the plugin (fence #8 refuses MIDI on the
-wire, and there is no route from a generated part to a host instrument).
+FluidSynth was previously unusable here for one reason -- it dragged in glib,
+which is exactly the framework `PRINCIPLES §6` refuses. **That is fixed
+upstream.** Since 2.5.0 it builds with `-Dosal=cpp11 -Denable-libinstpatch=0`
+and no glib at all, and the glib path is deprecated for removal in 2.6.0. With
+drivers, libsndfile and libinstpatch all disabled it is a small static library
+with no dependencies we do not already have.
 
-**What the licence says, and this is the finding that matters.** The
-GeneralUser GS documentation states that some samples came from banks freely
-available on the internet, that the author cannot be certain where all of them
-originated, and that this "may concern you if you intend to use GeneralUser GS
-in a commercial software product". That is the author being straight with us,
-and it is decisive -- but only about BUNDLING. This project does not vendor
-sources whose provenance it cannot account for; that is the same stance that
-keeps the NINJAM sources out of the history entirely, and it does not get
-relaxed for an asset just because an asset is not code.
+Ardour vendors a trimmed FluidSynth in `libs/fluidsynth`, which is a worked
+precedent for a GPL audio project doing exactly this. A submodule is preferable
+to a fork we would then own.
 
-So the split:
+**Licensing is a non-issue, which is not obvious.** FluidSynth is
+LGPL-2.1-or-later, and LGPL's static-linking condition is that the user must be
+able to relink against a modified library. Antiphon is GPLv3, so the entire
+source is published anyway and the condition is satisfied by construction.
+Nothing extra to do beyond a `THIRDPARTY.md` entry.
 
-- **Loading a SoundFont the player already has is free of the problem
-  entirely.** No redistribution, no provenance question, and the choice belongs
-  to whoever made it. This is the version to build.
-- **Shipping one in the box** needs a bank whose provenance is documented, and
-  that is a search rather than a decision. A small single-instrument bank -- a
-  piano, a few megabytes -- is a likelier answer than a full GM set.
+**Real-time safety is a non-issue too, and only for this use.** The band renders
+on the conductor thread, one interval at a time -- about half a second of work
+against a four-second deadline -- so FluidSynth may allocate and lock as much as
+it likes. `PRINCIPLES §7` is not engaged at all. This would be a completely
+different proposition for a sampled instrument on the audio thread, and that
+difference is the whole reason this is cheap.
 
-**Where samples actually win, which is narrower than it first looks.** A sample
-is the same recording every time, and repetition is this band's specific enemy:
-the hat rotation, the per-interval lead contour, the per-note seeds and the
-oscillator drift all exist to fight it. A sampler is the most repetitive source
-there is, and a General MIDI bank has one or two velocity layers, so velocity
-moves volume and a filter rather than articulation -- which is exactly the axis
-the plucked bass and the electric piano were built around.
+**One synth, not four.** Each `fluid_synth_t` loads its own copy of the sample
+data, so a synth per bot is four copies of a thirty-megabyte bank in memory. One
+synth with a MIDI channel per voice, rendered a voice at a time, keeps it to
+one -- and the bots already render serially on a single conductor thread, so the
+sharing costs no synchronisation.
 
-So samples lose for everything the band currently plays, and win decisively for
-the instruments we will never model: an acoustic piano, a brass section, bowed
-strings, reeds. That is the case for doing it -- not better versions of the four
-voices, but voices that are otherwise impossible.
+**On bundling: an earlier note in this file called the provenance caveat
+"decisive", and that was overstated.** The facts: the GeneralUser GS v2.0
+licence explicitly permits use and modification in software projects; the
+caveat is a DISCLOSURE by the author that he cannot account for every sample's
+origin, aimed at people shipping commercial products; and several Linux
+distributions package and redistribute it regardless. For a GPLv3 project this
+is a judgement rather than a bar, and the honest reading is that bundling is
+defensible with a residual risk that is disclosed, accepted by others, and
+cheap to remedy.
 
-**Layering is the strongest form of it.** A sampled attack over a modelled body
-plays to both: the transient is where a sample is most convincing and a model
-least, and the sustain is where a model's continuous variation is the whole
-point. Running a sample through the tone, drift and saturation chain the voices
-already have is also what a real sampler does to stop notes machine-gunning, and
-it is nearly free now -- `BandPatch` made every voice's parameters data, so a
-new source type plugs in under the same level and trim layer rather than beside
-it.
+What actually argues against bundling is weight, not licence:
 
-- [ ] Load an SF2 from a path the player chooses; no bundled bank.
+- Thirty megabytes as JUCE binary data, in four plugin formats, is roughly a
+  hundred and twenty megabytes installed and a generated source file nobody
+  wants to compile.
+- In git it is permanent: every clone pays for it forever, in a project whose
+  stated ambition is to fit in your head.
+
+So if it is ever bundled, it is as a **data file fetched at package time by CI
+and verified by hash**, installed once and found at runtime -- never committed
+and never embedded. An in-app opt-in download is the third option and the most
+expensive: HTTPS in a plugin that currently speaks only Ninjam, a progress and
+error surface that has to be announced for a screen reader, an integrity check,
+and a hosting commitment that outlives our interest in it.
+
+**The order below defers every one of those questions.** Nothing about bundling
+has to be decided until a single sampled voice has been heard next to the model
+it would replace, at which point we will know whether it is worth paying for.
+
+The musical caveat from the first draft stands unchanged: a sample is the same
+recording every time, repetition is this band's specific enemy, and a General
+MIDI bank has one or two velocity layers, so velocity moves volume and a filter
+rather than articulation. Samples lose for everything the band currently plays
+and win for what we will never model -- an acoustic piano, a brass section,
+bowed strings, reeds.
+
+- [ ] FluidSynth as a submodule, glib-free, drivers off; `THIRDPARTY.md` entry.
+- [ ] Load an SF2 from a path the player chooses. No bundled bank, so no
+      packaging or provenance question yet.
+- [ ] One shared synth, a channel per voice, driven from the conductor thread.
 - [ ] One voice at a time, selectable like the lead's instruments, so the
-      comparison against the model is direct.
-- [ ] Through the existing per-note chain, not straight out, and measured with
-      `AudioMeasure` like everything else.
-- [ ] Layering, once a single sampled voice has been lived with.
-- [ ] Only then, if at all, the question of a bank we can ship.
+      comparison against the model is direct, and measured with `AudioMeasure`
+      like everything else.
+- [ ] Through the existing per-note tone, drift and saturation chain rather than
+      straight out -- which is also what a real sampler does to stop notes
+      machine-gunning.
+- [ ] Layering -- a sampled attack over a modelled body -- once a single sampled
+      voice has been lived with.
+- [ ] Only then, and only if it earned its place: whether to ship a bank, and
+      which.
 
 - [ ] **A seed should not change the volume.** The kit's integrated loudness
       varies by 3.7 LU across seeds, purely because a busy Euclidean figure has
