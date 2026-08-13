@@ -50,7 +50,8 @@ void usage() {
       "\n"
       "  AntiphonVoiceLab <voice> [options]\n"
       "\n"
-      "voices: kick snare hat bass lead pad band\n"
+      "voices: kick snare hat bass lead pad kit band\n"
+      "  kit and band go through the real path, with the room, in stereo\n"
       "\n"
       "  -o <path>          output file, or directory when sweeping\n"
       "  --sr <rate>        sample rate (default 48000)\n"
@@ -142,6 +143,80 @@ std::vector<float> renderOne(const Options &o) {
 
 // The whole band through the real BotBand path, seeded the way PracticeRoom
 // seeds it, so what comes out is what the room would hear.
+// One voice through the real BotBand path -- with its room, and in stereo if it
+// has one. Distinct from `renderOne`, which drives a bare BotVoice function and
+// so hears the drum without the kit around it.
+void renderVoice(const Options &o, BotBand::Voice voice,
+                 std::vector<float> &left, std::vector<float> &right) {
+  auto key = MusicalKey::parseName(o.keyName);
+  if (!key.valid)
+    key = MusicalKey::parseName("C major");
+
+  const auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+  const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
+
+  left.clear();
+  right.clear();
+  for (int interval = 0; interval < o.bars; ++interval) {
+    std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
+    BotBand::renderInterval(voice, settings, interval, l.data(), r.data(), n);
+    if (!BotBand::isStereo(voice))
+      r = l;
+    left.insert(left.end(), l.begin(), l.end());
+    right.insert(right.end(), r.begin(), r.end());
+  }
+}
+
+void renderBandStereo(const Options &o, std::vector<float> &mixL,
+                      std::vector<float> &mixR) {
+  auto key = MusicalKey::parseName(o.keyName);
+  if (!key.valid)
+    key = MusicalKey::parseName("C major");
+
+  mixL.clear();
+  mixR.clear();
+  for (int interval = 0; interval < o.bars; ++interval) {
+    std::vector<float> accL, accR;
+    for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
+                       BotBand::Voice::Keys, BotBand::Voice::Lead}) {
+      std::uint32_t seed = o.seed;
+      for (int step = 0; step < (int)voice; ++step)
+        seed = seed * 1664525u + 1013904223u;
+
+      const auto settings =
+          BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, seed);
+      const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
+      if (accL.empty()) {
+        accL.assign((size_t)n, 0.0f);
+        accR.assign((size_t)n, 0.0f);
+      }
+
+      std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
+      BotBand::renderInterval(voice, settings, interval, l.data(), r.data(), n);
+      if (!BotBand::isStereo(voice))
+        r = l;
+
+      if (interval == 0) {
+        std::printf("  %-6s peak %.3f  rms %.4f (%6.1f dBFS)  brightness %7.1f Hz%s\n",
+                    BotBand::voiceName(voice), AudioMeasure::peak(l.data(), n),
+                    AudioMeasure::rms(l.data(), n),
+                    AudioMeasure::toDb(AudioMeasure::rms(l.data(), n)),
+                    AudioMeasure::brightnessHz(l.data(), n, o.sampleRate),
+                    BotBand::isStereo(voice) ? "  stereo" : "");
+      }
+
+      // The far end applies kDefaultRemoteChannelVolume to every remote
+      // channel, so mix at that level or this is 12 dB hotter than the room.
+      for (int j = 0; j < n; ++j) {
+        accL[(size_t)j] += 0.25f * l[(size_t)j];
+        accR[(size_t)j] += 0.25f * r[(size_t)j];
+      }
+    }
+    mixL.insert(mixL.end(), accL.begin(), accL.end());
+    mixR.insert(mixR.end(), accR.begin(), accR.end());
+  }
+}
+
 std::vector<float> renderBand(const Options &o) {
   auto key = MusicalKey::parseName(o.keyName);
   if (!key.valid)
@@ -202,7 +277,7 @@ void report(const juce::String &label, const std::vector<float> &buf,
 }
 
 bool writeWav(const juce::File &file, const std::vector<float> &buf,
-              double sampleRate) {
+              double sampleRate, const std::vector<float> *rightChannel = nullptr) {
   file.deleteFile();
   file.getParentDirectory().createDirectory();
 
@@ -211,14 +286,21 @@ bool writeWav(const juce::File &file, const std::vector<float> &buf,
   if (stream == nullptr)
     return false;
 
+  const int channels = rightChannel != nullptr ? 2 : 1;
   std::unique_ptr<juce::AudioFormatWriter> writer(
-      wav.createWriterFor(stream.release(), sampleRate, 1, 24, {}, 0));
+      wav.createWriterFor(stream.release(), sampleRate, (unsigned)channels, 24,
+                          {}, 0));
   if (writer == nullptr)
     return false;
 
-  juce::AudioBuffer<float> out(1, (int)buf.size());
-  for (int i = 0; i < (int)buf.size(); ++i)
+  juce::AudioBuffer<float> out(channels, (int)buf.size());
+  for (int i = 0; i < (int)buf.size(); ++i) {
     out.setSample(0, i, buf[(size_t)i]);
+    if (channels > 1)
+      out.setSample(1, i,
+                    i < (int)rightChannel->size() ? (*rightChannel)[(size_t)i]
+                                                  : 0.0f);
+  }
   writer->writeFromAudioSampleBuffer(out, 0, out.getNumSamples());
   return true;
 }
@@ -298,8 +380,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  const juce::StringArray known{"kick", "snare", "hat", "bass",
-                                "lead", "pad",   "band"};
+  const juce::StringArray known{"kick", "snare", "hat",  "bass", "lead",
+                                "pad",  "kit",   "band"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -315,9 +397,25 @@ int main(int argc, char *argv[]) {
       o.out = juce::File::getCurrentWorkingDirectory().getChildFile("band.wav");
     std::printf("band  %s  %d bpm  %d bpi  seed %u\n", o.keyName.toRawUTF8(),
                 o.bpm, o.bpi, (unsigned)o.seed);
-    const auto mix = renderBand(o);
+    std::vector<float> mix, mixR;
+    renderBandStereo(o, mix, mixR);
     report("band (mixed)", mix, o.sampleRate);
-    if (!writeWav(o.out, mix, o.sampleRate)) {
+    if (!writeWav(o.out, mix, o.sampleRate, &mixR)) {
+      std::fprintf(stderr, "voicelab: could not write %s\n",
+                   o.out.getFullPathName().toRawUTF8());
+      return 1;
+    }
+    std::printf("wrote %s\n", o.out.getFullPathName().toRawUTF8());
+    return 0;
+  }
+
+  if (o.voice == "kit") {
+    if (o.out == juce::File())
+      o.out = juce::File::getCurrentWorkingDirectory().getChildFile("kit.wav");
+    std::vector<float> l, r;
+    renderVoice(o, BotBand::Voice::Drums, l, r);
+    report("kit (with room)", l, o.sampleRate);
+    if (!writeWav(o.out, l, o.sampleRate, &r)) {
       std::fprintf(stderr, "voicelab: could not write %s\n",
                    o.out.getFullPathName().toRawUTF8());
       return 1;

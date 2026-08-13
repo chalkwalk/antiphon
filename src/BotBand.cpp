@@ -336,8 +336,16 @@ inline constexpr float kDrumHeadroom = 0.44f;
 // is where the additive kit sat, with more margin than it had.
 inline constexpr double kKitDrive = 1.8;
 
+// How much of the room is heard.
+//
+// Overheads rather than a reverb send: enough that muting it sounds wrong and
+// not enough to be audible as an effect. The early reflections do the work --
+// the pattern of the first bounces is what says how big a room is -- so this
+// can stay low and still place the kit somewhere.
+inline constexpr float kRoomMix = 0.12f;
+
 void renderDrums(const Settings &s, int intervalIndex, float *out,
-                 int numSamples) {
+                 float *right, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
   if (beatSamples <= 0)
     return;
@@ -417,8 +425,24 @@ void renderDrums(const Settings &s, int intervalIndex, float *out,
     }
   }
 
-  for (int i = 0; i < numSamples; ++i)
-    out[i] = BotVoice::saturate(out[i], kKitDrive);
+  // The room, and then the bus.
+  //
+  // In that order, and it matters twice. Physically the console hears the room
+  // rather than the other way round; practically, the room ADDS its
+  // reflections to the dry signal, so putting the soft clip after it is what
+  // keeps the sum inside the headroom the trim above was measured for.
+  //
+  // The room is what makes the kit stereo, and the only reason any voice is.
+  BotDsp::Room room;
+  room.prepare(s.sampleRate, 4.0, kRoomMix);
+
+  for (int i = 0; i < numSamples; ++i) {
+    float wetL = 0.0f, wetR = 0.0f;
+    room.process(out[i], wetL, wetR);
+    out[i] = BotVoice::saturate(wetL, kKitDrive);
+    if (right != nullptr)
+      right[i] = BotVoice::saturate(wetR, kKitDrive);
+  }
 }
 
 // C2. Must be a C: chord roots are pitch classes where 0 means C.
@@ -629,10 +653,14 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 
 } // namespace
 
+bool isStereo(Voice voice) { return voice == Voice::Drums; }
+
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
-                    float *out, int numSamples) {
-  if (out == nullptr || numSamples <= 0 || s.sampleRate <= 0.0 || s.bpi <= 0)
+                    float *left, float *right, int numSamples) {
+  if (left == nullptr || numSamples <= 0 || s.sampleRate <= 0.0 || s.bpi <= 0)
     return;
+
+  float *out = left;
 
   // Negative indices would reflect the modulo arithmetic below onto the wrong
   // variation; the conductor counts up from zero, but nothing here should
@@ -642,7 +670,7 @@ void renderInterval(Voice voice, const Settings &s, int intervalIndex,
 
   switch (voice) {
   case Voice::Drums:
-    renderDrums(s, intervalIndex, out, numSamples);
+    renderDrums(s, intervalIndex, out, right, numSamples);
     return;
   case Voice::Bass:
     renderBass(s, out, numSamples);

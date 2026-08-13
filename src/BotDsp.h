@@ -508,8 +508,9 @@ struct Cabinet {
   }
 };
 
-// Enough for a 40 ms tap and a 90 ms comb at 96 kHz.
-inline constexpr int kRoomCapacity = 16384;
+// Enough for a 37 ms tap and a 47 ms comb at 96 kHz, and small enough that a
+// voice can hold one on the stack: three lines at 8192 floats is 98 KB.
+inline constexpr int kRoomCapacity = 8192;
 
 // A room, as overheads hear it.
 //

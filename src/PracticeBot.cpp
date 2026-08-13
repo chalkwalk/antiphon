@@ -78,12 +78,22 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
       snapshot = settings;
     }
 
-    // Mono into the left channel, then copied: the band plays in the middle
-    // and the listener decides where it sits, with the pan control every
-    // remote channel already has.
+    // Most voices are one close-miked instrument standing in one place, so they
+    // render mono and are copied across: the band plays in the middle and the
+    // listener decides where it sits, with the pan control every remote channel
+    // already has.
+    //
+    // The kit is the exception, because a kit is heard through two overhead
+    // mics that are not in the same place. It fills both channels itself, and
+    // the copy is skipped. This costs no bandwidth: the encoder has always run
+    // two channels here, so the stereo was already being paid for and simply
+    // carried the same samples twice.
+    const bool stereo = BotBand::isStereo(v) && buffer.getNumChannels() > 1;
     BotBand::renderInterval(v, snapshot, intervalIndex,
-                            buffer.getWritePointer(0), numSamples);
-    if (buffer.getNumChannels() > 1)
+                            buffer.getWritePointer(0),
+                            stereo ? buffer.getWritePointer(1) : nullptr,
+                            numSamples);
+    if (!stereo && buffer.getNumChannels() > 1)
       buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
   });
 }
