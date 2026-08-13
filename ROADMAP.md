@@ -783,76 +783,132 @@ discovering the boundary.
 #### A shared library across the Chalkwalk projects
 
 Wider than this repository and not scheduled, but the split is the moment to
-think about it, because extracting a layer here and extracting it for everybody
-are nearly the same piece of work.
+plan it, because extracting a layer here and extracting it for everybody are
+nearly the same work.
 
-**The argument for it is not theoretical, it is something that already happened
-to us.** `polyBlep` was ported here from seq_play, and porting it meant testing
-it, and testing it found that the correction was being ADDED where it should
-have been subtracted -- so seq_play's oscillators had been aliasing 82% worse
-than no correction at all, for its whole life. Worse, one of its tests was
-passing *because* of the bug. That fix had to be made twice, and
-arps-euclidya may still carry it. `Svf` and `hermite4` came the other way, from
-seq_play to here. Copy-paste means a bug found in one place stays broken in the
-others, and "do X like seq_play does" is a citation that cannot be compiled.
+**The argument is not theoretical.** `polyBlep` was ported here from seq_play;
+porting it meant testing it, and testing it found the correction being ADDED
+where it should have been subtracted -- so seq_play's oscillators aliased 82%
+worse than no correction at all, for its whole life, with one of its own tests
+passing *because* of the bug. That fix had to be made twice, and arps-euclidya
+may still carry it. `Svf` and `hermite4` came the other way. "Do X like seq_play
+does" is a citation that cannot be compiled.
 
-**But the research says the obvious contents are the wrong contents.**
+##### The rule for taking a dependency
 
-General DSP primitives are thoroughly covered by libraries that are better
-tested than ours will ever be: Signalsmith Audio's header-only C++11 library --
-whose stated goal is measuring the actual audio characteristics of its tools,
-frequency response and aliasing, which is the same discipline this project
-arrived at independently -- plus DaisySP (MIT) and chowdsp_utils, catalogued in
-`awesome-audio-dsp`. `Svf`, `DelayLine`, `hermite4` and `polyBlep` are
-commodities. The interesting question for those is not "should we share ours"
-but "should we be using somebody else's", and the honest answer is probably yes.
+"Use third-party as much as possible" is the right instinct and the wrong rule,
+because it does not discriminate. This one does:
 
-What is genuinely thin ground is the layer above:
+> **Take a dependency when the thing has a SPECIFICATION you could fail to
+> meet. Write it yourself when it is small enough to test exhaustively.**
 
-- **Music theory in C++ is poorly served.** What exists is either tied to a
-  framework (`ofxMusicTheory` needs openFrameworks), narrow (`Septima` does
-  seventh-chord voice leading and little else), or a MIDI scoring environment
-  (`CFugue`). Nothing offers a dependency-free, tested chord/chart/key library.
-  `Harmony.h` -- charts with bar timing, roman numerals, key inference from a
-  progression, cyclic voice leading by dynamic programming -- is more capable
-  than most of them for what it does, and it is 900 lines.
-- **Measurement as a shared instrument.** `libebur128` (MIT) does loudness
-  properly and ours is redundant beside it. What is not redundant is
-  `AudioMeasure` as a WHOLE: peak, rms, crest, spectral brightness,
-  autocorrelation pitch and integrated loudness behind one interface, used by
-  the tuning tool and asserted by the tests so that tuning by ear and setting a
-  threshold cannot disagree. That combination is the thing this project got
-  right, and it is the thing every one of these projects needs.
-- **The generative vocabulary** -- Euclidean rhythms, metric strength, contour
-  shapes, the salted-seed discipline. Shared between arps-euclidya and here
-  already, by retyping.
+Loudness has a specification (ITU-R BS.1770) and a reference implementation, and
+being subtly wrong about K-weighting is invisible. SoundFont has a specification
+and GeneralUser GS leans on the obscure parts of it. An FFT has a correctness
+proof and a hundred person-years of optimisation. Those are dependencies.
 
-**Three costs, stated before anybody gets enthusiastic.**
+A state-variable filter is forty lines with a magnitude response you can assert
+at DC and Nyquist. `hermite4` is eight lines and exact on a straight line.
+Those are not dependencies, and taking one buys nothing but a version to track.
 
-The rule of three is not quite met. `Svf` has two consumers, `hermite4` two,
-Euclidean two. Two is where you guess at an interface; three is where you know
-it. `mpe_phys` may be the third, but it is early enough that its needs are not
-yet evidence.
+| Thing | Verdict | Why |
+|---|---|---|
+| Loudness (BS.1770) | **Adopt `libebur128`** (MIT) | A spec we reimplemented and validated against ffmpeg. Correct today; one refactor from being subtly wrong forever |
+| SoundFont 2/3 | **Adopt FluidLite** (LGPL) | Already decided above |
+| FFT, if ever needed | **Adopt** PFFFT or KISS | `brightnessHz` measures spectral slope precisely to avoid needing one; if that stops being enough, do not write one |
+| Gather resampling | **Adopt** soxr / zita / libsamplerate | Well served, and the quality differences are measurable rather than matters of taste |
+| `Svf`, `hermite4`, `DelayLine`, `polyBlep`, `softClip` | **Keep** | ~250 lines, already written, already tested. Replacing them rewrites call sites for no functional gain |
+| The voices -- `PluckedString`, `ModalBank`, `Cabinet`, `Room`, `Chorus` | **Keep** | These are instruments, not primitives. Nothing third-party is trying to be them |
+| Music theory | **Keep, and share** | See below -- this is the thinnest ground of all |
+| The scatter resampler | **Keep, and it is the crown jewel** | See below |
 
-A shared library inherits the STRICTEST constraint of any consumer. Antiphon
-forbids allocation, locks and logging on the audio thread, keeps its DSP
-JUCE-free so it can be tested headlessly, and requires ASCII source. Anything
-shared has to meet all of that whether or not the other projects care, because
-the alternative is a library Antiphon cannot use.
+##### The scatter write has no third-party equivalent
 
-And the extraction is not free where it looks freest: `MusicalKey.h` and
-`Harmony.h` include `<JuceHeader.h>` for `juce::String` alone. Making them
-portable means `std::string` throughout and a sweep of every call site -- purely
-mechanical, and exactly the kind of cost that only appears once you try.
+seq_play's `deckcore/Resampler.h` is a 16-tap polyphase windowed-sinc resampler
+whose cutoff falls to Nyquist/rate above unity, so the source is band-limited
+before it can alias. That much is ordinary. What is not ordinary is `scatter`:
+the same kernel *deposited* into the destination at a fractional position, with
+a 1/rate density compensation, so a write head moving at a variable rate lays
+its samples down without imaging.
 
-**The shape I would argue for**, if and when it happens: one repository, four
-small headers-plus-tests rather than a framework, JUCE-free, with a stated scope
-so it does not become a junk drawer -- *music theory, generative rhythm and
-melody, and audio measurement*. Explicitly NOT general DSP primitives, which
-somebody else already maintains better.
+That is the adjoint of interpolation -- gather read, scatter write -- and it is
+the piece nobody ships. Every resampling library that exists is a gather
+resampler: soxr, libsamplerate, zita-resampler, libfresample, libswresample,
+Signalsmith. You feed input and pull output. None of them exposes the transpose,
+because the common use case is playback and playback only ever gathers. Writing
+at a variable rate is what a tape machine does, and it needs the other half.
 
-Not scheduled. Worth revisiting when `mpe_phys` is far enough along to be a
-third genuine consumer rather than a hoped-for one.
+So this is the one piece of DSP across these projects with genuinely nothing to
+adopt, and the strongest candidate for a shared library on the merits rather
+than on convenience.
+
+##### Music theory: seq_play's model is the general one
+
+Antiphon has `MusicalKey{tonic, Mode}` -- a tonic and one of seven named modes.
+seq_play has `Scale.h`, and it is strictly more general:
+
+```
+KeySig { root, brightness, modifiers[], scaleType }  ->  uint16_t pitch-class mask
+```
+
+`brightness` is a signed axis centred on Dorian, which is the right centre
+because Dorian is symmetric -- the modes fan out bright and dark either side of
+it, one accidental per step, which IS the circle of fifths without asking anyone
+to remember mode names. `modifiers` then alter individual degrees, producing
+scales with no name at all, and everything collapses to a twelve-bit mask.
+There is even a `modifierApplies` notion for whether a modifier is currently
+doing anything, which is a genuinely good UI idea.
+
+**Antiphon's model is a special case of it**: diatonic, no modifiers, with mode
+and brightness in bijection. So the shared library takes seq_play's
+representation as the primary one and keeps named modes as a naming and parsing
+convenience, because a player types "D Dorian" and should not have to type an
+integer.
+
+The cost is concrete and worth knowing before agreeing: Antiphon indexes scales
+by degree (`degreeToMidi(key, degree, octave)`, `kScaleDegrees = 7`), and a
+pitch-class mask has `popcount(mask)` degrees rather than always seven. Every
+call site that assumes seven has to become "the nth set bit". Bounded, entirely
+mechanical, and invisible until you try it.
+
+##### What else is worth sharing, and is not served elsewhere
+
+C++ music theory is poorly covered: what exists is framework-tied
+(`ofxMusicTheory` needs openFrameworks), narrow (`Septima` does seventh-chord
+voice leading), or a MIDI scoring environment (`CFugue`). Nothing is a
+dependency-free, tested library of the following, which between these projects
+already exists and is retyped rather than shared:
+
+- **Pitch** -- keys, scales as pitch-class masks, brightness, modifiers, modes
+  as presets, spelling (which sharp, which flat).
+- **Harmony** -- chords, charts with bar timing, roman numerals, key inference
+  from a progression, voice leading by cyclic dynamic programming.
+- **Rhythm** -- Euclidean patterns, accent placement, metric strength.
+- **Melody and dynamics** -- note strength against a chord, contour shapes, and
+  the COUPLING between them: strong beats take strong notes, a colour note may
+  pass but not sit. That rule is the reason the lead stopped sounding wrong in
+  minor keys, and it is the least obvious thing any of these projects knows.
+- **Velocity as articulation** -- the idea that a technique is a RANGE velocity
+  moves along rather than a switch between samples, which is what makes the
+  bass and the electric piano sound played.
+- **Measurement** -- `AudioMeasure`, wrapping `libebur128` for loudness rather
+  than reimplementing it, but keeping the combined interface.
+
+##### Shims: only where they clean something up
+
+Preference is to port call sites to third-party interfaces directly. The one
+exception worth defending is `AudioMeasure`, and it earns it: its value is not
+any single measurement but that peak, rms, crest, brightness, pitch and loudness
+come from ONE interface, so tuning by ear and asserting a threshold cannot use
+different numbers. That is a real interface improvement over five libraries.
+FluidLite gets driven directly. A resampler would be used directly.
+
+##### Ordering
+
+Not now, and not before the in-repository separation above -- the shared library
+is the same boundary discovery repeated across four codebases, and doing it here
+first is the cheap rehearsal. `mpe_phys` becoming a real consumer is the signal
+that the interfaces are known rather than guessed.
 
 #### Why this is not the next thing
 
