@@ -668,6 +668,300 @@ bowed strings, reeds.
 - [ ] Only then, and only if it earned its place: whether to ship a bank, in
       which format, and fetched at package time rather than committed.
 
+### Breaking the repository up
+
+Wanted, planned here, and **not next** -- see the ordering argument at the end.
+
+#### It is four layers, not three
+
+The dependency direction was checked rather than assumed, and the good news is
+that it is already clean: nothing in the client layer includes anything above
+it, and nothing in the bots includes a plugin header. The boundary exists in
+practice; it is simply not enforced.
+
+The surprise is that there is a fourth thing hiding in the middle. `MusicalKey`
+and `Harmony` are used by the bots AND by the plugin's chat UI -- announcing a
+key and reading a chord chart are room features that exist with no band in the
+room at all -- so they belong to neither. Putting them in the bots would make
+the plugin depend on the band in order to parse `| Am | F |`, which is exactly
+backwards.
+
+```
+music  (MusicalKey, Harmony, Euclidean)      no dependencies, JUCE-light
+  ^
+  |     njclient  (protocol, codec, Sha1, IntervalClock, ChannelMix, SpscRing)
+  |        ^
+  +--- bots  (band, synthesis, PracticeBot, PracticeRoom)
+           ^
+        antiphon  (processor, editor, UI, standalone)
+```
+
+Two other placements the split forces a decision on, both currently ambiguous:
+`IntervalClock` is client (it reproduces `njclient.cpp:806` and both layers
+above use it), and `AudioMeasure` is included by **no production file at all** --
+it exists for the tests and the tools, which is worth knowing before deciding
+where it lives.
+
+#### JUCE in three repositories: a real problem, and a solved one
+
+Every layer needs JUCE. Even `music` does, for `juce::String`.
+
+The cost is not build time -- JUCE compiles its modules into each consuming
+target regardless of how many checkouts exist -- it is **disk and clone time**:
+94 MB per copy, so three submodules is 280 MB and three fetches for one
+developer. Worse, `add_subdirectory(JUCE)` three times collides on target names,
+so the naive arrangement does not even configure.
+
+The standard answer is that a leaf repository *requires* JUCE rather than
+*vendoring* it:
+
+```cmake
+if(NOT TARGET juce::juce_core)
+  # Built on its own. Fetch a copy; when nested, the parent already provided one.
+  FetchContent_MakeAvailable(JUCE)
+endif()
+```
+
+`FETCHCONTENT_SOURCE_DIR_JUCE` then points every repository at one checkout for
+anybody working across them. One copy, and each repository still builds and
+tests alone.
+
+**The patches are a non-issue, which is worth checking rather than assuming.**
+Both `patches/*.patch` are plugin concerns -- embedded-window keyboard focus, and
+bus-layout change notification -- so they stay with `antiphon`, and the two lower
+layers want unpatched JUCE. `clap-juce-extensions` is plugin-only for the same
+reason.
+
+#### Extract with history, not by copying
+
+`git filter-repo --path` per layer, which keeps every commit that touched those
+files and therefore keeps blame and the reasoning. That matters more here than
+in most projects: the commit messages are where the *why* lives, and a fresh
+"initial import" would throw away the part of this repository that is hardest to
+reconstruct. `NinjamClient.cpp` alone has 41 commits behind it.
+
+The counter-proposal -- build the deepest repository fresh, then port -- is
+worse on both counts: it loses that history, and it means maintaining two copies
+of the client while the port is in flight.
+
+#### The real cost is the documentation
+
+`PRINCIPLES.md`, `NON-GOALS.md` and `DESIGN.md` are one argument about one
+program, and they are the most valuable artefacts here after the code. Three
+repositories means either duplicating them, which guarantees drift, or leaving
+them in `antiphon`, which leaves the other two under-documented and cites
+`PRINCIPLES §N` across a repository boundary.
+
+I do not have a good answer to this and it should not be waved past. The least
+bad option is probably that the principles stay in `antiphon` and are cited by
+URL from the others, with each leaf carrying only what is true of it alone --
+but "the docs get worse" is a genuine cost of the split and belongs in the
+decision.
+
+#### Phases, and why the first one is the one to do
+
+1. **Separate CMake libraries inside this repository**, with the dependency
+   direction declared and enforced by the build. Half a day, no risk, entirely
+   reversible.
+2. Move the shared modules to the layer that owns them; record the choices in
+   `AGENTS.md`, whose line count is also out by a factor of three.
+3. Split `test/` the same way, which is the part likely to bite -- the test
+   target deliberately re-lists production sources, and that arrangement needs
+   rethinking per layer rather than copying.
+4. Live with it. Anything that has to reach across a boundary is the boundary
+   being wrong, and finding that out costs one commit here and a cross-repository
+   migration later.
+5. Only then `git filter-repo`, three repositories, submodules, three CI
+   configurations.
+
+**Phase 1 is worth doing on its own merits even if the repositories never
+happen.** It is most of the benefit -- the layering becomes real, the bots'
+future dependencies cannot leak into the client -- for a fraction of the cost,
+and it makes the eventual split mechanical because the hard part of a split is
+discovering the boundary.
+
+#### Why this is not the next thing
+
+The benefits are all anticipated: independent reuse by somebody who is not us,
+and keeping a soundfont dependency out of the client. Neither exists yet.
+
+The costs are immediate: three CI configurations, a submodule dance on every
+clone, worse documentation, and cross-repository refactoring in a project that
+has touched two layers in most of its recent sessions.
+
+And the ordering argument that settles it: **the practice room is not wired to
+the plugin UI at all.** No user can currently reach a bot. Restructuring the
+repository around a feature nobody can run yet is optimising the wrong axis
+while two synthesis steps, the entire chat implementation and the owner-identity
+gap are all unbuilt and user-visible.
+
+- [ ] **The unit suite takes two minutes, and that is now an iteration cost.**
+      It grew honestly -- most of it is rendering audio and measuring it, which
+      is what the band tests are for -- but BotBand alone is 57 seconds and the
+      loop between an edit and an answer is long enough to discourage running it.
+      Worth an hour with a profile: shorter renders where a defect shows in the
+      first note, fewer redundant seeds, and possibly a `--quick` subset for the
+      edit loop with the full sweep left to CI.
+- [ ] **Tab completion in the chat field.** Complete `/` commands from the
+      command list, and usernames after `/msg` and `/kick` from the room's user
+      list -- and a name at the start of a line, which is how a bot is addressed
+      (`docs/BOT-CHAT.md` section 5). Common prefix first, then cycling.
+      Accessibility is half the point: the completion and the candidate list
+      both want announcing, and a name nobody can spell is a name nobody can
+      reach.
+- [ ] **Resolve `/msg` and `/kick` against the user list, not whitespace.**
+      Both split on the first space, so neither can reach a username containing
+      one. Longest match against the names actually in the room fixes it, and
+      is what makes tab completion and hand-typing agree.
+
+### Sampled instruments, alongside the models
+
+Not scheduled, and deliberately not started while the synthesis plan has three
+steps left -- two half-finished engines would be worse than one finished one.
+Recorded because the analysis is done, and because checking it changed the
+answer twice.
+
+**The player has to be FluidSynth, and that is now practical.** GeneralUser GS
+makes heavy use of SoundFont modulators, and its own documentation names the
+synths that render it correctly: FluidSynth 1.0.9 or later, BASSMIDI, MuseScore
+2.0.3+, SynthFont2, VSTSynthFont. TinySoundFont is not among them, so the
+one-MIT-header option is out for this bank.
+
+FluidSynth was previously unusable here for one reason -- it dragged in glib,
+which is exactly the framework `PRINCIPLES §6` refuses. **That is fixed
+upstream.** Since 2.5.0 it builds with `-Dosal=cpp11 -Denable-libinstpatch=0`
+and no glib at all, and the glib path is deprecated for removal in 2.6.0. With
+drivers, libsndfile and libinstpatch all disabled it is a small static library
+with no dependencies we do not already have.
+
+Ardour vendors a trimmed FluidSynth in `libs/fluidsynth`, which is a worked
+precedent for a GPL audio project doing exactly this. A submodule is preferable
+to a fork we would then own.
+
+**The other compatible players were surveyed, and only one is a real
+alternative -- which turns out to be a lighter fork of the same engine.**
+
+| Player | Library form? | Verdict |
+|---|---|---|
+| BASSMIDI | Yes, cross-platform | **Out on licence.** BASS is proprietary and closed, free only for non-commercial use. GPLv3 cannot link against it and be distributed, whatever its quality. |
+| MuseScore | Not separable | **It is FluidSynth.** MuseScore's SF2 engine is a modified FluidSynth; its own Zerberus synth is SFZ-only and was removed in MuseScore 4. A second vendoring precedent rather than a second option. |
+| SynthFont2 / VSTSynthFont | No | Closed source, Windows only. Out twice over. |
+| **FluidLite** | Yes | **The real alternative, and possibly the better one.** |
+
+FluidLite is a stripped fork of FluidSynth built to have no external
+dependencies at all -- standard C only -- and to keep just the settings and
+synth. It deliberately omits MIDI file reading, realtime MIDI and audio output,
+which is precisely the surface we do not want, because the conductor drives the
+notes and JUCE takes the audio. LGPL-2-or-later, so the licence reasoning below
+is unchanged. There is no glib question because there was never a glib.
+
+Two things to establish before preferring it. It is derived from FluidSynth
+**1.x**, and GeneralUser GS wants 1.0.9 or later, so it is nominally in range --
+but whether the fork kept full modulator support is a question to answer by
+RENDERING something and listening, not by reading a README. And it is less
+actively maintained than mainline, across several forks (divideconcept, katyo,
+batlogic), which is a real cost against a build that is otherwise much simpler.
+
+So: FluidLite first if it renders the bank correctly, mainline FluidSynth as the
+known-good fallback. Both are the same licence and the same reasoning.
+
+**Licensing is a non-issue, which is not obvious.** FluidSynth is
+LGPL-2.1-or-later, and LGPL's static-linking condition is that the user must be
+able to relink against a modified library. Antiphon is GPLv3, so the entire
+source is published anyway and the condition is satisfied by construction.
+Nothing extra to do beyond a `THIRDPARTY.md` entry.
+
+**Real-time safety is a non-issue too, and only for this use.** The band renders
+on the conductor thread, one interval at a time -- about half a second of work
+against a four-second deadline -- so FluidSynth may allocate and lock as much as
+it likes. `PRINCIPLES §7` is not engaged at all. This would be a completely
+different proposition for a sampled instrument on the audio thread, and that
+difference is the whole reason this is cheap.
+
+**One synth, not four.** Each `fluid_synth_t` loads its own copy of the sample
+data, so a synth per bot is four copies of a thirty-megabyte bank in memory. One
+synth with a MIDI channel per voice, rendered a voice at a time, keeps it to
+one -- and the bots already render serially on a single conductor thread, so the
+sharing costs no synchronisation.
+
+**On bundling: an earlier note in this file called the provenance caveat
+"decisive", and that was overstated.** The facts: the GeneralUser GS v2.0
+licence explicitly permits use and modification in software projects; the
+caveat is a DISCLOSURE by the author that he cannot account for every sample's
+origin, aimed at people shipping commercial products; and several Linux
+distributions package and redistribute it regardless. For a GPLv3 project this
+is a judgement rather than a bar, and the honest reading is that bundling is
+defensible with a residual risk that is disclosed, accepted by others, and
+cheap to remedy.
+
+**SF3 changes the weight question, and costs us nothing to support.** SoundFont
+3 is the same format with the samples Ogg Vorbis compressed -- an extension
+Werner Schweer created for MuseScore for exactly this reason. GeneralUser GS is
+29.8 MB as SF2; converted with `sf3convert` it lands somewhere near a quarter of
+that, which moves the argument below from "a hundred and twenty megabytes
+installed" to something like thirty, or under ten if it is one shared data file.
+
+And the decompression is free to us. FluidLite builds SF3 support with
+`-DENABLE_SF3=YES` against Xiph's libogg and libvorbis -- **which this repository
+already vendors as submodules**, because the Ninjam codec needs them. So the
+whole feature adds one small library and no new third-party code at all.
+
+The catch is quality rather than size: lossy compression on short looped samples
+is where artifacts show, which is why the conversion guidance is Ogg quality 0.8
+with the samples attenuated a decibel. Whether that is audible on a practice
+band is a listening question, and it is one we can answer directly by rendering
+the same part from the SF2 and the SF3 and measuring both.
+
+So the bundling decision is worth reopening once a voice exists to judge, rather
+than settled now. What follows is the argument as it stands against the
+uncompressed bank; halve or quarter every number for SF3.
+
+What actually argues against bundling is weight, not licence:
+
+- Thirty megabytes as JUCE binary data, in four plugin formats, is roughly a
+  hundred and twenty megabytes installed and a generated source file nobody
+  wants to compile.
+- In git it is permanent: every clone pays for it forever, in a project whose
+  stated ambition is to fit in your head.
+
+So if it is ever bundled, it is as a **data file fetched at package time by CI
+and verified by hash**, installed once and found at runtime -- never committed
+and never embedded. An in-app opt-in download is the third option and the most
+expensive: HTTPS in a plugin that currently speaks only Ninjam, a progress and
+error surface that has to be announced for a screen reader, an integrity check,
+and a hosting commitment that outlives our interest in it.
+
+**The order below defers every one of those questions.** Nothing about bundling
+has to be decided until a single sampled voice has been heard next to the model
+it would replace, at which point we will know whether it is worth paying for.
+
+The musical caveat from the first draft stands unchanged: a sample is the same
+recording every time, repetition is this band's specific enemy, and a General
+MIDI bank has one or two velocity layers, so velocity moves volume and a filter
+rather than articulation. Samples lose for everything the band currently plays
+and win for what we will never model -- an acoustic piano, a brass section,
+bowed strings, reeds.
+
+- [ ] Decide between FluidLite and mainline FluidSynth by rendering the bank
+      through both and listening for the modulator-dependent presets. Submodule,
+      not a fork; `THIRDPARTY.md` entry either way. Build SF3 support against the
+      libogg and libvorbis already vendored here.
+- [ ] Load an SF2 from a path the player chooses. No bundled bank, so no
+      packaging or provenance question yet.
+- [ ] One shared synth, a channel per voice, driven from the conductor thread.
+- [ ] One voice at a time, selectable like the lead's instruments, so the
+      comparison against the model is direct, and measured with `AudioMeasure`
+      like everything else.
+- [ ] Through the existing per-note tone, drift and saturation chain rather than
+      straight out -- which is also what a real sampler does to stop notes
+      machine-gunning.
+- [ ] Layering -- a sampled attack over a modelled body -- once a single sampled
+      voice has been lived with.
+- [ ] Compare an SF3 conversion against the SF2 on the same part, measured, to
+      see whether the compression is audible on looped samples.
+- [ ] Only then, and only if it earned its place: whether to ship a bank, in
+      which format, and fetched at package time rather than committed.
+
 ### Three layers, one repository -- for now
 
 Not scheduled. Prompted by the soundfont question, which is the first thing that
