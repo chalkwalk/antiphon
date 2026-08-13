@@ -1,3 +1,4 @@
+#include "../src/BandPatch.h"
 #include "../src/BotBand.h"
 #include "../src/AudioMeasure.h"
 #include "../src/BotVoice.h"
@@ -638,6 +639,102 @@ public:
                                      " (bpi " + juce::String(bpi) + ")");
           }
         }
+    }
+
+    beginTest("every corner of every character stays inside the ceiling");
+    {
+      // The test that makes "the seed may only pick inside this range" mean
+      // something.
+      //
+      // Everything else here renders a default patch, which is the middle of
+      // every range and therefore the case least likely to fail. A range is a
+      // promise about its ENDS: that a seed drawing the highest resonance and
+      // the lowest cutoff it is allowed to draw still produces an instrument
+      // rather than a fault. Nothing checked that, so a character that clipped
+      // only at the top of one knob would have shipped, and would have shown up
+      // as one player in ten reporting a crackle nobody could reproduce.
+      //
+      // So: every knob of every selection of every voice, at both ends of its
+      // range with the rest centred, plus the two corners where everything is
+      // at its lowest and everything at its highest. Rendered short -- two
+      // seconds at bpi 4 -- because this is a sweep over hundreds of patches
+      // and the fault it looks for shows up in the first note if it shows up at
+      // all.
+      auto lab = BandPatch::defaults();
+      int checked = 0;
+
+      for (int v = 0; v < BotBand::kNumVoices; ++v) {
+        const auto voice = (BotBand::Voice)v;
+
+        for (int selection = 0; selection < BandPatch::Band::kSelections;
+             ++selection) {
+          if (voice == BotBand::Voice::Drums)
+            break; // no knobs yet
+
+          lab.keysCharacter = (BotVoice::PadCharacter)selection;
+          lab.bassTechnique = (BotVoice::BassTechnique)selection;
+          lab.lead.instrument = (BotVoice::LeadInstrument)selection;
+
+          const auto knobs = BandPatch::knobsFor(lab, voice);
+          if (knobs.empty())
+            continue;
+
+          // -1 and -2 are the all-low and all-high corners; 0.. are the
+          // individual knobs, low then high.
+          for (int k = -2; k < (int)knobs.size() * 2; ++k) {
+            auto probe = BandPatch::defaults();
+            probe.keysCharacter = lab.keysCharacter;
+            probe.bassTechnique = lab.bassTechnique;
+            probe.lead.instrument = lab.lead.instrument;
+
+            auto probeKnobs = BandPatch::knobsFor(probe, voice);
+            juce::String what;
+
+            if (k < 0) {
+              const bool high = (k == -1);
+              for (auto &knob : probeKnobs)
+                *knob.value = high ? knob.range->hi : knob.range->lo;
+              what = high ? "everything at its highest"
+                          : "everything at its lowest";
+            } else {
+              const int index = k / 2;
+              const bool high = (k % 2) == 1;
+              auto &knob = probeKnobs[(size_t)index];
+              *knob.value = high ? knob.range->hi : knob.range->lo;
+              what = juce::String(knob.name) + (high ? " at its highest"
+                                                     : " at its lowest");
+            }
+
+            auto s2 = settingsFor("C major", 120, 4, 1u);
+            s2.usePatchOverrides = true;
+            s2.keysPatchOverride = probe.keysPatch();
+            s2.bassPatchOverride = probe.bassPatch();
+            s2.leadPatchOverride = probe.lead;
+
+            const auto buf = render(voice, s2);
+            const int n = (int)buf.size();
+            const float peak = AudioMeasure::peak(buf.data(), n);
+            ++checked;
+
+            const juce::String at =
+                juce::String(BotBand::voiceName(voice)) + " (" +
+                BandPatch::selectionName(probe, voice) + ") with " + what;
+
+            expect(peak <= 1.0f, at + " peaked at " + juce::String(peak, 4));
+            expect(std::isfinite(peak), at + " produced something that is not a number");
+
+            // And it must still be an instrument rather than silence. A knob
+            // whose bottom end mutes the voice is a range with a hole in it,
+            // which is exactly as much of a defect as one that clips.
+            expect(AudioMeasure::rms(buf.data(), n) > 1.0e-4f,
+                   at + " rendered essentially nothing");
+          }
+        }
+      }
+
+      expect(checked > 200, "the sweep only covered " + juce::String(checked) +
+                                " patches");
+      logMessage("swept " + juce::String(checked) + " corner patches");
     }
 
     beginTest("the ceiling is a backstop, not a sound");
