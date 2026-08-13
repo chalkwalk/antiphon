@@ -986,6 +986,78 @@ because they are improvements here on their own terms: onset placement by
 strength class, and strength-scaled sustain. Both are contained inside
 `leadLine`.
 
+##### Note strength: one model, two contexts
+
+Lockstep (the sequencer, still called seq_play on disk) does have a more
+intelligent note-strength model than Antiphon, and it is worth taking whole.
+
+```
+fifthsOffsetOf(root, pc):  ((pc - root) * 7) mod 12, folded to [-5, 6]
+noteStrengthRank        :  2 * |offset|, minus 1 when the note sits on the
+                           side the scale's brightness leans towards
+```
+
+Multiplying the semitone distance by 7 inverts the "a fifth is seven semitones"
+map, so a pitch class becomes its position on the circle of fifths in one line.
+Distance from the root is then the strength axis, and "further in fifths is
+weaker" falls straight out of the geometry -- the root, then the
+dominant/subdominant pair, then outward, with modifier and out-of-scale notes
+furthest. The doubling exists so the lean tie-break can never cross a distance
+boundary.
+
+The **lean** is the part with no equivalent here at all: at equal fifths
+distance, a bright scale favours the sharp-side note and a dark scale the
+flat-side one. That is a real musical fact -- the ♯4 belongs to Lydian and the
+♭2 to Phrygian -- expressed as one signed comparison.
+
+**Antiphon's model is chord-relative and Lockstep's is scale-relative**, and
+that is the whole difference: Lockstep builds melody against a scale because a
+sequencer track has no chart, while Antiphon infers or is told a progression and
+can therefore ask a sharper question. Neither can do the other's job.
+
+The unified model decomposes into **three independent axes**, which is what
+makes it worth building once rather than twice:
+
+1. **Membership.** Is the pitch class in the scale mask at all? Out-of-scale is
+   weakest regardless of everything below.
+2. **Tonal distance**, in fifths, with the lean tie-break. The insight is that
+   this needs no new mechanism to become chord-aware -- only a second centre.
+   Rank against the CHORD root and against the SCALE root and add them:
+
+   ```
+   rank = a * |fifths from chord root| + b * |fifths from scale root|
+   ```
+
+   The chord root is strongest, the scale root nearly so, a note far from both
+   is weak, and with no chart the first term drops out and it degrades exactly
+   to Lockstep's model. One function, both contexts.
+3. **Clash.** A semitone above a note the chord is actually SOUNDING, which is
+   Antiphon's avoid-note rule. This is orthogonal to the other two -- it is
+   about simultaneity rather than tonality, which is why it correctly spares
+   Lydian's ♯4 (a whole tone above the third) while condemning Ionian's fourth.
+   A demotion applied after the distance ranking, not part of it.
+
+##### The rest of Lockstep's generative core
+
+Checked so the catalogue is complete rather than the parts that happened to come
+up. `src/core/` also holds:
+
+- **`HarmonyGen.h`** -- a progression printer that deliberately carries NO chord
+  theory: no qualities, no templates, no auto-voicer, just up to four voices as
+  indices into the diatonic ladder so they are always in key, moved by ear. That
+  is the opposite choice to Antiphon's `Harmony`, which parses named chords,
+  infers keys and voice-leads by dynamic programming. Both are defensible and
+  they do not merge: one is a hand-editing tool, the other reads what a human
+  typed in chat. Worth recording as a deliberate divergence rather than a gap.
+- **`AccentVel.h`** -- metric weight to velocity as a curve with centre and
+  depth. The velocity half of the beat-strength idea, which Antiphon does
+  ad hoc per voice.
+- **`Density.h`** and **`MetricSelect.h`** -- a subtractive thinning overlay that
+  can only silence trigs, never add them, selecting deterministically by
+  tier-plus-Euclid rather than a per-step hash. This is a better-formed version
+  of what Antiphon's "staggered rests" roadmap item is reaching for, and it is
+  already written.
+
 ##### Shims: only where they clean something up
 
 Preference is to port call sites to third-party interfaces directly. The one
