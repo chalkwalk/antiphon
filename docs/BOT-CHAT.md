@@ -800,7 +800,10 @@ What a name has to be, then, and none of these is about character:
 - **not an ordinary English word**, so it can be matched anywhere safely;
 - **one token, no spaces**, so `/msg` reaches it in every client (§5);
 - **pronounceable**, because a screen reader will read it aloud and
-  `bot_3` is not a thing anybody says;
+  `bot_3` is not a thing anybody says -- but note that this needs A
+  pronunciation, not an agreed one. An earlier draft asked for "one obvious
+  pronunciation" and cut `Ravo` for having two, which conflated saying a name
+  with typing one. Addressing a bot is typing;
 - **paired with the instrument somewhere**, so the room stays legible.
 
 `Delvo[bass-bot]` satisfies all four: `delvo` is the handle, `bass` says what

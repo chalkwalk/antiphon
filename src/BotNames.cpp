@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <vector>
 
 namespace BotNames {
 
@@ -31,6 +32,48 @@ bool collides(const std::string &name, const std::vector<std::string> &taken) {
   return false;
 }
 
+// Levenshtein, on names of four to six letters, so the obvious implementation
+// is the right one.
+int editDistance(const std::string &a, const std::string &b) {
+  std::vector<int> prev(b.size() + 1), cur(b.size() + 1);
+  for (std::size_t j = 0; j <= b.size(); ++j)
+    prev[j] = (int)j;
+  for (std::size_t i = 1; i <= a.size(); ++i) {
+    cur[0] = (int)i;
+    for (std::size_t j = 1; j <= b.size(); ++j)
+      cur[j] = std::min({prev[j] + 1, cur[j - 1] + 1,
+                         prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)});
+    prev = cur;
+  }
+  return prev[b.size()];
+}
+
+// The rime: the vowel onward. Two names that rhyme are near-homophones aloud,
+// which is the one thing a spoken address cannot afford even though the address
+// itself is typed -- somebody reads the roster out, or a screen reader does.
+std::string rimeOf(const std::string &name) {
+  const auto lower = lowered(name);
+  const auto at = lower.find_first_of("aeiou");
+  return at == std::string::npos ? lower : lower.substr(at);
+}
+
+// Whether two names can be in the same band.
+//
+// All three of these are constraints on the BAND rather than on the pool, which
+// is why the pool can hold names that conflict with each other: `Vurn` rhymes
+// with `Mirn` and `Pemo` starts like `Pundo`, and each is perfectly usable in a
+// line-up that does not contain the other.
+bool compatible(const std::string &a, const std::string &b) {
+  const auto x = lowered(a), y = lowered(b);
+  if (x.empty() || y.empty())
+    return false;
+  if (x[0] == y[0])
+    return false;                       // a shared initial defeats near-miss matching
+  if (editDistance(x, y) < 2)
+    return false;                       // one typo must not reach the other
+  return rimeOf(x) != rimeOf(y);        // and they must not rhyme
+}
+
 } // namespace
 
 std::vector<std::string> bandFor(int count, std::uint32_t seed,
@@ -54,17 +97,24 @@ std::vector<std::string> bandFor(int count, std::uint32_t seed,
     const auto &name = names[(start + step) % names.size()];
     if (collides(name, taken))
       continue;
-    // And not against each other, which matters once the pool is being skipped
-    // through rather than taken in order.
     if (std::find(out.begin(), out.end(), name) != out.end())
       continue;
-    out.push_back(name);
+
+    bool ok = true;
+    for (const auto &already : out)
+      if (!compatible(name, already)) {
+        ok = false;
+        break;
+      }
+    if (ok)
+      out.push_back(name);
   }
 
-  // If the room is so full of collisions that the pool runs out, fall back to
-  // the pool in order and accept the ambiguity. A band with an awkward name is
-  // better than no band, and section 5's degraded path -- the short handle is
-  // withdrawn, the full username still works -- is exactly what covers this.
+  // If the room is so full of collisions that the pool cannot fill a band under
+  // the constraints, take whatever is left and accept the awkwardness. A band
+  // with two similar names is better than no band, and section 5's degraded
+  // path -- the short handle withdrawn, the full username still working -- is
+  // exactly what covers it.
   for (std::size_t i = 0; (int)out.size() < count && i < names.size(); ++i)
     if (std::find(out.begin(), out.end(), names[i]) == out.end())
       out.push_back(names[i]);

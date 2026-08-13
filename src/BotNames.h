@@ -18,8 +18,12 @@
 //
 //   - not an ordinary English word, a personal name, or a brand, so it can be
 //     matched anywhere in a sentence;
-//   - one obvious pronunciation. `Ravo` and `Pemo` were rejected for having
-//     two apiece, with nothing to choose between them;
+//   - typeable without thinking. NOT "one obvious pronunciation", which an
+//     earlier draft asked for and which rejected `Ravo` and `Pemo` for having
+//     two readings apiece. That conflated two things: a name is SAID when a
+//     screen reader reads the roster, and it is TYPED when somebody addresses a
+//     bot. Reading aloud needs a pronunciation, not an agreed one, and
+//     addressing never needs one at all;
 //   - a rime an English reader already owns. This matters more than syllable
 //     count, which an earlier draft asked for instead: `Mirn` is one syllable
 //     and reads instantly because `-irn` is fern, burn, turn, while `Nolm`,
@@ -30,7 +34,10 @@
 //     `Keys [bot]` could not be sent one at all -- it addressed a user called
 //     `Keys`, who does not exist, and failed silently;
 //   - distinct first letters, and at least two edits apart, so a near-miss on a
-//     typo stays unambiguous.
+//     typo stays unambiguous. This is a constraint on the BAND, not on the
+//     pool: two names that must not appear together are both fine to have
+//     available, and `bandFor` keeps them apart. Getting that the wrong way
+//     round is what made an earlier pool needlessly small.
 //
 // The four in use were chosen by searching thirty candidates and keeping the
 // least occupied -- not by counting results, which no search engine reports,
@@ -43,26 +50,29 @@
 
 namespace BotNames {
 
-// The pool.
+// The pool: eight names for a band of four.
 //
-// Four names for four players, which is a KNOWN GAP rather than an oversight:
-// `docs/BOT-CHAT.md` wants spares so that a name colliding with somebody
-// already in the room can be skipped at join, and with exactly four there is
-// nothing to skip to -- a collision falls through to the degraded path instead,
-// where the short handle is withdrawn and the full username still works.
+// Bigger than the band for two reasons. A name colliding with somebody already
+// in the room is skipped at join rather than degrading afterwards, and that
+// needs somewhere to skip TO. And a different four each session is worth having
+// on its own -- nobody is meant to memorise a fixed line-up, and the roster
+// announcement introduces them every time anyway.
 //
-// It is four rather than six because the two obvious spares failed the criteria
-// above and it would be dishonest to smuggle them in as reserves: `Vessa` reads
-// as a shortened Vanessa, which is the plausible-human-name fault that ruled out
-// `Hollis` and `Wren`, and `Ravo` has two pronunciations with nothing to choose
-// between them. A name that is not good enough to use is not good enough to
-// keep in reserve.
+// `Vessa` and `Ravo` were briefly cut and are back. The case against Vessa was
+// that it reads as a shortened Vanessa; the usual short form is Nessa, so it
+// does not. The case against Ravo was two possible pronunciations, which turns
+// out not to matter for a name you type.
+//
+// `Vurn` and `Pemo` are here despite conflicting with names already in the
+// list -- Vurn shares Mirn's rime and Pemo shares Pundo's initial -- because
+// those are constraints on which four play TOGETHER, which `bandFor` enforces,
+// not on which eight exist.
 //
 // Ordered, and the order is part of the contract -- `bandFor` rotates through
 // it, so the same seed brings the same players back.
 inline const std::vector<std::string> &pool() {
-  static const std::vector<std::string> names = {"Mirn", "Delvo", "Pundo",
-                                                 "Quado"};
+  static const std::vector<std::string> names = {
+      "Mirn", "Delvo", "Pundo", "Quado", "Vessa", "Ravo", "Vurn", "Pemo"};
   return names;
 }
 
