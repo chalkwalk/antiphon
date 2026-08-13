@@ -633,14 +633,43 @@ binary data -- embedded it would be 40 MB across four plugin formats, and in git
 it would be permanent -- but 10 MB fetched at package time and verified by hash
 is unremarkable.
 
-**The better question these numbers raise is why ship 128 instruments at all.**
-The musical case established above is narrow: samples lose for everything the
-band currently plays and win only for what we will never model -- an acoustic
-piano, a brass section, bowed strings, reeds. That is a handful of presets, not
-a General MIDI bank. A trimmed bank at 0.8 would plausibly be one to three
-megabytes, at which point there is nothing left to argue about, and Polyphone
-prunes the unreferenced samples when presets are removed. **Trim first, then
-decide about bundling.**
+**The better question these numbers raise is why ship 128 instruments at all,
+and the answer has now been measured rather than guessed.**
+`scripts/trim_soundfont.py` keeps a chosen set of presets and drops the rest,
+following the preset-bag-generator-instrument-sample chains outward and
+renumbering every one of them.
+
+The obvious guess about what that saves is WRONG, and worth recording. Dropping
+264 of GeneralUser GS's 287 presets -- 92% of them -- removes only 59% of the
+bytes. The sound effects are cheap, a fraction of a second each; the expensive
+presets are exactly the ones worth keeping, because a convincing piano or string
+section is many megabytes of multisampling. A quarter of the presets gives about
+40% of the size, not 25%.
+
+It compounds with SF3 though, and that is where it pays:
+
+| | SF2 | SF3 at q0.8 |
+|---|---|---|
+| full bank, 287 presets | 30.82 MB | 10.07 MB |
+| **core, 23 presets** | 12.42 MB | **3.55 MB** |
+| minimal, 8 presets | 7.16 MB | 1.90 MB |
+
+The `core` set is what a physical model will never do well: piano, vibes and
+marimba, two organs, nylon and steel guitar, violin, cello, pizzicato, string
+ensemble, choir, four brass, three saxes, oboe, clarinet, flute. Everything the
+band already plays is left out, because modelling those is better.
+
+**The trim is provably lossless.** Rendering the same MIDI through the full bank
+and through each trimmed one gives BIT-IDENTICAL output from FluidSynth -- not
+"sounds the same" or "measures the same", but byte for byte. The only lossy step
+is the Ogg conversion afterwards, whose error at q0.8 measures 27.8 dB below the
+signal.
+
+At 3.55 MB the bundling argument is over: that is a tenth of the original, it is
+smaller than the fonts already embedded in the plugin, and it makes the
+committed-versus-fetched question uninteresting. What remains is only whether a
+sampled voice earns its place at all, which is a listening question and still
+first in the order below.
 
 The catch is quality rather than size, and it lands unevenly across exactly the
 instruments we want. Lossy compression shows on short LOOPED samples, so a
@@ -1282,14 +1311,43 @@ binary data -- embedded it would be 40 MB across four plugin formats, and in git
 it would be permanent -- but 10 MB fetched at package time and verified by hash
 is unremarkable.
 
-**The better question these numbers raise is why ship 128 instruments at all.**
-The musical case established above is narrow: samples lose for everything the
-band currently plays and win only for what we will never model -- an acoustic
-piano, a brass section, bowed strings, reeds. That is a handful of presets, not
-a General MIDI bank. A trimmed bank at 0.8 would plausibly be one to three
-megabytes, at which point there is nothing left to argue about, and Polyphone
-prunes the unreferenced samples when presets are removed. **Trim first, then
-decide about bundling.**
+**The better question these numbers raise is why ship 128 instruments at all,
+and the answer has now been measured rather than guessed.**
+`scripts/trim_soundfont.py` keeps a chosen set of presets and drops the rest,
+following the preset-bag-generator-instrument-sample chains outward and
+renumbering every one of them.
+
+The obvious guess about what that saves is WRONG, and worth recording. Dropping
+264 of GeneralUser GS's 287 presets -- 92% of them -- removes only 59% of the
+bytes. The sound effects are cheap, a fraction of a second each; the expensive
+presets are exactly the ones worth keeping, because a convincing piano or string
+section is many megabytes of multisampling. A quarter of the presets gives about
+40% of the size, not 25%.
+
+It compounds with SF3 though, and that is where it pays:
+
+| | SF2 | SF3 at q0.8 |
+|---|---|---|
+| full bank, 287 presets | 30.82 MB | 10.07 MB |
+| **core, 23 presets** | 12.42 MB | **3.55 MB** |
+| minimal, 8 presets | 7.16 MB | 1.90 MB |
+
+The `core` set is what a physical model will never do well: piano, vibes and
+marimba, two organs, nylon and steel guitar, violin, cello, pizzicato, string
+ensemble, choir, four brass, three saxes, oboe, clarinet, flute. Everything the
+band already plays is left out, because modelling those is better.
+
+**The trim is provably lossless.** Rendering the same MIDI through the full bank
+and through each trimmed one gives BIT-IDENTICAL output from FluidSynth -- not
+"sounds the same" or "measures the same", but byte for byte. The only lossy step
+is the Ogg conversion afterwards, whose error at q0.8 measures 27.8 dB below the
+signal.
+
+At 3.55 MB the bundling argument is over: that is a tenth of the original, it is
+smaller than the fonts already embedded in the plugin, and it makes the
+committed-versus-fetched question uninteresting. What remains is only whether a
+sampled voice earns its place at all, which is a listening question and still
+first in the order below.
 
 The catch is quality rather than size, and it lands unevenly across exactly the
 instruments we want. Lossy compression shows on short LOOPED samples, so a
