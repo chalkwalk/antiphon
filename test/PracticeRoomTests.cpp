@@ -435,6 +435,68 @@ public:
                  instructions[0]);
     }
 
+    beginTest("a bot that was never announced announces the band itself");
+    {
+      // The case a tiebreak cannot handle, and the reason the rule is "announce
+      // unless somebody announced ME" rather than "announce if you are first".
+      //
+      // A bot joining after the roster has gone out was not in it, so it says
+      // so -- and it names the band it can SEE, which by then is everybody. The
+      // announcement lands when the band is complete rather than being lost
+      // because the moment passed.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        for (const auto &line : you.snapshot())
+          if (line.contains("The Understudies"))
+            return true;
+        return false;
+      }, 9000), "no first roster");
+
+      const int before = you.snapshot().size();
+
+      // A latecomer, arriving well after the roster it was not part of.
+      PracticeBot late("Vurn[horn-bot]", {"horn"});
+      late.playAs(BotBand::Voice::Lead, MusicalKey::parseName("C major"), 120, 8,
+                  48000.0, 77u);
+      expect(late.join(PracticeRoom::host(), room.port(), 48000.0));
+
+      juce::String second;
+      expect(waitUntil([&] {
+        const auto lines = you.snapshot();
+        for (int i = before; i < lines.size(); ++i)
+          if (lines[i].startsWith("MSG|Vurn[horn-bot]|")) {
+            second = lines[i];
+            return true;
+          }
+        return false;
+      }, 9000), "the latecomer never introduced itself");
+
+      // And it named the WHOLE room, not just itself.
+      expect(second.containsIgnoreCase("vurn"), "it left itself out: " + second);
+      int named = 0;
+      for (const auto &n : room.botNames())
+        if (second.containsIgnoreCase(
+                juce::String(BotNames::handleOf(n.toStdString()))))
+          ++named;
+      expect(named >= 3, "the latecomer announced only itself: " + second);
+
+      // Nobody who was already announced said anything again.
+      juce::StringArray extra;
+      const auto lines = you.snapshot();
+      for (int i = before; i < lines.size(); ++i)
+        if (lines[i].startsWith("MSG|") && lines[i].contains("-bot]") &&
+            !lines[i].startsWith("MSG|Vurn[horn-bot]|"))
+          extra.add(lines[i]);
+      expect(extra.isEmpty(),
+             "an already-announced bot spoke again: " + extra.joinIntoString(" / "));
+
+      late.part();
+    }
+
     beginTest("nobody answers a question that was not aimed at anybody");
     {
       // The failure this whole addressing layer exists to prevent, tested end

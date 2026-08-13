@@ -271,22 +271,25 @@ void PracticeBot::timerCallback() {
   if (!active.load() || arrivalDone.exchange(true))
     return;
 
-  // Somebody already introduced the room while we were waiting, so there is
-  // nothing to add.
-  if (heardABot.load())
+  // The rule: announce unless somebody has already announced ME.
+  //
+  // Self-referential, and that is what makes it work where a tiebreak does not.
+  // A bot cannot know whether it is "first" -- at connect time the membership
+  // list has not arrived, so every bot sees an empty room -- but it can always
+  // know whether it has been introduced, because being introduced is something
+  // it observes rather than something it has to infer.
+  //
+  // Everything falls out of that one question. During startup the earliest
+  // waker sees the whole band and names all of them, so the others find
+  // themselves already announced and stay quiet: one roster. A bot that joins
+  // an hour later has not been announced, so it speaks -- and it names the band
+  // it can see, which now includes everybody, so THE ANNOUNCEMENT LANDS WHEN
+  // THE BAND IS COMPLETE rather than being lost because the moment passed. A
+  // bot whose bandmates all failed to connect announces itself alone, correctly.
+  if (announcedMe.load())
     return;
 
-  // Who speaks: the lowest-named bot in the room, five seconds in.
-  //
-  // A pure function of what everybody can see, evaluated at the one moment when
-  // everybody sees the same thing -- which is the second job the delay does and
-  // the reason it is not merely a pause for the reader. At connect time the
-  // membership list has not arrived yet, so a bot cannot tell whether it is the
-  // first; five seconds later every bot computes the same sorted list and the
-  // same winner, with no coordination and no messages between them.
   const auto bots = botsPresent();
-  if (bots.isEmpty() || bots[0] != botName)
-    return;
 
   // The roster lists what is ACTUALLY HERE, not what we were told to expect: a
   // bot that failed to connect is not announced as present, and bots brought by
@@ -328,12 +331,20 @@ void PracticeBot::timerCallback() {
 }
 
 void PracticeBot::onConnected() {
-  // The arrival window. Five seconds, then one bot introduces the band.
+  // The arrival window: four seconds plus up to two more.
   //
-  // The delay is doing two jobs. It lets the join notices finish scrolling
-  // before the one line anybody is meant to read -- and, less obviously, it is
-  // what makes the choice of speaker safe. See timerCallback.
-  startTimer(5000);
+  // The wait lets the join notices finish scrolling before the one line anybody
+  // is meant to read. The SPREAD is what keeps two bots from announcing at
+  // once -- whoever wakes first names the others, and they find themselves
+  // already introduced. See timerCallback.
+  //
+  // Derived from the name rather than drawn randomly, so a room is reproducible
+  // and a test can rely on it. Different names give different offsets, which is
+  // all the spread has to do.
+  std::uint32_t h = 2166136261u;
+  for (auto c : botName)
+    h = (h ^ (std::uint32_t)(juce::juce_wchar)c) * 16777619u;
+  startTimer(4000 + (int)(h % 2000u));
 
   // Beyond that, nothing to do. The channel list was stored before connecting and
   // NinjamClient sends it itself the moment auth succeeds
@@ -546,13 +557,19 @@ void PracticeBot::onChatMessage(const juce::String &type,
   if (type != "MSG" && type != "PRIVMSG")
     return;
 
-  // A bot speaking during our arrival window means the room has already been
-  // introduced, so we were covered by it. Bots are silent unless spoken to, so
-  // in practice the only unprompted thing one says is the roster -- and if this
-  // is ever wrong the cost is one bot not introducing itself, which is silence,
-  // and silence is always the safe direction here.
-  if (BotNames::looksLikeBot(username.toStdString()))
-    heardABot = true;
+  // Have I just been introduced?
+  //
+  // The exact question, rather than the proxy an earlier version used ("did any
+  // bot speak?"). A bot that lost a race is not the same as a bot that was
+  // covered by somebody's roster, and only the second should stay silent.
+  //
+  // Any message from a bot naming me counts, which is safe because bots do not
+  // speak unless spoken to: during the first few seconds of a room there is
+  // nothing else a bot could be saying.
+  if (BotNames::looksLikeBot(username.toStdString()) &&
+      text.containsIgnoreCase(
+          juce::String(BotNames::handleOf(botName.toStdString()))))
+    announcedMe = true;
 
   const bool isPrivate = (type == "PRIVMSG");
 
