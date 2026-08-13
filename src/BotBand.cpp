@@ -306,13 +306,17 @@ namespace {
 
 // Headroom for the kit.
 //
-// Three drums overlap -- the kick alone rings for 0.32 s, which at 16 BPI is
-// several hits deep -- and unlike the mixer at the far end, nothing between
-// here and the encoder is going to catch a peak over 1.0. Vorbis encodes a
-// clipped signal as real distortion, so the trim happens before the encoder or
-// not at all. Measured worst case across the seeds and BPIs in the test sweep
-// was 1.41, so this leaves a little over.
-inline constexpr float kDrumHeadroom = 0.55f;
+// Three drums overlap -- the kick's fundamental rings for a third of a second,
+// which at 16 BPI is several hits deep -- and unlike the mixer at the far end,
+// nothing between here and the encoder is going to catch a peak over 1.0.
+// Vorbis encodes a clipped signal as real distortion, so the trim happens
+// before the encoder or not at all.
+//
+// Re-derived when the drums became modal, because resonators overshoot in a way
+// the old additive voices could not: at the previous 0.55 the sweep peaked at
+// 1.0264 and clipped. Measured worst case across 96 combinations -- bpm 60 to
+// 180, bpi 4 to 24, six seeds -- is now 0.9599, which leaves 0.35 dB.
+inline constexpr float kDrumHeadroom = 0.44f;
 
 // The kit's bus stage, and the one piece of processing here that is not part
 // of a voice.
@@ -324,10 +328,13 @@ inline constexpr float kDrumHeadroom = 0.55f;
 // intermodulation is audible as the parts belonging together, and no amount of
 // per-voice shaping produces it -- it only exists in the sum.
 //
-// Gentle on purpose. This is well below the drive the kick uses on itself: a
-// bus that audibly distorts is a different effect, and it eats the transients
-// that make a kit read as hits.
-inline constexpr double kKitDrive = 1.1;
+// Raised from 1.1 with the modal voices, and the two constants were found
+// together rather than separately. Drive turns out to buy loudness and almost
+// no peak control -- at 1.8 the kit gained 2.4 dB and its worst peak moved by
+// 0.15 dB -- while headroom does the opposite. So drive sets the level and the
+// trim above sets the ceiling, and the pair lands the kit at rms 0.078, which
+// is where the additive kit sat, with more margin than it had.
+inline constexpr double kKitDrive = 1.8;
 
 void renderDrums(const Settings &s, int intervalIndex, float *out,
                  int numSamples) {

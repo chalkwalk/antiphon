@@ -395,10 +395,17 @@ private:
                          : 0.0;
     m.a1 = (float)(2.0 * r * std::cos(w));
     m.a2 = (float)(-(r * r));
-    // Normalised so a unit impulse gives roughly a unit peak whatever the
-    // decay, otherwise a long mode is enormously louder than a short one and
-    // every gain has to be retuned when a decay changes.
-    m.b0 = (float)((1.0 - r) * std::sin(w) > 0.0 ? (1.0 - r) : 0.001);
+
+    // Peak-normalised: the impulse response of this form is
+    // b0 * r^n * sin((n+1)w) / sin(w), so its peak is about b0 / sin(w) and
+    // b0 = sin(w) makes every mode reach about 1 whatever its frequency and
+    // whatever its decay.
+    //
+    // That matters for tuning by ear rather than for correctness. With the
+    // obvious (1 - r) instead, a mode's level falls as its decay lengthens --
+    // energy normalisation -- so lengthening a drum's tail quietens it and
+    // every gain in the bank has to be found again.
+    m.b0 = (float)std::sin(w);
   }
 };
 
