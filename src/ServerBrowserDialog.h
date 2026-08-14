@@ -33,9 +33,9 @@ public:
   void cellDoubleClicked(int, int, const juce::MouseEvent &) override;
   void selectedRowsChanged(int lastRowSelected) override;
   void returnKeyPressed(int lastRowSelected) override;
-  juce::Component *refreshComponentForCell(int rowNumber, int columnId,
-                                           bool isRowSelected,
-                                           juce::Component *existingComponentToUpdate) override;
+  juce::Component *
+  refreshComponentForCell(int rowNumber, int columnId, bool isRowSelected,
+                          juce::Component *existingComponentToUpdate) override;
 
   // Public so PluginEditor can pre-populate from saved state
   juce::TextEditor hostInput, portInput, usernameInput, passwordInput;

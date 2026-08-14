@@ -297,8 +297,9 @@ void ServerBrowserDialog::paintRowBackground(juce::Graphics &g, int /*row*/,
                      : juce::Colour(0xff111122));
 }
 
-void ServerBrowserDialog::paintCell(juce::Graphics &/*g*/, int /*row*/, int /*col*/,
-                                    int /*w*/, int /*h*/, bool /*selected*/) {
+void ServerBrowserDialog::paintCell(juce::Graphics & /*g*/, int /*row*/,
+                                    int /*col*/, int /*w*/, int /*h*/,
+                                    bool /*selected*/) {
   // Cell text and accessibility attributes are rendered by cell label components
   // in refreshComponentForCell.
 }
@@ -333,17 +334,20 @@ juce::Component *ServerBrowserDialog::refreshComponentForCell(
     break;
   case 2:
     text = s.bpm > 0 ? juce::String(s.bpm) : "-";
-    title = "BPM: " + (s.bpm > 0 ? juce::String(s.bpm) : juce::String("unknown"));
+    title =
+        "BPM: " + (s.bpm > 0 ? juce::String(s.bpm) : juce::String("unknown"));
     desc = "Tempo in beats per minute";
     break;
   case 3:
     text = s.bpi > 0 ? juce::String(s.bpi) : "-";
-    title = "BPI: " + (s.bpi > 0 ? juce::String(s.bpi) : juce::String("unknown"));
+    title =
+        "BPI: " + (s.bpi > 0 ? juce::String(s.bpi) : juce::String("unknown"));
     desc = "Beats per interval";
     break;
   case 4:
     text = s.players;
-    title = "Players: " + (s.players.isNotEmpty() ? s.players : juce::String("none"));
+    title = "Players: " +
+            (s.players.isNotEmpty() ? s.players : juce::String("none"));
     desc = "Active players in server";
     break;
   default:
