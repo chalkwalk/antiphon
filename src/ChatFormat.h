@@ -54,6 +54,27 @@ struct VoteState {
 // Returns valid == false for any line that is not from the voting system.
 VoteState parseVote(const juce::String &text);
 
+// What the server will accept, and it is NOT one range: the vote path and the
+// admin path have different limits, in both the reference server and libninjam.
+//
+//   !vote bpm|bpi N   40..400 BPM,  2..64 BPI    (usercon.h MIN_/MAX_BPM/BPI)
+//   /bpm N, /bpi N    20..400 BPM,  2..1024 BPI  (usercon.cpp, PRIV_BPM only)
+//
+// The asymmetry is worth the two predicates because the failure is silent and
+// confusing: an out-of-range `!vote` does not say what was wrong with it, it
+// answers "!vote requires <bpm|bpi> <value> parameters" as though the command
+// had been malformed (justinfrankel/ninjam server/usercon.cpp:1169-1186).
+// A DAW sitting at 30 BPM is entirely ordinary, so offering that vote and
+// letting the server reject it is a dead end a player cannot diagnose.
+//
+// These bound what we SEND. They must never be used to filter what we receive:
+// an admin can set a BPI of 124 and every client, ours included, has to follow
+// it -- which is exactly what a server does when asked (see docs/PROTOCOL.md).
+inline bool isVotableBpm(int bpm) { return bpm >= 40 && bpm <= 400; }
+inline bool isVotableBpi(int bpi) { return bpi >= 2 && bpi <= 64; }
+inline bool isAdminSettableBpm(int bpm) { return bpm >= 20 && bpm <= 400; }
+inline bool isAdminSettableBpi(int bpi) { return bpi >= 2 && bpi <= 1024; }
+
 // Whether a line is a chord progression in the convention Jamtaba established:
 // measures separated by bars, as in "| Dm7 | G7 | Bb | Am7".
 //

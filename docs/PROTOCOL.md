@@ -169,6 +169,91 @@ type-specific:
 Voting (`!vote bpm <n>`, `!vote bpi <n>`), `/me`, `/topic`, `/kick` and `/msg`
 are all sent through this message.
 
+### Tempo and interval limits: two paths, two different ranges
+
+There are **two** ways to change BPM or BPI, they do not accept the same values,
+and confusing them produces a failure that is very hard to diagnose from the
+outside. Identical in the reference server and libninjam:
+
+| | Range | Gate | Out of range |
+|---|---|---|---|
+| `!vote bpm <n>` | **40..400** | anyone | see below |
+| `!vote bpi <n>` | **2..64** | anyone | see below |
+| `/bpm <n>` | **20..400** | `PRIV_BPM` | "BPM parameter must be between 20 and 400" |
+| `/bpi <n>` | **2..1024** | `PRIV_BPM` | "BPI parameter must be between 2 and 1024" |
+
+The vote limits are `MIN_BPM`/`MAX_BPM`/`MIN_BPI`/`MAX_BPI` in
+`justinfrankel/ninjam server/usercon.h:57-60`, applied at `usercon.cpp:1169`
+and `:1174`. The admin limits are literals at `usercon.cpp:1481-1498`.
+
+**An out-of-range vote does not say so.** The range test is part of the same
+condition that recognises the command, so failing it falls through to
+`"[voting system] !vote requires <bpm|bpi> <value> parameters"` -- a complaint
+about the command's *shape*, for a command whose shape was fine
+(`usercon.cpp:1184`). A player reading that has no way to learn that 30 BPM was
+the problem. Hence `ChatFormat::isVotableBpm`/`isVotableBpi`: we do not offer a
+vote the server will refuse.
+
+**The two ranges must not be collapsed.** A BPI of 124 and a BPM of 39 are both
+legal on the server and neither can be voted for -- and they persist across a
+reconnect, so every client has to follow a room to values it could never have
+proposed. **Never validate incoming `SERVER_CONFIG_CHANGE_NOTIFY` against the
+vote range**; `test/NinjamProtocolTests.cpp` asserts we do not.
+
+**The reference client does not validate incoming config at all.**
+`NJClient::updateBPMinfo` (`justinfrankel/ninjam njclient.cpp:725-732`) stores
+`bpm` and `bpi` with no range test of any kind, and ReaNINJAM is built on it.
+So "accept whatever the server says" is the canonical behaviour, not a liberty
+we are taking, and Antiphon matches it.
+
+This is not hypothetical, and it is where JamTaba goes wrong. Its incoming
+setter is guarded by its own limits with no `else`
+(`elieserdejesus/JamTaba src/Common/ninjam/client/ServerInfo.cpp:112-123`), so
+against a server at **39 BPM** it drops the value and **carries on displaying
+the previous tempo** -- no error, no indication. Two clients in the same room
+disagreeing about the tempo, with the one showing the *correct* value looking
+like the broken one, is the confusing shape this causes.
+
+Two further traps, both observed rather than deduced:
+
+- **Clients impose their own, tighter limits, and fail silently at them, in
+  both directions.** JamTaba caps BPI at 192 (`ServerInfo.h:156`) and BPM at 40
+  low (`ServerInfo.h:154`), and `ServerInfo.cpp:117,130` simply *ignore* a value
+  outside those bounds -- no error, no change. Outgoing, a BPI of 1024 typed
+  into JamTaba does nothing and the server never hears about it. Incoming, a
+  server at 39 BPM is not displayed. So a value being refused says nothing about
+  which side refused it, and a tempo on screen is not evidence of the tempo in
+  the room.
+- **Be liberal in what you accept, conservative in what you inflict.** The two
+  halves are not symmetric. *Receiving*, match the reference client and follow
+  the room anywhere it goes. *Sending*, remember that a BPI above 192 leaves
+  every JamTaba user in the room unable to follow -- it keeps its previous
+  interval and desyncs outright, so setting one is not a private act. The
+  server permitting something is not the same as the room surviving it.
+- **`MIN_BPM`/`MAX_BPI` are compile-time `#define`s, not configuration**
+  (`server/usercon.h:57-60`), so a server operator who wants a wider range
+  patches and rebuilds. A public server refusing a vote for 125 BPI while
+  sitting at 124 is exactly what a raised `MAX_BPI` looks like from outside.
+  Treat the limits above as the stock build, not as a guarantee.
+- **`!vote` is BPM and BPI only.** `!vote key Cm` is rejected, and by the client
+  before it reaches the wire in JamTaba's case. The server's own answer to an
+  unknown `!command` is "Unknown !command. Commands available: !vote, !topic"
+  (`usercon.cpp:1288`). There is no key in the protocol at any level: a key is a
+  convention carried in ordinary chat, which is why `[key: ...]` exists.
+
+### The voting threshold
+
+`(vucnt * m_voting_threshold + 50) / 100` (`usercon.cpp:1239`) -- **round half
+up**, not a ceiling. `vucnt` counts every user with `m_auth_state > 0`, so it is
+everyone connected, whether or not they voted and whether or not they are a bot.
+`SetVotingThreshold` is a server config percentage; `example.cfg:60` shows 50,
+and notes that a value above 100 disables voting entirely.
+
+Two consequences worth stating: **not voting is voting against**, since the
+denominator counts you either way; and anything Antiphon connects to a room
+counts toward it. See `docs/BOT-CHAT.md` for what that means for the practice
+band.
+
 ---
 
 ## Parsing rules
