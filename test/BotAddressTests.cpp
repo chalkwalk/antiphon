@@ -93,6 +93,47 @@ public:
                juce::String(notCourtesy) + " is not just courtesy");
     }
 
+    beginTest("the address comes off before a command is matched");
+    {
+      // The bug this exists to stop coming back: commands are matched exactly,
+      // and "Ravo: shake" is not "shake". Naming the bot you wanted -- the
+      // documented way to address one -- defeated every command in the room,
+      // and the bot answered with its fallback, so it looked like a bot that
+      // did not understand rather than one that never saw the word.
+      auto room = fixtureRoom();
+      const std::string me = "Mirn[kit-bot]";
+      const struct { const char *in; const char *out; } kCases[] = {
+          {"mirn: shake", "shake"},
+          {"Mirn, shake", "shake"},
+          {"mirn shake", "shake"},
+          {"Mirn[kit-bot]: shake", "shake"},
+          {"kit: shake", "shake"},
+          {"  mirn:   shake", "shake"},
+      };
+      for (const auto &c : kCases)
+        expectEquals(juce::String(BotAddress::withoutAddress(room, me, c.in)),
+                     juce::String(c.out), juce::String(c.in));
+
+      // A name that is only a prefix of a word is not an address.
+      expectEquals(
+          juce::String(BotAddress::withoutAddress(room, me, "mirnly shake")),
+          juce::String("mirnly shake"));
+
+      // The name ALONE is an opener, not a command with an empty body --
+      // returning "" there would turn "mirn" into an unrecognised command.
+      expectEquals(juce::String(BotAddress::withoutAddress(room, me, "mirn")),
+                   juce::String("mirn"));
+
+      // Somebody else's name is left alone: it is not our address to strip.
+      expectEquals(
+          juce::String(BotAddress::withoutAddress(room, me, "delvo: shake")),
+          juce::String("delvo: shake"));
+
+      // Nothing to strip.
+      expectEquals(juce::String(BotAddress::withoutAddress(room, me, "shake")),
+                   juce::String("shake"));
+    }
+
     beginTest("a handle colliding with a player is withdrawn");
     {
       // Silence beats a wrong answer: the bot answers to its full username and

@@ -524,6 +524,9 @@ restraint rather than conversation.
       so the band can be heard and talked to before any of it is reachable from
       the plugin. Cheap because the room was designed as a destination rather
       than a mode -- there was nothing to integrate, only something to start.
+- [ ] **Chat entry affordances**: cursor up/down through sent-message history,
+      and tab completion of usernames. Addressing a bot means typing its name,
+      so completion is not a convenience here -- it is most of the friction.
 - [ ] **Wire any of it to a bot.** `BotLanguage` and `BotAddress` both pass
       their corpora and neither has a caller: nothing in `PracticeBot` reaches
       them, so none of the measured accuracy is reachable by a player yet.

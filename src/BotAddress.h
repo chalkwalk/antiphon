@@ -86,6 +86,18 @@ struct Incoming {
 };
 
 // The decision. `attention` is read and updated: being addressed opens the
+// The message with the address taken off the front: "Ravo: shake" -> "shake".
+//
+// Commands are matched exactly -- `isShakeCommand`, `isPartCommand` -- and
+// exact matching against a string that still has "Ravo: " on it fails every
+// time. That is not a subtle failure: naming the bot you want, which is the
+// documented way to address one, made every command stop working.
+//
+// Only a LEADING address is removed, and only one, because "tell Ravo" in the
+// middle of a sentence is prose rather than an address.
+std::string withoutAddress(const Room &room, const std::string &self,
+                           const std::string &text);
+
 // window, somebody else being addressed closes it.
 Address classify(const Room &room, const std::string &me, const Incoming &msg,
                  Attention &attention);
