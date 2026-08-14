@@ -444,13 +444,53 @@ checklist.** Chat only: the bots do not listen, and musical interaction is
 separate future work. What makes a bot feel alive here is precision and
 restraint rather than conversation.
 
-- [ ] `src/BotLanguage.{h,cpp}`: normalise, stem, repair typos, map to concepts,
-      read the sentence's shape, score the intents. Indirect phrasing has to
-      work or the bots feel like a vending machine.
+- [x] `src/BotLanguage.{h,cpp}`: a cascaded finite-state recogniser -- segment
+      clauses, fuse idioms, decide word class from context, map to concepts,
+      repair what is not a real word, read the clause's force, score with a
+      margin. Indirect phrasing has to work or the bots feel like a vending
+      machine.
 - [x] A corpus of phrasings and their intents, including the ones that must be
       clarified rather than guessed and the ones that must not be answered at
-      all: `test/fixtures/bot-phrases.txt`, 519 lines. The **fallback rate**
-      over it is the number to quote and drive down.
+      all: `test/fixtures/bot-phrases.txt`, 607 lines, **a quarter of them held
+      out from tuning**. The three miss rates over the holdout are the numbers
+      to quote and drive down.
+- [ ] **Measure the server's vote threshold.** `docs/BOT-CHAT.md` proposes how
+      the band votes, and the whole proposal rests on `M` as a function of the
+      number of clients -- which nothing here records. Connect a varying number
+      of clients to `scripts/testserver.sh` and read it off the vote line before
+      building any of it (`PRINCIPLES` §5).
+- [ ] **The band's vote policy.** Bots are ordinary clients, so they count
+      toward the threshold, and abstaining is a vote against: four of them take
+      tempo control away from a room of three humans entirely. The rule -- vote
+      only for a candidate a majority of humans already back, never propose one,
+      staggered like the arrival roster -- is designed in `docs/BOT-CHAT.md` and needs
+      no coordination between the bots: they queue behind staggered delays the
+      way they announce themselves, and each checks on waking whether the motion
+      already carried, so the band casts exactly the shortfall and stops.
+      Nothing casts a vote today.
+- [ ] Answering `SET_KEY`, `SET_TEMPO` and `SET_CHART` honestly. All three are
+      recognised; none is a thing a bot may decide, and saying so is the point
+      of recognising them. Three parts, designed in `docs/BOT-CHAT.md`: that the
+      room decides, what it currently is, and how to change it in any client
+      (`!vote bpm N`, a `| Am | F |` line, a `[key: ...]` tag). Two special
+      cases, both about not implying a decision was made: a key that was
+      defaulted rather than chosen, and no chart at all.
+- [ ] **The key tag is self-triggering, and reply text must respect it.**
+      `MusicalKey::parseTagged` matches `[key:` anywhere in a line, so a bot
+      explaining the syntax would set the key by explaining it. The answer is
+      that the bot puts the tag up itself rather than teaching it -- a
+      translator, not an authority, since any player in any client can type the
+      tag and `/key` is only a shortcut for it. Whatever renders bot chat needs
+      a test that no reply text parses as a key.
+- [ ] **One bot answers a common question.** Addressing decides who was asked,
+      not how many should speak, and `REPORT_*`/`SET_*` are one fact rather than
+      four. Acting stays collective -- `band, shake` rerolls all four -- and only
+      the line about it is rationed.
+- [ ] **One arbitration primitive, four uses**: the arrival roster, the tempo
+      vote, the key-change acknowledgement and common answers. Staggered delay,
+      then check whether the job is already done. It should replace the fixed
+      "lowest instrument first" order the key-change cue was designed with,
+      which picks a bot that may have been told `quiet` and then never speaks.
 - [ ] `src/BotChat.{h,cpp}` as pure functions over what a bot knows, so a seed
       and a script of events give a byte-identical transcript.
 - [ ] A fifth, instrument-less tutor bot that teaches six lines and then parts.
@@ -467,7 +507,10 @@ restraint rather than conversation.
       first contact must be explicit, and a message aimed at a human is
       answered by nobody. Four bots replying to one question is the annoyance
       the whole feature has to avoid. Corpus at
-      `test/fixtures/bot-addressing.txt`, 102 cases, 40 of them "nobody".
+      `test/fixtures/bot-addressing.txt`, 143 cases, many of them "nobody".
+- [ ] **Wire any of it to a bot.** `BotLanguage` and `BotAddress` both pass
+      their corpora and neither has a caller: nothing in `PracticeBot` reaches
+      them, so none of the measured accuracy is reachable by a player yet.
 
 ### Form: repetition, tension and release
 

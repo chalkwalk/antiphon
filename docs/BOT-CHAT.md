@@ -470,7 +470,7 @@ works**, and hitting the fallback is rare enough to be measured as a defect.
 
 ### The intents
 
-Nine, and they are the whole surface:
+Twelve, and they are the whole surface:
 
 | Intent | Answers with |
 |---|---|
@@ -479,13 +479,285 @@ Nine, and they are the whole surface:
 | `REPORT_KEY` | the key it follows, and whether it was told or defaulted |
 | `REPORT_CHART` | the chart, in letters and degrees |
 | `REPORT_TEMPO` | tempo and interval length, and that the server owns them |
-| `RESHUFFLE` | rerolls, and says what changed |
+| `SET_KEY` | that the room decides the key, what it is now, and how to change it |
+| `SET_TEMPO` | that a tempo is a server vote, what it is now, and how to call one |
+| `SET_CHART` | that the room decides the chart, what it is now, and how to put one up |
+| `SET_KEY` | 14 |
+  | `SET_TEMPO` | 12 |
+  | `SET_CHART` | 10 |
+  | `RESHUFFLE` | rerolls, and says what changed |
 | `SET_QUIET` / `SET_LOUD` | stops or resumes unprompted speech |
 | `EXPLAIN_SELF` | what it is and how to remove it |
 | `LEAVE` | parts, as now |
 
 Slots ride along where they make sense: a key, a chord chart, a tempo, an
 instrument name.
+
+**`SET_KEY`, `SET_TEMPO` and `SET_CHART` are recognised even though a bot cannot
+carry any of them out**, and that separation is the point. What a bot may *do* is a
+question about authority; what it should *understand* is a question about not
+being a wall. Answering "the key is Am" to somebody who just asked to play in G
+minor is the most expensive kind of miss, because it looks like an answer and
+ignores what was asked -- exactly the failure the fallback exists to prevent,
+arriving through the front door instead.
+
+So the reply is an honest one, in the shape section 5.3 already uses:
+
+> `Pundo[keys-bot]: i cannot set the key -- that is whatever the room agrees. say it in chat and i will follow it.`
+>
+> `Mirn[kit-bot]: tempo is a server vote, not mine to give. vote for it and i will back you once the room has.`
+
+### Being asked to change something they cannot
+
+`SET_KEY`, `SET_TEMPO` and `SET_CHART` are recognised and none of them is a
+thing a bot may decide. The reply is the same three parts every time, and the
+order matters:
+
+1. **That it cannot, and why** -- as a fact about the room, not an apology about
+   being a bot. "the key is whatever the room agrees" is information; "sorry, i
+   can't do that" is a wall.
+2. **What the current one is** -- because the question is nearly always asked by
+   somebody who does not know it, and answering only the first part sends them
+   away with less than they came with.
+3. **How to actually do it**, in a form that works in any client.
+
+Part 3 is the one worth getting right, and two of the three are genuinely
+universal:
+
+| | How, for anyone | Universal? |
+|---|---|---|
+| Tempo | `!vote bpm 130`, `!vote bpi 16` | **yes** -- a server command, every client has it |
+| Chart | type `\| Am \| F \| C \| G \|` in chat | **yes** -- Jamtaba's convention, not ours |
+| Key | say `[key: G minor]` in chat, or leave it in the topic | ours, but plain enough to read anywhere |
+
+The key tag is the honest exception and should not be oversold. `[key: ...]` is
+an Antiphon convention (`MusicalKey::tagPrefix`); a Jamtaba user will not have
+it parsed for them. It is written the way it is so that it still *reads* as a
+sentence to somebody whose client knows nothing about it, which is the most that
+can be claimed for it.
+
+```
+you: pundo, can we play in g minor
+Pundo[keys-bot]: putting it up for the room -- was D minor. [key: G minor]
+
+you: mirn, speed up
+Mirn[kit-bot]: tempo is a server vote, not mine to give. we are at 120 bpm,
+               8 bpi. type "!vote bpm 130" and i will back it once the room
+               does.
+```
+
+**The key is the exception, and the reason is that the explanation is
+unsayable.** `MusicalKey::parseTagged` finds `[key:` *anywhere* in a line and
+reads to the next `]` -- which is what lets a key ride in the server topic. So a
+bot that helpfully said `type "[key: G minor]" in chat` would **set the key to G
+minor by saying it**, in its own state and in every Antiphon client in the room.
+The advice performs the action.
+
+That is not a bug to work around with careful quoting. It is the design telling
+us the bot should not be explaining a syntax at all:
+
+**A bot is a translator, not a returning officer.** `pundo, can we play in g
+minor` is already recognised as `SET_KEY`; the bot answers by putting the tag up
+itself, and that single line both announces the change and *is* the mechanism:
+
+```
+you: pundo, can we play in g minor
+Pundo[keys-bot]: putting it up for the room -- was D minor. [key: G minor]
+```
+
+**This grants the bots no authority they did not have**, which is the test any
+proposal here has to pass. Setting the key is not client-gated: `parseTagged`
+does not care who sent the line, and `/key Dm` is only a typing shortcut for a
+tag any player in any client can type by hand. The friction is sixteen
+characters of exact syntax, not permission. A bot echoing a tag on request is
+therefore exactly as democratic as the human typing it -- same power, less
+typing -- while a bot *voting* on the key would invent an authority that does
+not currently exist and make the key **harder** to set than it is today, which
+is the opposite of the problem.
+
+Two conditions on it, and the first is the one that matters:
+
+- **Only on an addressed request, and only when the key parsed confidently.**
+  A bot that puts up the wrong key is far worse than one that puts up none. Slot
+  extraction needs the original capitals (`Am` is a chord, `am` is a verb), so
+  it belongs to the caller, and when it fails the honest answer is "i could not
+  tell which key you meant".
+- **One bot, not four** -- the common-answer arbitration below. Four bots
+  echoing four tags is four key changes.
+
+**On `!vote key C`.** Tempting, and not recommended. What a server does with an
+unknown `!vote` subcommand is unknown to us: it may reject it to the sender
+alone, swallow it, or pass it through as ordinary chat, and only the third makes
+a tally possible. That is measurable with `scripts/testserver.sh` and should be
+measured before anyone builds on it. But even if it passes through, borrowing
+the server's own vote syntax for something the server does not implement is a
+fake wearing the real thing's clothes: it would show none of the server's
+`N/M votes` accounting, would not expire the way a real vote does, and would
+collide outright if NINJAM ever adds key voting. If a tally is ever wanted, it
+should be visibly ours.
+
+**The two special cases are both about not implying a decision was made.**
+
+A key is never absent -- the room starts at C major (`PracticeRoom.h`) -- but
+being *defaulted* and being *chosen* are different facts, and reporting the
+first as though it were the second tells somebody the room has settled on
+something it has not:
+
+```
+Pundo[keys-bot]: nobody has named a key, so i defaulted to C major. name one
+                 and i will put it up for the room.
+```
+
+A chart genuinely can be absent, and then the band is playing on the key alone.
+Saying so is the useful part, because it explains what they *are* doing:
+
+```
+Quado[lead-bot]: the chart is whatever the room agrees, and nobody has put one
+                 up -- i am playing on the key alone. type one in chat, like
+                 "| Am | F | C | G |", and i will follow it.
+```
+
+`REPORT_KEY` and `REPORT_CHART` carry the same two distinctions, which is why
+the intent table says "and whether it was told or defaulted".
+
+### Common answers, and the one bot that gives them
+
+Addressing decides *who* was asked. It does not decide how many should speak,
+and for a whole class of question the answer is the same from every bot:
+
+| Personal -- every addressed bot answers | Common -- exactly one answers |
+|---|---|
+| `DESCRIBE_PART`, `DESCRIBE_SOUND` | `REPORT_KEY`, `REPORT_CHART`, `REPORT_TEMPO` |
+| `RESHUFFLE`, `SET_QUIET`, `SET_LOUD` | `SET_KEY`, `SET_TEMPO`, `SET_CHART` |
+| `EXPLAIN_SELF`, `LEAVE` | |
+
+The worked transcript above has `band, what are you playing` answered by all
+four, and that is right -- those are four different answers. `band, what are the
+chords` is not: it is one fact, and four bots reciting it is the chorus this
+whole design exists to prevent.
+
+**Acting is collective; speaking is arbitrated.** `band, shake` rerolls all four
+parts, because each bot's action is its own. Only the *line about it* is
+rationed.
+
+**The arbitration is the one we already have**, for the fourth time: each bot
+waits its own short staggered delay, and on waking checks whether the answer has
+already been given. If it has, it says nothing.
+
+That is preferable to the fixed order the key-change cue proposes ("lowest
+instrument first"), and the reason is `SET_QUIET`: quiet is **per bot**, so a
+fixed order picks a bot that may have been told to shut up, and the room gets
+silence where it asked a question. Delay-and-watch degrades to the next bot
+automatically, with no shared state and nothing to keep in sync. It should
+replace the fixed order in section 6 as well.
+
+One primitive, four uses: the arrival roster, the tempo vote, the key-change
+acknowledgement, and this. That is the strongest argument that it is the right
+primitive.
+
+### Voting, and why four bots nearly break it
+
+A NINJAM tempo change is a server vote, and the threshold is a proportion of
+**everyone connected** -- bots included, because a bot is an ordinary client.
+The denominator is `vucnt`, every user with `m_auth_state > 0`, voted or not
+(`justinfrankel/ninjam server/usercon.cpp:1192-1200`). There is no vote
+*against*: you vote within the window or you do not, so **abstaining is a vote
+against**, and a silent bot is not a neutral one.
+
+Four bots therefore do not merely fail to help. They take the room's tempo
+control away, and the band as designed is worse than playing alone:
+
+| Humans | Bots | Needed (at 60%) | Can the humans carry it, if the bots abstain? |
+|---|---|---|---|
+| 1 | 0 | 1 | yes |
+| 1 | 4 | 3 | **never** |
+| 2 | 4 | 4 | **never** |
+| 3 | 4 | 5 | **never** -- even unanimously |
+
+**What the server tells us, and what it does not.** The only vote traffic on the
+wire is English in a chat line (`ChatFormat::parseVote`):
+
+```
+[voting system] leading candidate: 3/5 votes for 137 BPM [each vote expires in 60s]
+[voting system] setting BPM to 137
+```
+
+That gives the count `N`, the threshold `M` and the value. It does **not** name
+the voters, and it reports only the leading candidate, never the split. So "wait
+until every human has voted, then follow the majority" cannot be implemented as
+stated -- neither half is observable, and you can never distinguish a human who
+has not voted yet from one who never will.
+
+**The rule.** Enough is observable without them:
+
+1. **A bot never proposes a value.** It votes only for a leading candidate that
+   already exists, so no tempo change can ever originate with the band.
+2. **Every vote before the band moves is a human one, by construction.** A bot
+   knows the user list, and `BotNames::looksLikeBot` tells it which members are
+   bots, so it knows `H`. It also knows that no bot votes until the gate below
+   trips -- so while the band is waiting, `N` *is* the human count. Nothing has
+   to be disentangled and no voter has to be identified: the only two inputs
+   are how many humans are in the room and how many votes have been cast.
+3. **A strict majority of humans must back the candidate** -- `humanVotes * 2 >
+   H`. If that never happens, no bot votes, and the offer expires exactly as it
+   would have in a room with no bots in it.
+
+   **Strict, not "half is enough".** The two differ only when `H` is even and
+   the room splits evenly, and there the weaker gate is wrong: at a 60%
+   threshold it disagrees with a bot-free room at *every* even `H`, always by
+   letting exactly half the room carry a change over the other half. In a
+   two-person room that is one player overruling the other with the band's
+   help, which is the precise failure this rule exists to prevent.
+
+   The gate is tested **only while the band is still silent**, and the instant
+   it trips the timers start. It is never re-tested, so it never has to be: any
+   vote arriving later, human or bot, can only add to the total. That ordering
+   is what makes the whole rule cheap -- there is no latch to keep, no bot
+   votes to subtract, and no way for the band to be counting itself.
+4. **Then they queue, the way they announce themselves.** Each bot waits its own
+   delay -- a few seconds plus a small random spread from its own seed, well
+   inside the 60-second expiry -- and **on waking, checks whether the motion has
+   already carried. If it has, it does not vote.**
+
+   This is the same shape as the arrival roster in section 6, and it earns the
+   same thing twice over. The band casts *exactly* the votes its own presence
+   made necessary and then stops, with no ranking between the bots and no
+   message passing: whichever bot wakes to find the job done simply stays out of
+   it. It also keeps four `!vote` lines from landing in the chat at once.
+5. **A change of leading candidate resets everything** -- the gate reopens and
+   the timers are dropped. The band's support is for a value, not for the idea
+   of changing.
+
+**This needs no coordination**, which is the reason to prefer it. Every input is
+public, the rule is a pure function of them, and each bot reaches the same
+answer independently. A rule they can all evaluate without talking to each other
+beats a protocol between them, every time.
+
+**Does it distort the outcome?** No -- and that is a stronger answer than the
+one first written here, which used a ceiling where the server rounds half up.
+
+The server's arithmetic is `(vucnt * threshold + 50) / 100` in integer division
+(`justinfrankel/ninjam server/usercon.cpp:1239`), and `vucnt` is every
+authenticated user. Swept against a bot-free room with the real formula, for
+`B = 4` and `H` from 1 to 8, at both 50% and 60%: **identical at every `H`,
+with no divergences at all.** A strict majority of humans carries exactly what
+it would have carried alone, and a minority carries nothing.
+
+The earlier draft reported one divergence at `H = 7`. That was the wrong
+rounding, not a property of the rule.
+
+**This needs no coordination**, which is the reason to prefer it. Every input is
+public, the rule is a pure function of them, and each bot reaches the same
+answer independently. That is the same trick as the arrival roster in section 6:
+a rule they can all evaluate without talking to each other beats a protocol
+between them, every time.
+
+**The arithmetic is now read from the server source rather than assumed**, and
+recorded in `docs/PROTOCOL.md`. What remains genuinely per-server is the
+`SetVotingThreshold` percentage itself, which is configuration -- but the band
+never needs it: `M` arrives in the vote line as the denominator of `N/M`, so a
+bot reads the threshold off the room instead of predicting it. The sweep above
+matters for judging the design, not for running it.
 
 ### The pipeline
 
@@ -592,9 +864,10 @@ The short list. Each is `notice`-class, guarded, and on a topic cooldown.
 - **On arriving**: see the choreography below. One line for the whole band
   rather than one line each, which would be four lines of chat before anybody
   has said anything.
-- **When the key changes**: at most one bot acknowledges, not all four. Which one
-  is decided by a rule they can all evaluate without talking to each other --
-  lowest instrument first, say -- so there is no coordination protocol.
+- **When the key changes**: at most one bot acknowledges, not all four. Which
+  one is settled by the delay-and-watch arbitration in section 5, not by a fixed
+  order: a fixed order can pick a bot that has been told `quiet`, and then the
+  acknowledgement never comes.
 - **When a chart arrives** that it cannot follow: "i can read `\| Am \| F \|` --
   that line did not parse." Useful, because the alternative is a chart that
   silently does nothing, which is exactly the bug the harmony work fixed at the
@@ -1002,32 +1275,49 @@ needs a human to judge.
 - **`quiet` is an assertion**: after `quiet`, no cue of `notice` class fires,
   ever, for any bot.
 - **Understanding is a corpus and a number**, and the corpus exists:
-  **`test/fixtures/bot-phrases.txt`**, 519 lines written the way people type in
+  **`test/fixtures/bot-phrases.txt`**, 617 lines written the way people type in
   chat -- lowercase, unpunctuated, abbreviated, misspelled, padded with
-  politeness, often not a question at all.
+  politeness, often not a question at all. Twenty-six of them are the same
+  phrasings with one mechanical slip of the finger, generated rather than
+  chosen, so that robustness to typing is measured against typos nobody picked
+  to suit the repair.
 
   | | |
   |---|---|
-  | `DESCRIBE_PART` | 73 |
-  | `DESCRIBE_SOUND` | 50 |
-  | `REPORT_KEY` | 42 |
-  | `REPORT_CHART` | 42 |
-  | `REPORT_TEMPO` | 37 |
-  | `RESHUFFLE` | 45 |
-  | `SET_QUIET` | 35 |
-  | `SET_LOUD` | 18 |
-  | `EXPLAIN_SELF` | 37 |
-  | `LEAVE` | 33 |
-  | `CLARIFY` -- must ask, not guess | 15 |
-  | `NONE` -- must not answer at all | 92 |
+  | `DESCRIBE_PART` | 81 |
+  | `DESCRIBE_SOUND` | 58 |
+  | `REPORT_KEY` | 47 |
+  | `REPORT_CHART` | 44 |
+  | `REPORT_TEMPO` | 41 |
+  | `RESHUFFLE` | 58 |
+  | `SET_QUIET` | 39 |
+  | `SET_LOUD` | 19 |
+  | `EXPLAIN_SELF` | 38 |
+  | `LEAVE` | 36 |
+  | `CLARIFY` -- must ask, not guess | 17 |
+  | `NONE` -- must not answer at all | 103 |
 
-  The test asserts the resolution of every line and reports the **fallback
-  rate**, which is the number to quote and drive down:
+  The test asserts the resolution of every line and reports three miss rates,
+  because the three failures do not cost the same. A **fallback** is honest: it
+  names what was recognised. A **clarify** asks which of two and names both. A
+  **wrong** answer is the only one that actively misleads, so it carries the
+  tightest bound.
+
+  **Every fourth line of each section is held out from tuning**, and that split
+  is the only reason the headline number means anything. Built without it, the
+  engine read 74.4% correct; tuned against the whole corpus it would have
+  reported 99.7%, while the held-out quarter said 92.8% -- and the gap between
+  those two is exactly the amount by which the corpus had been memorised rather
+  than understood.
 
   ```
-  519 phrasings, 9 intents
-  resolved 498  clarified 15  fell back 6   (fallback 1.2%)
+  tune    467 of 469 (99.6%)   fallback 0.2%  clarify 0.0%  wrong 0.2%
+  holdout 147 of 148 (99.3%)   fallback 0.0%  clarify 0.0%  wrong 0.7%
   ```
+
+  The holdout has been read once and its misses repaired, which spends it: only
+  lines added from here on restore an independent measurement, so add new
+  phrasings to the END of a section.
 
   The `NONE` section is the other half and is the one that keeps the bots
   civil: greetings, courtesy, humans talking to each other, someone asking after
@@ -1037,6 +1327,14 @@ needs a human to judge.
   `CLARIFY` is worth its own section because a design with three outcomes needs
   a corpus with three: "tell me about your kick" is genuinely ambiguous and the
   right behaviour is to ask which.
+
+  A message that asks for two things -- "whats the key and can you shake it",
+  "tell me the tempo then be quiet" -- is read clause by clause, and the corpus
+  cannot express that because every line in it carries exactly one intent. Those
+  cases are asserted directly in `test/BotLanguageTests.cpp` instead, and the
+  corpus guards the boundary from the other side: splitting must be a no-op on
+  all 581 of its lines, so the two readings can only ever differ where a message
+  really does ask twice.
 
   It is plain text so extending it needs no C++. When a real phrasing misses,
   add it, watch the test go red, then widen the lexicon -- and if widening would

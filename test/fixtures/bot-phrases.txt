@@ -96,6 +96,28 @@ what are you playing at the moment
 whats it doing
 what is it doing
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+descdibe your part
+kit what are you playjng
+tell me ahout your part
+
+# Polite requests: a question in form and an instruction in force. None of
+# these were here, and every one of them resolved to a DESCRIPTION of the
+# thing it was politely asking us to change.
+can you tell me your part
+could you describe your groove
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+yo whats the bass up to
+your snare is doing something weird
+can i hear the keys part
 [DESCRIBE_SOUND]
 what do you sound like
 whats your sound
@@ -148,6 +170,28 @@ sound?
 tone?
 how would you describe your sound
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+how is it uned
+talk me throuhg your sound
+tell me sbout your sound
+what does your kick suond like
+what kit are you usign
+whats your pacth
+
+# Polite requests: a question in form and an instruction in force. None of
+# these were here, and every one of them resolved to a DESCRIPTION of the
+# thing it was politely asking us to change.
+can you tell me about your sound
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+the keys sound thin
 [REPORT_KEY]
 what key
 what key?
@@ -192,6 +236,21 @@ whats the root
 which key
 which key are we in
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+has anone set a key
+what scae are you using
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+remind me of the key would you
+anyone know what key were in
+i dont know the key
 [REPORT_CHART]
 what chords
 what chords?
@@ -236,6 +295,18 @@ whats the harmony
 what are we playing on
 which chords
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+what progressin
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+i cant remember the chords
 [REPORT_TEMPO]
 what tempo
 whats the tempo
@@ -274,6 +345,72 @@ bpi?
 speed?
 how fast are we playing
 whats the pace
+
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+whatss the interval length
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+hold on whats the bpm again
+wait what tempo are we at
+how long is one interval
+[SET_KEY]
+# Asked to CHANGE the key rather than report it. The bots have no authority
+# here -- a key is whatever the room agrees -- but recognising the ask is what
+# lets them say so instead of reciting the current key at somebody who just
+# asked for a different one.
+can you play in g minor
+play something in dorian
+can we change the key
+switch to g major
+put it in a minor
+lets play in e minor
+can you try d dorian
+play in a major
+change the key
+can we do it in f minor
+how about we play in b minor
+key change please
+give me a minor key
+can we switch key
+
+[SET_TEMPO]
+# Likewise, except that a tempo IS decidable -- by a server vote that needs a
+# majority of everyone in the room, bots included. See docs/BOT-CHAT.md.
+can you slow down
+slow down
+can we go faster
+speed up
+can you vote for 120 bpm
+can we change the tempo
+vote for 140
+lets speed up
+can we take it slower
+change the tempo
+a bit faster please
+can you vote 100
+
+[SET_CHART]
+# Asked to change the chart. A chart that IS a chart never reaches here -- a
+# bare "| Am | F | C | G |" is an announcement and `Harmony::looksLikeChart`
+# claims it first -- so what is left is asking for a different one.
+can we change the chords
+can you change the progression
+change the chart
+new chords please
+lets use different chords
+can we try another progression
+different chords please
+can we change the changes
+switch the progression
+can we do a different chart
+
 
 [RESHUFFLE]
 shake
@@ -322,6 +459,33 @@ play it differently
 alter your part
 rework it
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+do somethingg else
+give me anoher
+go agakn
+try agani
+
+# Polite requests: a question in form and an instruction in force. None of
+# these were here, and every one of them resolved to a DESCRIPTION of the
+# thing it was politely asking us to change.
+can you change your part
+could you play something different
+would you mind changing your part
+can you change the whole pattern
+please shake
+would you try something else
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+any chance of a different groove
+gimme a fresh pattern pls
+nah do it differently
 [SET_QUIET]
 quiet
 quiet please
@@ -359,6 +523,24 @@ quiet down
 i dont need the commentary
 no commentary
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+plese be quiet
+
+# Polite requests: a question in form and an instruction in force. None of
+# these were here, and every one of them resolved to a DESCRIPTION of the
+# thing it was politely asking us to change.
+could you be quiet please
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+wd you mind being quiet for a bit
+shush for a minute
 [SET_LOUD]
 talk
 speak
@@ -379,6 +561,11 @@ talking is fine
 resume talking
 back on
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+say somethhing
 [EXPLAIN_SELF]
 help
 help?
@@ -418,6 +605,11 @@ im lost
 i dont know what to do
 what now
 
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+what are the commads
 [LEAVE]
 part
 leave
@@ -455,6 +647,23 @@ all of you out
 
 # Genuinely ambiguous. The right answer is a narrow question naming both
 # candidates, not a guess -- see docs/BOT-CHAT.md section 5.
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+leav
+
+# Polite requests: a question in form and an instruction in force. None of
+# these were here, and every one of them resolved to a DESCRIPTION of the
+# thing it was politely asking us to change.
+can you leave please
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+off you pop
 [CLARIFY]
 tell me about your kick
 tell me about the kick
@@ -470,10 +679,16 @@ describe it
 tell me more
 what about you
 hows yours
+describe the hats
 and you?
 
 # Must resolve to nothing at all, and must never be answered. Ordinary chat
 # between humans, courtesy, and things aimed at somebody else.
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+what sbout you
 [NONE]
 hello
 hi
@@ -567,3 +782,29 @@ first time here
 new to ninjam
 long time no see
 same time next week
+
+
+# Typed the way people type: one mechanical slip of the finger per
+# line, generated from the phrasings above rather than invented, so
+# the repair is measured against typos nobody chose to suit it.
+awesomme
+ill try
+im trying that now
+evenin all
+im ennjoying this
+sorrry
+
+# Polite requests: a question in form and an instruction in force. None of
+# these were here, and every one of them resolved to a DESCRIPTION of the
+# thing it was politely asking us to change.
+can you hear the drums
+could you turn me up
+
+# A robustness sweep: phrasings written cold, without looking at the
+# lexicon, to find lines that would fail rather than lines that do. Three
+# defects came out of it -- a discourse marker hiding the question word,
+# `keys` stemming onto `key`, and a negated question about the chart being
+# read as somebody talking to themselves.
+that kick sounds mental
+ill try
+im trying that now

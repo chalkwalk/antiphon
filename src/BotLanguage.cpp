@@ -1,5 +1,7 @@
 #include "BotLanguage.h"
 
+#include "BotDictionary.h"
+
 #include <algorithm>
 #include <cctype>
 #include <map>
@@ -35,24 +37,54 @@ const Expansion kExpansions[] = {
     {"n", "and"},           {"abt", "about"},       {"bout", "about"},
     {"gonna", "going to"},  {"wanna", "want to"},   {"gimme", "give me"},
     {"tellme", "tell me"},  {"couldya", "could you"},
+    {"whatve", "what have"}, {"what've", "what have"},
+    {"ill", "i will"},      {"i'll", "i will"},     {"id", "i would"},
+    {"youll", "you will"},  {"you'll", "you will"}, {"weve", "we have"},
+    {"shouldnt", "should not"}, {"couldnt", "could not"},
+    {"wouldnt", "would not"}, {"aint", "is not"},
 };
 
-// Politeness, hedging and filler. None of it changes what was asked, and all of
-// it is in the way.
+// Padding, politeness, and grammar. None of it changes what was asked.
+//
+// Grammatical words are dropped HERE rather than ignored later, because an
+// unrecognised word is now evidence that the message is not about us at all
+// (see `unknownWords`), and "are" must not be that evidence.
 const char *kFiller[] = {
+    // politeness and filler
     "please", "pls",     "sorry",  "just",   "quickly", "mate",
     "man",    "dude",    "hey",    "hi",     "hello",   "ok",     "okay",
     "so",     "well",    "um",     "uh",     "erm",     "like",   "actually",
     "really", "maybe",   "perhaps","kinda",  "sort",    "bit",    "very",
-    "thanks", "thank",   "cheers", "again",  "now",     "then",   "there",
-    "here",   "a",       "an",     "the",    "of",      "for",    "to",
-    "at",     "in",      "on",     "and",    "or",      "me",     "my",
-    "us",     "we",      "it",     "its",    "this",    "that",   "some",
-    "any",    "all",     "bro",    "buddy",  "friend",  "guys",   "everyone"};
+    "thanks", "thank",   "cheers", "now",    "then",    "there",
+    "here",   "bro",     "buddy",  "friend", "guys",    "everyone",
+    "yo",     "oi",      "hmm",    "hold",   "wait",    "hang",   "right",
+    // determiners, prepositions, conjunctions
+    "a",      "an",      "the",    "of",     "for",     "to",     "at",
+    "in",     "on",      "and",    "or",     "some",    "any",    "all",
+    "with",   "from",    "than",   "too",    "also",    "only",   "even",
+    "ever",   "still",   "yet",    "own",    "same",    "both",   "each",
+    "few",    "other",   "under",  "once",   "if",      "but",    "as",
+    "by",     "into",    "onto",   "about_", // about_ never matches; see kLexicon
+    // pronouns and possessives
+    "me",     "my",      "mine",   "us",     "our",     "ours",   "we",
+    "it",     "its",     "this",   "that",   "these",   "those",  "you",
+    "your",   "yours",   "i",      "they",   "them",    "their",  "he",
+    "she",    "him",     "her",    "one",    "ones",
+    // auxiliaries and copulas
+    "is",     "are",     "was",    "were",   "be",      "been",   "being",
+    "am",     "do",      "does",   "did",    "can",     "could",  "will",
+    "would",  "shall",   "should", "may",    "might",   "must",   "have",
+    "has",    "had",
+    // interrogatives that carry no topic of their own
+    "what",   "how",     "why",    "when",   "where",   "which",
+    // pro-forms standing in for a topic
+    "something", "anything", "everything", "thing", "things", "stuff",
+    "anyone", "anybody", "someone", "somebody", "everybody", "nobody",
+    "exactly", "moment", "kind", "type", "future"};
 
-// `again` is filler in "tell me again" and meaningful in "again" alone, so it
-// is only dropped when something else survives. Same for a couple of others.
-const char *kFillerUnlessAlone[] = {"again", "now", "more", "up", "it"};
+// `more` is filler in "tell me more about it" and is half the message in "one
+// more". Dropped only when something else survives.
+const char *kFillerUnlessAlone[] = {"more", "up"};
 
 bool inList(const char *const *list, size_t n, const std::string &s) {
   for (size_t i = 0; i < n; ++i)
@@ -82,93 +114,193 @@ std::vector<std::string> split(const std::string &text) {
   return out;
 }
 
-} // namespace
+// A content token, carrying the word that stood before it in the unstripped
+// sentence. That predecessor is the whole of the word-class machinery: a
+// determiner or a possessive in front of a word makes it a noun, and a subject
+// pronoun or a modal in front of it makes it a verb.
+struct Tok {
+  std::string word;
+  std::string prev;
+  bool first = false; // first word of the sentence
+};
 
-std::vector<std::string> normalise(const std::string &text) {
+struct Prepared {
+  std::vector<std::string> raw; // expanded, lowercased, nothing removed
+  std::vector<Tok> toks;        // content only
+  bool askingCharacter = false; // a trailing "like": what is it LIKE
+  bool exclamation = false;     // "what a tune" -- not a question at all
+};
+
+const char *kDeterminer[] = {"the", "a",     "an",   "your", "my",  "our",
+                             "their", "this", "that", "these", "those",
+                             "its",   "his",  "her",  "some", "any"};
+// Only the second person makes a following verb a REQUEST. "can you change it"
+// is an instruction; "how does it go" is a description asked for, and treating
+// its subject the same way answered it by leaving the room.
+const char *kSubject[] = {"you"};
+// Who is being spoken to, not what is being asked. Addressing has already been
+// decided by the time a message reaches this file, so a name here is noise.
+const char *kVocative[] = {"kit",  "drums", "drum",   "bass",  "keys",
+                           "lead", "piano", "guitar", "tutor", "band",
+                           "everyone", "hey"};
+const char *kModal[] = {"can",  "could", "will",  "would", "shall",
+                        "should", "may", "might", "must",  "do",
+                        "does",   "did", "please", "to"};
+
+Prepared prepare(const std::string &text) {
+  Prepared p;
   auto tokens = split(text);
 
-  // Idioms first, because they are two tokens meaning one thing and the
-  // stemmer will never get there on its own.
+  // Idioms first: two tokens meaning one thing, which the stemmer will never
+  // reach on its own.
   for (size_t i = 0; i + 1 < tokens.size(); ++i) {
-    if (tokens[i] == "up" && tokens[i + 1] == "to") {
-      tokens[i] = "doing";
+    const auto &a = tokens[i];
+    const auto &b = tokens[i + 1];
+    auto fuse = [&](const char *with) {
+      tokens[i] = with;
       tokens.erase(tokens.begin() + (long)i + 1);
-    } else if (tokens[i] == "playing" && i + 1 == tokens.size() - 1 &&
-               (tokens[i + 1] == "in" || tokens[i + 1] == "over" ||
-                tokens[i + 1] == "on")) {
+    };
+    if (a == "up" && b == "to")
+      fuse("doing");
+    else if (a == "playing" && i + 2 == tokens.size() &&
+             (b == "in" || b == "over" || b == "on"))
       // "what are we playing in" asks the key; "what are we playing over" asks
       // the chart. One preposition carries the whole difference, and it is
       // about to be stripped as filler, so it is read here first.
-      tokens[i] = tokens[i + 1] == "in" ? "key" : "chords";
-      tokens.erase(tokens.begin() + (long)i + 1);
-    } else if (tokens[i] == "sound" && tokens[i + 1] == "like") {
-      tokens[i] = "sound";
-      tokens.erase(tokens.begin() + (long)i + 1);
-    }
+      fuse(b == "in" ? "key" : "chords");
+    else if (a == "sound" && b == "like")
+      fuse("sound");
+    else if (a == "sounds" && b == "like")
+      fuse("sounds");
+    else if (a == "going" && b == "on")
+      fuse("situation");
+    else if (a == "see" && b == "you")
+      fuse("bye");
+    else if ((a == "one" || a == "once") && b == "more")
+      fuse("another");
+    else if ((a == "keep" || a == "pipe" || a == "settle" || a == "calm") &&
+             b == "down")
+      fuse("hush");
+    else if (a == "shut" && b == "up")
+      fuse("hush");
+    else if (a == "no" && b == "more")
+      fuse("less");
+    else if (a == "speed" && b == "up")
+      fuse("faster");
+    else if (a == "slow" && b == "down")
+      // "calm down" is handled below as a request for quiet; only the tempo
+      // sense reaches here.
+      fuse("slower");
+    else if (a == "go" && b == "ahead")
+      fuse("goahead");
+    else if (a == "going" && b == "to")
+      // "i am going to get a coffee" is the future tense, not somebody going.
+      fuse("future");
+    else if ((a == "am" || a == "im" || a == "i'm") && b == "lost")
+      // "get lost" evicts us; "im lost" asks for help. Same word, opposite ask.
+      fuse("confused");
+    else if (a == "back" && b == "on")
+      fuse("resume");
+    else if (a == "running" && b == "at")
+      fuse("tempo");
+    else if ((a == "not" || a == "no") && (b == "that" || b == "this"))
+      fuse("another");
+    else if ((a == "like" || a == "want" || a == "need") && b == "that")
+      // "i dont like that one" -- the dissatisfaction is the whole request.
+      fuse("liking");
   }
 
+  // "keep it down", "quiet down": the particle is what makes it an
+  // instruction, and it can sit one word away from its verb.
+  for (size_t i = 0; i + 1 < tokens.size(); ++i)
+    if (tokens[i] == "keep" || tokens[i] == "pipe" || tokens[i] == "settle" ||
+        tokens[i] == "calm")
+      for (size_t j = i + 1; j < tokens.size() && j <= i + 2; ++j)
+        if (tokens[j] == "down") {
+          tokens[i] = "hush";
+          tokens.erase(tokens.begin() + (long)j);
+          break;
+        }
+
+  // "what are we in" is the key, the same way "what are we playing in" is.
+  if (tokens.size() >= 2 && tokens.back() == "in")
+    tokens.back() = "key";
+
+  // "whats going on" asks about the part; "whats going on here" asks what this
+  // whole thing is. The adverb is the entire difference.
+  for (size_t i = 0; i + 1 < tokens.size(); ++i)
+    if (tokens[i] == "situation" && tokens[i + 1] == "here") {
+      tokens[i] = "purpose";
+      tokens.erase(tokens.begin() + (long)i + 1);
+      break;
+    }
+
+  // A trailing "like" is asking what a thing is LIKE -- its character. It is
+  // not a topic of its own, and it is about to be stripped as filler, so it is
+  // read off here as a flag.
+  if (tokens.size() >= 2 && tokens.back() == "like")
+    p.askingCharacter = true;
+  // "what a tune" is an exclamation wearing a question word.
+  if (tokens.size() >= 2 && tokens[0] == "what" &&
+      (tokens[1] == "a" || tokens[1] == "an"))
+    p.exclamation = true;
+
   // Expand contractions, which can turn one token into two.
-  std::vector<std::string> expanded;
   for (const auto &t : tokens) {
     bool did = false;
     for (const auto &e : kExpansions)
       if (t == e.from) {
         for (const auto &piece : split(e.to))
-          expanded.push_back(piece);
+          p.raw.push_back(piece);
         did = true;
         break;
       }
     if (!did)
-      expanded.push_back(t);
+      p.raw.push_back(t);
   }
-
-  // Drop a leading vocative: "kit," / "hey kit" / "@delvo". Addressing has
-  // already happened by the time we get here, so the name is noise.
-  //
-  // Only the first token or two, and only when something is left afterwards.
-  if (expanded.size() > 1 && inList(kFiller, expanded[0]))
-    expanded.erase(expanded.begin());
 
   // A leading instrument word is a VOCATIVE -- "kit, what are you playing" --
-  // and by the time a message reaches here, addressing has already been decided.
-  // Left in, it reads as a topic and ties the sentence against itself.
-  static const char *kVocative[] = {"kit",  "drums", "drum",   "bass", "keys",
-                                    "lead", "piano", "guitar", "tutor",
-                                    "band", "everyone"};
-  if (expanded.size() > 1 && inList(kVocative, expanded[0]))
-    expanded.erase(expanded.begin());
+  // and by the time a message reaches here, addressing has already been
+  // decided. Left in, it reads as a topic and ties the sentence against itself.
+  // Strip the WHOLE address, not one word of it. "hey kit, whats your part"
+  // left `kit` behind as a topic and tied the sentence against itself, which
+  // the clause level exposed rather than caused.
+  size_t start = 0;
+  while (start + 1 < p.raw.size() && inList(kVocative, p.raw[start]))
+    ++start;
 
-  // An auxiliary before a pronoun is grammar, not content: the `do` in "what
-  // do you sound like" is not the `do` in "what are you doing", and leaving it
-  // in makes those two sentences score identically.
-  static const char *kAux[] = {"do", "does", "did", "are", "is", "was",
-                               "can", "could", "will", "would", "have", "has"};
-  static const char *kPronoun[] = {"you", "it", "that", "they", "we", "i",
-                                   "this", "he", "she"};
-  std::vector<std::string> deauxed;
-  for (size_t i = 0; i < expanded.size(); ++i) {
-    if (inList(kAux, expanded[i]) && i + 1 < expanded.size() &&
-        inList(kPronoun, expanded[i + 1]))
+  for (size_t i = start; i < p.raw.size(); ++i) {
+    const auto &w = p.raw[i];
+    if (inList(kFiller, w))
       continue;
-    deauxed.push_back(expanded[i]);
+    Tok t;
+    t.word = w;
+    t.prev = i > start ? p.raw[i - 1] : std::string();
+    t.first = i == start;
+    p.toks.push_back(t);
   }
-  expanded = deauxed;
 
-  std::vector<std::string> kept;
-  for (const auto &t : expanded)
-    if (!inList(kFiller, t))
-      kept.push_back(t);
+  if (p.toks.size() > 1) {
+    std::vector<Tok> out;
+    for (const auto &t : p.toks)
+      if (!inList(kFillerUnlessAlone, t.word))
+        out.push_back(t);
+    if (!out.empty())
+      p.toks = out;
+  }
+  return p;
+}
 
+} // namespace
+
+std::vector<std::string> normalise(const std::string &text) {
+  const auto p = prepare(text);
+  std::vector<std::string> out;
+  for (const auto &t : p.toks)
+    out.push_back(t.word);
   // If the filter ate everything, the filler WAS the message -- "thanks",
   // "hello" -- and the caller needs to see it rather than an empty list.
-  if (kept.empty())
-    return expanded;
-
-  std::vector<std::string> out;
-  for (const auto &t : kept)
-    if (!(inList(kFillerUnlessAlone, t) && kept.size() > 1))
-      out.push_back(t);
-  return out.empty() ? kept : out;
+  return out.empty() ? p.raw : out;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,19 +346,22 @@ std::string stem(const std::string &word) {
     chop(1);
   }
   // Nouns built from verbs and adjectives, so the lexicon can carry the root
-  // alone: `progression` -> `progress`, `tonality` -> `tonal`.
-  if (endsWith("ion"))
-    chop(3);
-  else if (endsWith("ity"))
-    chop(3);
-  else if (endsWith("ment"))
-    chop(4);
-  else if (endsWith("ness"))
-    chop(4);
+  // alone: `progression` -> `progress`, `tonality` -> `tonal`. The length guard
+  // is the whole rule: without it `option` becomes `opt`, and the corpus asks
+  // "what are my options" often enough for that to matter.
+  auto chopTo = [&](const char *suffix, size_t n) {
+    if (endsWith(suffix) && w.size() - n >= 5) {
+      chop(n);
+      return true;
+    }
+    return false;
+  };
+  chopTo("ion", 3) || chopTo("ity", 3) || chopTo("ment", 4) ||
+      chopTo("ness", 4);
 
   // A trailing silent `e` after a consonant: `timbre` -> `timbr`, `figure` ->
-  // `figur`, `change` -> `chang`. Cheap, and it saves the lexicon from carrying
-  // both spellings of every word.
+  // `figur`, `change` -> `chang`. The length guard is load-bearing: at four
+  // characters it would take `note` to `not`, which is a negation.
   if (w.size() > 4 && w.back() == 'e' &&
       std::string("aeiou").find(w[w.size() - 2]) == std::string::npos)
     w.erase(w.size() - 1);
@@ -253,86 +388,120 @@ const Word kLexicon[] = {
     {"groove", Concept::Part},    {"figur", Concept::Part},
     {"rhythm", Concept::Part},    {"line", Concept::Part},
     {"beat", Concept::Part},      {"play", Concept::Part},
-    {"do", Concept::Part},        {"doing", Concept::Part},
-    {"perform", Concept::Part},   {"accent", Concept::Part},
-    {"fill", Concept::Part},      {"note", Concept::Part},
-    {"shape", Concept::Part},     {"phras", Concept::Part},
-    {"tick", Concept::Part},      {"hit", Concept::Part},
-    {"count", Concept::Part},
+    {"doing", Concept::Part},     {"perform", Concept::Part},
+    {"accent", Concept::Part},    {"fill", Concept::Part},
+    {"note", Concept::Part},      {"shape", Concept::Part},
+    {"phras", Concept::Part},     {"tick", Concept::Part},
+    {"hit", Concept::Part},       {"count", Concept::Part},
     {"puls", Concept::Part},      {"onset", Concept::Part},
-    {"go", Concept::Part},        {"root", Concept::Key},
-    {"tonal", Concept::Key},      {"setup", Concept::Tone},
-    {"lay", Concept::Part},       {"got", Concept::Part},
+    {"lay", Concept::Part},       {"sit", Concept::Part},
+    {"got", Concept::Part},
+    {"syncopat", Concept::Part},  {"subdivi", Concept::Part},
 
     {"sound", Concept::Tone},     {"tone", Concept::Tone},
     {"timbr", Concept::Tone},     {"patch", Concept::Tone},
     {"voic", Concept::Tone},      {"charact", Concept::Tone},
     {"preset", Concept::Tone},    {"tune", Concept::Tone},
-    {"tuned", Concept::Tone},     {"instrument", Concept::Tone},
-    {"kit", Concept::Tone},       {"bright", Concept::Tone},
-    {"dark", Concept::Tone},      {"warm", Concept::Tone},
+    {"tuned", Concept::Tone},     {"tun", Concept::Tone},
+    {"setup", Concept::Tone},     {"character", Concept::Tone},
+    {"bright", Concept::Tone},    {"dark", Concept::Tone},
+    {"warm", Concept::Tone},      {"thick", Concept::Tone},
+    {"thin", Concept::Tone},      {"kit", Concept::Tone},
+    {"instrument", Concept::Tone},
 
     {"key", Concept::Key},        {"scale", Concept::Key},
     {"tonic", Concept::Key},      {"mode", Concept::Key},
     {"major", Concept::Key},      {"minor", Concept::Key},
+    {"dorian", Concept::Key},     {"phrygian", Concept::Key},
+    {"lydian", Concept::Key},     {"mixolydian", Concept::Key},
+    {"aeolian", Concept::Key},    {"locrian", Concept::Key},
+    {"ionian", Concept::Key},
+    {"root", Concept::Key},       {"tonal", Concept::Key},
 
-    {"chord", Concept::Chart},    {"chang", Concept::Chart},
-    {"progress", Concept::Chart}, {"chart", Concept::Chart},
-    {"sequenc", Concept::Chart},  {"harmoni", Concept::Chart},
-    {"loop", Concept::Chart},     {"agre", Concept::Chart},
-    {"bar", Concept::Chart},
-    {"over", Concept::Chart},     {"turnaround", Concept::Chart},
+    {"chord", Concept::Chart},    {"progress", Concept::Chart},
+    {"chart", Concept::Chart},    {"sequenc", Concept::Chart},
+    {"harmoni", Concept::Chart},  {"harmony", Concept::Chart},
+    {"agre", Concept::Chart},     {"agree", Concept::Chart},
+    {"loop", Concept::Chart},     {"bar", Concept::Chart},
+    {"turnaround", Concept::Chart},
 
     {"tempo", Concept::Tempo},    {"bpm", Concept::Tempo},
     {"speed", Concept::Tempo},    {"interv", Concept::Tempo},
     {"fast", Concept::Tempo},     {"slow", Concept::Tempo},
-    {"bpi", Concept::Tempo},      {"time", Concept::Tempo},
-    {"pace", Concept::Tempo},     {"click", Concept::Tempo},
-    {"quick", Concept::Tempo},    {"run", Concept::Tempo},
+    {"bpi", Concept::Tempo},      {"pace", Concept::Tempo},
+    {"interval", Concept::Tempo}, {"length", Concept::Tempo},
+    {"click", Concept::Tempo},    {"quick", Concept::Tempo},
     {"long", Concept::Tempo},     {"metronom", Concept::Tempo},
+    {"vote", Concept::Tempo},     {"faster", Concept::Tempo},
+    {"slower", Concept::Tempo},
 
     {"shake", Concept::Change},   {"reroll", Concept::Change},
     {"roll", Concept::Change},    {"new", Concept::Change},
-    {"differ", Concept::Change},  {"anoth", Concept::Change},
-    {"mix", Concept::Change},     {"switch", Concept::Change},
-    {"vari", Concept::Change},    {"els", Concept::Change},
-    {"redo", Concept::Change},    {"random", Concept::Change},
+    {"differ", Concept::Change},  {"different", Concept::Change},
+    {"anoth", Concept::Change},   {"another", Concept::Change},
+    {"switch", Concept::Change},  {"vari", Concept::Change},
+    {"vary", Concept::Change},    {"alter", Concept::Change},
+    {"rework", Concept::Change},  {"els", Concept::Change},
+    {"else", Concept::Change},    {"redo", Concept::Change},
+    {"random", Concept::Change},  {"again", Concept::Change},
+    {"fresh", Concept::Change},   {"swap", Concept::Change},
+    {"liking", Concept::Change},   {"try", Concept::Change},
 
     {"quiet", Concept::Quiet},    {"hush", Concept::Quiet},
     {"shush", Concept::Quiet},    {"silent", Concept::Quiet},
     {"silenc", Concept::Quiet},   {"mute", Concept::Quiet},
-    {"stop", Concept::Quiet},     {"enough", Concept::Quiet},
-    {"shut", Concept::Quiet},     {"zip", Concept::Quiet},
+    {"zip", Concept::Quiet},      {"button", Concept::Quiet},
 
-    {"speak", Concept::Loud},     {"talk", Concept::Loud},
-    {"unmute", Concept::Loud},    {"chatti", Concept::Loud},
-    {"resum", Concept::Loud},     {"back", Concept::Loud},
+    {"unmute", Concept::Loud},    {"resum", Concept::Loud},
+    {"goahead", Concept::Loud},   {"welcom", Concept::Loud},
+
+    {"stop", Concept::Cease},     {"enough", Concept::Cease},
+    {"less", Concept::Cease},     {"ceas", Concept::Cease},
+    {"quit", Concept::Cease},     {"halt", Concept::Cease},
+
+    {"chat", Concept::Chat},      {"talk", Concept::Chat},
+    {"speak", Concept::Chat},     {"say", Concept::Chat},
+    {"messag", Concept::Chat},    {"commentari", Concept::Chat},
+    {"commentary", Concept::Chat},
+    {"comment", Concept::Chat},   {"chatti", Concept::Chat},
+    {"natter", Concept::Chat},    {"waffl", Concept::Chat},
 
     {"who", Concept::Identity},   {"help", Concept::Identity},
-    {"purpos", Concept::Identity},
-    {"bot", Concept::Identity},   {"robot", Concept::Identity},
-    {"human", Concept::Identity}, {"real", Concept::Identity},
-    {"person", Concept::Identity},{"thing", Concept::Identity},
+    {"purpos", Concept::Identity},{"bot", Concept::Identity},
+    {"robot", Concept::Identity}, {"human", Concept::Identity},
+    {"real", Concept::Identity},  {"person", Concept::Identity},
+    {"command", Concept::Identity}, {"option", Concept::Identity},
+    {"yourself", Concept::Identity}, {"work", Concept::Identity},
+    {"confus", Concept::Identity}, {"understand", Concept::Identity},
+
+    {"situation", Concept::Part},
 
     {"leav", Concept::Leave},     {"evict", Concept::Leave},
-    {"away", Concept::Leave},     {"lost", Concept::Leave},
-    {"done", Concept::Leave},     {"dismiss", Concept::Leave},
-    {"remov", Concept::Leave},
-    {"bye", Concept::Leave},      {"exit", Concept::Leave},
-    {"quit", Concept::Leave},     {"away", Concept::Leave},
-    {"home", Concept::Leave},     {"off", Concept::Leave},
-    {"out", Concept::Leave},      {"begon", Concept::Leave},
+    {"dismiss", Concept::Leave},  {"remov", Concept::Leave},
+    {"bye", Concept::Leave},      {"goodby", Concept::Leave},
+    {"exit", Concept::Leave},     {"disconnect", Concept::Leave},
+    {"begon", Concept::Leave},    {"scram", Concept::Leave},
+    {"away", Concept::Leave},     {"go", Concept::Leave},
+    {"out", Concept::Leave},      {"off", Concept::Leave},
+    {"home", Concept::Leave},     {"done", Concept::Leave},
+    {"lost", Concept::Leave},
 
     {"kick", Concept::Drum},      {"snare", Concept::Drum},
-    {"hat", Concept::Drum},
-    {"hihat", Concept::Drum},     {"cymbal", Concept::Drum},
-    {"tom", Concept::Drum},       {"drum", Concept::Drum},
+    {"hat", Concept::Drum},       {"hihat", Concept::Drum},
+    {"cymbal", Concept::Drum},    {"tom", Concept::Drum},
+    {"drum", Concept::Drum},
 
-    {"tell", Concept::Speak},     {"say", Concept::Speak},
-    {"walk", Concept::Speak},     {"through", Concept::Speak},
-    {"describ", Concept::Speak},  {"explain", Concept::Speak},
-    {"give", Concept::Speak},     {"show", Concept::Speak},
-    {"about", Concept::Speak},    {"know", Concept::Speak},
+    {"bass", Concept::Instrument},   {"guitar", Concept::Instrument},
+    {"piano", Concept::Instrument},
+    {"synth", Concept::Instrument},  {"pad", Concept::Instrument},
+    {"drummer", Concept::Instrument},{"bassist", Concept::Instrument},
+    {"rhode", Concept::Instrument},
+
+    {"tell", Concept::Speak},     {"walk", Concept::Speak},
+    {"through", Concept::Speak},  {"describ", Concept::Speak},
+    {"explain", Concept::Speak},  {"give", Concept::Speak},
+    {"show", Concept::Speak},     {"about", Concept::Speak},
+    {"run", Concept::Speak},      {"summari", Concept::Speak},
 
     {"hear", Concept::Hear},      {"listen", Concept::Hear},
     {"loud", Concept::Hear},      {"level", Concept::Hear},
@@ -343,15 +512,52 @@ const Word kLexicon[] = {
     {"awful", Concept::Hear},     {"rough", Concept::Hear},
     {"muddy", Concept::Hear},     {"harsh", Concept::Hear},
     {"balanc", Concept::Hear},    {"mix", Concept::Hear},
+    {"sounds", Concept::Hear},
 };
 
-// `kick` is both a drum and an eviction, and `part` is both a figure and a
-// command. Resolved by the scorer rather than the table, which is why both
-// entries are allowed to exist.
+// Words whose CLASS decides their concept. The determiner test is the whole
+// mechanism: "the changes" is a noun and names the chart, "change it" is a verb
+// and asks for a reroll. `mix` is the same word twice over -- "the mix" is what
+// you hear, "mix it up" is an instruction.
+struct ClassedWord {
+  const char *word;
+  Concept asNoun;
+  Concept asVerb;
+};
+
+const ClassedWord kClassed[] = {
+    {"chang", Concept::Chart, Concept::Change},
+    {"mix", Concept::Hear, Concept::Change},
+    {"play", Concept::Part, Concept::Part},
+    {"go", Concept::Part, Concept::Leave},
+};
 
 // ---------------------------------------------------------------------------
-// 4. Typo repair, against the lexicon only. A word that matches nothing gets
-//    one edit up to five characters and two beyond.
+// 4. Typo repair, against the lexicon only.
+//
+// Two rules do the work, and both come from how people actually mistype rather
+// than from edit distance being a tidy idea:
+//
+//   - A REAL WORD IS NOT A TYPO. `chat` is not a mistyped `chart`, and `oops`
+//     is not a mistyped `loop`. This used to be a hand-maintained list of
+//     seventy exceptions, which is a list nobody can keep correct -- `chat` and
+//     `right` and `room` were all missing from it and all three produced a
+//     confident wrong answer. It is now a generated dictionary
+//     (`BotDictionary.h`).
+//   - NEAREST WINS, and only a tie is ambiguous.
+//
+// A weighted metric was tried here and removed. Typing errors are not uniform
+// -- adjacent keys are the commonest substitution, and the first letter is
+// rarely the wrong one -- so the cost was weighted to match: adjacent-key slips
+// at half an edit, a wrong first letter at double, transpositions cheap. It
+// made no difference to a single line of the corpus, including the twenty-six
+// mechanically generated typos added to measure exactly this, and mutating each
+// weight away in turn changed nothing either.
+//
+// The reason is the gate above. Once a real word can no longer be "repaired",
+// almost nothing reaches the metric, and what does reach it is a slip of one
+// character with no near rival. Refining how the distance is counted answers a
+// question the gate has already settled. Plain Damerau-Levenshtein it is.
 // ---------------------------------------------------------------------------
 
 int editDistance(const std::string &a, const std::string &b) {
@@ -369,6 +575,7 @@ int editDistance(const std::string &a, const std::string &b) {
       int best = std::min({d[(size_t)i - 1][(size_t)j] + 1,
                            d[(size_t)i][(size_t)j - 1] + 1,
                            d[(size_t)i - 1][(size_t)j - 1] + cost});
+      // A transposition is one slip of two fingers, not two mistakes.
       if (i > 1 && j > 1 && a[(size_t)i - 1] == b[(size_t)j - 2] &&
           a[(size_t)i - 2] == b[(size_t)j - 1])
         best = std::min(best, d[(size_t)i - 2][(size_t)j - 2] + 1);
@@ -377,30 +584,45 @@ int editDistance(const std::string &a, const std::string &b) {
   return d[(size_t)n][(size_t)m];
 }
 
-// Words that are never a typo for anything.
-//
-// The same rule the addressing engine needed, and for the same reason: `hat` is
-// three letters, so `what`, `that` and half the function words in English are
-// one edit from it. A real word is not a mistyped one, and without this the
-// concept DRUM turns up in almost every sentence.
-const char *kNeverATypo[] = {
-    "what", "how",  "who",  "why",   "when", "where", "which", "that",
-    "this", "you",  "your", "are",   "is",   "was",   "be",    "been",
-    "get",  "got",  "up",   "out",   "many", "much",  "more",  "most",
-    "i",    "we",   "they", "he",    "she",  "him",   "her",   "them",
-    "if",   "but",  "as",   "by",    "with", "from",  "than",  "too",
-    "also", "only", "even", "ever",  "still","yet",   "own",   "same",
-    "both", "each", "few",  "other", "over", "under", "once",  "not",
-    "no",   "yes",  "one",  "two",   "am",   "an",    "at",    "on",
-    "off",  "put",  "let",  "make",  "want", "need",  "give",  "come"};
-
 const char *kQuestionWords[] = {"what", "who",  "how",  "why",  "when",
                                 "where", "which", "whats"};
 const char *kAuxiliaries[] = {"are", "is",  "do",   "does", "can", "could",
                               "will", "would", "have", "has", "did", "am",
                               "shall", "should", "may", "might"};
-const char *kNegations[] = {"not", "no", "never", "stop", "dont", "cant"};
+const char *kNegations[] = {"not", "no", "never", "nothing", "none", "without"};
 const char *kSecondPerson[] = {"you", "your", "yours", "yourself"};
+const char *kPossessive[] = {"your", "yours", "yourself"};
+const char *kFirstPerson[] = {"i", "me", "my", "we", "us", "our"};
+
+// A question about what we can be asked, rather than about what we are playing.
+const char *kCapability[] = {"do",   "know",  "understand", "work", "use",
+                             "ask",  "say",   "help",       "offer",
+                             "command", "option", "support"};
+
+// Whole messages that are conversation, not instruction. The same shape as
+// `BotAddress::isCourtesy`, and for the same reason: these are greetings, and a
+// greeting scored word by word looks exactly like a question about our part.
+const char *kSmallTalk[] = {
+    "how are you",      "how are you doing", "how is it going",
+    "how is everyone",  "you alright",       "alright",
+    "right",            "back",              "i am back",
+    "oops",             "oh",                "hello",
+    "hi",               "hey",               "good morning",
+    "good evening",     "morning",           "evening",
+    "brb",              "bbl",               "gtg",
+    "wb",               "welcome back",      "nice one",
+    "how goes it",      "you there",         "anyone there",
+    "long time no see", "good to see you",   "nice one thanks"};
+
+std::string joined(const std::vector<std::string> &v) {
+  std::string s;
+  for (size_t i = 0; i < v.size(); ++i) {
+    if (i)
+      s += ' ';
+    s += v[i];
+  }
+  return s;
+}
 
 } // namespace
 
@@ -411,6 +633,9 @@ const char *intentName(Intent i) {
   case Intent::ReportKey: return "REPORT_KEY";
   case Intent::ReportChart: return "REPORT_CHART";
   case Intent::ReportTempo: return "REPORT_TEMPO";
+  case Intent::SetKey: return "SET_KEY";
+  case Intent::SetTempo: return "SET_TEMPO";
+  case Intent::SetChart: return "SET_CHART";
   case Intent::Reshuffle: return "RESHUFFLE";
   case Intent::SetQuiet: return "SET_QUIET";
   case Intent::SetLoud: return "SET_LOUD";
@@ -427,34 +652,112 @@ bool Reading::has(Concept c) const {
 
 Reading read(const std::string &text) {
   Reading r;
-  const auto tokens = normalise(text);
-  if (tokens.empty())
+  const auto p = prepare(text);
+  if (p.raw.empty())
     return r;
 
-  // -- shape, read off the tokens before they are stemmed ------------------
+  // -- shape, read off the UNSTRIPPED tokens -------------------------------
+  //
+  // Read here rather than after filler removal, which is a correction: the
+  // stripping now removes pronouns and auxiliaries, and reading `secondPerson`
+  // afterwards silently found it false for every sentence containing "you".
+  // Read at the first word that is not padding. "hold on whats the bpm again"
+  // is a question, and testing only raw[0] made it an instruction to reroll --
+  // a discourse marker is exactly what people put in front of a question.
+  // Only DISCOURSE MARKERS are skipped, not padding in general. Skipping
+  // anything in kFiller went wrong twice over: the interrogatives are in that
+  // list, so the scan ran straight past the question word, and so are the
+  // pronouns, so "i will try" stopped on `will` and became a question.
+  static const char *kDiscourse[] = {"yo",  "oi",   "hmm",  "hold", "wait",
+                                     "hang", "on",  "ok",   "okay", "so",
+                                     "well", "hey", "hi",   "um",   "uh",
+                                     "erm",  "right", "sorry", "mate", "dude",
+                                     "man",  "bro",  "guys", "everyone"};
+  size_t head = 0;
+  while (head + 1 < p.raw.size() && inList(kDiscourse, p.raw[head]))
+    ++head;
   r.question = text.find('?') != std::string::npos ||
-               inList(kQuestionWords, tokens[0]) ||
-               inList(kAuxiliaries, tokens[0]);
-  for (const auto &t : tokens) {
+               inList(kQuestionWords, p.raw[head]) ||
+               inList(kAuxiliaries, p.raw[head]);
+  if (p.exclamation)
+    r.question = false;
+
+  bool firstPerson = false;
+  for (const auto &t : p.raw) {
     if (inList(kNegations, t))
       r.negated = true;
     if (inList(kSecondPerson, t))
       r.secondPerson = true;
+    if (inList(kPossessive, t))
+      r.possessive = true;
+    if (inList(kFirstPerson, t))
+      firstPerson = true;
   }
-  // An instruction: a leading verb with no subject. The earlier version had
+  // A polite request: a modal, the second person, and then the verb that is
+  // actually being asked for. It parses as a question and it is not one, and
+  // the whole difference between "can you change your part" and "what is your
+  // part" sits in those two leading words.
+  //
+  // `do`/`does`/`did` are deliberately absent: "do you know the key" really is
+  // a question.
+  static const char *kRequestModal[] = {"can", "could", "would", "will",
+                                        "please"};
+  r.request = (inList(kRequestModal, p.raw[0]) && p.raw.size() > 1 &&
+               (p.raw[1] == "you" || p.raw[1] == "we")) ||
+              p.raw[0] == "please";
+
+  const bool suggestion = p.raw.size() > 1 && p.raw[1] == "about" &&
+                          (p.raw[0] == "how" || p.raw[0] == "what");
+
+  r.continuation = p.raw[0] == "and" || p.raw[0] == "so";
+  // "let us do another" and "shall we go again" are proposals between players.
+  // They are not instructions to us, however much they look like one.
+  r.proposal = (p.raw[0] == "let" && p.raw.size() > 1 && p.raw[1] == "us") ||
+               (p.raw[0] == "shall" && p.raw.size() > 1 && p.raw[1] == "we");
+
+  // An instruction: a leading VERB with no subject. The earlier version had
   // this as "not a question", which is true of almost every sentence and
   // therefore told us nothing -- and it silently disabled the rule below that
-  // depends on it.
+  // depends on it. "Leading word" alone is not enough either: "nice playing" is
+  // a compliment, and treating it as an instruction is how it got answered with
+  // a description of the part.
   r.imperative = false;
-  if (!r.question && !tokens.empty()) {
-    const auto first = stem(tokens[0]);
+  if (!r.question && !p.toks.empty() && p.toks[0].first) {
+    const auto first = stem(p.toks[0].word);
     for (const auto &w : kLexicon)
-      if ((first == w.word || tokens[0] == w.word) &&
+      if ((first == w.word || p.toks[0].word == w.word) &&
           (w.concept == Concept::Speak || w.concept == Concept::Change ||
            w.concept == Concept::Quiet || w.concept == Concept::Loud ||
+           w.concept == Concept::Cease || w.concept == Concept::Chat ||
            w.concept == Concept::Leave))
         r.imperative = true;
   }
+
+  if (inList(kSmallTalk, joined(p.raw)))
+    return r;
+  // "what a tune" is admiration. It carries a tone word and asks nothing, and
+  // the question word at the front of it is not doing a question's work.
+  if (p.exclamation)
+    return r;
+
+  // A statement the speaker is making about themselves. Not a question, not
+  // aimed at us, and not a complaint -- so nothing in it is an instruction.
+  bool firstPersonSubject = false;
+  for (const auto &t : p.raw)
+    if (t == "i" || t == "we")
+      firstPersonSubject = true;
+  const bool selfReport =
+      firstPersonSubject && !r.secondPerson && !r.question && !r.negated;
+
+  // Naming a VALUE is what separates "whats the key" from "play in g minor".
+  // Both carry the KEY concept; only the second says which key, and without
+  // that distinction every request to change one was answered by reporting it.
+  static const char *kKeyValue[] = {"minor",  "major",     "dorian", "phrygian",
+                                    "lydian", "mixolydian", "aeolian",
+                                    "locrian", "ionian"};
+  static const char *kTempoValue[] = {"fast", "slow", "quick", "faster",
+                                      "slower", "vote"};
+  bool keyValue = false, tempoValue = false;
 
   // -- words to concepts ---------------------------------------------------
   std::map<Concept, int> weight;
@@ -464,24 +767,90 @@ Reading read(const std::string &text) {
     weight[c] += 1;
   };
 
-  for (const auto &raw : tokens) {
-    const auto s = stem(raw);
+  for (const auto &tok : p.toks) {
+    const auto s = stem(tok.word);
     bool matched = false;
+
+    if (inList(kKeyValue, tok.word) || inList(kKeyValue, s))
+      keyValue = true;
+    if (inList(kTempoValue, tok.word) || inList(kTempoValue, s))
+      tempoValue = true;
+    // A bare number beside a tempo word is a tempo: "vote for 120", "make it
+    // 96 bpm".
+    if (!tok.word.empty() &&
+        tok.word.find_first_not_of("0123456789") == std::string::npos)
+      tempoValue = true;
+
+    // "ill try", "im trying that now": the speaker saying what THEY will do.
+    // A change word is only an instruction when somebody else is its subject,
+    // and the giveaway is that it arrives as a verb -- with a determiner in
+    // front of it ("i dont need the commentary") it is a thing, not an act.
+    // Negation is excluded because a complaint about what we are playing is a
+    // request however it is phrased: "i dont like that one".
+    if (selfReport && !inList(kDeterminer, tok.prev)) {
+      bool change = false;
+      for (const auto &w : kLexicon)
+        if ((stem(tok.word) == w.word || tok.word == w.word) &&
+            w.concept == Concept::Change)
+          change = true;
+      if (change)
+        continue;
+    }
+
+    // `keys` is the instrument and `key` is the tonic, and the stemmer folds
+    // the first onto the second. "can i hear the keys part" asked about the
+    // part and was answered with the key.
+    if (tok.word == "keys") {
+      note(Concept::Instrument);
+      continue;
+    }
+
+    // A reflexive is the OBJECT of "mute yourself" and the TOPIC of "tell me
+    // about yourself". Only the second is a question about who we are, and the
+    // preposition in front of it is what says so.
+    if (tok.word == "yourself" && tok.prev != "about" && tok.prev != "of")
+      continue;
+
+    // Word class first, for the handful of words where it decides the concept.
+    for (const auto &c : kClassed)
+      if (s == c.word || tok.word == c.word) {
+        const bool noun = inList(kDeterminer, tok.prev);
+        const bool verb = inList(kSubject, tok.prev) ||
+                          inList(kModal, tok.prev) ||
+                          (tok.first && !r.question);
+        // With no evidence either way, a question is asking about a thing and
+        // a statement is telling us to do one.
+        const bool asking = r.question && !r.request;
+        note(noun ? c.asNoun : verb ? c.asVerb : (asking ? c.asNoun : c.asVerb));
+        matched = true;
+      }
+    if (matched)
+      continue;
+
     for (const auto &w : kLexicon)
-      if (s == w.word || raw == w.word) {
+      if (s == w.word || tok.word == w.word) {
         note(w.concept);
         matched = true;
       }
     if (matched)
       continue;
 
-    // A typo, if it is unambiguously one -- and only if the word is not an
-    // ordinary one to begin with.
-    if (inList(kNeverATypo, s) || inList(kNeverATypo, raw))
+    // A word that asks what we can be asked is not a topic and not an unknown:
+    // it is the question itself, read by the capability rule below.
+    if (inList(kCapability, tok.word) || inList(kCapability, s))
       continue;
+
+    // A real English word is not a mistyped one. This is the single rule that
+    // stopped `chat` becoming `chart`, `room` becoming `root` and `oops`
+    // becoming `loop` -- three confidently wrong answers from one missing idea.
+    if (BotDictionary::isWord(s) || BotDictionary::isWord(tok.word)) {
+      ++r.unknownWords;
+      continue;
+    }
+
     const int budget = s.size() <= 5 ? 1 : 2;
     Concept best = Concept::Part;
-    int bestDistance = 99, runnerUp = 99;
+    int bestCost = 99, runnerUp = 99;
     for (const auto &w : kLexicon) {
       // Short entries are matched exactly or not at all: at three letters
       // almost anything is one edit away.
@@ -490,10 +859,10 @@ Reading read(const std::string &text) {
       const int d = editDistance(s, w.word);
       if (d > budget)
         continue;
-      if (d < bestDistance) {
+      if (d < bestCost) {
         if (best != w.concept)
-          runnerUp = bestDistance;
-        bestDistance = d;
+          runnerUp = bestCost;
+        bestCost = d;
         best = w.concept;
       } else if (w.concept != best) {
         runnerUp = std::min(runnerUp, d);
@@ -504,22 +873,100 @@ Reading read(const std::string &text) {
     // another: `timbre` is one edit from `timbr` and two from `time`, which is
     // not a hard question, and discarding it lost the only real word in the
     // sentence.
-    if (bestDistance <= budget && bestDistance < runnerUp)
+    if (bestCost <= budget && bestCost < runnerUp)
       note(best);
+    else
+      ++r.unknownWords;
   }
 
-  if (r.concepts.empty()) {
-    // "what are you", "who is this", "what is this thing" -- a question with a
-    // subject and no topic is asking what the thing IS. A shape rather than a
-    // word, which is why removing `what` from the lexicon did not lose it.
-    bool aboutThis = r.secondPerson;
-    for (const auto &t : tokens)
-      if (t == "this" || t == "that" || t == "thing")
-        aboutThis = true;
-    if (r.question && aboutThis)
+  // "let us do another" is two players talking; "let us play in e minor" names
+  // something we can act on, and the difference is whether a value was given.
+  if (r.proposal && !keyValue && !tempoValue &&
+      !(weight.count(Concept::Chart) && weight.count(Concept::Change)))
+    return r;
+
+  const bool topic =
+      weight.count(Concept::Part) || weight.count(Concept::Tone) ||
+      weight.count(Concept::Key) || weight.count(Concept::Chart) ||
+      weight.count(Concept::Tempo) || weight.count(Concept::Drum) ||
+      weight.count(Concept::Instrument);
+
+  // A capability question: "what can you do", "what do you know", "what do i
+  // say". About the conversation itself rather than about the music, and the
+  // giveaway is a question whose only verb is one of these.
+  //
+  // It has to be ABOUT somebody -- "what can you do", "what do i say" -- or
+  // "do it again" reads as one, since `do` is both the auxiliary that makes a
+  // question and the verb that asks what we are for. And a word we did not
+  // recognise rules it out: "what interface do you use" is the same shape and
+  // is not our business.
+  bool capability = false;
+  if ((r.question || weight.count(Concept::Speak)) && !topic &&
+      (r.secondPerson || firstPerson) && r.unknownWords == 0)
+    for (const auto &t : p.raw)
+      if (inList(kCapability, t) &&
+          (!weight.count(Concept::Chat) || firstPerson))
+        capability = true;
+
+  // "i dont know what to do" is asking for help; "i dont know this one" is
+  // somebody talking about the tune. The wh-clause is the difference -- what
+  // follows "know" is a question, and a question is what we can answer.
+  if (!capability && firstPerson && r.negated && !topic) {
+    bool know = false, wh = false;
+    for (const auto &t : p.raw) {
+      if (t == "know" || t == "understand")
+        know = true;
+      else if (know && (t == "what" || t == "how" || t == "which"))
+        wh = true;
+    }
+    capability = wh;
+  }
+
+  // Asking about a thing of ours without naming the thing -- "tell me about
+  // it", "describe it", "what about you", "and you?". The topic is whatever was
+  // last discussed, which we do not track, so the honest answer is to ask which
+  // of the two we could describe. Naming both is what makes that useful rather
+  // than a shrug.
+  const bool actionable =
+      weight.count(Concept::Change) || weight.count(Concept::Quiet) ||
+      weight.count(Concept::Loud) || weight.count(Concept::Cease) ||
+      weight.count(Concept::Leave) || weight.count(Concept::Chat) ||
+      weight.count(Concept::Identity);
+  const bool anaphora =
+      !capability && !topic && !actionable &&
+      (weight.count(Concept::Speak) || p.askingCharacter || r.continuation ||
+       (r.possessive && p.toks.empty()));
+  if (anaphora && r.unknownWords == 0) {
+    r.ambiguous = true;
+    r.intent = Intent::DescribePart;
+    r.alternative = Intent::DescribeSound;
+    return r;
+  }
+
+  // Bare "part" is the Ninjam command, not a noun phrase. Everywhere else it is
+  // the figure being played, which is why the lexicon still carries it -- and
+  // the test is the WHOLE message, not what survived stripping, or "whats your
+  // part" reduces to the same one token and is answered by leaving.
+  if (p.raw.size() == 1 && p.raw[0] == "part" && !r.question) {
+    r.intent = Intent::Leave;
+    return r;
+  }
+
+  if (capability && r.concepts.empty()) {
+    r.intent = Intent::ExplainSelf;
+    return r;
+  }
+
+  if (p.toks.empty()) {
+    // Nothing but function words survived. A question is then asking about the
+    // situation -- "what is this", "what now" -- and a statement is small talk.
+    if (r.question && r.unknownWords == 0)
       r.intent = Intent::ExplainSelf;
     return r;
   }
+
+  if (r.concepts.empty())
+    return r;
 
   // -- score ---------------------------------------------------------------
   //
@@ -544,45 +991,151 @@ Reading read(const std::string &text) {
   if (weight.count(Concept::Key)) add(Intent::ReportKey, 7);
   if (weight.count(Concept::Chart)) add(Intent::ReportChart, 7);
   if (weight.count(Concept::Tempo)) add(Intent::ReportTempo, 7);
-  if (weight.count(Concept::Change)) add(Intent::Reshuffle, 4);
-  if (weight.count(Concept::Quiet)) add(Intent::SetQuiet, 4);
-  if (weight.count(Concept::Loud)) add(Intent::SetLoud, 4);
-  if (weight.count(Concept::Identity)) add(Intent::ExplainSelf, 3);
-  if (weight.count(Concept::Leave)) add(Intent::Leave, 3);
+  if (weight.count(Concept::Change)) add(Intent::Reshuffle, 5);
 
-  // A drum name on its own is the ambiguity the corpus is full of: "tell me
-  // about your kick" could be the part or the sound. Push both, equally, and
-  // let the margin rule decide there is no answer.
-  if (weight.count(Concept::Drum) && !weight.count(Concept::Part) &&
-      !weight.count(Concept::Tone)) {
-    add(Intent::DescribePart, 3);
-    add(Intent::DescribeSound, 3);
+  // Asked to CHANGE the key or the tempo rather than to report it.
+  //
+  // The bots have no authority over either -- a tempo is a server vote and a
+  // key is whatever the room agrees -- but that is a fact about what they may
+  // DO, not about what they should understand. Recognising the request is what
+  // lets a bot say "i cannot decide that, but i will vote for it"; failing to
+  // recognise it produces an answer that looks responsive and ignores what was
+  // actually asked, which is the most expensive failure this file has.
+  //
+  // Three guards, each of them a whole class of corpus line:
+  //   - a SPEAK word makes it a report after all ("can you tell me the key")
+  //   - a first-person subject is somebody thinking aloud, not instructing us
+  //     ("i dont know the key")
+  //   - a question that is not a polite request is asking, not telling
+  //     ("is it major or minor", "whats the key")
+  //
+  // The first-person guard yields to a request, because "can we go faster" is
+  // the commonest way anybody asks for a tempo change and the `we` in it is
+  // not somebody talking to themselves.
+  // The first-person guard is about the SUBJECT: "i dont know the key" is
+  // thinking aloud, but the "me" in "give me a minor key" is an object and
+  // says nothing about who is instructing whom.
+  //
+  // A SPEAK word makes it a report -- unless a value was named, because "give
+  // me a minor key" specifies rather than asks, where "tell me the key" asks.
+  const bool proposing = r.request || r.proposal || suggestion;
+  const bool instructing =
+      (proposing || !r.question) &&
+      (!weight.count(Concept::Speak) || keyValue || tempoValue) &&
+      (!firstPersonSubject || proposing);
+  const bool setKey = instructing && weight.count(Concept::Key) &&
+                      (keyValue || weight.count(Concept::Change));
+  const bool setTempo = instructing && weight.count(Concept::Tempo) &&
+                        (tempoValue || weight.count(Concept::Change));
+  // A chart has no short value word the way a key has "minor" -- a chart value
+  // IS a chord chart, and a message that is one never reaches here (a bare
+  // "| Am | F |" is an announcement, and `Harmony::looksLikeChart` claims it
+  // upstream). So asking to change the chart is the whole of what is left.
+  const bool setChart = instructing && weight.count(Concept::Chart) &&
+                        weight.count(Concept::Change);
+  if (setKey)
+    add(Intent::SetKey, 9);
+  if (setTempo)
+    add(Intent::SetTempo, 9);
+  if (setChart)
+    add(Intent::SetChart, 9);
+  // "switch to g major" and "can we change the tempo" carry a change word, but
+  // what is being changed is named right there beside it. Rerolling our own
+  // part instead would be a confident answer to a question nobody asked.
+  if (setKey || setTempo || setChart)
+    score[Intent::Reshuffle] -= 9;
+  if (weight.count(Concept::Quiet)) add(Intent::SetQuiet, 6);
+  if (weight.count(Concept::Loud)) add(Intent::SetLoud, 7);
+  if (weight.count(Concept::Identity)) add(Intent::ExplainSelf, 6);
+  if (weight.count(Concept::Leave)) add(Intent::Leave, 5);
+  if (capability) add(Intent::ExplainSelf, 8);
+
+  // Talking is our topic, and what is being ASKED about it is the whole
+  // question. "stop chatting" and "chat away" share their only content word.
+  //
+  // Unless something else is the topic: "talk me through your sound" uses the
+  // same verb to ask for a description, and answering it by unmuting is the
+  // kind of literalism that makes a bot feel like a parser.
+  if (weight.count(Concept::Chat)) {
+    if (r.negated || weight.count(Concept::Quiet) || weight.count(Concept::Cease))
+      add(Intent::SetQuiet, 8);
+    else if (topic || weight.count(Concept::Speak)) {
+      add(Intent::DescribePart, 1);
+      add(Intent::DescribeSound, 1);
+    } else
+      add(Intent::SetLoud, 7);
   }
 
-  // "stop talking" is quiet, not leave; "stop" plus nothing else is quiet too.
-  if (weight.count(Concept::Quiet) && weight.count(Concept::Loud))
-    add(Intent::SetQuiet, 3);
+  // Ceasing WHAT. With talk in the sentence it is the talk; with anything else,
+  // or nothing at all, it is the playing -- and to stop playing is to leave.
+  if (weight.count(Concept::Cease) && !weight.count(Concept::Chat)) {
+    add(Intent::Leave, 6);
+    score[Intent::DescribePart] -= 4;
+  }
+
+  // A drum or an instrument on its own is the ambiguity the corpus is full of:
+  // "tell me about your kick" could be the part or the sound. Push both,
+  // equally, and let the margin rule decide there is no answer.
+  if ((weight.count(Concept::Drum) || weight.count(Concept::Instrument)) &&
+      !weight.count(Concept::Part) && !weight.count(Concept::Tone)) {
+    add(Intent::DescribePart, 4);
+    add(Intent::DescribeSound, 4);
+  } else if (weight.count(Concept::Drum) || weight.count(Concept::Instrument)) {
+    // Named alongside a topic, it is what the topic is ABOUT and reinforces it.
+    if (weight.count(Concept::Part)) add(Intent::DescribePart, 3);
+    if (weight.count(Concept::Tone)) add(Intent::DescribeSound, 3);
+  }
+
+  // "what is it like" is asking about character. With a thing named it is that
+  // thing's sound; with nothing named it is the anaphora case below.
+  if (p.askingCharacter)
+    add(Intent::DescribeSound, 4);
 
   // Negation flips the two settings, since "don't be quiet" and "be quiet"
   // share every content word and differ only here.
   if (r.negated) {
     if (weight.count(Concept::Quiet)) {
-      score[Intent::SetQuiet] -= 6;
-      add(Intent::SetLoud, 4);
+      score[Intent::SetQuiet] -= 9;
+      add(Intent::SetLoud, 5);
     }
     if (weight.count(Concept::Loud)) {
-      score[Intent::SetLoud] -= 6;
-      add(Intent::SetQuiet, 4);
+      score[Intent::SetLoud] -= 9;
+      add(Intent::SetQuiet, 5);
     }
+  }
+
+  // An instruction carrying a change word is a reroll, whatever else is in it:
+  // "play something different" names the part only to say which part to change.
+  //
+  // Except beside a talking word, where it means resume rather than reroll:
+  // "talk again" and "speak again" are asking for the commentary back, and
+  // rerolling the part instead is a wrong answer that costs a bar of music.
+  if (weight.count(Concept::Change) && (!r.question || r.request)) {
+    if (weight.count(Concept::Chat) && !topic)
+      add(Intent::SetLoud, 4);
+    else
+      add(Intent::Reshuffle, 4);
   }
 
   // Asking is not instructing. "what are you playing" wants the part; "shake"
   // wants a reroll; a question containing a change word is usually still a
   // question about something else.
-  if (r.question && weight.count(Concept::Change) &&
-      (weight.count(Concept::Part) || weight.count(Concept::Tone) ||
-       weight.count(Concept::Key) || weight.count(Concept::Chart)))
+  if (r.question && !r.request && weight.count(Concept::Change) && topic)
     score[Intent::Reshuffle] -= 4;
+
+  // "how many beats in a bar" carries both TEMPO and CHART, and is a question
+  // about duration. The leading "how many"/"how long" is what says so -- but
+  // only over something already temporal. "how many pulses" counts a figure and
+  // "how many bars" counts a chart, so the phrase alone decides nothing.
+  if (p.raw.size() >= 2 && p.raw[0] == "how" &&
+      (p.raw[1] == "many" || p.raw[1] == "long")) {
+    bool beats = false;
+    for (const auto &t : p.raw)
+      if (t == "beat" || t == "beats")
+        beats = true;
+    if (weight.count(Concept::Tempo) || beats)
+      add(Intent::ReportTempo, 8);
+  }
 
   // Speaking words are a request to describe, not a topic of their own.
   if (weight.count(Concept::Speak) && !weight.count(Concept::Identity)) {
@@ -598,19 +1151,26 @@ Reading read(const std::string &text) {
   if (weight.count(Concept::Hear) && weight.count(Concept::Tone) && !r.question)
     return r;
 
+  // A negated statement about playing, with nobody addressed in it, is a player
+  // talking about themselves: "never played this before", "i havent got a part
+  // yet". Answering with a description of ours is a non-sequitur.
+  //
+  // A named, reportable topic is excluded: "i cant remember the chords" and "i
+  // dont know the key" are how people ask for those things, and the negation is
+  // the reason they are asking rather than a reason to stay quiet.
+  if (r.negated && !r.secondPerson && !r.question && !r.imperative &&
+      !weight.count(Concept::Change) && !weight.count(Concept::Chat) &&
+      !weight.count(Concept::Quiet) && !weight.count(Concept::Cease) &&
+      !weight.count(Concept::Key) && !weight.count(Concept::Chart) &&
+      !weight.count(Concept::Tempo))
+    return r;
+
   // What we cannot do. A question about how it SOUNDS to the listener is not
   // a question about our patch, and pretending otherwise is the dishonest
   // answer -- so these do not score at all and fall to the floor.
   if (weight.count(Concept::Hear) && !weight.count(Concept::Tone) &&
       !weight.count(Concept::Part))
     return r;
-
-  // "how many beats in a bar" carries both TEMPO and CHART, and is a question
-  // about duration. The leading "how many"/"how long" is what says so.
-  if (tokens.size() >= 2 && tokens[0] == "how" &&
-      (tokens[1] == "many" || tokens[1] == "long") &&
-      weight.count(Concept::Tempo))
-    add(Intent::ReportTempo, 3);
 
   if (score.empty())
     return r;
@@ -632,7 +1192,24 @@ Reading read(const std::string &text) {
   // The floor, and then the margin. The same shape as Harmony::inferKey: score
   // the candidates, require a clear winner, and when there is not one, say so
   // rather than guess. One idea used twice.
-  if (bestScore < 3)
+  //
+  // The floor RISES with the words we did not recognise, because an
+  // unrecognised word is the clearest sign that a grammatical, addressed
+  // message is about something else entirely.
+  //
+  // It only counts when nothing but IDENTITY was recognised, because that is
+  // the small-talk signature -- "who wrote this", "where are you based" -- and
+  // IDENTITY is the concept a bare "who" or "what" produces on its own. Where
+  // something specific WAS named, an unknown word beside it is usually just a
+  // word we did not need: "leave the room" and "has anyone set a key" both say
+  // plainly what they want.
+  const bool weakOnly = !topic && !weight.count(Concept::Leave) &&
+                        !weight.count(Concept::Change) &&
+                        !weight.count(Concept::Chat) &&
+                        !weight.count(Concept::Quiet) &&
+                        !weight.count(Concept::Cease) &&
+                        !weight.count(Concept::Loud);
+  if (bestScore < 3 + (weakOnly ? 4 * r.unknownWords : 0))
     return r;
 
   if (secondScore >= bestScore) {
@@ -644,6 +1221,94 @@ Reading read(const std::string &text) {
 
   r.intent = best;
   return r;
+}
+
+// ---------------------------------------------------------------------------
+// 8. Clause segmentation.
+//
+// Deliberately the LAST thing in the file and the FIRST level of the cascade,
+// because it is the level that was missing rather than one that was rebuilt:
+// `read` is untouched by it, so every number the corpus reports is unchanged.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// What separates two requests. `but` and `then` are here for the same reason
+// `and` is; a comma is here because half the room does not type the word.
+const char *kConnective[] = {"and", "then", "but", "also", "plus"};
+
+std::vector<std::string> clauses(const std::string &text) {
+  std::vector<std::string> out;
+  std::string current, word;
+  auto flushWord = [&]() {
+    if (word.empty())
+      return;
+    std::string lowered;
+    for (char c : word)
+      lowered += (char)std::tolower((unsigned char)c);
+    if (inList(kConnective, lowered) && !current.empty()) {
+      out.push_back(current);
+      current.clear();
+    } else {
+      if (!current.empty())
+        current += ' ';
+      current += word;
+    }
+    word.clear();
+  };
+  for (char c : text) {
+    if (c == ',' || c == ';') {
+      flushWord();
+      if (!current.empty()) {
+        out.push_back(current);
+        current.clear();
+      }
+    } else if (std::isspace((unsigned char)c) != 0) {
+      flushWord();
+    } else {
+      word += c;
+    }
+  }
+  flushWord();
+  if (!current.empty())
+    out.push_back(current);
+  return out;
+}
+
+} // namespace
+
+std::vector<Reading> readAll(const std::string &text) {
+  const auto parts = clauses(text);
+  if (parts.size() > 1) {
+    std::vector<Reading> found;
+    for (const auto &part : parts) {
+      // A clause that is only an address is not a request. The comma in
+      // "hey kit, whats your part" is punctuation around a vocative, and
+      // reading it as its own clause invented a question about the kit.
+      bool addressOnly = true;
+      for (const auto &w : split(part))
+        if (!inList(kVocative, w) && !inList(kFiller, w))
+          addressOnly = false;
+      if (addressOnly)
+        continue;
+
+      const auto r = read(part);
+      // Only a definite reading counts. An ambiguous one is a conjunct of the
+      // request beside it -- "the drums" in "shake the bass and the drums" --
+      // and promoting it to a second request would invent one.
+      if (r.intent == Intent::None || r.ambiguous)
+        continue;
+      bool seen = false;
+      for (const auto &had : found)
+        if (had.intent == r.intent)
+          seen = true;
+      if (!seen)
+        found.push_back(r);
+    }
+    if (found.size() > 1)
+      return found;
+  }
+  return {read(text)};
 }
 
 } // namespace BotLanguage
