@@ -208,6 +208,18 @@ Key parseTagged(const juce::String &text) {
   return parseName(text.substring(contentStart, close));
 }
 
+Key parseAnnouncement(const juce::String &line) {
+  if (const auto tagged = parseTagged(line); tagged.valid)
+    return tagged;
+
+  // Line-leading only. Accepting `/key` anywhere would undo the whole point of
+  // having a second form: a bot explaining it would trigger it again.
+  const auto trimmed = line.trim();
+  if (!trimmed.startsWithIgnoreCase("/key "))
+    return {};
+  return parseName(trimmed.substring(5));
+}
+
 juce::String buildTagged(const Key &key) {
   if (!key.valid)
     return {};

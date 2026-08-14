@@ -17,9 +17,10 @@ Line render(const juce::String &type, const juce::String &username,
     return out;
   }
 
-  // A key announcement is recognised by its tag wherever it came from, so the
-  // same line works whether it was typed as chat or left in the topic.
-  if (MusicalKey::parseTagged(text).valid) {
+  // A key announcement is recognised wherever it came from, so the same line
+  // works whether it was typed as chat or left in the topic -- and in either of
+  // the two forms, since `/key G minor` is what a bot can actually say.
+  if (MusicalKey::parseAnnouncement(text).valid) {
     out.category = Category::Key;
     out.text = "~~ " + text;
     return out;

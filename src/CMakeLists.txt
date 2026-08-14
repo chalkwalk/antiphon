@@ -70,6 +70,7 @@ target_sources(Antiphon
         LocalChannelStrip.cpp
         AntiphonLookAndFeel.cpp
         ChatFormat.cpp
+        BotAnswer.cpp
         ClipsortLog.cpp
         SessionWriter.cpp
         MusicalKey.cpp

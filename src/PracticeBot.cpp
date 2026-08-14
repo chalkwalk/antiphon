@@ -126,9 +126,9 @@ bool PracticeBot::handleStructured(const juce::String &text) {
   if (!playing.load())
     return false;
 
-  // The key travels as a tagged chat line, never as prose -- MusicalKey refuses
-  // to guess, and so does this.
-  const auto key = MusicalKey::parseTagged(text);
+  // The key travels as a tagged line or a leading `/key`, never as prose --
+  // MusicalKey refuses to guess, and so does this.
+  const auto key = MusicalKey::parseAnnouncement(text);
   if (key.valid) {
     juce::ScopedLock sl(stateMutex);
     settings.key = key;
@@ -155,9 +155,9 @@ bool PracticeBot::handleBandCommand(const juce::String &text) {
     return true;
   }
 
-  // The key travels as a tagged chat line, never as prose -- MusicalKey refuses
-  // to guess, and so does this.
-  const auto key = MusicalKey::parseTagged(text);
+  // The key travels as a tagged line or a leading `/key`, never as prose --
+  // MusicalKey refuses to guess, and so does this.
+  const auto key = MusicalKey::parseAnnouncement(text);
   if (key.valid) {
     juce::ScopedLock sl(stateMutex);
     settings.key = key;

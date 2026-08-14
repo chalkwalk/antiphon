@@ -468,6 +468,18 @@ restraint rather than conversation.
       way they announce themselves, and each checks on waking whether the motion
       already carried, so the band casts exactly the shortfall and stops.
       Nothing casts a vote today.
+- [x] `src/BotAnswer.{h,cpp}`: what a bot says when asked about the room, as
+      pure functions over a `Room` struct, with key and chart provenance
+      (defaulted / topic / chat). Every reply is asserted not to parse as a key
+      announcement or a chart, because saying either performs it.
+- [x] A second key form, `/key D minor`, matched only at the start of a line --
+      so the key can be explained without being set, and so any client can set
+      it. `MusicalKey::parseAnnouncement`.
+- [ ] **Sync the practice room's topic to the key.** The room owns its server,
+      so the topic can be derived state and therefore never stale -- but
+      `PracticeServer` has no chat hook to notice a key change through, and that
+      plumbing wants designing rather than bolting on. Never on a server we do
+      not own.
 - [ ] Answering `SET_KEY`, `SET_TEMPO` and `SET_CHART` honestly. All three are
       recognised; none is a thing a bot may decide, and saying so is the point
       of recognising them. Three parts, designed in `docs/BOT-CHAT.md`: that the

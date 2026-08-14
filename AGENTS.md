@@ -98,6 +98,8 @@ src/
   BotNames.{h,cpp}          # the name pool, and picking a band that reads apart
   BotAddress.{h,cpp}        # WHO a message is for. Corpus: bot-addressing.txt
   BotLanguage.{h,cpp}       # WHAT it asks. Corpus: bot-phrases.txt, quarter held out
+  BotAnswer.{h,cpp}         # what it SAYS back: pure functions over room state.
+                            #   No reply may contain `[key:` -- saying it sets it.
   BotDictionary.h           # GENERATED (scripts/make_wordlist.py): a real word
                             #   is not a mistyped one. Do not hand-edit.
   # --- UI ---

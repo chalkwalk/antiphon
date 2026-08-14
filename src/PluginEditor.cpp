@@ -588,8 +588,9 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   chatDisplay.moveCaretToEnd();
   chatDisplay.insertTextAtCaret(line.text + "\n");
 
-  // A key can arrive as chat or inside a topic; both land here.
-  if (const auto key = MusicalKey::parseTagged(text); key.valid) {
+  // A key can arrive as chat or inside a topic, tagged or as `/key`; all land
+  // here.
+  if (const auto key = MusicalKey::parseAnnouncement(text); key.valid) {
     if (key != sessionKey) {
       sessionKey = key;
       announcer.say("Key: " + MusicalKey::displayName(key) + ". " +

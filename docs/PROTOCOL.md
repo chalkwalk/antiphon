@@ -241,6 +241,34 @@ Two further traps, both observed rather than deduced:
   (`usercon.cpp:1288`). There is no key in the protocol at any level: a key is a
   convention carried in ordinary chat, which is why `[key: ...]` exists.
 
+### The key: two forms, because neither can do the other's job
+
+NINJAM carries no key, so Antiphon puts one in ordinary chat. There are two
+accepted forms and the difference is where each may appear:
+
+| Form | Matched | Why it exists |
+|---|---|---|
+| `[key: D minor]` | **anywhere** in a line | so it can ride in the room topic |
+| `/key D minor` | only at the **start** of a line | so it can be talked about |
+
+The topic matters because the server sends it **only to a joining client**
+(`usercon.cpp:195,407`, `Send` not `Broadcast`) and replays no chat at all. It
+is the sole piece of room state a late arrival can inherit -- which is also why
+it goes stale, so anything reading it should say where the value came from.
+
+The second form exists because the first is *unsayable*. Matching the tag
+anywhere means any sentence explaining it performs it, so without a line-leading
+alternative nothing could ever tell a player how to change the key -- it could
+only change it for them. `MusicalKey::parseAnnouncement` accepts both;
+`announcementAdvice` produces only the sayable one, and
+`test/BotAnswerTests.cpp` asserts that no generated reply parses as a key.
+
+Other clients pass an unknown slash command through as ordinary chat, so `/key`
+works from any of them -- verified against JamTaba.
+
+Chord charts need none of this: `| Am | F |` must already *begin* the line
+(`Harmony.cpp:622`), so it is quotable mid-sentence and needs no second form.
+
 ### The voting threshold
 
 `(vucnt * m_voting_threshold + 50) / 100` (`usercon.cpp:1239`) -- **round half
