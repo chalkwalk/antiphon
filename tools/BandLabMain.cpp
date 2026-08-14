@@ -279,7 +279,13 @@ private:
     if (n <= 0)
       return;
 
-    const int which = 1 - published.load();
+    // `published` is -1 until something has been rendered, which `readInto`
+    // guards for and this did not: `1 - -1` is 2, and there are two buffers.
+    // The first render therefore wrote through a reference past the end of the
+    // array and freed a pointer that was never allocated, so the lab aborted
+    // before it could draw a single control.
+    const int last = published.load();
+    const int which = (last == 0) ? 1 : 0;
     auto &target = buffers[which];
     target.setSize(2, n * kBars, false, false, true);
     target.clear();
