@@ -146,6 +146,36 @@ public:
       expectEquals(cfg.bpi, 16);
     }
 
+    beginTest("the server's tempo is followed, never validated");
+    {
+      // What a client may VOTE for and what a server may BE are different
+      // ranges -- `!vote` allows 40..400 BPM and 2..64 BPI, while an admin may
+      // set 20..400 and 2..1024 (docs/PROTOCOL.md). So a room can legitimately
+      // sit at values no client could have proposed, and every client has to
+      // follow it there.
+      //
+      // Both numbers below were observed on a live server. JamTaba shows
+      // neither correctly: `ServerInfo::setBpm` drops an out-of-range value
+      // with no else branch (elieserdejesus/JamTaba
+      // src/Common/ninjam/client/ServerInfo.cpp:112-123), so it silently keeps
+      // displaying the previous tempo. That is the bug this test exists to
+      // stop us reinventing -- clamping incoming config to the vote range
+      // looks like validation and is a lie about the room.
+      const struct { int bpm, bpi; } kReal[] = {
+          {39, 124},  // below the vote minimum, above the vote maximum
+          {20, 1024}, // the admin extremes
+          {400, 2},
+      };
+      for (const auto &c : kReal) {
+        ServerConfig cfg;
+        expect(parseServerConfig(buildServerConfig(c.bpm, c.bpi), cfg),
+               "round trip failed for " + juce::String(c.bpm) + "/" +
+                   juce::String(c.bpi));
+        expectEquals(cfg.bpm, c.bpm);
+        expectEquals(cfg.bpi, c.bpi);
+      }
+    }
+
     beginTest("0x01 auth reply");
     {
       AuthReply r;

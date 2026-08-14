@@ -1312,9 +1312,13 @@ void AntiphonEditor::updateTempoChip() {
   // offers the vote -- changing your DAW tempo never casts one.
   const int serverBpm = audioProcessor.publishedActiveBpm.load();
   const int hostBpm = (int)std::lround(audioProcessor.hostBpm);
+  // A tempo the server would refuse is not worth offering: an out-of-range
+  // `!vote` is answered with a complaint about the command's parameters, which
+  // tells a player nothing about the real problem. A DAW at 30 BPM is ordinary.
   const bool worthProposing =
       !audioProcessor.isStandaloneApp() && hostBpm > 0 && serverBpm > 0 &&
-      hostBpm != serverBpm && hostBpm != dismissedDawBpm;
+      hostBpm != serverBpm && hostBpm != dismissedDawBpm &&
+      ChatFormat::isVotableBpm(hostBpm);
   if (worthProposing) {
     chipDawBpm = hostBpm;
     const juce::String t = "Your DAW is at " + juce::String(hostBpm) + " BPM";

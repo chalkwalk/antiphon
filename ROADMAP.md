@@ -512,6 +512,36 @@ restraint rather than conversation.
       their corpora and neither has a caller: nothing in `PracticeBot` reaches
       them, so none of the measured accuracy is reachable by a player yet.
 
+### A legal BPI can exhaust memory
+
+`NinjamClient` reserves one decoded interval per remote channel at
+`sampleRate * 60 / bpm * bpi * 1.5`. That is 2.3 MB per channel at the usual
+120/8, and the server will happily go far past it -- **1000 BPI and 39 BPM are
+both legal and both were set on a live server by accident** (measured; see
+`docs/references/ninjam.md`).
+
+| BPI | BPM | Reserved per remote channel, per interval |
+|---|---|---|
+| 8 | 120 | 2.3 MB |
+| 64 | 120 | 18.4 MB |
+| 1000 | 120 | **288 MB** |
+| 1024 | 40 | **885 MB** |
+
+A room at 1024/40 with four remote players asks for three and a half gigabytes,
+allocated on the network thread, with no guard anywhere.
+
+- [ ] Decide what a client should DO about an interval it cannot afford. The
+      options are all unpleasant -- refuse to connect, connect muted with an
+      explanation, or cap and accept that playback is wrong -- and the honest
+      one is probably to say so in the UI rather than to fail silently.
+- [ ] Whatever is chosen, **do not clamp the tempo we display**. JamTaba drops
+      out-of-range config with no `else` and shows a stale tempo instead
+      (`ServerInfo.cpp:112-134`); at 1000 BPI it desyncs outright, showing 8 in
+      its selector and 32 on its metronome while the server is at 1000. Being
+      wrong quietly is worse than being unable to play.
+- [ ] Consider warning before `/bpi` sets something the room cannot follow. The
+      server allows it, but no other client in the room will survive it.
+
 ### Form: repetition, tension and release
 
 The parts are generated fresh every interval and never return to anything, so a

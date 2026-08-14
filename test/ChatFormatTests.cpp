@@ -183,6 +183,33 @@ public:
       expect(l.category == Category::Voting);
       expect(l.text.startsWith("~~"));
     }
+
+    beginTest("what the server accepts is two ranges, not one");
+    {
+      // The vote path and the admin path disagree, in both the reference
+      // server and libninjam, and the difference is not cosmetic: a BPI of 124
+      // is settable by an admin and unvotable by anyone, and a BPM of 30 is
+      // settable by an admin and unvotable by anyone. Measured against a real
+      // server and then read out of the source; see docs/PROTOCOL.md.
+      expect(ChatFormat::isVotableBpm(40) && ChatFormat::isVotableBpm(400));
+      expect(!ChatFormat::isVotableBpm(39) && !ChatFormat::isVotableBpm(401));
+      expect(ChatFormat::isVotableBpi(2) && ChatFormat::isVotableBpi(64));
+      expect(!ChatFormat::isVotableBpi(1) && !ChatFormat::isVotableBpi(65));
+
+      expect(ChatFormat::isAdminSettableBpm(20), "admin BPM goes lower");
+      expect(ChatFormat::isAdminSettableBpi(1024), "admin BPI goes far higher");
+      expect(!ChatFormat::isAdminSettableBpm(19));
+      expect(!ChatFormat::isAdminSettableBpi(1025));
+
+      // The two cases that motivated this, and the reason it is not one range:
+      // both are legal on the server and neither can be voted for.
+      expect(ChatFormat::isAdminSettableBpi(124) &&
+                 !ChatFormat::isVotableBpi(124),
+             "BPI 124: settable, not votable");
+      expect(ChatFormat::isAdminSettableBpm(30) &&
+                 !ChatFormat::isVotableBpm(30),
+             "BPM 30: settable, not votable -- and an ordinary DAW tempo");
+    }
   }
 };
 
