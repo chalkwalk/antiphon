@@ -39,6 +39,7 @@ target_sources(NinjamTests
         BandPatchTests.cpp
         BotBandTests.cpp
         BotAddressTests.cpp
+        BotLanguageTests.cpp
         BotNamesTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
@@ -65,6 +66,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/BotAddress.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotLanguage.cpp
         ${CMAKE_SOURCE_DIR}/src/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
