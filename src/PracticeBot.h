@@ -107,6 +107,9 @@ private:
   // The arrival window: five seconds after connecting, decide whether to
   // announce the band, introduce ourselves, or stay quiet.
   void timerCallback() override;
+  int arrivalDelayMs() const;
+  static bool isOwnerName(const juce::String &username,
+                          const juce::String &ownerName);
 
   // Every bot in the room right now, ours or not, sorted so that every bot
   // computes the same list and therefore the same answer.

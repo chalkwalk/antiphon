@@ -525,4 +525,50 @@ Address classify(const Room &room, const std::string &me, const Incoming &msg,
   return Address::Ignore;
 }
 
+std::string withoutAddress(const Room &room, const std::string &self,
+                           const std::string &text) {
+  const auto *me = room.find(self);
+  if (me == nullptr)
+    return text;
+
+  // Every name this bot answers to, longest first so "Ravo[keys-bot]" is tried
+  // before "Ravo" and does not leave "[keys-bot]" behind.
+  std::vector<std::string> names{me->username, me->instrument, me->channel};
+  if (me->handleUsable)
+    names.push_back(me->handle);
+  std::sort(names.begin(), names.end(),
+            [](const std::string &a, const std::string &b) {
+              return a.size() > b.size();
+            });
+
+  std::string body = text;
+  // Leading whitespace first, so "  ravo: shake" is handled.
+  size_t begin = body.find_first_not_of(" \t");
+  if (begin == std::string::npos)
+    return text;
+  body = body.substr(begin);
+
+  const auto low = lowered(body);
+  for (const auto &name : names) {
+    if (name.empty() || name.size() >= low.size())
+      continue;
+    if (low.compare(0, name.size(), lowered(name)) != 0)
+      continue;
+    // It has to BE the name, not merely start with it: `kitten` is not `kit`.
+    size_t after = name.size();
+    if (isWordChar(body[after]))
+      continue;
+    // ...and it has to be used as an address, which is what the punctuation
+    // or the space after it says.
+    while (after < body.size() &&
+           (body[after] == ',' || body[after] == ':' || body[after] == ' ' ||
+            body[after] == '\t'))
+      ++after;
+    if (after >= body.size())
+      return text; // the name alone is an opener, not a command
+    return body.substr(after);
+  }
+  return body;
+}
+
 } // namespace BotAddress

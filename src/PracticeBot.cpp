@@ -330,6 +330,28 @@ void PracticeBot::timerCallback() {
       "say a name to talk to one of us. say \"part\" and we all go home.");
 }
 
+int PracticeBot::arrivalDelayMs() const {
+  // Derived from the name rather than drawn randomly, so a room is reproducible
+  // and a test can rely on it. Different names give different offsets, which is
+  // all the spread has to do.
+  std::uint32_t h = 2166136261u;
+  for (auto c : botName)
+    h = (h ^ (std::uint32_t)(juce::juce_wchar)c) * 16777619u;
+  return 4000 + (int)(h % 2000u);
+}
+
+// The owner as the ROOM sees them. An anonymous NINJAM login arrives as
+// `anonymous:nick`, so comparing against the bare nickname never matched and
+// the eviction rules -- the ones that stop a bot outliving the player who
+// brought it -- silently never fired for the commonest way anybody connects.
+bool PracticeBot::isOwnerName(const juce::String &username,
+                              const juce::String &ownerName) {
+  if (ownerName.isEmpty())
+    return false;
+  return username == ownerName ||
+         username.endsWithIgnoreCase(":" + ownerName);
+}
+
 void PracticeBot::onConnected() {
   // The arrival window: four seconds plus up to two more.
   //
@@ -341,10 +363,7 @@ void PracticeBot::onConnected() {
   // Derived from the name rather than drawn randomly, so a room is reproducible
   // and a test can rely on it. Different names give different offsets, which is
   // all the spread has to do.
-  std::uint32_t h = 2166136261u;
-  for (auto c : botName)
-    h = (h ^ (std::uint32_t)(juce::juce_wchar)c) * 16777619u;
-  startTimer(4000 + (int)(h % 2000u));
+  startTimer(arrivalDelayMs());
 
   // Beyond that, nothing to do. The channel list was stored before connecting and
   // NinjamClient sends it itself the moment auth succeeds
@@ -384,7 +403,31 @@ void PracticeBot::onRoomMembershipChange(const juce::String &username,
     juce::ScopedLock sl(stateMutex);
     ownerName = owner;
   }
-  if (ownerName.isEmpty() || username != ownerName)
+  // Introduce the band to the first person who turns up.
+  //
+  // The roster fires a few seconds after the BOTS connect, which in a room
+  // started by a host process is several seconds before any human is there --
+  // so the one line the band gets to introduce itself with was reliably said to
+  // an empty room. Re-arming for the first human keeps the same rule ("announce
+  // unless somebody announced me") and simply runs it when somebody can read it.
+  //
+  // Only for the first: with anybody else already present the band has been
+  // seen, and a roster per arrival is the chattiness this design exists to
+  // avoid.
+  if (joined && !BotNames::looksLikeBot(username.toStdString())) {
+    int otherHumans = 0;
+    for (const auto &m : netClient.getRoomMembers())
+      if (m.username != username && m.username != botName &&
+          !BotNames::looksLikeBot(m.username.toStdString()))
+        ++otherHumans;
+    if (otherHumans == 0) {
+      arrivalDone = false;
+      announcedMe = false;
+      startTimer(arrivalDelayMs());
+    }
+  }
+
+  if (!isOwnerName(username, ownerName))
     return;
 
   if (joined) {
@@ -422,7 +465,7 @@ bool PracticeBot::checkOwnerStillHere() {
 
   bool ownerPresent = false;
   for (const auto &m : netClient.getRoomMembers())
-    if (m.username == ownerName) {
+    if (isOwnerName(m.username, ownerName)) {
       ownerPresent = true;
       break;
     }
@@ -623,18 +666,24 @@ void PracticeBot::onChatMessage(const juce::String &type,
     break;
   }
 
-  if (text.trim().toLowerCase().contains("help")) {
+  // Take the address off before matching commands. `isShakeCommand` and friends
+  // match exactly, and "Ravo: shake" is not "shake" -- so naming the bot you
+  // wanted, which is the documented way to address one, defeated every command.
+  const juce::String body = juce::String(BotAddress::withoutAddress(
+      currentRoom(), botName.toStdString(), text.toStdString()));
+
+  if (body.trim().toLowerCase().contains("help")) {
     reply(helpLine(botName));
     return;
   }
 
-  const auto answer = handlePrivateCommand(text);
+  const auto answer = handlePrivateCommand(body);
   if (answer.isNotEmpty()) {
     reply(answer);
     return;
   }
 
-  if (handleBandCommand(text)) {
+  if (handleBandCommand(body)) {
     reply(botName + " ok.");
     return;
   }

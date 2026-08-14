@@ -152,7 +152,11 @@ target_sources(AntiphonPractice PRIVATE
 
 target_compile_definitions(AntiphonPractice PRIVATE
         JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0)
+        JUCE_USE_CURL=0
+        # runDispatchLoopUntil is gated behind this. The bots' chat handling and
+        # their arrival timer both run on the message thread, so this process
+        # has to pump it or the band is deaf.
+        JUCE_MODAL_LOOPS_PERMITTED=1)
 
 target_link_libraries(AntiphonPractice
     PRIVATE
