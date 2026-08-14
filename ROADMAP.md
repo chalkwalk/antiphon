@@ -520,6 +520,10 @@ restraint rather than conversation.
       answered by nobody. Four bots replying to one question is the annoyance
       the whole feature has to avoid. Corpus at
       `test/fixtures/bot-addressing.txt`, 143 cases, many of them "nobody".
+- [x] `tools/PracticeRoomMain.cpp` (`antiphon-practice`): hosts a room and waits,
+      so the band can be heard and talked to before any of it is reachable from
+      the plugin. Cheap because the room was designed as a destination rather
+      than a mode -- there was nothing to integrate, only something to start.
 - [ ] **Wire any of it to a bot.** `BotLanguage` and `BotAddress` both pass
       their corpora and neither has a caller: nothing in `PracticeBot` reaches
       them, so none of the measured accuracy is reachable by a player yet.
