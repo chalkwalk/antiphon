@@ -1,5 +1,7 @@
 #include "BandPatch.h"
 
+#include <limits>
+
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -22,7 +24,11 @@ void writeVoice(std::ostringstream &out, Band &band, BotBand::Voice voice) {
 
   for (const auto &knob : knobsFor(band, voice))
     out << prefix << "." << knob.name << "  " << number(*knob.value) << "  "
-        << number(knob.range->lo) << "  " << number(knob.range->hi) << "\n";
+        << number(knob.range->lo) << "  " << number(knob.range->hi)
+        << (knob.range->centreSet()
+                ? "  " + number(knob.range->centre)
+                : std::string())
+        << "\n";
 }
 
 // Find a knob by its full dotted name, across every voice and every selection.
@@ -36,7 +42,7 @@ void writeVoice(std::ostringstream &out, Band &band, BotBand::Voice voice) {
 // hands back while the selector is parked on "brass" go to the brass patch and
 // nowhere else.
 bool applyLine(Band &band, const std::string &name, double value, double lo,
-               double hi, bool hasRange) {
+               double hi, bool hasRange, double centre, bool hasCentre) {
   const auto keysWas = band.keysCharacter;
   const auto bassWas = band.bassTechnique;
   const auto leadWas = band.lead.instrument;
@@ -75,6 +81,11 @@ bool applyLine(Band &band, const std::string &name, double value, double lo,
           if (hasRange) {
             knob.range->lo = lo;
             knob.range->hi = hi;
+            // Absent means "nobody has listened yet", which is not the same as
+            // the arithmetic middle and must not be written as one.
+            knob.range->centre =
+                hasCentre ? centre
+                          : std::numeric_limits<double>::quiet_NaN();
           }
           found = true;
           break;
@@ -158,6 +169,10 @@ bool read(const std::string &text, Band &band, std::string &error) {
       return false;
     }
     const bool hasRange = (fields >> lo) && (fields >> hi);
+    // The sonic centre is optional: a file written before ranges carried one,
+    // or a range nobody has listened to yet, simply has two numbers.
+    double centre = 0.0;
+    const bool hasCentre = hasRange && (fields >> centre);
 
     if (name.compare(0, 5, "trim.") == 0) {
       const std::string leaf = name.substr(5);
@@ -176,7 +191,7 @@ bool read(const std::string &text, Band &band, std::string &error) {
       continue;
     }
 
-    if (!applyLine(band, name, value, lo, hi, hasRange)) {
+    if (!applyLine(band, name, value, lo, hi, hasRange, centre, hasCentre)) {
       error = "line " + std::to_string(lineNumber) + ": nothing called " + name;
       return false;
     }

@@ -77,12 +77,22 @@ public:
       b->setConnectedEdges(juce::Button::ConnectedOnLeft |
                            juce::Button::ConnectedOnRight);
     }
+    // Click GOES to an end; shift-click SETS that end from where the fader is.
+    //
+    // Setting is the operation that actually matters -- a range is arrived at
+    // by moving the fader until it stops sounding right and pinning it there --
+    // and doing it by reading the number off the slider and typing it into a
+    // box is enough friction to stop anybody doing it.
     lowButton.setButtonText("|<");
     midButton.setButtonText("<>");
     highButton.setButtonText(">|");
-    lowButton.onClick = [this] { jumpTo(0.0); };
-    midButton.onClick = [this] { jumpTo(0.5); };
-    highButton.onClick = [this] { jumpTo(1.0); };
+    lowButton.setTooltip("Go to the low end. Shift: set it from the fader.");
+    midButton.setTooltip("Go to the sonic centre -- the value a middling "
+                         "random draw lands on. Shift: set it from the fader.");
+    highButton.setTooltip("Go to the high end. Shift: set it from the fader.");
+    lowButton.onClick = [this] { endButton(End::Low); };
+    midButton.onClick = [this] { endButton(End::Centre); };
+    highButton.onClick = [this] { endButton(End::High); };
 
     for (auto *e : {&lowEditor, &highEditor}) {
       addAndMakeVisible(*e);
@@ -107,6 +117,9 @@ public:
                     juce::dontSendNotification);
     lowEditor.setText(twoDigits(knob.range->lo), juce::dontSendNotification);
     highEditor.setText(twoDigits(knob.range->hi), juce::dontSendNotification);
+    // A centre nobody has set is shown as the plain marker it is, so "not
+    // listened to yet" and "deliberately in the middle" do not look alike.
+    midButton.setButtonText(knob.range->centreSet() ? "<*>" : "<>");
     updating = false;
   }
 
@@ -122,10 +135,34 @@ public:
   }
 
 private:
-  void jumpTo(double u) {
+  enum class End { Low, Centre, High };
+
+  void endButton(End end) {
     if (knob.value == nullptr)
       return;
-    *knob.value = knob.range->at(u);
+
+    if (juce::ModifierKeys::getCurrentModifiers().isShiftDown()) {
+      const double here = slider.getValue();
+      switch (end) {
+      case End::Low:
+        if (here < knob.range->hi)
+          knob.range->lo = here;
+        break;
+      case End::High:
+        if (here > knob.range->lo)
+          knob.range->hi = here;
+        break;
+      case End::Centre:
+        if (here > knob.range->lo && here < knob.range->hi)
+          knob.range->centre = here;
+        break;
+      }
+      *knob.value = knob.range->clamp(*knob.value);
+    } else {
+      const double u = end == End::Low ? 0.0 : (end == End::High ? 1.0 : 0.5);
+      *knob.value = knob.range->at(u);
+    }
+
     refresh();
     if (onChange)
       onChange();

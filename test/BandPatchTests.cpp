@@ -19,6 +19,50 @@ public:
   }
 
   void runKnobTests() {
+    beginTest("a range can say where its middle SOUNDS");
+    {
+      // Without this a seed draws uniformly in arithmetic, which for anything
+      // perceptual is lopsided in tone: half of a 200..6000 Hz cutoff range
+      // sits above 3100 Hz, where little audible is still changing, so a
+      // "random" patch is bright four times out of five.
+      BotVoice::Range r{200.0, 6000.0};
+      expect(!r.centreSet(), "a range starts with nobody having listened");
+      expectWithinAbsoluteError(r.mid(), 3100.0, 1e-9);
+      expectWithinAbsoluteError(r.at(0.5), 3100.0, 1e-9);
+
+      r.centre = 800.0; // where it actually sounds halfway
+      expect(r.centreSet());
+
+      // Exact at all three anchors, which is the property that makes it
+      // possible to set by ear: you hear the value you pinned, not a curve's
+      // idea of it.
+      expectWithinAbsoluteError(r.at(0.0), 200.0, 1e-9);
+      expectWithinAbsoluteError(r.at(0.5), 800.0, 1e-9);
+      expectWithinAbsoluteError(r.at(1.0), 6000.0, 1e-9);
+
+      // Monotonic, so a bigger draw is never a smaller value.
+      double last = -1e18;
+      for (int i = 0; i <= 100; ++i) {
+        const double v = r.at(i / 100.0);
+        expect(v >= last, "at() went backwards at u=" + juce::String(i / 100.0));
+        expect(v >= r.lo && v <= r.hi, "at() left the range");
+        last = v;
+      }
+
+      // Half the draws now land below the sonic centre rather than below the
+      // arithmetic one, which is the entire point.
+      int below = 0;
+      for (int i = 0; i < 1000; ++i)
+        if (r.at(i / 999.0) < 800.0)
+          ++below;
+      expect(below > 450 && below < 550,
+             "draws below the centre: " + juce::String(below) + " of 1000");
+
+      // And the inverse puts a fader back where a value came from.
+      for (double u : {0.0, 0.25, 0.5, 0.75, 1.0})
+        expectWithinAbsoluteError(r.positionOf(r.at(u)), u, 1e-9);
+    }
+
     beginTest("every voice with knobs reports them, bound to live storage");
     {
       auto band = BandPatch::defaults();
