@@ -21,6 +21,21 @@ required -- but that constraint binds anyone who re-generates or subsets them.
 | **libogg / libvorbis** | `modules/ogg`, `modules/vorbis` (submodules) | BSD-style (Xiph) | Ogg/Vorbis encode and decode. |
 | **clap-juce-extensions** | `modules/clap-juce-extensions` (submodule) | MIT | CLAP plugin format support. |
 
+## Data
+
+| Component | Path | Licence | Notes |
+|---|---|---|---|
+| **SCOWL** word list | `src/BotDictionary.h` (generated) | Permissive, attribution required | The real-word gate for the practice room's chat parsing: a word that is ordinary English is not a mistyped one. Not the whole list -- `scripts/make_wordlist.py` keeps only the words within the typo-repair budget of a `BotLanguage` lexicon entry, which is the only place a dictionary can change a decision. |
+
+**SCOWL obligation.** Spell Checker Oriented Word Lists, Copyright 2000-2011
+Kevin Atkinson, taken from the Debian `wbritish` package. Use, copy, modify,
+distribute and sell are all granted without fee, provided the copyright notice
+and permission notice appear in copies and in supporting documentation --
+which this section is, and which the generated header repeats in its own
+comment so the notice travels with the file. The word lists come with no
+warranty. Constituent lists include the public-domain Moby Words II. GPLv3
+imposes nothing further here: the terms are strictly more permissive.
+
 That table is the whole list. In particular:
 
 - **No WDL.** Antiphon began by vendoring two Cockos WDL headers, `sha1` and
