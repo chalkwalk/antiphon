@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 // The band's synthesis: three drums and two pitched voices, in about as few
 // lines as will still sound like instruments.
@@ -94,9 +95,55 @@ inline float decayAt(double t, double seconds) {
 struct Range {
   double lo = 0.0, hi = 1.0;
 
-  double at(double u) const { return lo + (hi - lo) * u; }
-  double mid() const { return 0.5 * (lo + hi); }
+  // Where the MIDDLE of the range sounds, which is usually not the middle of
+  // the numbers.
+  //
+  // A seed draws `at(u)` for uniform u, so without this the draw is uniform in
+  // arithmetic and therefore lopsided in tone: half of a 200..6000 Hz cutoff
+  // range is above 3100 Hz, where almost nothing audible is still happening,
+  // and a "random" patch is bright four times out of five. The same is true of
+  // every decay time and every detune width in this file.
+  //
+  // So the range carries a third number: the value that should come up when
+  // the draw lands in the middle. `at` is two straight lines through it, which
+  // is exact at 0, 0.5 and 1 and predictable everywhere between -- a person
+  // tuning by ear can hear what it does, which a curve fitted to a formula
+  // does not offer.
+  //
+  // NaN means "nobody has listened yet", and then this behaves exactly as it
+  // did: the arithmetic middle. Every range in this file starts that way, so
+  // setting one is a claim somebody made rather than a default nobody checked.
+  double centre = std::numeric_limits<double>::quiet_NaN();
+
+  bool centreSet() const { return !std::isnan(centre); }
+  double mid() const {
+    return centreSet() ? clamp(centre) : 0.5 * (lo + hi);
+  }
+
+  double at(double u) const {
+    const double c = mid();
+    if (u <= 0.0)
+      return lo;
+    if (u >= 1.0)
+      return hi;
+    return u < 0.5 ? lo + (c - lo) * (u * 2.0)
+                   : c + (hi - c) * ((u - 0.5) * 2.0);
+  }
+
   double clamp(double v) const { return v < lo ? lo : (v > hi ? hi : v); }
+
+  // Where a value sits as a draw, i.e. the inverse of `at`. The lab needs it to
+  // put a fader where a stored value is.
+  double positionOf(double v) const {
+    const double c = mid();
+    if (v <= lo)
+      return 0.0;
+    if (v >= hi)
+      return 1.0;
+    if (v < c)
+      return c > lo ? 0.5 * (v - lo) / (c - lo) : 0.0;
+    return hi > c ? 0.5 + 0.5 * (v - c) / (hi - c) : 1.0;
+  }
 };
 
 // A kick drum is a struck membrane, and modelling it as one is the difference
