@@ -111,7 +111,7 @@ ServerBrowserDialog::~ServerBrowserDialog() {
   stopFetch.store(true);
   fetchSocket.close();
   if (fetchThread.joinable())
-    fetchThread.detach();
+    fetchThread.join();
 }
 
 void ServerBrowserDialog::dismiss() {
@@ -297,41 +297,87 @@ void ServerBrowserDialog::paintRowBackground(juce::Graphics &g, int /*row*/,
                      : juce::Colour(0xff111122));
 }
 
-void ServerBrowserDialog::paintCell(juce::Graphics &g, int row, int col, int w,
-                                    int h, bool /*selected*/) {
-  if (row >= servers.size())
-    return;
-  const auto &s = servers.getReference(row);
-  juce::String text;
-  switch (col) {
+void ServerBrowserDialog::paintCell(juce::Graphics &/*g*/, int /*row*/, int /*col*/,
+                                    int /*w*/, int /*h*/, bool /*selected*/) {
+  // Cell text and accessibility attributes are rendered by cell label components
+  // in refreshComponentForCell.
+}
+
+juce::Component *ServerBrowserDialog::refreshComponentForCell(
+    int rowNumber, int columnId, bool /*isRowSelected*/,
+    juce::Component *existingComponentToUpdate) {
+  auto *label = dynamic_cast<juce::Label *>(existingComponentToUpdate);
+  if (label == nullptr) {
+    delete existingComponentToUpdate;
+    label = new juce::Label();
+    label->setFont(juce::FontOptions{}.withHeight(13.0f));
+    label->setColour(juce::Label::textColourId, juce::Colours::white);
+    label->setJustificationType(juce::Justification::centredLeft);
+    label->setInterceptsMouseClicks(false, false);
+  }
+
+  if (rowNumber >= servers.size()) {
+    label->setText("", juce::dontSendNotification);
+    label->setTitle("");
+    label->setDescription("");
+    return label;
+  }
+
+  const auto &s = servers.getReference(rowNumber);
+  juce::String text, title, desc;
+  switch (columnId) {
   case 1:
     text = s.host + ":" + juce::String(s.port);
+    title = "Server: " + s.host + " port " + juce::String(s.port);
+    desc = "Server address " + s.host + " on port " + juce::String(s.port);
     break;
   case 2:
     text = s.bpm > 0 ? juce::String(s.bpm) : "-";
+    title = "BPM: " + (s.bpm > 0 ? juce::String(s.bpm) : juce::String("unknown"));
+    desc = "Tempo in beats per minute";
     break;
   case 3:
     text = s.bpi > 0 ? juce::String(s.bpi) : "-";
+    title = "BPI: " + (s.bpi > 0 ? juce::String(s.bpi) : juce::String("unknown"));
+    desc = "Beats per interval";
     break;
   case 4:
     text = s.players;
+    title = "Players: " + (s.players.isNotEmpty() ? s.players : juce::String("none"));
+    desc = "Active players in server";
     break;
   default:
     break;
   }
-  int textW = w - 8;
-  if (textW <= 0)
-    return;
-  g.setColour(juce::Colours::white);
-  g.setFont(juce::FontOptions{}.withHeight(13.0f));
-  g.drawFittedText(text, 4, 0, textW, h, juce::Justification::centredLeft, 1);
+
+  label->setText(text, juce::dontSendNotification);
+  label->setTitle(title);
+  label->setDescription(desc);
+  return label;
+}
+
+void ServerBrowserDialog::selectedRowsChanged(int lastRowSelected) {
+  if (lastRowSelected >= 0 && lastRowSelected < servers.size()) {
+    const auto &s = servers.getReference(lastRowSelected);
+    hostInput.setText(s.host, juce::dontSendNotification);
+    portInput.setText(juce::String(s.port), juce::dontSendNotification);
+  }
 }
 
 void ServerBrowserDialog::cellClicked(int row, int /*col*/,
                                       const juce::MouseEvent &) {
-  if (row >= servers.size())
-    return;
-  const auto &s = servers.getReference(row);
-  hostInput.setText(s.host, juce::dontSendNotification);
-  portInput.setText(juce::String(s.port), juce::dontSendNotification);
+  selectedRowsChanged(row);
+}
+
+void ServerBrowserDialog::cellDoubleClicked(int row, int /*col*/,
+                                            const juce::MouseEvent &) {
+  selectedRowsChanged(row);
+  connectButton.triggerClick();
+}
+
+void ServerBrowserDialog::returnKeyPressed(int lastRowSelected) {
+  if (lastRowSelected >= 0 && lastRowSelected < servers.size()) {
+    selectedRowsChanged(lastRowSelected);
+    connectButton.triggerClick();
+  }
 }
