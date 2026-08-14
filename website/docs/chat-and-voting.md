@@ -48,7 +48,20 @@ does for chords: it sends an ordinary chat message in a tagged form.
 - `/chords Am F C G` sends `| Am | F | C | G |`, which Jamtaba understands and
   Antiphon draws.
 
-Keys are read **only** from that tagged form, never from free chat text.
+**Somebody on another client can set the key too**, in either of two ways: type
+the tag `[key: D minor]` by hand, or put `/key D minor` at the **start** of a
+line. Other clients pass an unknown slash command straight through as chat, so
+the second works everywhere and is easier to type.
+
+The two forms exist because neither can do the other's job. The tag is matched
+anywhere in a line, so it can ride in the room topic -- which matters, because
+NINJAM replays no chat to somebody who joins later, and the topic is the only
+room state that persists. The `/key` form is matched only at the start of a
+line, which is what lets anyone *talk about* it: a sentence mentioning
+`/key D minor` in passing does not change the key, where a sentence mentioning
+the tag would.
+
+Keys are read **only** from those two forms, never from free chat text.
 Guessing at prose is how you end up with a header confidently announcing that
 the room is playing in "I am tired" -- which is a real entry in another client's
 own test suite.

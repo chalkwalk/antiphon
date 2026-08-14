@@ -373,7 +373,7 @@ ghosts out when you are not connected, and clears when you join a new session.
 | `hello` | Says hello to the room |
 | `/me plays a wrong note` | Third-person message |
 | `/msg bob you there?` | Private message to bob |
-| `/key Dm` | Tells the room the key |
+| `/key Dm` | Tells the room the key (any client can type `/key D minor` at the start of a line) |
 | `/chords Am F C G` | Tells the room the chords |
 | `/chords ii V I` | The same, in degrees, once a key is set |
 | `/topic Jam in D minor` | Sets the room topic |

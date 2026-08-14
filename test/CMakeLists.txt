@@ -31,6 +31,7 @@ target_sources(NinjamTests
         AccessibilityAuditTests.cpp
         SpscRingTests.cpp
         ChatFormatTests.cpp
+        BotAnswerTests.cpp
         MusicalKeyTests.cpp
         EuclideanTests.cpp
         HarmonyTests.cpp
@@ -72,6 +73,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotAnswer.cpp
         ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
         ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp

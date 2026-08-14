@@ -546,59 +546,40 @@ Mirn[kit-bot]: tempo is a server vote, not mine to give. we are at 120 bpm,
                does.
 ```
 
-**The key is the exception, and the reason is that the explanation is
-unsayable.** `MusicalKey::parseTagged` finds `[key:` *anywhere* in a line and
-reads to the next `]` -- which is what lets a key ride in the server topic. So a
-bot that helpfully said `type "[key: G minor]" in chat` would **set the key to G
-minor by saying it**, in its own state and in every Antiphon client in the room.
-The advice performs the action.
+**The key was the exception, and the fix was a second form.**
+`MusicalKey::parseTagged` matches `[key:` anywhere in a line, so a reply
+explaining the tag would set the key by explaining it -- the advice performs the
+action. That is why `/key D minor` is now also accepted, matched only at the
+**start** of a line: it is sayable, and it is typeable from any client, since
+other clients pass an unknown slash command through as ordinary chat.
 
-That is not a bug to work around with careful quoting. It is the design telling
-us the bot should not be explaining a syntax at all:
+So a bot explains, and offers to act as a shortcut rather than as the only
+option. `MusicalKey::announcementAdvice` is the one place that produces the
+sayable form, and `test/BotAnswerTests.cpp` asserts that **no reply this
+codebase can generate parses as a key announcement**. That test earns its place:
+it caught the same class of bug a second time, when dropping a provenance suffix
+left `describeChart` returning bare chart text that any client would have read
+as somebody announcing a chart.
 
-**A bot is a translator, not a returning officer.** `pundo, can we play in g
-minor` is already recognised as `SET_KEY`; the bot answers by putting the tag up
-itself, and that single line both announces the change and *is* the mechanism:
+**The chart needs none of this.** A chart must *begin* its line
+(`Harmony.cpp:622`), so `| Am | F |` is quotable mid-sentence and a bot can
+simply explain it. The asymmetry is not inconsistency: it is the two parsers
+being strict and loose for good reasons of their own -- the chart parser strict
+to keep prose out, the key parser loose so a key can ride in the topic.
 
-```
-you: pundo, can we play in g minor
-Pundo[keys-bot]: putting it up for the room -- was D minor. [key: G minor]
-```
+**Nothing a bot says is client-specific in the room.** The owner is the one
+player whose client is known for certain. Shorthands belong in a private message
+to them; room chat gets the portable form.
 
-**This grants the bots no authority they did not have**, which is the test any
-proposal here has to pass. Setting the key is not client-gated: `parseTagged`
-does not care who sent the line, and `/key Dm` is only a typing shortcut for a
-tag any player in any client can type by hand. The friction is sixteen
-characters of exact syntax, not permission. A bot echoing a tag on request is
-therefore exactly as democratic as the human typing it -- same power, less
-typing -- while a bot *voting* on the key would invent an authority that does
-not currently exist and make the key **harder** to set than it is today, which
-is the opposite of the problem.
-
-Two conditions on it, and the first is the one that matters:
-
-- **Only on an addressed request, and only when the key parsed confidently.**
-  A bot that puts up the wrong key is far worse than one that puts up none. Slot
-  extraction needs the original capitals (`Am` is a chord, `am` is a verb), so
-  it belongs to the caller, and when it fails the honest answer is "i could not
-  tell which key you meant".
-- **One bot, not four** -- the common-answer arbitration below. Four bots
-  echoing four tags is four key changes.
-
-**On `!vote key C`.** Tempting, and not recommended. What a server does with an
-unknown `!vote` subcommand is unknown to us: it may reject it to the sender
-alone, swallow it, or pass it through as ordinary chat, and only the third makes
-a tally possible. That is measurable with `scripts/testserver.sh` and should be
-measured before anyone builds on it. But even if it passes through, borrowing
-the server's own vote syntax for something the server does not implement is a
-fake wearing the real thing's clothes: it would show none of the server's
-`N/M votes` accounting, would not expire the way a real vote does, and would
-collide outright if NINJAM ever adds key voting. If a tally is ever wanted, it
-should be visibly ours.
+**The replies are `src/BotAnswer.{h,cpp}`**, pure functions over a small `Room`
+struct, so every line a bot can say is readable -- and reviewable -- without
+starting a room. `test/BotAnswerTests.cpp` prints the whole transcript, because
+a sentence that reads badly is a defect no assertion catches.
 
 **The two special cases are both about not implying a decision was made.**
 
-A key is never absent -- the room starts at C major (`PracticeRoom.h`) -- but
+Neither a key nor a chart is ever absent -- the room starts at C major
+(`PracticeRoom.h`), and a key arriving sets `Harmony::defaultChart` -- but
 being *defaulted* and being *chosen* are different facts, and reporting the
 first as though it were the second tells somebody the room has settled on
 something it has not:
@@ -608,17 +589,43 @@ Pundo[keys-bot]: nobody has named a key, so i defaulted to C major. name one
                  and i will put it up for the room.
 ```
 
-A chart genuinely can be absent, and then the band is playing on the key alone.
-Saying so is the useful part, because it explains what they *are* doing:
+A chart is never absent either, which corrected an earlier draft here: "playing
+on the key alone" was false, and a bot being wrong about what it is playing is
+a bot being wrong about the only thing it is authoritative on. It names the
+chart it is actually on -- which doubles as the example, and a *safe* one, since
+a generic `| Am | F | C | G |` pasted into a room in D minor would silently move
+the harmony:
 
 ```
-Quado[lead-bot]: the chart is whatever the room agrees, and nobody has put one
-                 up -- i am playing on the key alone. type one in chat, like
-                 "| Am | F | C | G |", and i will follow it.
+Quado[lead-bot]: nobody has put a chart up, so i am on | Dm | Bb | F | C |, the
+                 default for the key. put one on a line of its own, starting
+                 with a bar, and i will play it.
 ```
 
 `REPORT_KEY` and `REPORT_CHART` carry the same two distinctions, which is why
 the intent table says "and whether it was told or defaulted".
+
+### Settled
+
+- A **default is never reported as a decision**: key and chart each carry their
+  source (defaulted / from the topic / said in chat, with who).
+- A **topic value says so, and bounds its claim** to "nobody has said otherwise
+  since i joined" -- the topic reaches only a joining client, so its age is
+  unknowable.
+- An **unreadable key is answered, not guessed**. Putting up the wrong key is
+  worse than putting up none.
+- The **tempo reply names both numbers always**, because 120 at 8 and 120 at 32
+  are different rooms; names only the one that was asked to change; and
+  **refuses what the server would refuse**, since an out-of-range `!vote` is
+  answered with a complaint about the command's parameters.
+- **A bot never starts a vote, even asked to.** Four bots backing one person on
+  request is that person having four votes.
+- A **two-part question gets one reply**, not two: chat is the scarce resource.
+- **Mixed common and personal**: each addressed bot answers its personal part,
+  and whichever wins the delay-and-watch race also carries the common one.
+
+Not built: syncing the practice room's topic to the key, which needs a chat hook
+on `PracticeServer` that does not exist yet. See `ROADMAP.md`.
 
 ### Common answers, and the one bot that gives them
 

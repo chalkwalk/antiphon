@@ -146,6 +146,42 @@ public:
       expect(displayName(none).isEmpty());
       expect(scaleNotes(none).isEmpty());
     }
+
+    beginTest("a key announcement has two forms, and only one is sayable");
+    {
+      // The tag, matched anywhere, so it can ride in the server topic.
+      expect(parseAnnouncement("[key: D minor]").valid);
+      expect(parseAnnouncement("blues jam [key: D minor] all welcome").valid);
+      expectEquals(displayName(parseAnnouncement("nice [key: G minor] one")),
+                   juce::String("G minor"));
+
+      // The command form, line-leading only.
+      expectEquals(displayName(parseAnnouncement("/key G minor")),
+                   juce::String("G minor"));
+      expectEquals(displayName(parseAnnouncement("  /key Dm  ")),
+                   juce::String("D minor"));
+      expect(parseAnnouncement("/KEY Am").valid, "case is not the point");
+
+      // ...and THAT is the whole reason the second form exists. A bot must be
+      // able to say how the key is set without setting it, which it can never
+      // do with the tag, because the tag is matched anywhere.
+      const auto advice =
+          "the key is the room's. type \"" +
+          announcementAdvice(parseName("G minor")) + "\" to change it.";
+      expect(!parseAnnouncement(advice).valid,
+             "a bot explaining the key would have set it: " + advice);
+
+      // The same sentence built round the tag DOES set it -- kept as a test so
+      // nobody reintroduces the tag into reply text.
+      expect(parseAnnouncement("type \"[key: G minor]\" to change it").valid,
+             "the tag really is unsayable; this is why announcementAdvice "
+             "exists");
+
+      // Not a key announcement at all.
+      for (const char *no : {"what key are we in", "/keys are broken",
+                             "i said /key earlier", "key: G minor"})
+        expect(!parseAnnouncement(no).valid, juce::String(no) + " set the key");
+    }
   }
 };
 

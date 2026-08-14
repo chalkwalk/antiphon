@@ -66,8 +66,35 @@ Key parseTagged(const juce::String &text);
 // The message `/key Dm` sends: "[key: D minor]".
 juce::String buildTagged(const Key &key);
 
+// A key announcement in EITHER of the two forms the room understands.
+//
+// There are two because neither can do the other's job:
+//
+//   `[key: D minor]`  matched ANYWHERE in the line, so it can ride in the
+//                     server topic -- the only room state NINJAM makes
+//                     persistent, since it replays no chat to a late arrival.
+//   `/key D minor`    matched only at the START of a line, and containing no
+//                     `[key:`, so a bot can quote it in a sentence without
+//                     setting the key by explaining it.
+//
+// The second exists precisely because the first is unsayable. `parseTagged`
+// finding the tag anywhere means any advice about it performs it, so without a
+// line-leading form a bot could never tell anyone how to change the key -- it
+// could only change it for them. It is also typeable in any client: other
+// clients pass an unknown slash command through as ordinary chat.
+//
+// Use THIS on anything arriving from the wire. `parseTagged` remains for the
+// places that specifically mean the tag.
+Key parseAnnouncement(const juce::String &line);
+
 // "D minor". Empty for an invalid key.
 juce::String displayName(const Key &key);
+
+// What a bot should tell somebody to type. Deliberately NOT the tag, because
+// saying the tag sets the key.
+inline juce::String announcementAdvice(const Key &key) {
+  return "/key " + displayName(key);
+}
 
 // The notes of the scale, spelled to match the tonic: "D E F G A Bb C".
 // Empty for an invalid key. Useful spoken as well as shown -- a player who
