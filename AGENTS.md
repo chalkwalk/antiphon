@@ -124,6 +124,9 @@ test/
   fixtures/testserver.cfg   # config for the local ninjamsrv
 tools/
   StemsMain.cpp             # antiphon-stems: session archive -> WAV stems
+  PracticeRoomMain.cpp      # antiphon-practice: hosts a practice room; join it
+                            #   with the standalone. The only way to meet the
+                            #   band today -- nothing in src/ starts a room.
 scripts/
   testserver.sh             # fetches, builds and runs a local ninjamsrv out of tree
   analyze_archive.py        # measures a server session archive
@@ -154,6 +157,9 @@ ctest --test-dir build --output-on-failure
 # count, and the report goes to stdout. Runs headless, no display needed --
 # but NOT in CI, where it is excluded on every platform. See ROADMAP.md.
 ./build/test/AntiphonAudit_artefacts/AntiphonAudit
+# Host a practice room and join it with the standalone on the port it prints.
+# The band is not reachable from the plugin yet; this is how you hear it.
+./build/tools/AntiphonPractice_artefacts/AntiphonPractice --key "D minor"
 # Offline: turn a session archive into WAV stems.
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/
 # Tuning the band's synthesis: render one voice and measure it. The numbers it

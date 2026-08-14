@@ -109,3 +109,59 @@ target_link_libraries(AntiphonBandLab
         juce::juce_recommended_config_flags)
 
 target_include_directories(AntiphonBandLab PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# ---------------------------------------------------------------------------
+# antiphon-practice: host a practice room and wait for you to join it.
+#
+# The room is a destination rather than a mode, so hosting it and playing in it
+# are separate jobs: this process is the far side of the connection and renders
+# nothing locally. Console app, no audio device, no GUI -- juce_audio_utils is
+# NOT linked, for the same reason as AntiphonStems.
+#
+# Exists because nothing in src/ constructs a PracticeRoom yet; see ROADMAP.md.
+# ---------------------------------------------------------------------------
+
+juce_add_console_app(AntiphonPractice
+    COMPANY_NAME "Chalkwalk"
+    PRODUCT_NAME "antiphon-practice")
+
+juce_generate_juce_header(AntiphonPractice)
+
+target_sources(AntiphonPractice PRIVATE
+        PracticeRoomMain.cpp
+        ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
+        ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
+        ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
+        ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotAddress.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotLanguage.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotAnswer.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotNames.cpp
+        ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
+        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
+        ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp
+        ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
+        ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
+        ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
+        ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
+        ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
+        ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp
+        ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
+        ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp)
+
+target_compile_definitions(AntiphonPractice PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+
+target_link_libraries(AntiphonPractice
+    PRIVATE
+        juce::juce_audio_formats
+        juce::juce_events
+        ogg
+        vorbis
+        vorbisenc
+    PUBLIC
+        juce::juce_recommended_config_flags)
+
+target_include_directories(AntiphonPractice PRIVATE ${CMAKE_SOURCE_DIR}/src)
