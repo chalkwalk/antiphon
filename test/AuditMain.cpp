@@ -23,6 +23,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "ServerBrowserDialog.h"
+#include "ShortcutsDialog.h"
 
 namespace {
 
@@ -161,6 +162,13 @@ int main() {
     browser.anonymousToggle.setToggleState(false, juce::sendNotification);
     settle(browser);
     results.push_back(auditState("connect dialog", {editor, &browser}));
+  }
+
+  {
+    ShortcutsDialog shortcutsDlg;
+    shortcutsDlg.setSize(600, 460);
+    settle(shortcutsDlg);
+    results.push_back(auditState("shortcuts dialog", {editor, &shortcutsDlg}));
   }
 
   // The screen a user only meets when something has already gone wrong, which

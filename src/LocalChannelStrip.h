@@ -27,7 +27,20 @@ public:
   // Keeps the strip's spoken identity in step with its editable name.
   void refreshAccessibleName();
 
+  bool isSelected() const { return selected; }
+  void setSelected(bool sel);
+
+  void toggleMute();
+  void toggleSolo();
+  void toggleTransmit();
+  void nudgeVolume(float deltaDb);
+  void nudgePan(float delta);
+
+  int getChannelIndex() const { return channelIndex; }
+  juce::String getChannelName() const { return nameEditor.getText(); }
+
 private:
+  bool selected = false;
   AntiphonAudioProcessor &audioProcessor;
   std::shared_ptr<AntiphonAudioProcessor::LocalChannel> channel;
 

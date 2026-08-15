@@ -7,6 +7,8 @@
 #include "MusicalKey.h"
 #include "Announcer.h"
 #include "Shortcuts.h"
+#include "SelectionModel.h"
+#include "ShortcutsDialog.h"
 #include "StatusReadout.h"
 #include "PluginProcessor.h"
 #include "RemoteUserStrip.h"
@@ -77,6 +79,9 @@ private:
   // Speaks the header, which is otherwise only pixels. First in tab order.
   StatusReadout statusReadout;
   Announcer announcer;
+  Selection::Model selectionModel;
+  void updateSelectionHighlights();
+  void announceCurrentSelection();
   // Returns true when the spoken/painted status actually changed.
   bool updateStatusReadout();
   // Both key routes funnel here, so a shortcut cannot work on one and not the
@@ -98,12 +103,14 @@ private:
   // A desktop window has its own peer and takes focus normally.
   std::unique_ptr<ServerBrowserDialog> serverBrowser;
   juce::Component::SafePointer<juce::DialogWindow> serverBrowserWindow;
-  // JUCE does not return keyboard focus when a modal window closes, which
-  // leaves a screen reader user somewhere arbitrary after connecting. We put
-  // them back where they were.
   juce::Component::SafePointer<juce::Component> focusBeforeDialog;
   void openServerBrowser();
   void closeServerBrowser();
+
+  std::unique_ptr<ShortcutsDialog> shortcutsDialog;
+  juce::Component::SafePointer<juce::DialogWindow> shortcutsDialogWindow;
+  void openShortcutsDialog();
+  void closeShortcutsDialog();
 
   juce::ToggleButton metronomeToggle;
   juce::Slider metronomeVolumeSlider;

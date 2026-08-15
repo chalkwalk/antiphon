@@ -355,7 +355,7 @@ juce::Component *ServerBrowserDialog::refreshComponentForCell(
   }
 
   label->setText(text, juce::dontSendNotification);
-  label->setTitle(title);
+  label->setTitle("");
   label->setDescription(desc);
   return label;
 }
