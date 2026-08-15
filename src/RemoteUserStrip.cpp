@@ -1,3 +1,4 @@
+#include "AntiphonLookAndFeel.h"
 #include "RemoteUserStrip.h"
 
 RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p,
@@ -28,6 +29,19 @@ int RemoteUserStrip::getPreferredWidth() const {
 void RemoteUserStrip::paint(juce::Graphics &g) {
   g.setColour(juce::Colour(0xff2a2a3e));
   g.fillRoundedRectangle(getLocalBounds().toFloat(), 4.0f);
+
+  if (selected) {
+    g.setColour(juce::Colour(AntiphonTheme::kAccent));
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1.0f), 4.0f,
+                           2.0f);
+  }
+}
+
+void RemoteUserStrip::setSelected(bool sel) {
+  if (selected != sel) {
+    selected = sel;
+    repaint();
+  }
 }
 
 void RemoteUserStrip::resized() {

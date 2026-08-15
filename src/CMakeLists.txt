@@ -66,6 +66,7 @@ target_sources(Antiphon
         MusicalKey.cpp
         AccessibilityAudit.cpp
         ServerBrowserDialog.cpp
+        ShortcutsDialog.cpp
         Sha1.cpp
         VorbisCodec.cpp
 )
