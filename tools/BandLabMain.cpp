@@ -53,6 +53,57 @@ juce::String twoDigits(double v) {
 // The buttons exist because that is how a range is actually judged. You do not
 // decide "9 to 16 cents" by sweeping a slider; you listen to 9, listen to 16,
 // and ask whether both of them are still the instrument. One click each.
+// A fader that spans MORE than the bot's range, and shows the difference.
+//
+// The fader used to span exactly lo..hi, which meant it could never be moved
+// outside them -- so shift-click could only ever shrink a range and widening
+// one meant typing. The fader now spans the shipped range widened by half its
+// width at each end, and the part the seed may actually reach is drawn inside
+// it: shaded where the bot cannot go, with a marker at the value a middling
+// draw lands on.
+class RangeSlider : public juce::Slider {
+public:
+  double lo = 0.0, hi = 1.0, centre = 0.0;
+  bool centreSet = false;
+
+  void paint(juce::Graphics &g) override {
+    juce::Slider::paint(g);
+
+    const int y = 0, h = getHeight();
+    const float xLo = (float)getPositionOfValue(lo);
+    const float xHi = (float)getPositionOfValue(hi);
+
+    // Out of the seed's reach. Drawn over the track rather than instead of it,
+    // so the fader still reads as one continuous control that happens to have
+    // a usable middle.
+    g.setColour(juce::Colours::black.withAlpha(0.45f));
+    const float left = (float)getPositionOfValue(getMinimum());
+    const float right = (float)getPositionOfValue(getMaximum());
+    if (xLo > left)
+      g.fillRect(juce::Rectangle<float>(left, (float)y, xLo - left, (float)h));
+    if (right > xHi)
+      g.fillRect(juce::Rectangle<float>(xHi, (float)y, right - xHi, (float)h));
+
+    // The ends themselves, so a range that has been narrowed to nothing is
+    // still visible.
+    g.setColour(juce::Colours::white.withAlpha(0.55f));
+    g.drawVerticalLine((int)xLo, (float)y, (float)(y + h));
+    g.drawVerticalLine((int)xHi, (float)y, (float)(y + h));
+
+    // Where the middle SOUNDS. Hollow until somebody has said so, so an
+    // unlistened range and a judged one do not look alike.
+    const float xMid = (float)getPositionOfValue(centre);
+    juce::Path tri;
+    tri.addTriangle(xMid - 4.0f, (float)y, xMid + 4.0f, (float)y, xMid,
+                    (float)y + 5.0f);
+    g.setColour(juce::Colours::orange);
+    if (centreSet)
+      g.fillPath(tri);
+    else
+      g.strokePath(tri, juce::PathStrokeType(1.0f));
+  }
+};
+
 class KnobRow : public juce::Component {
 public:
   std::function<void()> onChange;
@@ -102,8 +153,10 @@ public:
     }
   }
 
-  void bind(const BandPatch::Knob &k) {
+  void bind(const BandPatch::Knob &k, double outerLow, double outerHigh) {
     knob = k;
+    outerLo = outerLow;
+    outerHi = outerHigh;
     nameLabel.setText(k.name, juce::dontSendNotification);
     refresh();
   }
@@ -112,9 +165,15 @@ public:
     if (knob.value == nullptr)
       return;
     updating = true;
-    slider.setRange(knob.range->lo, knob.range->hi, 0.0);
-    slider.setValue(knob.range->clamp(*knob.value),
-                    juce::dontSendNotification);
+    // The FADER spans wider than the range, so a range can be widened by
+    // moving the fader past its end and pinning it there.
+    slider.setRange(juce::jmin(outerLo, knob.range->lo),
+                    juce::jmax(outerHi, knob.range->hi), 0.0);
+    slider.lo = knob.range->lo;
+    slider.hi = knob.range->hi;
+    slider.centre = knob.range->mid();
+    slider.centreSet = knob.range->centreSet();
+    slider.setValue(*knob.value, juce::dontSendNotification);
     lowEditor.setText(twoDigits(knob.range->lo), juce::dontSendNotification);
     highEditor.setText(twoDigits(knob.range->hi), juce::dontSendNotification);
     // A centre nobody has set is shown as the plain marker it is, so "not
@@ -187,8 +246,9 @@ private:
   }
 
   BandPatch::Knob knob;
+  double outerLo = 0.0, outerHi = 1.0;
   juce::Label nameLabel;
-  juce::Slider slider;
+  RangeSlider slider;
   juce::TextButton lowButton, midButton, highButton;
   juce::TextEditor lowEditor, highEditor;
   bool updating = false;
@@ -609,10 +669,35 @@ private:
     rebuildSelectionBox();
 
     const auto knobs = BandPatch::knobsFor(band, currentVoice());
+
+    // The fader's extent comes from the SHIPPED range, not the current one, so
+    // it stays put while a range is edited. Anchoring it to the live range
+    // would shrink the fader every time the range was narrowed, and there would
+    // be no way back out.
+    static BandPatch::Band shipped = BandPatch::defaults();
+    shipped.keysCharacter = band.keysCharacter;
+    shipped.bassTechnique = band.bassTechnique;
+    shipped.lead.instrument = band.lead.instrument;
+    const auto shippedKnobs = BandPatch::knobsFor(shipped, currentVoice());
+
     rowWidgets.clear();
-    for (const auto &knob : knobs) {
+    for (size_t i = 0; i < knobs.size(); ++i) {
+      const auto &knob = knobs[i];
+      // Half the shipped width beyond each end. Not below zero when the
+      // shipped range was not: a negative level or decay time is not a sound
+      // to go looking for, where a negative detune is.
+      double outerLo = knob.range->lo, outerHi = knob.range->hi;
+      if (i < shippedKnobs.size() && shippedKnobs[i].range != nullptr) {
+        const auto &sr = *shippedKnobs[i].range;
+        const double span = sr.hi - sr.lo;
+        outerLo = sr.lo - 0.5 * span;
+        outerHi = sr.hi + 0.5 * span;
+        if (sr.lo >= 0.0)
+          outerLo = juce::jmax(0.0, outerLo);
+      }
+
       auto row = std::make_unique<KnobRow>();
-      row->bind(knob);
+      row->bind(knob, outerLo, outerHi);
       row->onChange = [this] { rerender(); };
       rows.addAndMakeVisible(*row);
       rowWidgets.push_back(std::move(row));
