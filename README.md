@@ -56,13 +56,15 @@ centre, chat on the right](docs/images/antiphon.png)
 |---|---|
 | **Works** | Connecting, transmitting, receiving, multi-channel, stem routing, chat, voting, the metronome, DAW tempo sync |
 | **Verified** | Interoperability with the official NINJAM reference client, measured -- interval grid, transmit alignment, audio in both directions, chat. See [`docs/PARITY.md`](docs/PARITY.md) |
-| **Used on** | Linux, CLAP format, one DAW, plus the standalone |
+| **Used on** | Linux, CLAP format, one DAW, plus the standalone. Once on macOS, as an AU: built, loaded in a host and used to join a jam, by a contributor on their own machine |
 | **Builds on** | Linux, macOS and Windows -- all three compile and pass the full unit suite in CI, with no platform-specific source |
-| **Not yet** | Loaded in a host on macOS or Windows: nothing there has opened a window, opened a device or joined a jam. The AU build is newer still -- it has never been compiled on this machine, which is Linux, so CI is the first thing to build it and no host has seen it. No packaged installers, no release |
+| **Not yet** | Loaded in a host on Windows: nothing there has opened a window, opened a device or joined a jam. macOS has been through that path exactly once, by hand -- it is not regularly tested and nothing automated instantiates the plugin on any platform. No packaged installers, no release |
 
-If you are on Linux and comfortable with CMake, it works today. macOS and
-Windows build and test clean, but "compiles and passes its tests" is not the
-same as "works in your DAW", and nobody has checked the second thing yet. If you
+If you are on Linux and comfortable with CMake, it works today. macOS has been
+run for real once, including with a screen reader, and the report was good -- but
+once is once, and it is not part of any automated check, so treat it as
+encouraging rather than as a guarantee. Windows builds and tests clean, and
+"compiles and passes its tests" is not the same as "works in your DAW". If you
 are waiting for a download, that is [on the roadmap](ROADMAP.md).
 
 ---

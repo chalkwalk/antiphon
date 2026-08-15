@@ -17,24 +17,38 @@ satisfy, see `PRINCIPLES.md`, and for the standing refusals `NON-GOALS.md`.
 
 ## Active focus
 
-*(2026-08-08)*
+*(2026-08-15)*
 
-The client works: it connects to real servers, transmits and receives audio in
-time with other clients, and has been verified differentially against the
-reference client at two tempos (`docs/PARITY.md`). The accessibility pass has
-just landed -- every control is named, the header is readable, and the audit runs
-headlessly.
+The client works, and it has now been used by somebody other than its author.
+It connects to real servers, transmits and receives in time with other clients,
+and is verified differentially against the reference client at two tempos
+(`docs/PARITY.md`). A contributor has built the AU on macOS, joined a jam and
+worked it with a screen reader, reporting that it compares favourably with the
+official client -- the first evidence the accessibility pass works where it
+counts. Bounded honestly under *Screen-reader verification*.
+
+The three items this block listed on 2026-08-08 have all landed: audio-thread
+hygiene is down to the one tracked `callAsync`, the GitHub move shipped, and all
+three platforms build and pass the unit suite. The work since has been the
+practice room and its band.
 
 Next, in order:
 
-1. **Audio-thread hygiene** -- two known real-time violations, both easy, both
-   the kind of thing that becomes a dropout report from a user we cannot debug
-   for.
-2. **The GitHub move** -- `LICENSE`, `CONTRIBUTING.md` and a README that stands
-   on its own, since the project is going public.
-3. **Cross-platform builds** -- everything so far is Linux and CLAP. The
-   accessibility work in particular is *only* effective on the two platforms we
-   have never built for.
+1. **Bots that talk** -- specifically, wiring `BotLanguage` and `BotAnswer` into
+   `PracticeBot`. Both are finished and measured (99.3% on a held-out corpus)
+   and **neither has a caller**, so none of that accuracy is reachable by a
+   player. The largest gap in the project between what is built and what can be
+   used, and the cheapest to close.
+2. **Turn the macOS report into findings** -- a verdict cannot be acted on. Ask
+   for the specifics while they are fresh, and decide what stops the AU
+   regressing silently, `auval` in CI being the cheap first answer.
+3. **Windows in a host** -- the remaining platform where nothing has opened a
+   window, opened a device or joined a jam, and half of where the
+   screen-reader work is reachable at all.
+
+Explicitly *not* next: **breaking the repository up**. The argument is recorded
+in that work area and is unchanged -- restructuring around a feature no user can
+reach yet is optimising the wrong axis while item 1 is unbuilt.
 
 ---
 
@@ -378,12 +392,34 @@ an actual screen reader. The mechanical audit cannot judge whether a description
 is helpful, whether the tab order feels sane, or whether announcements land at
 useful moments.
 
-- [ ] Test with VoiceOver on macOS and NVDA on Windows -- the two platforms where
-      JUCE actually has a backend.
-- [ ] Get a session with a screen reader user, which is the only thing that
-      answers the questions the audit cannot.
+**First external result, macOS, from a screen reader user.** A contributor built
+the AU on their own Mac, loaded it in a host, joined a jam and worked the plugin
+with a screen reader. Their assessment was that it compares *favourably* with the
+official client, and that they intend to recommend it to blind musicians they
+play with. This is the first evidence the accessibility pass works where it
+counts rather than where it is measured, and the audit alone could never have
+produced it.
+
+Hold it at what it is, though: **one session, one platform, one person, recorded
+from a verbal report rather than from notes.** It is strong evidence the approach
+is right and weak evidence about any specific control. Nothing here is a
+substitute for the checkboxes below, and the standing rule (`PRINCIPLES §5`)
+applies -- a favourable result gets the same scrutiny as an unfavourable one.
+
+- [x] Test with VoiceOver on macOS. Done once, by hand, as above.
+- [ ] **Capture what was actually found.** The report was a verdict, not a list.
+      Ask for the specifics while they are still fresh: which controls read
+      badly, where the tab order surprised them, whether announcements arrived
+      at useful moments, and what they reached for that was not there. A verdict
+      cannot be turned into a fix; a list can.
+- [ ] Test with NVDA on Windows -- the other platform where JUCE has a backend,
+      and still wholly unexercised.
+- [ ] Repeat sessions rather than one. The questions the audit cannot answer are
+      not answered once either, and the people best placed to answer them are
+      now reachable.
 - [ ] Assess the standalone's audio-device picker (stock
-      `AudioDeviceSelectorComponent`, never looked at).
+      `AudioDeviceSelectorComponent`, never looked at). Not covered by the
+      session above, which came in through the AU.
 
 ### Chat history structure
 
@@ -454,6 +490,14 @@ restraint rather than conversation.
       all: `test/fixtures/bot-phrases.txt`, 607 lines, **a quarter of them held
       out from tuning**. The three miss rates over the holdout are the numbers
       to quote and drive down.
+- [x] **They have been driven down, and this axis is finished.** Measured
+      2026-08-15 by `NinjamTests BotLanguage`: tune 467/469 correct (99.6%),
+      **holdout 147/148 (99.3%)** -- fallback 0.0%, clarify 0.0%, wrong 0.7%,
+      which is a single held-out case. `BotAddress` is 143/143 over its own
+      corpus and `BotAnswer` passes 74 assertions. Further tuning would be
+      fitting to noise; the remaining work on this feature is *connection*, not
+      accuracy. Re-run the suites rather than citing these numbers second-hand
+      (`PRINCIPLES §5`).
 - [ ] **Measure the server's vote threshold.** `docs/BOT-CHAT.md` proposes how
       the band votes, and the whole proposal rests on `M` as a function of the
       number of clients -- which nothing here records. Connect a varying number
@@ -527,9 +571,37 @@ restraint rather than conversation.
 - [ ] **Chat entry affordances**: cursor up/down through sent-message history,
       and tab completion of usernames. Addressing a bot means typing its name,
       so completion is not a convenience here -- it is most of the friction.
-- [ ] **Wire any of it to a bot.** `BotLanguage` and `BotAddress` both pass
-      their corpora and neither has a caller: nothing in `PracticeBot` reaches
-      them, so none of the measured accuracy is reachable by a player yet.
+- [x] **Wire the addressing half.** `BotAddress::classify` is called from
+      `PracticeBot::handleAddressed` (`src/PracticeBot.cpp:637`), so *who was
+      asked* is decided by the measured recogniser. `withoutAddress` strips the
+      name before command matching, which is what stopped "Ravo: shake"
+      defeating every command.
+- [ ] **Wire the other half: `BotLanguage` and `BotAnswer` have no caller at
+      all.** This is the next thing to do on this feature, and it is the whole
+      gap between what has been built and what a player can reach. Both headers
+      are included only by their own `.cpp` and their own tests -- checked, not
+      assumed. What runs instead, once addressing has decided a bot was asked,
+      is ad-hoc exact string matching (`body.contains("help")`,
+      `handlePrivateCommand`, `handleBandCommand`) ending in a fallback line
+      that *advertises the five things the recogniser was built to understand*:
+      "i can tell you my part, my sound, the key, the chords or the tempo."
+      Every phrasing in the corpus that is not an exact command reaches that
+      line. The two halves interlock nearly one-to-one -- `ReportKey` ->
+      `describeKey`, `SetTempo` -> `answerSetTempo`, and so on -- so this is
+      joining finished parts rather than designing anything, and the seam is a
+      single function. `Reading::ambiguous`/`alternative` already carry what the
+      "ask which of the two" behaviour needs.
+- [ ] **The trap in that wiring, and the reason to do it test-first.**
+      `handleStructured` acts on `[key:` appearing *anywhere* in a message
+      (`src/PracticeBot.cpp:627`), so a reply that quotes the syntax sets the
+      key by explaining it. `BotAnswer` already asserts its own replies do not
+      parse as a key announcement; the same assertion is needed at the
+      `PracticeBot` level, over whatever it actually emits. See the
+      self-triggering item above.
+- [ ] **`PracticeBot` has no test file of its own.** `src/PracticeBot.cpp` is
+      listed in `test/CMakeLists.txt` and covered only incidentally through
+      `PracticeRoomTests`. It is about to become the place where two measured
+      modules meet, which is the wrong place to have no direct coverage.
 
 ### A legal BPI can exhaust memory
 
@@ -593,6 +665,32 @@ inputs, identical deterministic function, agreement for free.
 - [ ] Deviation, so the form does not become its own kind of stale: an
       occasional departure whose likelihood grows the longer a phrase has
       repeated.
+
+**One interlock to get right.** `test/BotBandTests.cpp` asserts that two
+consecutive drum intervals are not bit-identical -- today the hat rotation
+carries that -- and genuine repetition is exactly what would break it. The
+answer is not to weaken the test: it is that repetition should be identical in
+its *figure* and never in its *performance*, which is what the swing and
+per-hit jitter in the synthesis work provide. A phrase that returns played
+exactly the same way twice is a loop; played fractionally differently, it is a
+band. The two pieces of work want doing in that order.
+
+- [ ] **A seed should not change the volume.** The kit's integrated loudness
+      varies by 3.7 LU across seeds, purely because a busy Euclidean figure has
+      more hits in it than a sparse one -- so `shake` currently changes how loud
+      the band is as well as what it plays, and it bounds how precisely the
+      band can be balanced at all. Normalising each voice to a loudness target
+      at render time would fix both. `AudioMeasure::integratedLufs` is the
+      instrument; the cost is one extra pass over the interval.
+
+      Half of this is already done for the keys, and the half that is done is
+      the half a constant can fix. A brass patch is a driven near-square through
+      a filter that opens on every note and a strings patch is two saws barely
+      driven, so the seed's choice of patch was worth 6.4 LU on its own;
+      `PadPatch::level` is a measured per-character correction and takes the
+      spread across fourteen seeds to 2.4 LU. What is left is the same thing
+      the kit has -- how many notes the voicing put where -- and no constant
+      touches it.
 - [ ] **The unit suite takes two minutes, and that is now an iteration cost.**
       It grew honestly -- most of it is rendering audio and measuring it, which
       is what the band tests are for -- but BotBand alone is 57 seconds and the
@@ -793,6 +891,11 @@ It compounds with SF3 though, and that is where it pays:
 | **band + 5 acoustic kits** | **43** | **20.33 MB** | **6.16 MB** |
 | everything but synths and effects | 99 | 27.63 MB | 8.57 MB |
 | the whole bank | 287 | 30.82 MB | 10.07 MB |
+
+`core` is what a physical model will never do well: piano, vibes and marimba,
+two organs, nylon and steel guitar, violin, cello, pizzicato, string ensemble,
+choir, four brass, three saxes, oboe, clarinet, flute. Everything the band
+already plays is left out, because modelling those is better.
 
 **The drum kits are the bargain, and the arithmetic is not obvious.** Each is
 about 2.7 MB alone, but they share almost everything -- the GS kits are largely
@@ -1353,300 +1456,7 @@ repository around a feature nobody can run yet is optimising the wrong axis
 while two synthesis steps, the entire chat implementation and the owner-identity
 gap are all unbuilt and user-visible.
 
-- [ ] **The unit suite takes two minutes, and that is now an iteration cost.**
-      It grew honestly -- most of it is rendering audio and measuring it, which
-      is what the band tests are for -- but BotBand alone is 57 seconds and the
-      loop between an edit and an answer is long enough to discourage running it.
-      Worth an hour with a profile: shorter renders where a defect shows in the
-      first note, fewer redundant seeds, and possibly a `--quick` subset for the
-      edit loop with the full sweep left to CI.
-- [ ] **Tab completion in the chat field.** Complete `/` commands from the
-      command list, and usernames after `/msg` and `/kick` from the room's user
-      list -- and a name at the start of a line, which is how a bot is addressed
-      (`docs/BOT-CHAT.md` section 5). Common prefix first, then cycling.
-      Accessibility is half the point: the completion and the candidate list
-      both want announcing, and a name nobody can spell is a name nobody can
-      reach.
-- [ ] **Resolve `/msg` and `/kick` against the user list, not whitespace.**
-      Both split on the first space, so neither can reach a username containing
-      one. Longest match against the names actually in the room fixes it, and
-      is what makes tab completion and hand-typing agree.
-
-### Sampled instruments, alongside the models
-
-Not scheduled, and deliberately not started while the synthesis plan has three
-steps left -- two half-finished engines would be worse than one finished one.
-Recorded because the analysis is done, and because checking it changed the
-answer twice.
-
-**The player has to be FluidSynth, and that is now practical.** GeneralUser GS
-makes heavy use of SoundFont modulators, and its own documentation names the
-synths that render it correctly: FluidSynth 1.0.9 or later, BASSMIDI, MuseScore
-2.0.3+, SynthFont2, VSTSynthFont. TinySoundFont is not among them, so the
-one-MIT-header option is out for this bank.
-
-FluidSynth was previously unusable here for one reason -- it dragged in glib,
-which is exactly the framework `PRINCIPLES §6` refuses. **That is fixed
-upstream.** Since 2.5.0 it builds with `-Dosal=cpp11 -Denable-libinstpatch=0`
-and no glib at all, and the glib path is deprecated for removal in 2.6.0. With
-drivers, libsndfile and libinstpatch all disabled it is a small static library
-with no dependencies we do not already have.
-
-Ardour vendors a trimmed FluidSynth in `libs/fluidsynth`, which is a worked
-precedent for a GPL audio project doing exactly this. A submodule is preferable
-to a fork we would then own.
-
-**The other compatible players were surveyed, and only one is a real
-alternative -- which turns out to be a lighter fork of the same engine.**
-
-| Player | Library form? | Verdict |
-|---|---|---|
-| BASSMIDI | Yes, cross-platform | **Out on licence.** BASS is proprietary and closed, free only for non-commercial use. GPLv3 cannot link against it and be distributed, whatever its quality. |
-| MuseScore | Not separable | **It is FluidSynth.** MuseScore's SF2 engine is a modified FluidSynth; its own Zerberus synth is SFZ-only and was removed in MuseScore 4. A second vendoring precedent rather than a second option. |
-| SynthFont2 / VSTSynthFont | No | Closed source, Windows only. Out twice over. |
-| **FluidLite** | Yes | **The real alternative, and possibly the better one.** |
-
-FluidLite is a stripped fork of FluidSynth built to have no external
-dependencies at all -- standard C only -- and to keep just the settings and
-synth. It deliberately omits MIDI file reading, realtime MIDI and audio output,
-which is precisely the surface we do not want, because the conductor drives the
-notes and JUCE takes the audio. LGPL-2-or-later, so the licence reasoning below
-is unchanged. There is no glib question because there was never a glib.
-
-Two things to establish before preferring it. It is derived from FluidSynth
-**1.x**, and GeneralUser GS wants 1.0.9 or later, so it is nominally in range --
-but whether the fork kept full modulator support is a question to answer by
-RENDERING something and listening, not by reading a README. And it is less
-actively maintained than mainline, across several forks (divideconcept, katyo,
-batlogic), which is a real cost against a build that is otherwise much simpler.
-
-So: FluidLite first if it renders the bank correctly, mainline FluidSynth as the
-known-good fallback. Both are the same licence and the same reasoning.
-
-**Licensing is a non-issue, which is not obvious.** FluidSynth is
-LGPL-2.1-or-later, and LGPL's static-linking condition is that the user must be
-able to relink against a modified library. Antiphon is GPLv3, so the entire
-source is published anyway and the condition is satisfied by construction.
-Nothing extra to do beyond a `THIRDPARTY.md` entry.
-
-**Real-time safety is a non-issue too, and only for this use.** The band renders
-on the conductor thread, one interval at a time -- about half a second of work
-against a four-second deadline -- so FluidSynth may allocate and lock as much as
-it likes. `PRINCIPLES §7` is not engaged at all. This would be a completely
-different proposition for a sampled instrument on the audio thread, and that
-difference is the whole reason this is cheap.
-
-**One synth, not four.** Each `fluid_synth_t` loads its own copy of the sample
-data, so a synth per bot is four copies of a thirty-megabyte bank in memory. One
-synth with a MIDI channel per voice, rendered a voice at a time, keeps it to
-one -- and the bots already render serially on a single conductor thread, so the
-sharing costs no synchronisation.
-
-**On bundling: an earlier note in this file called the provenance caveat
-"decisive", and that was overstated.** The facts: the GeneralUser GS v2.0
-licence explicitly permits use and modification in software projects; the
-caveat is a DISCLOSURE by the author that he cannot account for every sample's
-origin, aimed at people shipping commercial products; and several Linux
-distributions package and redistribute it regardless. For a GPLv3 project this
-is a judgement rather than a bar, and the honest reading is that bundling is
-defensible with a residual risk that is disclosed, accepted by others, and
-cheap to remedy.
-
-**SF3 changes the weight question, and costs us nothing to support.** SoundFont
-3 is the same format with the samples Ogg Vorbis compressed -- an extension
-Werner Schweer created for MuseScore for exactly this reason. The decompression
-is free to us: FluidLite builds SF3 support against Xiph's libogg and libvorbis,
-**which this repository already vendors as submodules** because the Ninjam codec
-needs them. So the whole feature adds one small library and no new third-party
-code at all.
-
-**Measured, by converting the bank at every quality setting:**
-
-| quality | size | of SF2 | marginal cost per 0.1 step |
-|---|---|---|---|
-| 0.1 | 5.85 MB | 19.0% | -- |
-| 0.3 | 6.74 MB | 21.9% | +436 KB |
-| 0.5 | 8.00 MB | 26.0% | +760 KB |
-| **0.8** | **10.07 MB** | **32.7%** | +856 KB |
-| 0.9 | 11.34 MB | 36.8% | +1304 KB |
-| 1.0 | 13.38 MB | 43.4% | +2092 KB |
-| SF2 | 30.82 MB | 100% | -- |
-
-Two things fall out of that curve. **The knee is at 0.8**, which is also where
-the conversion guidance sits for quality reasons -- below it each step costs
-about 550 KB and above it about 1400, nearly twice as steep, so the last fifth
-of the quality range buys the least and costs the most. And **even the top
-setting is 2.3x smaller than the SF2**, so there is no configuration in which
-shipping the uncompressed bank makes sense.
-
-**At 10 MB the weight objection largely dissolves**, which is a change from the
-position recorded above against 30. It has to be a data file rather than JUCE
-binary data -- embedded it would be 40 MB across four plugin formats, and in git
-it would be permanent -- but 10 MB fetched at package time and verified by hash
-is unremarkable.
-
-**The better question these numbers raise is why ship 128 instruments at all,
-and the answer has now been measured rather than guessed.**
-`scripts/trim_soundfont.py` keeps a chosen set of presets and drops the rest,
-following the preset-bag-generator-instrument-sample chains outward and
-renumbering every one of them.
-
-The obvious guess about what that saves is WRONG, and worth recording. Dropping
-264 of GeneralUser GS's 287 presets -- 92% of them -- removes only 59% of the
-bytes. The sound effects are cheap, a fraction of a second each; the expensive
-presets are exactly the ones worth keeping, because a convincing piano or string
-section is many megabytes of multisampling. A quarter of the presets gives about
-40% of the size, not 25%.
-
-It compounds with SF3 though, and that is where it pays:
-
-| | SF2 | SF3 at q0.8 |
-|---|---|---|
-| full bank, 287 presets | 30.82 MB | 10.07 MB |
-| core + eight drum kits, 31 presets | 16.53 MB | **4.82 MB** |
-| core, 23 presets | 12.42 MB | 3.55 MB |
-| minimal, 8 presets | 7.16 MB | 1.90 MB |
-
-**The drum kits are the bargain, and the arithmetic is not obvious.** Each is
-about 2.7 MB alone, but they share almost everything -- the GS kits are largely
-one set of samples remapped with a few kit-specific pieces -- so the first costs
-2.69 MB and the other seven cost 1.38 MB between them. Eight kits, 1.27 MB
-compressed.
-
-Worth taking whole for a musical reason as well. The modelled kit has three
-pieces; each sampled kit has 65 samples, including five toms, ride, ride bell,
-crash, splash, china, cowbell, tambourine, claves, congas, bongos, timbales,
-agogo, guiro, cabasa, shaker and woodblock. None of that is a physical model
-anybody here is going to write, and `ROADMAP` already carries "multi-tap clap,
-cowbell, rimshot and toms" as deferred work. Percussion is also the best case
-for Ogg compression, since a one-shot is never looped and the loop artifacts are
-the whole risk.
-
-That does NOT make the modelled kick, snare and hat redundant: they vary
-continuously with velocity and never repeat, which is exactly what a sample
-cannot do and exactly what a backing band needs most from its drummer. The
-sampled kits are a palette to extend it, not a replacement for it.
-
-The `core` set is what a physical model will never do well: piano, vibes and
-marimba, two organs, nylon and steel guitar, violin, cello, pizzicato, string
-ensemble, choir, four brass, three saxes, oboe, clarinet, flute. Everything the
-band already plays is left out, because modelling those is better.
-
-**The trim is provably lossless.** Rendering the same MIDI through the full bank
-and through each trimmed one gives BIT-IDENTICAL output from FluidSynth -- not
-"sounds the same" or "measures the same", but byte for byte. The only lossy step
-is the Ogg conversion afterwards, whose error at q0.8 measures 27.8 dB below the
-signal.
-
-At 3.55 MB the bundling argument is over: that is a tenth of the original, it is
-smaller than the fonts already embedded in the plugin, and it makes the
-committed-versus-fetched question uninteresting. What remains is only whether a
-sampled voice earns its place at all, which is a listening question and still
-first in the order below.
-
-The catch is quality rather than size, and it lands unevenly across exactly the
-instruments we want. Lossy compression shows on short LOOPED samples, so a
-sustained string or organ tone is the risk and a piano -- one-shot, long, never
-looped -- is not. Since the wanted set includes both, the setting cannot be
-chosen from the size table alone.
-
-It can be chosen by measurement, with what is already here: render the same part
-through the SF2 and through each SF3, and compare with `AudioMeasure` and by
-ear, which is the loop the voice lab exists for. `antiphon-voicelab file a.wav
-b.wav --lufs` already does the level-matched A/B.
-
-So the bundling decision is worth reopening once a voice exists to judge, rather
-than settled now. What follows is the argument as it stands against the
-uncompressed bank; halve or quarter every number for SF3.
-
-What actually argues against bundling is weight, not licence:
-
-- Thirty megabytes as JUCE binary data, in four plugin formats, is roughly a
-  hundred and twenty megabytes installed and a generated source file nobody
-  wants to compile.
-- In git it is permanent: every clone pays for it forever, in a project whose
-  stated ambition is to fit in your head.
-
-So if it is ever bundled, it is as a **data file fetched at package time by CI
-and verified by hash**, installed once and found at runtime -- never committed
-and never embedded. An in-app opt-in download is the third option and the most
-expensive: HTTPS in a plugin that currently speaks only Ninjam, a progress and
-error surface that has to be announced for a screen reader, an integrity check,
-and a hosting commitment that outlives our interest in it.
-
-**The order below defers every one of those questions.** Nothing about bundling
-has to be decided until a single sampled voice has been heard next to the model
-it would replace, at which point we will know whether it is worth paying for.
-
-The musical caveat from the first draft stands unchanged: a sample is the same
-recording every time, repetition is this band's specific enemy, and a General
-MIDI bank has one or two velocity layers, so velocity moves volume and a filter
-rather than articulation. Samples lose for everything the band currently plays
-and win for what we will never model -- an acoustic piano, a brass section,
-bowed strings, reeds.
-
-- [ ] Decide between FluidLite and mainline FluidSynth by rendering the bank
-      through both and listening for the modulator-dependent presets. Submodule,
-      not a fork; `THIRDPARTY.md` entry either way. Build SF3 support against the
-      libogg and libvorbis already vendored here.
-- [ ] Load an SF2 from a path the player chooses. No bundled bank, so no
-      packaging or provenance question yet.
-- [ ] One shared synth, a channel per voice, driven from the conductor thread.
-- [ ] One voice at a time, selectable like the lead's instruments, so the
-      comparison against the model is direct, and measured with `AudioMeasure`
-      like everything else.
-- [ ] Through the existing per-note tone, drift and saturation chain rather than
-      straight out -- which is also what a real sampler does to stop notes
-      machine-gunning.
-- [ ] Layering -- a sampled attack over a modelled body -- once a single sampled
-      voice has been lived with.
-- [ ] Compare an SF3 conversion against the SF2 on the same part, measured, to
-      see whether the compression is audible on looped samples.
-- [ ] Only then, and only if it earned its place: whether to ship a bank, in
-      which format, and fetched at package time rather than committed.
-
-### Three layers, one repository -- for now
-
-Not scheduled. Prompted by the soundfont question, which is the first thing that
-would put a dependency on one part of this program that the other parts have no
-use for.
-
-`src/` is 19 600 lines and has grown three distinct concerns, which is worth
-saying plainly because `AGENTS.md` still describes it as "about 6 000 lines" and
-that stopped being true somewhere in the band work:
-
-| Layer | Lines | What it is |
-|---|---|---|
-| The Ninjam client | 3 700 | Protocol, codec, SHA1, the interval clock. Genuinely reusable, and depends on nothing else here |
-| The bots | 7 100 | The band, the synthesis, the harmony, the chat. The largest of the three and the newest |
-| The plugin | 5 000 | The processor, the editor, the UI, the standalone shell |
-
-The dependency direction is already one-way in practice -- bots and plugin both
-use the client; the client uses neither -- but nothing enforces it, so it holds
-by habit rather than by construction.
-
-**The case for splitting** is that these have different audiences and are
-acquiring different dependencies. A Ninjam client library is useful to somebody
-who does not want a practice band; a practice band that grows FluidLite and a
-soundfont should not force either on a plugin user who only wants to jam.
-
-**The case against doing it as three repositories now** is that this project
-refactors across all three layers constantly -- most sessions have touched two
-of them -- and cross-repository refactoring with submodules is where that
-velocity goes to die. It is also three CI configurations, three release
-cadences, and a submodule dance on every clone, in a repository that already
-patches two submodules at configure time.
-
-**So: separate CMake libraries inside one repository first,** with the
-dependency direction enforced by the build rather than remembered. That gets the
-layering, keeps the bots' dependencies out of the client, and makes an eventual
-repository split mechanical rather than exploratory -- the hard part of a split
-is discovering the boundary, and this discovers it while the cost of being wrong
-is one commit.
-
-The repository split earns itself when somebody outside this project wants the
-client library, or when the bots' dependency footprint would otherwise be
-imposed on plugin users who do not want a band. Neither is true yet.
+#### The phases, when it is time
 
 - [ ] Three CMake targets with the dependency direction declared and enforced.
 - [ ] Move the shared JUCE-free modules to whichever layer owns them, and say
@@ -1654,32 +1464,6 @@ imposed on plugin users who do not want a band. Neither is true yet.
       each used by more than one and want deciding rather than assuming.
 - [ ] Correct the line count in `AGENTS.md`, which is out by a factor of three.
 - [ ] Only then, and only on evidence: separate repositories.
-
-- [ ] **A seed should not change the volume.** The kit's integrated loudness
-      varies by 3.7 LU across seeds, purely because a busy Euclidean figure has
-      more hits in it than a sparse one -- so `shake` currently changes how loud
-      the band is as well as what it plays, and it bounds how precisely the
-      band can be balanced at all. Normalising each voice to a loudness target
-      at render time would fix both. `AudioMeasure::integratedLufs` is the
-      instrument; the cost is one extra pass over the interval.
-
-      Half of this is already done for the keys, and the half that is done is
-      the half a constant can fix. A brass patch is a driven near-square through
-      a filter that opens on every note and a strings patch is two saws barely
-      driven, so the seed's choice of patch was worth 6.4 LU on its own;
-      `PadPatch::level` is a measured per-character correction and takes the
-      spread across fourteen seeds to 2.4 LU. What is left is the same thing
-      the kit has -- how many notes the voicing put where -- and no constant
-      touches it.
-
-**One interlock to get right.** `test/BotBandTests.cpp` asserts that two
-consecutive drum intervals are not bit-identical -- today the hat rotation
-carries that -- and genuine repetition is exactly what would break it. The
-answer is not to weaken the test: it is that repetition should be identical in
-its *figure* and never in its *performance*, which is what the swing and
-per-hit jitter in the synthesis work provide. A phrase that returns played
-exactly the same way twice is a loop; played fractionally differently, it is a
-band. The two pieces of work want doing in that order.
 
 ### A responsive jamming partner
 
@@ -1707,6 +1491,11 @@ with the client rather than with the plugin.
 It is a packaging decision rather than a code one, and it costs a repository
 boundary in exchange for reuse nobody has asked for yet. Written down because
 the thought recurs, not because it is scheduled.
+
+**Superseded in detail by *Breaking the repository up*,** which measured the
+dependency direction rather than assuming it and found four layers where this
+entry assumes one boundary. Kept as the shorter statement of the same recurring
+thought; decide both together or not at all.
 
 - [ ] Decide, and if the answer is no, move this to `NON-GOALS.md` with the
       reason.
@@ -1781,15 +1570,28 @@ elsewhere. What CI actually found:
   it never hit this. MSVC 19.51 then compiled the tree without complaint.
 
 - [ ] Confirm what the plugin does once *loaded* on macOS and Windows. Building
-      and passing headless tests is a long way from a host instantiating it:
-      nothing has yet opened a window, opened a device, or joined a jam there.
+      and passing headless tests is a long way from a host instantiating it.
+      **macOS: done once, by a contributor, via the AU -- see below. Windows is
+      still untouched**: nothing there has opened a window, opened a device, or
+      joined a jam.
 - [x] macOS: decide whether AU is in scope. **It is, and it is built** --
       `FORMATS` gains AU under `if(APPLE)`. Logic Pro and GarageBand load no
       other format, so without it macOS support means "every DAW except the two
       most common ones".
-- [ ] Confirm the AU actually loads. It has never been compiled: development is
-      on Linux, so CI is the first machine to build it and no host has
-      instantiated it. Until then the format is a claim, not a fact.
+- [x] Confirm the AU actually loads. **It does.** A contributor built it on
+      their own Mac, loaded it in a host, joined a jam and used it with a screen
+      reader -- the whole path, not just instantiation. That retires the "the
+      format is a claim, not a fact" caveat this line used to carry.
+- [ ] **Keep it that way: the AU is not regularly tested.** One report from one
+      machine, at one point in the history, by hand. Development is on Linux, CI
+      only compiles the AU, and nothing automated instantiates it anywhere -- so
+      the next AU regression will be found by a person or not at all. What would
+      change that, cheapest first: `auval` in the macOS CI job, which validates
+      an AU without a DAW and needs no window session; then a named macOS
+      smoke-test pass before each release. Until one of those exists, treat
+      "the AU works" as true-as-of-a-date rather than as a standing guarantee,
+      and re-check it by hand after anything touching buses, the editor or
+      startup.
 - [ ] AU is one stereo bus in, one stereo out, deliberately. JUCE's AU wrapper
       drops the `busLayoutChanged` notification our patch adds
       (`DESIGN.md` §"AU is one bus in, one bus out"), so the bus controls are
