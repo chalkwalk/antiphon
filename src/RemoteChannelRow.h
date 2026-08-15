@@ -18,6 +18,12 @@ public:
   void update(const NinjamClient::RemoteUserChannel &c);
   void updatePeak(float peak);
   void updateOutputBusCount(int numBuses);
+  void toggleMute();
+  void toggleSolo();
+  void nudgeVolume(float deltaDb);
+  void nudgePan(float delta);
+  juce::String getChannelName() const { return channelNameLabel.getText(); }
+
   void paint(juce::Graphics &g) override;
   void resized() override;
 

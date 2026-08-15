@@ -58,8 +58,22 @@ real dialog windows rather than overlays -- which, beyond being the correct
 thing to do, is the only arrangement that reliably takes keyboard focus inside a
 plugin window on Linux.
 
-Shortcuts are on `Ctrl+Alt` and are matched by key code rather than by the
-character produced, so they work on non-QWERTY layouts.
+Shortcuts are on `Cmd+Option` (macOS) and `Ctrl+Alt` (Windows/Linux) for global actions, avoiding VoiceOver's `Control+Option` VO key collisions while staying clear of DAW host key bindings. They are matched by key code rather than by the character produced, so they work on non-QWERTY layouts.
+
+| Shortcut (macOS / Win+Linux) | Action |
+|---|---|
+| `Cmd+Option+S` / `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
+| `Cmd+Option+C` / `Ctrl+Alt+C` | Focus the chat message box |
+| `Cmd+Option+O` / `Ctrl+Alt+O` | Open Server Browser / Connect dialog |
+| `Cmd+Option+M` / `Ctrl+Alt+M` | Toggle Mute All local channels |
+| `Cmd+Option+H` / `Ctrl+Alt+H` or `?` | Open Keyboard Shortcuts Help dialog |
+| `Cmd+Option+L` / `R` or `Ctrl+Alt+L` / `R` | Focus Local Channels / Remote Users section |
+| `Alt+Arrows` | Navigate between channels and remote players |
+| `Cmd+Option+1`..`9` / `Ctrl+Alt+1`..`9` | Jump directly to Local Channel 1..9 |
+| `Cmd+Option+Shift+1`..`9` / `Ctrl+Alt+Shift+1`..`9` | Jump directly to Remote Player 1..9 |
+| `M` / `S` / `X` | Toggle Mute / Solo / Transmit on active channel |
+| `Up` / `Down` / `+` / `-` | Adjust volume for active channel (+/- 1 dB) |
+| `Left` / `Right` | Adjust panning for active channel |
 
 ## Full detail
 

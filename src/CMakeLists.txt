@@ -75,6 +75,7 @@ target_sources(Antiphon
         MusicalKey.cpp
         AccessibilityAudit.cpp
         ServerBrowserDialog.cpp
+        ShortcutsDialog.cpp
 )
 
 clap_juce_extensions_plugin(TARGET Antiphon CLAP_ID "com.chalkwalk.antiphon" CLAP_FEATURES "audio-effect" "tool")

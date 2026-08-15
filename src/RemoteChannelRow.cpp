@@ -20,13 +20,13 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   volumeSlider.setValue(
       GainUtils::gainToDb(NinjamClient::kDefaultRemoteChannelVolume),
       juce::dontSendNotification);
+  volumeSlider.setTitle("Volume (Up/Down or +/-)");
+  volumeSlider.setDescription("Volume for this player channel in decibels. "
+                              "Shortcut: Up or Down arrow, or + and -");
   volumeSlider.textFromValueFunction = [](double v) {
     return v <= GainUtils::kMinDb ? juce::String("minus infinity decibels")
                                   : juce::String(v, 1) + " dB";
   };
-  volumeSlider.setTitle("Volume");
-  volumeSlider.setDescription(
-      "Volume of this remote channel in your mix, in decibels");
   volumeSlider.setTooltip(
       "Volume in dB: -inf to +6, unity at 0. Remote channels default to "
       "-12 dB, matching the reference client.");
@@ -50,9 +50,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       return juce::String("centre");
     return juce::String(v < 0 ? "left " : "right ") + juce::String(pct);
   };
-  panSlider.setTitle("Pan");
-  panSlider.setDescription(
-      "Stereo position of this remote channel in your mix");
+  panSlider.setTitle("Pan (Left/Right)");
+  panSlider.setDescription("Stereo position of this remote channel in your "
+                           "mix. Shortcut: Left or Right arrow");
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
     if (isEcho())
@@ -64,9 +64,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   };
   addAndMakeVisible(panSlider);
 
-  muteButton.setTitle("Mute");
-  muteButton.setDescription(
-      "Silence this remote channel in your mix. Audio is still received.");
+  muteButton.setTitle("Mute (M)");
+  muteButton.setDescription("Silence this remote channel in your mix. Audio is "
+                            "still received. Shortcut: M");
   muteButton.setTooltip(
       "Mute: silence this player in your mix (audio still downloads)");
   muteButton.onClick = [this]() {
@@ -79,8 +79,9 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   };
   addAndMakeVisible(muteButton);
 
-  soloButton.setTitle("Solo");
-  soloButton.setDescription("Hear only soloed remote channels");
+  soloButton.setTitle("Solo (S)");
+  soloButton.setDescription(
+      "Hear only soloed channels in your mix. Shortcut: S");
   soloButton.setTooltip("Solo: hear only soloed remote channels");
   soloButton.onClick = [this]() {
     if (isEcho())
@@ -259,4 +260,23 @@ void RemoteChannelRow::resized() {
 
   // Meter extent comes from the fader, so it stops at the 0 dB tick.
   vuArea = meterAreaFor(volumeSlider, meter.getX(), meter.getWidth());
+}
+
+void RemoteChannelRow::toggleMute() {
+  muteButton.setToggleState(!muteButton.getToggleState(),
+                            juce::sendNotification);
+}
+
+void RemoteChannelRow::toggleSolo() {
+  soloButton.setToggleState(!soloButton.getToggleState(),
+                            juce::sendNotification);
+}
+
+void RemoteChannelRow::nudgeVolume(float deltaDb) {
+  volumeSlider.setValue(volumeSlider.getValue() + deltaDb,
+                        juce::sendNotification);
+}
+
+void RemoteChannelRow::nudgePan(float delta) {
+  panSlider.setValue(panSlider.getValue() + delta, juce::sendNotification);
 }
