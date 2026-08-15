@@ -152,11 +152,26 @@ without a name. See `test/README.md`.
 **What the audit does not tell you** is whether the result is pleasant to use.
 It cannot judge whether a description is helpful, whether the tab order feels
 sane, or whether announcements land at useful moments. That needs a real screen
-reader user, and no claim is made here that it has been verified that way.
+reader user.
+
+**It has now been used by one.** A contributor built the AU on macOS, loaded it
+in a host, joined a jam and worked the plugin with a screen reader, and reported
+that it compares favourably with the official client. That is the first evidence
+any of this works where it counts, and it is worth stating plainly because the
+rest of this document is deliberately pessimistic.
+
+It is also worth bounding just as plainly: **one person, one platform, one
+session, reported verbally rather than as a list of findings.** It says the
+approach is sound. It does not say any particular control reads well, it says
+nothing at all about Windows or NVDA, and it is not a substitute for the gaps
+below -- most of which it never touched.
 
 ## Known gaps
 
-- Not verified with an actual screen reader by the authors.
+- Verified with a screen reader once, on macOS, as above. Not on Windows, not
+  repeatedly, and not in a way that produced actionable detail.
+- Not verified with an actual screen reader by the authors, as distinct from by
+  a contributor.
 - JUCE's stock `AudioDeviceSelectorComponent`, which the standalone's recovery
   screen embeds, labels its Output and Input dropdowns for sighted users only:
   the labels are attached with `Label::attachToComponent` and no accessible
