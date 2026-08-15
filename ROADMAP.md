@@ -663,6 +663,51 @@ batlogic), which is a real cost against a build that is otherwise much simpler.
 So: FluidLite first if it renders the bank correctly, mainline FluidSynth as the
 known-good fallback. Both are the same licence and the same reasoning.
 
+**FluidLite has a known SF3 loop-point bug, and the fix is one character.**
+Found and patched in `chalkwalk/seq_play`
+(`patches/fluidlite-sf3-loop-offbyone.patch`, submodule at `4a01cf1`), which
+runs FluidLite over this same GeneralUser GS bank. Written down here so nobody
+rediscovers it, because every symptom points away from the loader.
+
+*Symptom.* Sustained piano notes repeat every ~2 s, quietly, like a delay with
+very low feedback: the whole sample loops instead of its sustain loop. It hits
+some patches and not others -- Grand Piano and Bright yes, E.Grand and E.Piano
+no -- so it reads as a bad patch, or as a bad SF2 -> SF3 conversion. It is
+neither, and both were ruled out by controls: mainline fluidsynth 2.4.8 renders
+the same SF3 clean, and the source SF2 clean.
+
+*Cause.* In `fluid_defsfont_get_sample`, in the SF3 branch only, an Ogg sample
+is decoded and then `sample->end = sampleframes - 1` -- the LAST VALID INDEX.
+But `loopend` per the SoundFont spec is the first sample AFTER the loop, an
+EXCLUSIVE bound. FluidLite knows that; `fluid_voice.c:1795` says so in as many
+words (*"'end' is last valid sample, loopend can be + 1"*). The validity check
+three lines below the decode compares the exclusive bound against the inclusive
+index:
+
+```c
+if (sample->loopend > sample->end || ...)
+```
+
+so every sample whose loop runs to the very end -- `loopend == end + 1`, which
+is legal and common -- is judged "fowled" and repaired to `loopstart = start +
+8; loopend = end - 8`, which loops the entire sample. Most of GeneralUser's
+Grand Piano samples loop to the end; the E.Piano samples loop well short of it,
+which is exactly the split observed. **SF2 never reaches this code**, so the bug
+is confined to the format the size table below otherwise argues for.
+
+*Fix.* `sample->loopend > sample->end + 1`, applied as a patch at configure time
+rather than a fork -- the same mechanism `patches/` already uses here.
+
+*Measured*, by holding a C4 on program 0, rendering 14 s and scanning the
+decaying envelope for re-attacks (a monotonic decay has none): **4 re-attacks at
++1.6 dB spaced ~2.0 s before, 0 after**, against 0 for both controls.
+
+One thing deliberately left unverified: the third clause of the same check,
+`loopstart <= sample->start`, looks off by one too. By then `loopstart` has been
+rebased to an offset from `start` (`fluid_defsfont.c:3245`) and `start` is 0, so
+a loop beginning at frame 0 would also be "repaired". Nothing in this bank
+appears to do that, so it was never measured and is not in the patch.
+
 **Licensing is a non-issue, which is not obvious.** FluidSynth is
 LGPL-2.1-or-later, and LGPL's static-linking condition is that the user must be
 able to relink against a modified library. Antiphon is GPLv3, so the entire
@@ -839,6 +884,12 @@ bowed strings, reeds.
       through both and listening for the modulator-dependent presets. Submodule,
       not a fork; `THIRDPARTY.md` entry either way. Build SF3 support against the
       libogg and libvorbis already vendored here.
+- [ ] **If FluidLite wins: carry the SF3 loop-end patch from the first day**, as
+      `patches/fluidlite-sf3-loop-offbyone.patch` -- written up above, and one
+      character. Take the re-attack scan with it, as a test rather than a
+      listening note: a held C4 rendered long and scanned for a rise in a
+      decaying envelope is a cheap assertion, and it is the only thing that
+      catches this class of fault. Check upstream first, in case it has landed.
 - [ ] Load an SF2 from a path the player chooses. No bundled bank, so no
       packaging or provenance question yet.
 - [ ] One shared synth, a channel per voice, driven from the conductor thread.
