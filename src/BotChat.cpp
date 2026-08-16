@@ -62,6 +62,41 @@ juce::String describePart(const Self &self) {
   return self.name + " is playing.";
 }
 
+// The key somebody asked for, or an invalid Key when they named none.
+//
+// `MusicalKey::parseName` accepts a BARE tonic -- "a" is A major -- so scanning
+// a sentence for the first thing that parses reads a key out of an article.
+// Two rules keep that from happening, and both come from the SET_KEY corpus,
+// which contains the trap in both directions:
+//
+//   "put it in a minor"   -> A minor.        A key.
+//   "give me a minor key" -> some minor key. Not a key.
+//
+// So a tonic on its own is never enough -- the mode must be said -- and a
+// "<tonic> <mode>" pair immediately followed by "key" is a description of a
+// category rather than a name. Anything else unreadable is reported as
+// unreadable, because a key put up wrongly is worse than one not put up at all
+// (BotAnswer::answerSetKey carries that reply).
+MusicalKey::Key keyAskedFor(const juce::String &text) {
+  const auto words = juce::StringArray::fromTokens(
+      text.removeCharacters(",.?!").toLowerCase(), " \t", "");
+
+  for (int i = 0; i + 1 < words.size(); ++i) {
+    const auto key = MusicalKey::parseName(words[i] + " " + words[i + 1]);
+    if (!key.valid)
+      continue;
+
+    // "a minor key", "some major key" -- the pair is qualifying the word
+    // "key", not naming one.
+    if (i + 2 < words.size() && words[i + 2] == "key")
+      continue;
+
+    return key;
+  }
+
+  return {};
+}
+
 } // namespace
 
 Response respond(const Context &ctx, const BotAddress::Incoming &in,
@@ -106,6 +141,14 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     // chart, it would announce one.
     out.speak = true;
     out.text = "the chart is " + BotAnswer::describeChart(ctx.music) + ".";
+    return out;
+
+  case BotLanguage::Intent::SetKey:
+    // Recognised precisely so it can be declined. Answering "the key is D
+    // minor" to somebody asking for G minor looks like an answer and ignores
+    // what was asked, which is the worst miss available here.
+    out.speak = true;
+    out.text = BotAnswer::answerSetKey(ctx.music, keyAskedFor(body));
     return out;
 
   case BotLanguage::Intent::ReportTempo:
