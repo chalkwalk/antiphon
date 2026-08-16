@@ -82,6 +82,127 @@ public:
       }
     }
 
+    beginTest("a flat root takes a suffix");
+    {
+      // `Bb7` was REJECTED outright while `Bb` and `C#7` parsed. parseNote
+      // refuses a `b` followed by a digit so that the `b5` of `C7b5` is not
+      // eaten as an accidental -- but it applied that guard to the FIRST
+      // character after the letter, which is the one position where a `b` can
+      // only ever be a flat. The root came back as B, the leftover `b7` did not
+      // parse as a suffix, and the whole chord was refused.
+      //
+      // Found by a chart that could not be written down: "| C | Db7 | C |".
+      const struct { const char *name; int root; } kFlatRoots[] = {
+          {"Bb7", 10}, {"Db7", 1},  {"Eb9", 3},
+          {"Ab13", 8}, {"Gb6", 6},  {"Bbm7", 10},
+      };
+      for (const auto &c : kFlatRoots) {
+        Harmony::Chord chord;
+        expect(Harmony::parseChordName(c.name, chord),
+               juce::String(c.name) + " was refused");
+        expectEquals(chord.root, c.root, juce::String(c.name) + " root");
+      }
+
+      // The alteration this guard exists for still works, because a quality
+      // always sits between the letter and the alteration.
+      Harmony::Chord alt;
+      expect(Harmony::parseChordName("C7b5", alt));
+      expectEquals(alt.root, 0);
+      expect(Harmony::parseChordName("F#m7b5", alt));
+      expectEquals(alt.root, 6);
+    }
+
+    beginTest("a chart survives a round trip through the key it was written in");
+    {
+      // The property everything else rests on. Reading a chart against its own
+      // key and resolving it straight back must be the identity -- if that does
+      // not hold, no key CHANGE can be trusted either, and the failure would
+      // show up as chords quietly altering when nothing was asked for.
+      const char *charts[] = {
+          "| C | Am | F | G |",       // plain diatonic
+          "| Dm7 | G7 | Cmaj7 |",     // diatonic sevenths
+          "| C | Bb | F |",           // a borrowed bVII
+          "| C | Db7 | C |",          // a tritone substitution
+          "| Am7/G | F |",            // a slash bass
+          "| Csus4 | C |",            // a quality no mode gives
+          "| C Am | F G |",           // two chords to a bar
+      };
+      const char *keys[] = {"C major", "A minor", "D dorian", "F# major",
+                            "Bb minor"};
+
+      for (const auto *keyName : keys) {
+        const auto key = MusicalKey::parseName(keyName);
+        expect(key.valid);
+        for (const auto *text : charts) {
+          Harmony::Chart original;
+          expect(Harmony::parseChart(text, original),
+                 juce::String(text) + " did not parse");
+
+          const auto round =
+              Harmony::resolve(Harmony::toRelative(original, key), key);
+
+          expectEquals((int)round.size(), (int)original.size(),
+                       juce::String(text) + " lost bars in " + keyName);
+          for (size_t b = 0; b < original.size() && b < round.size(); ++b) {
+            expectEquals((int)round[b].chords.size(),
+                         (int)original[b].chords.size(),
+                         juce::String(text) + " lost chords in " + keyName);
+            for (size_t c = 0;
+                 c < original[b].chords.size() && c < round[b].chords.size();
+                 ++c)
+              expect(round[b].chords[c] == original[b].chords[c],
+                     juce::String(text) + " in " + keyName + " came back as " +
+                         Harmony::chartText(round, false));
+          }
+        }
+      }
+    }
+
+    beginTest("a key change re-derives what was delegated and moves the rest");
+    {
+      // The worked examples from DESIGN.md section 6.4, which are the whole
+      // argument in table form.
+      const struct {
+        const char *from;
+        const char *chart;
+        const char *to;
+        const char *expected;
+        const char *why;
+      } kCases[] = {
+          {"C major", "| C | Am | F | G |", "A minor", "| Am | F | Dm | E |",
+           "all delegated; V stays major by the minor-mode table"},
+          {"C major", "| C | Bb | F |", "C minor", "| Cm | Bb | Fm |",
+           "bVII was an override and survives, now spelled VII"},
+          {"C major", "| C | G |", "D major", "| D | A |",
+           "tonic move only, nothing re-derived"},
+          // Spelled D#7 rather than Eb7: chartText spells the whole chart from
+          // the key signature, and D major takes sharps. Notationally a bII
+          // wants the flat whatever the key does. Same pitches, and the
+          // spelling gap is its own roadmap item.
+          {"C major", "| C | Db7 | C |", "D major", "| D | D#7 | D |",
+           "a tritone substitution transposes with the tonic"},
+          {"C major", "| Csus4 | C |", "C minor", "| Csus4 | Cm |",
+           "sus is a quality no mode gives, so it is an override"},
+      };
+
+      for (const auto &c : kCases) {
+        const auto from = MusicalKey::parseName(c.from);
+        const auto to = MusicalKey::parseName(c.to);
+        expect(from.valid && to.valid);
+
+        Harmony::Chart original;
+        expect(Harmony::parseChart(c.chart, original),
+               juce::String(c.chart) + " did not parse");
+
+        const auto moved = Harmony::resolve(Harmony::toRelative(original, from), to);
+        const auto flat = MusicalKey::usesFlats(to.tonic, to.mode);
+
+        expectEquals(Harmony::chartText(moved, flat), juce::String(c.expected),
+                     juce::String(c.chart) + " from " + c.from + " to " + c.to +
+                         " -- " + c.why);
+      }
+    }
+
     beginTest("the mode decides the quality, not a table per key");
     {
       // Lydian's II is major where Ionian's ii is minor -- the case that makes
