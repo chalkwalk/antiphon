@@ -126,6 +126,41 @@ public:
       }
     }
 
+    beginTest("an address to somebody else closes the window, known or not");
+    {
+      // "name: something" is aimed at that name. If it is not mine it is not
+      // for me -- and that has to hold even when the name means nothing to me,
+      // because the reasons it might are all ordinary: a player who has just
+      // joined and is not in my list yet, a bot that has left, or a typo. The
+      // window exists so a follow-up needs no address, and an explicit address
+      // to somebody else is the clearest possible signal it has ended.
+      auto room = fixtureRoom();
+      const std::string me = "Mirn[kit-bot]";
+
+      for (const char *elsewhere :
+           {"zorp: what are you playing", "ravo: whats your part",
+            "dave: how was that", "delvo: shake"}) {
+        // Open a window by addressing me, the way a real conversation starts.
+        BotAddress::Attention attention;
+        BotAddress::Incoming opener;
+        opener.sender = "you";
+        opener.text = "mirn whats your part";
+        opener.at = 10.0;
+        expect(BotAddress::classify(room, me, opener, attention) !=
+                   BotAddress::Address::Ignore,
+               "the opener was not addressed to me");
+
+        BotAddress::Incoming next;
+        next.sender = "you";
+        next.text = elsewhere;
+        next.at = 11.0;
+
+        expect(BotAddress::classify(room, me, next, attention) ==
+                   BotAddress::Address::Ignore,
+               juce::String(elsewhere) + " was answered by the wrong bot");
+      }
+    }
+
     beginTest("courtesy is a whole message, not a word inside one");
     {
       for (const char *c : {"thanks", "cheers", "nice one", "ok", "got it"})
