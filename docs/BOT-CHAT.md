@@ -331,7 +331,7 @@ command they are shown, out of curiosity, and watches the whole band vanish has
 had a bad first minute -- so the roster leads with the interesting thing and
 states the destructive one in terms nobody types idly:
 
-> `say a name to talk to one of us. say "part" and we all go home.`
+> `say a name to talk to one of us. say "leave" and we all go home.`
 
 That is a judgement with a cost, and the cost is worth writing down: naming it
 at all is a small invitation, and not naming it leaves the eviction instruction
@@ -947,7 +947,7 @@ t+2.0   Quado[lead-bot] joins
 t+2.0   Tutor[bot]: hello -- i am the tutor. the band is coming in now.
 t+5.5   Mirn[kit-bot]: The Understudies -- Mirn (kit), Delvo (bass),
                          Pundo (keys), Quado (lead).
-t+5.5   Mirn[kit-bot]: say a name to talk to one of us. say "part" and we all
+t+5.5   Mirn[kit-bot]: say a name to talk to one of us. say "leave" and we all
                          go home.
 ```
 

@@ -182,11 +182,15 @@ public:
   void runPartCommandTests() {
     beginTest("the part commands are recognised, and nothing else is");
     {
-      expect(PracticeBot::isPartCommand("part"));
       expect(PracticeBot::isPartCommand("leave"));
       expect(PracticeBot::isPartCommand("exit"));
       expect(PracticeBot::isPartCommand("stop"));
-      expect(PracticeBot::isPartCommand("  PART  "), "not trimmed or folded");
+      expect(PracticeBot::isPartCommand("  LEAVE  "), "not trimmed or folded");
+
+      // Withdrawn: "part" is the most ordinary word in a jam, and using it for
+      // a destructive command put it one word from "what's your part".
+      expect(!PracticeBot::isPartCommand("part"));
+      expect(!PracticeBot::isPartCommand("whats your part"));
 
       expect(!PracticeBot::isPartCommand("particularly"));
       expect(!PracticeBot::isPartCommand("please leave"));
@@ -197,7 +201,7 @@ public:
     {
       const auto help = PracticeBot::helpLine("Mirn[kit-bot]");
       expect(help.contains("Mirn[kit-bot]"));
-      expect(help.contains("part"), "help does not name the command");
+      expect(help.contains("leave"), "help does not name the command");
     }
 
     beginTest("a private message parts a bot, from someone who does not own it");
@@ -216,7 +220,7 @@ public:
         return stranger.client.getRemoteUsers().count(botName) > 0;
       }, 5000), "the bot never appeared");
 
-      stranger.client.sendPrivateMessage(botName, "part");
+      stranger.client.sendPrivateMessage(botName, "leave");
 
       expect(waitUntil([&] {
         return stranger.client.getRemoteUsers().count(botName) == 0;
@@ -238,7 +242,7 @@ public:
       you.client.sendPrivateMessage(botName, "help");
       expect(waitUntil([&] {
         for (const auto &line : you.snapshot())
-          if (line.startsWith("PRIVMSG|" + botName) && line.contains("part"))
+          if (line.startsWith("PRIVMSG|" + botName) && line.contains("leave"))
             return true;
         return false;
       }, 5000), "the bot did not explain how to remove it");
@@ -429,7 +433,7 @@ public:
       // And it leads with the interesting thing. A first-time player who types
       // the first command they are shown should not empty their own room.
       const int nameAt = instructions[0].indexOf("say a name");
-      const int partAt = instructions[0].indexOf("part");
+      const int partAt = instructions[0].indexOf("leave");
       expect(nameAt >= 0 && partAt > nameAt,
              "the eviction command is offered before the interesting one: " +
                  instructions[0]);

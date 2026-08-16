@@ -129,7 +129,7 @@ ALL     you lot what are you playing
 ALL     everybody whats your part
 ALL     all of you shake
 ALL     everyone quiet
-ALL     band, part
+ALL     band, leave
 
 # Kit answered this speaker on the previous turn, within the window. Follow-ups
 # continue without repeating the name.
@@ -235,10 +235,10 @@ NOBODY  <sam> what are you playing
 # Leaving. The one command that works with no address at all, because the
 # failure mode of getting this wrong is bots nobody can remove.
 [COLD]
-ALL     part
-BASS    delvo, part
-BASS    delvo: part
-KIT     mirn part
+ALL     leave
+BASS    delvo, leave
+BASS    delvo: leave
+KIT     mirn leave
 
 # ...and the word in every other context, which is most of them. "part" is
 # ordinary jam vocabulary and only the whole message counts.
@@ -256,3 +256,14 @@ NOBODY  part of the chart is wrong
 NOBODY  delvo, what are the changes
 BASS    Delvo[bass-bot]: what are the changes
 BASS    bass, what are the changes
+
+# "part" is an ordinary word, not a command. A player asking a bot what it was
+# playing sent the whole band home, because the message merely ENDED with the
+# word and a name was present. The bot still ANSWERS these -- it was addressed
+# -- so this file cannot see the difference on its own; the verdict is asserted
+# directly in BotAddressTests. These are here so the phrasings stay covered.
+KIT     mirn whats your part
+KIT     mirn: what is your part
+KIT     kit hows your part going
+NOBODY  part
+NOBODY  the bass part is tricky
