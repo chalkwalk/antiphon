@@ -4,7 +4,8 @@
 
 namespace {
 // One place, so the help line and the parser cannot drift apart.
-const char *const kPartCommands[] = {"part", "leave", "exit", "stop"};
+// "part" is deliberately absent -- see BotAddress::isPartCommand.
+const char *const kPartCommands[] = {"leave", "exit", "stop", "go"};
 } // namespace
 
 PracticeBot::PracticeBot(juce::String name, juce::StringArray channelNames)
@@ -244,8 +245,8 @@ bool PracticeBot::isPartCommand(const juce::String &text) {
 }
 
 juce::String PracticeBot::helpLine(const juce::String &name) {
-  return name + " is a bot. Send it a private message saying 'part' and it "
-                "will leave.";
+  return name + " is a bot. Send it a private message saying 'leave' and it "
+                "will go.";
 }
 
 void PracticeBot::setBandmates(juce::StringArray names, juce::String name) {
@@ -327,7 +328,7 @@ void PracticeBot::timerCallback() {
   // that nobody types it idly. Leading with `part` would invite a curious
   // player to empty their own room with the first command they were shown.
   netClient.sendChatMessage(
-      "say a name to talk to one of us. say \"part\" and we all go home.");
+      "say a name to talk to one of us. say \"leave\" and we all go home.");
 }
 
 int PracticeBot::arrivalDelayMs() const {

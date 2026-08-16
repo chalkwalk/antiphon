@@ -71,16 +71,59 @@ public:
   }
 
   void runUnitTests() {
-    beginTest("part is the whole message, or it is an ordinary word");
+    beginTest("leaving is the whole message, and part is never it");
     {
       // By far the commonest use of "part" in a jam is not the command.
-      expect(BotAddress::isPartCommand("part"));
-      expect(BotAddress::isPartCommand("  PART  "));
+      expect(BotAddress::isPartCommand("leave"));
+      expect(BotAddress::isPartCommand("  LEAVE  "));
+      // Withdrawn as a command: it is the most ordinary word in the room.
+      expect(!BotAddress::isPartCommand("part"));
       for (const char *ordinary :
            {"whats your part", "the bass part is tricky", "im learning my part",
             "can you play that part again", "part of the chart is wrong"})
         expect(!BotAddress::isPartCommand(ordinary),
                juce::String(ordinary) + " was taken for the command");
+    }
+
+    beginTest("naming a bot does not turn an ordinary sentence into a command");
+    {
+      // Found by a player, whose "Ravo: what's your part" made the bot LEAVE.
+      //
+      // `isPartCommand` gets this right and says why, but `classify` had a
+      // SECOND rule of its own -- the message merely had to END with the word
+      // -- so every one of these went to PartMe. The corpus could not see it:
+      // it records WHO answers, and PartMe and Named are both "the kit bot",
+      // so "hey kit whats your part" passed while doing the wrong thing.
+      auto room = fixtureRoom();
+      const std::string me = "Mirn[kit-bot]";
+
+      for (const char *ordinary :
+           {"mirn whats your part", "mirn: what is your part",
+            "mirn can you play that part again", "kit hows your part going",
+            "mirn what did you leave out"}) {
+        BotAddress::Attention attention;
+        BotAddress::Incoming in;
+        in.sender = "you";
+        in.text = ordinary;
+        in.at = 10.0;
+
+        const auto verdict = BotAddress::classify(room, me, in, attention);
+        expect(verdict != BotAddress::Address::PartMe &&
+                   verdict != BotAddress::Address::PartAll,
+               juce::String(ordinary) + " sent the bot home");
+      }
+
+      // The command itself still works when it is the whole message.
+      for (const char *command : {"mirn leave", "mirn: leave"}) {
+        BotAddress::Attention attention;
+        BotAddress::Incoming in;
+        in.sender = "you";
+        in.text = command;
+        in.at = 10.0;
+        expect(BotAddress::classify(room, me, in, attention) ==
+                   BotAddress::Address::PartMe,
+               juce::String(command) + " did not send the bot home");
+      }
     }
 
     beginTest("courtesy is a whole message, not a word inside one");

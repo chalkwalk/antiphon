@@ -117,6 +117,9 @@ const char *kCommonWords[] = {
     "band", "we",   "well",  "what",  "when",  "who",   "why",   "will",  "with",
     "yes",  "you",   "your",  "time",  "tell",  "else",  "about", "shall",
     "nice", "loud",  "great", "think", "love",  "turn",  "down",  "change",
+    // The leave vocabulary. "leave" is two edits from "lead" and shares its
+    // first letter, so without this, sending a bot home summons the soloist.
+    "leave", "exit", "stop",
     "sound", "sounds", "make", "made",  "keep",  "let",   "see",  "know"};
 
 const char *kCourtesy[] = {
@@ -166,12 +169,18 @@ std::vector<std::string> tokenise(const std::string &text) {
 }
 
 bool isPartCommand(const std::string &text) {
-  // The whole message and nothing else. "part" is ordinary jam vocabulary --
+  // The whole message and nothing else.
+  //
+  // "part" is NOT among these, deliberately. It is ordinary jam vocabulary --
   // "what's your part", "the bass part", "learn my part" -- and by far its
-  // commonest use, so only an entire message counts.
+  // commonest use, so a destructive command sat one word away from the most
+  // ordinary question in the room. A player found it the obvious way: asking
+  // a bot what its part was sent the whole band home. IRC spells it `/part`,
+  // and a slash form would be unambiguous; a bare word cannot be.
   const auto tokens = tokenise(text);
   return tokens.size() == 1 &&
-         (tokens[0] == "part" || tokens[0] == "leave" || tokens[0] == "go");
+         (tokens[0] == "leave" || tokens[0] == "go" || tokens[0] == "exit" ||
+          tokens[0] == "stop");
 }
 
 bool isCourtesy(const std::string &text) {
@@ -479,9 +488,16 @@ Address classify(const Room &room, const std::string &me, const Incoming &msg,
   if (namesHuman)
     return Address::Ignore;
 
+  // An ADDRESS plus the command, and nothing else -- the same rule
+  // `isPartCommand` applies to an unaddressed message, for the same reason.
+  //
+  // This used to accept any message merely ENDING with the word, which sent a
+  // bot home for "Ravo: what's your part". That is not an exotic phrasing: it
+  // is a line in the DESCRIBE_PART corpus and the most ordinary question in
+  // the room. The addressing corpus could not catch it, because it records who
+  // answers and PartMe and Named are both "that bot".
   const bool addressedPart =
-      rawTokens.size() >= 2 &&
-      (rawTokens.back() == "part" || rawTokens.back() == "leave");
+      rawTokens.size() == 2 && isPartCommand(rawTokens.back());
 
   if (namesMe) {
     attention.owner = msg.sender;
