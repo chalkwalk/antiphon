@@ -137,6 +137,7 @@ target_sources(AntiphonPractice PRIVATE
         ${CMAKE_SOURCE_DIR}/src/BotAddress.cpp
         ${CMAKE_SOURCE_DIR}/src/BotLanguage.cpp
         ${CMAKE_SOURCE_DIR}/src/BotAnswer.cpp
+        ${CMAKE_SOURCE_DIR}/src/BotChat.cpp
         ${CMAKE_SOURCE_DIR}/src/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp

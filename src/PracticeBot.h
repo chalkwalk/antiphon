@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BotAddress.h"
+#include "BotChat.h"
 #include "BotBand.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
@@ -117,9 +118,6 @@ private:
   void onChatMessage(const juce::String &type, const juce::String &username,
                      const juce::String &text) override;
 
-  // Returns true if the line was an instruction to the band. Room chat and
-  // private messages take the same commands.
-  bool handleBandCommand(const juce::String &text);
 
   // The subset that needs no address, because its SYNTAX is unmistakable: a
   // `[key: Dm]` tag and a `| Am | F |` chart. Nobody writes either by accident,
@@ -128,7 +126,8 @@ private:
   //
   // Deliberately excludes `shake`, which is an ordinary English word and needs
   // to be aimed at somebody.
-  bool handleStructured(const juce::String &text);
+  bool handleStructured(const juce::String &text,
+                        const juce::String &username);
 
   // The room as the addressing engine understands it: who is here, which of
   // them are bots, what each is called and what their channel is named. Built
@@ -136,20 +135,7 @@ private:
   // somebody who has left.
   BotAddress::Room currentRoom() const;
 
-  // A short, factual line about what this bot is playing. Used as the greeting
-  // when somebody says its name and nothing else -- an acknowledgement that
-  // teaches nothing would be a promise rule 3 cannot keep, so the greeting
-  // doubles as a menu of what can be asked.
-  juce::String describeSelf() const;
 
-  // Instructions to ONE player, which room chat deliberately does not take.
-  //
-  // The key and the chords are things the whole band must agree about, so they
-  // are shouted. What instrument the soloist is holding is nobody else's
-  // business, and "guitar" is a word that turns up in ordinary conversation --
-  // a room where saying it silently reconfigures a bot is a room with a
-  // poltergeist in it. Returns a reply, or an empty string for "not for me".
-  juce::String handlePrivateCommand(const juce::String &text);
 
   // False once the bot has parted because its owner left.
   bool checkOwnerStillHere();
@@ -185,6 +171,18 @@ private:
   // One conversation, with one person. Belongs to whoever opened it, not to
   // the room -- two other people talking are not talking to the bot.
   BotAddress::Attention attention;
+
+  // Where the key and the chart CAME FROM, which a bot must say when it
+  // reports either. Both always have a value -- a room starts in C major and a
+  // key implies a chart -- so reporting one without its provenance tells the
+  // room it agreed on something nobody chose. Tracked here because only this
+  // class sees the message that changed them.
+  BotAnswer::Source keySource = BotAnswer::Source::Defaulted;
+  juce::String keySetBy;
+  BotAnswer::Source chartSource = BotAnswer::Source::Defaulted;
+
+  // The room and this bot, in the shape the pure answering code takes.
+  BotChat::Context currentContext() const;
 
   std::atomic<bool> active{false};
   std::atomic<bool> sawOwner{false};

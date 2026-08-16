@@ -344,6 +344,90 @@ public:
              "the reply does not say what it is on (" + bars + "): " + r.text);
     }
 
+    beginTest("a command produces an action, not just a sentence");
+    {
+      // The half of Response that is not words. A command both acts and speaks,
+      // and only the action touches state that outlives the message -- which is
+      // exactly why they are separate fields and why this can be asserted
+      // without a band, a socket or a room.
+      struct Case {
+        const char *said;
+        BotChat::Act act;
+      };
+
+      const Case cases[] = {
+          {"Ravo: shake", BotChat::Act::Reshuffle},
+          {"Ravo: mix it up", BotChat::Act::Reshuffle},
+          {"Ravo: leave", BotChat::Act::Part},
+          {"Ravo: help", BotChat::Act::None},
+          {"Ravo: what key are we in", BotChat::Act::None},
+      };
+
+      for (const auto &c : cases) {
+        auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(ctx, from("tester", c.said), att);
+
+        expect(r.act == c.act,
+               juce::String(c.said) + " produced the wrong action");
+        expect(r.speak,
+               juce::String(c.said) + " acted silently, so nobody can tell it "
+                                      "worked");
+      }
+    }
+
+    beginTest("only the soloist answers to an instrument, and says so if not");
+    {
+      // The one thing about the band a player may pin, and it survives a shake:
+      // somebody who asked for a guitar because they came to practise keyboards
+      // has not changed their mind by asking for a different tune.
+      auto lead = contextWith(BotBand::Voice::Lead, "Pemo", "tester");
+      BotAddress::Attention att;
+      const auto r = BotChat::respond(lead, from("tester", "Pemo: guitar"), att);
+
+      expect(r.act == BotChat::Act::SetLeadInstrument,
+             "the lead did not take the instrument: " + r.text);
+      expect(r.value == (int)BotVoice::LeadInstrument::Guitar,
+             "the lead took the wrong instrument");
+      expect(r.speak && r.text.containsIgnoreCase("guitar"),
+             "the lead did not say what it picked up: " + r.text);
+
+      // A drummer asked to play the guitar should say so rather than silently
+      // accepting a setting it will never read.
+      auto kit = contextWith(BotBand::Voice::Drums, "Quado", "tester");
+      BotAddress::Attention att2;
+      const auto no =
+          BotChat::respond(kit, from("tester", "Quado: guitar"), att2);
+
+      expect(no.act == BotChat::Act::None,
+             "a drummer accepted a guitar setting it will never read");
+      expect(no.speak && no.text.containsIgnoreCase("lead"),
+             "the drummer did not point at the bot that can: " + no.text);
+    }
+
+    beginTest("asked what it is, a bot says so and offers a way out");
+    {
+      // First contact. An acknowledgement that teaches nothing is a promise the
+      // design cannot keep, so the answer doubles as a menu -- and it must name
+      // how to remove the bot, because somebody who does not want it needs that
+      // more than anything else in the sentence.
+      auto ctx = contextWith(BotBand::Voice::Lead, "Pemo", "tester");
+      BotAddress::Attention att;
+
+      const auto r = BotChat::respond(ctx, from("tester", "Pemo: what are you"), att);
+
+      expect(r.speak, "'what are you' got no answer at all");
+      expect(r.text.containsIgnoreCase("bot"),
+             "the reply does not say it is a bot: " + r.text);
+      expect(r.text.containsIgnoreCase("leave"),
+             "the reply does not say how to be rid of it: " + r.text);
+      // "part" may appear as the ordinary noun it now is -- "ask it about its
+      // part" -- but never offered as the command it no longer is.
+      expect(!r.text.containsIgnoreCase("\"" + ctx.self.name + " part\"") &&
+                 !r.text.containsIgnoreCase("say \"part\""),
+             "the reply offers a command that was withdrawn: " + r.text);
+    }
+
     beginTest("nothing a bot composes can set the key by saying it");
     {
       // `MusicalKey::parseTagged` matches `[key:` ANYWHERE in a line, and

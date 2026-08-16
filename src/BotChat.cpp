@@ -63,6 +63,20 @@ juce::String describePart(const Self &self) {
   return self.name + " is playing.";
 }
 
+// First contact, and the answer to "what are you".
+//
+// An acknowledgement that teaches nothing is a promise the design cannot keep,
+// so this doubles as a menu. It names the way OUT before anything else it can
+// do, because somebody who did not want a bot in their room needs that more
+// than they need to know what it plays.
+juce::String explainSelf(const Self &self) {
+  return self.name + " is a bot playing the " +
+         juce::String(BotBand::voiceName(self.voice)) +
+         ". say \"" + self.name +
+         " leave\" and it goes. ask it about its part, its sound, the key, the "
+         "chords or the tempo.";
+}
+
 // The key somebody asked for, or an invalid Key when they named none.
 //
 // `MusicalKey::parseName` accepts a BARE tonic -- "a" is A major -- so scanning
@@ -155,8 +169,53 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
   if (who == BotAddress::Address::Ignore)
     return {};
 
+  // Decided by the address rather than the sentence. Anyone may evict a bot --
+  // a bot in somebody else's jam should be removable by the people it is
+  // bothering, not only by whoever brought it.
+  if (who == BotAddress::Address::PartAll ||
+      who == BotAddress::Address::PartMe) {
+    out.speak = true;
+    out.act = Act::Part;
+    out.text = ctx.self.name + " leaving. Bye.";
+    return out;
+  }
+
+  // The name alone. A greeting that teaches nothing would be a dead end, so it
+  // is the same line as "what are you".
+  if (who == BotAddress::Address::Opener) {
+    out.speak = true;
+    out.text = explainSelf(ctx.self);
+    return out;
+  }
+
   const juce::String body = juce::String(BotAddress::withoutAddress(
       ctx.room, ctx.self.name.toStdString(), in.text));
+
+  // Naming an instrument, which is a setting rather than a question and so is
+  // matched before the sentence is read. Only the soloist has one to change;
+  // the rest say so rather than accept a value they will never read.
+  const auto wanted = body.trim().toLowerCase();
+  if (wanted == "epiano" || wanted == "piano" || wanted == "rhodes" ||
+      wanted == "guitar" || wanted == "synth") {
+    out.speak = true;
+    if (ctx.self.voice != BotBand::Voice::Lead) {
+      out.text = ctx.self.name + " plays the " +
+                 juce::String(BotBand::voiceName(ctx.self.voice)).toLowerCase() +
+                 ". ask the lead.";
+      return out;
+    }
+
+    auto pick = BotVoice::LeadInstrument::Synth;
+    if (wanted == "epiano" || wanted == "piano" || wanted == "rhodes")
+      pick = BotVoice::LeadInstrument::EPiano;
+    else if (wanted == "guitar")
+      pick = BotVoice::LeadInstrument::Guitar;
+
+    out.act = Act::SetLeadInstrument;
+    out.value = (int)pick;
+    out.text = ctx.self.name + " on " + BotVoice::leadInstrumentName(pick) + ".";
+    return out;
+  }
 
   const auto reading = BotLanguage::read(body.toStdString());
 
@@ -208,6 +267,26 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     return out;
   }
 
+  case BotLanguage::Intent::Reshuffle:
+    // Acting collectively is the point -- one "shake" rerolls the whole band --
+    // so every addressed bot acts. Only the LINE about it is rationed, and that
+    // rationing belongs to whoever owns the room, not here.
+    out.speak = true;
+    out.act = Act::Reshuffle;
+    out.text = ctx.self.name + " ok, something else.";
+    return out;
+
+  case BotLanguage::Intent::Leave:
+    out.speak = true;
+    out.act = Act::Part;
+    out.text = ctx.self.name + " leaving. Bye.";
+    return out;
+
+  case BotLanguage::Intent::ExplainSelf:
+    out.speak = true;
+    out.text = explainSelf(ctx.self);
+    return out;
+
   case BotLanguage::Intent::SetChart:
     // Never acts and never reads a chart out of the request: a chart has to
     // lead its line, so a request for one essentially never carries one.
@@ -228,7 +307,21 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     break;
   }
 
-  return {};
+  // Addressed, and not understood. One honest, visibly limited reply rather
+  // than a plausible guess (docs/BOT-CHAT.md rule 3). Ambiguity is different
+  // from incomprehension and says which two it was torn between, because it
+  // knows exactly and saying so is nearly free.
+  out.speak = true;
+  if (reading.ambiguous && reading.alternative != BotLanguage::Intent::None)
+    out.text = ctx.self.name + ": not sure whether you want " +
+               juce::String(BotLanguage::intentName(reading.intent)) + " or " +
+               juce::String(BotLanguage::intentName(reading.alternative)) +
+               " -- which?";
+  else
+    out.text = ctx.self.name +
+               ": i can tell you my part, my sound, the key, the chords or the "
+               "tempo.";
+  return out;
 }
 
 } // namespace BotChat
