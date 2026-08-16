@@ -458,6 +458,32 @@ a room can say about its music that Ninjam has no field for. Both halves live in
       same loop three times over a long interval. Today a chart always fills
       exactly one interval. A repeat count -- explicit, or inferred when the bars
       divide the interval evenly -- is its own decision.
+- [ ] **A key change keeps the chart, and the chart says what it is relative
+      to.** Designed in `DESIGN.md` section 6.4; that section is the
+      specification and this is the checklist. Today a key announcement calls
+      `Harmony::defaultChart` and throws away a progression somebody typed
+      (`src/PracticeBot.cpp`), which is the actual bug underneath all of it.
+      - [ ] A relative chord: interval from the tonic, explicit tones, and a
+            binding of delegated or overridden. Richer than a degree and poorer
+            than a `Chord` -- `DegreeLoop` is a bare `std::vector<int>` today
+            and cannot express an accidental, a contradicting quality or a
+            substitution.
+      - [ ] Decide the binding when the chart is read: diatonic with the mode's
+            quality is delegated, anything else is an override.
+      - [ ] A minor-mode realisation table, so a delegated `V` stays major.
+            Same judgement `defaultDegreeLoop` already makes, in the same place.
+      - [ ] Accidentals measured against the parallel major; spelling derived
+            for display, so `bIII` in a minor key echoes back as `III`.
+      - [ ] `parseDegreeChart` reachable from the practice room. `PracticeBot`
+            only calls `parseChart`, so `| ii | V | I |` is not recognised as a
+            chart at all where the band can hear it.
+      - [ ] Letters never rewritten; a key change with one up offers the
+            transpose on the chip instead, the way an inferred key is offered.
+      - [ ] "Use the default chords for this key" as something a player can ask
+            for, since a key change no longer does it silently. Needs corpus
+            lines and an intent -- `SET_CHART` only ever declines today.
+      - [ ] The fixture table: `(chart, from-key, to-key, expected chart)`, with
+            the arguments from section 6.4 as its rows.
 - [ ] **Harmony beyond diatonic.** `Harmony::realise` is the named seam:
       secondary and altered dominants, tritone substitution, borrowing from
       adjacent modes. Functional roman naming (`V7/vi`) belongs with it, since
