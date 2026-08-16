@@ -102,6 +102,78 @@ public:
              "the part reply does not say what it is playing: " + part.text);
     }
 
+    beginTest("the key is reported with where it came from");
+    {
+      // The rule `BotAnswer` exists to keep, now that something composes around
+      // it. A key always HAS a value -- the room starts in C major -- so
+      // reporting one flatly tells the room it agreed on something it never
+      // discussed. The provenance is the difference between an answer and a
+      // fabrication, and it is the caller that can throw it away.
+      BotAddress::Attention att;
+
+      auto said = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      const auto chosen =
+          BotChat::respond(said, from("tester", "Ravo: what key are we in"), att);
+
+      expect(chosen.speak, "a question about the key got no answer at all");
+      expect(chosen.text.containsIgnoreCase("D minor"),
+             "the reply does not name the key: " + chosen.text);
+      expect(chosen.text.containsIgnoreCase("tester"),
+             "the reply drops who chose the key: " + chosen.text);
+
+      // Nobody chose this one, and saying so is the whole point.
+      auto defaulted = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      defaulted.music.keySource = BotAnswer::Source::Defaulted;
+      defaulted.music.keySetBy = {};
+      BotAddress::Attention att2;
+      const auto guessed = BotChat::respond(
+          defaulted, from("tester", "Ravo: whats the key"), att2);
+
+      expect(guessed.speak, "a question about a defaulted key got no answer");
+      expect(guessed.text.containsIgnoreCase("nobody chose"),
+             "a key nobody chose is reported as though somebody did: " +
+                 guessed.text);
+    }
+
+    beginTest("nothing a bot composes can set the key by saying it");
+    {
+      // `MusicalKey::parseTagged` matches `[key:` ANYWHERE in a line, and
+      // PracticeBot acts on it wherever it appears -- so a bot explaining the
+      // syntax would set the key in its own state and in every Antiphon client
+      // in the room. `BotAnswer` asserts this over its own strings; nothing
+      // asserted it over what BotChat wraps around them, which is where a
+      // "type [key: Dm]" would be added.
+      const char *asked[] = {
+          "Ravo: what key are we in", "Ravo: whats the key",
+          "Ravo: can you play in g minor", "Ravo: what are the chords",
+          "Ravo: what do you sound like", "Ravo: whats your part",
+          "Ravo: how do i change the key",
+      };
+
+      const BotAnswer::Source sources[] = {BotAnswer::Source::Chat,
+                                           BotAnswer::Source::Topic,
+                                           BotAnswer::Source::Defaulted};
+
+      for (const auto source : sources) {
+        for (const auto *line : asked) {
+          auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+          ctx.music.keySource = source;
+          BotAddress::Attention att;
+
+          const auto r = BotChat::respond(ctx, from("tester", line), att);
+          if (!r.speak)
+            continue;
+
+          expect(!MusicalKey::parseAnnouncement(r.text).valid,
+                 "this reply sets the key by saying it: " + r.text);
+          expect(!MusicalKey::parseTagged(r.text).valid,
+                 "this reply carries a key tag: " + r.text);
+          expect(!Harmony::looksLikeChart(r.text),
+                 "this reply is itself a chart: " + r.text);
+        }
+      }
+    }
+
     beginTest("every voice answers about itself, in its own terms");
     {
       // Four voices, and a generic answer from any of them would be a bot that
