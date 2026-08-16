@@ -210,14 +210,23 @@ int parseNote(const juce::String &s, int &pos) {
 
   int pc = letterSemis[idx];
   ++pos;
+  bool first = true;
   while (pos < s.length() && (s[pos] == '#' || s[pos] == 'b')) {
     // A 'b' can be an accidental or the start of "b5", so only take it as a
     // flat while it sits directly against the letter.
-    if (s[pos] == 'b' && pos + 1 < s.length() &&
+    //
+    // "Directly against the letter" is the whole rule, and applying the
+    // lookahead to that first character instead was a bug: it made "Bb7" parse
+    // its root as B, leave "b7", and be refused as a chord. An alteration
+    // always has a quality between it and the letter -- "C7b5", "F#m7b5" --
+    // so the position immediately after the letter can only ever be an
+    // accidental.
+    if (!first && s[pos] == 'b' && pos + 1 < s.length() &&
         juce::CharacterFunctions::isDigit(s[pos + 1]))
       break;
     pc += (s[pos] == '#') ? 1 : -1;
     ++pos;
+    first = false;
   }
   return wrapPitchClass(pc);
 }
@@ -1210,6 +1219,119 @@ bool changesAtStep(const Layout &layout, int step) {
   if (s == 0)
     return true; // an interval opens on its first chord
   return layout.stepToChord[(size_t)s] != layout.stepToChord[(size_t)(s - 1)];
+}
+
+
+Chord modeChordOn(const MusicalKey::Key &key, int degree, bool seventh) {
+  Chord c = seventh ? diatonicSeventh(key, degree) : diatonicTriad(key, degree);
+
+  // The dominant of a minor-ish mode is MAJOR. Harmonic minor exists for
+  // exactly this reason, and a chart moved from major to minor that came back
+  // with a minor v would be the model being faithful to the scale and wrong
+  // about the music. `defaultDegreeLoop` already makes the same call.
+  //
+  // Somebody who wants the natural-minor chord writes `v`. That now disagrees
+  // with this table, so it binds as an override and survives untouched, which
+  // is how both readings stay expressible (`DESIGN.md` section 6.4).
+  const int within =
+      ((degree % MusicalKey::kScaleDegrees) + MusicalKey::kScaleDegrees) %
+      MusicalKey::kScaleDegrees;
+  if (isMinorish(key.mode) && within == 4 && c.tones[1] == 3) {
+    c.tones[1] = 4;
+    c.quality = seventh ? Quality::Dominant7 : Quality::Major;
+  }
+  return c;
+}
+
+namespace {
+
+// Is this chord exactly what the mode gives on some degree? That is the whole
+// binding decision: if it is, the writer delegated to the key and a key change
+// re-derives it; if it is not, they overrode the key and it survives intact.
+//
+// Compared on TONES rather than on a quality label, because the label is
+// documented as an approximation and two chords with the same name can differ.
+bool findDelegatedDegree(const Chord &chord, const MusicalKey::Key &key,
+                         int &degreeOut, bool &seventhOut) {
+  for (int degree = 0; degree < MusicalKey::kScaleDegrees; ++degree)
+    for (const bool seventh : {false, true}) {
+      const Chord diatonic = modeChordOn(key, degree, seventh);
+      if (diatonic == chord) {
+        degreeOut = degree;
+        seventhOut = seventh;
+        return true;
+      }
+    }
+  return false;
+}
+
+} // namespace
+
+RelativeChart toRelative(const Chart &chart, const MusicalKey::Key &key) {
+  RelativeChart out;
+  out.reserve(chart.size());
+
+  for (const auto &bar : chart) {
+    RelativeBar rel;
+    rel.chords.reserve(bar.chords.size());
+
+    for (const auto &chord : bar.chords) {
+      RelativeChord r;
+
+      int degree = 0;
+      bool seventh = false;
+      if (chord.bass < 0 && findDelegatedDegree(chord, key, degree, seventh)) {
+        r.binding = RelativeChord::Binding::Delegated;
+        r.degree = degree;
+        r.seventh = seventh;
+      } else {
+        // A slash bass is never delegated: the inversion is a decision about
+        // voicing that the key has no opinion on, so it is carried literally.
+        r.binding = RelativeChord::Binding::Overridden;
+        r.semitones = wrapPitchClass(chord.root - key.tonic);
+        r.tones = chord.tones;
+        r.toneCount = chord.toneCount;
+        r.bassSemitones =
+            chord.bass < 0 ? -1 : wrapPitchClass(chord.bass - key.tonic);
+        r.quality = chord.quality;
+      }
+
+      rel.chords.push_back(r);
+    }
+    out.push_back(std::move(rel));
+  }
+
+  return out;
+}
+
+Chart resolve(const RelativeChart &chart, const MusicalKey::Key &key) {
+  Chart out;
+  out.reserve(chart.size());
+
+  for (const auto &bar : chart) {
+    Bar plain;
+    plain.chords.reserve(bar.chords.size());
+
+    for (const auto &r : bar.chords) {
+      if (r.binding == RelativeChord::Binding::Delegated) {
+        plain.chords.push_back(modeChordOn(key, r.degree, r.seventh));
+        continue;
+      }
+
+      Chord c;
+      c.root = wrapPitchClass(key.tonic + r.semitones);
+      c.tones = r.tones;
+      c.toneCount = r.toneCount;
+      c.bass = r.bassSemitones < 0
+                   ? -1
+                   : wrapPitchClass(key.tonic + r.bassSemitones);
+      c.quality = r.quality;
+      plain.chords.push_back(c);
+    }
+    out.push_back(std::move(plain));
+  }
+
+  return out;
 }
 
 } // namespace Harmony

@@ -93,6 +93,69 @@ using Chart = std::vector<Bar>;
 // One chord per bar, which is what a flat progression means.
 Chart chartOf(const Progression &progression);
 
+// A chart as it relates to a KEY, rather than as absolute pitches. The form a
+// chart is kept in so a key change can move it (`DESIGN.md` section 6.4).
+//
+// Richer than a scale degree and poorer than a Chord, deliberately. A degree
+// cannot express a tritone substitution or a borrowed chord -- which is why
+// Chord carries an absolute root -- and a Chord cannot express the fact that
+// somebody wrote "I" and meant "whatever the key makes it".
+struct RelativeChord {
+  enum class Binding {
+    // Diatonic to the key it was written in, with the quality that mode gives.
+    // The writer delegated the decision to the key, so a key change re-derives
+    // it: I becomes i, IV becomes iv, vi becomes VI.
+    Delegated,
+    // An accidental, or a quality the mode does not give. The writer overrode
+    // the key, so a key change transposes it and never re-derives it.
+    Overridden,
+  };
+
+  Binding binding = Binding::Delegated;
+
+  // Delegated: the scale degree, 0 for the tonic. This is the functional
+  // invariant -- the degree survives a mode change and the pitch does not.
+  int degree = 0;
+  bool seventh = false;
+
+  // Overridden: semitones above the tonic, measured against the PARALLEL
+  // MAJOR so the number means the same thing in every mode, and the tones
+  // exactly as written. Spelling is derived for display, so this is `bIII` in
+  // a major key and `III` in a minor one.
+  int semitones = 0;
+  std::array<std::int8_t, kMaxChordTones> tones{{0, 4, 7, 0, 0}};
+  int toneCount = 3;
+  int bassSemitones = -1; // above the tonic; -1 when the root is the bass
+
+  // Carried rather than recomputed, for the reason Chord gives: the label is
+  // never the truth, and re-deriving one on the way out could rename a chord
+  // the writer had already named.
+  Quality quality = Quality::Major;
+};
+
+struct RelativeBar {
+  std::vector<RelativeChord> chords;
+};
+
+using RelativeChart = std::vector<RelativeBar>;
+
+// Read a chart against the key it was written in, deciding each chord's
+// binding. Lossless: resolving the result in the same key returns the chart it
+// came from, which is the property the tests lead with.
+RelativeChart toRelative(const Chart &chart, const MusicalKey::Key &key);
+
+// The chart in a key. Delegated chords are re-derived from the degree;
+// overridden ones are transposed and left alone.
+Chart resolve(const RelativeChart &chart, const MusicalKey::Key &key);
+
+// The chord a mode gives on a degree, which is what "diatonic" means here.
+//
+// Not a raw scale readout: minor-ish modes give a MAJOR triad on the fifth,
+// because harmonic minor exists for exactly that reason and a minor v is not
+// what anybody means by a dominant. `defaultDegreeLoop` already makes the same
+// judgement, and this is the same judgement in the same layer.
+Chord modeChordOn(const MusicalKey::Key &key, int degree, bool seventh);
+
 // Every chord in the chart, in the order they sound. For display and for tests;
 // the band reads a Layout instead, because a flat list has lost the timing.
 Progression flatten(const Chart &chart);

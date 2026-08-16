@@ -463,15 +463,19 @@ a room can say about its music that Ninjam has no field for. Both halves live in
       specification and this is the checklist. Today a key announcement calls
       `Harmony::defaultChart` and throws away a progression somebody typed
       (`src/PracticeBot.cpp`), which is the actual bug underneath all of it.
-      - [ ] A relative chord: interval from the tonic, explicit tones, and a
-            binding of delegated or overridden. Richer than a degree and poorer
-            than a `Chord` -- `DegreeLoop` is a bare `std::vector<int>` today
-            and cannot express an accidental, a contradicting quality or a
-            substitution.
-      - [ ] Decide the binding when the chart is read: diatonic with the mode's
-            quality is delegated, anything else is an override.
-      - [ ] A minor-mode realisation table, so a delegated `V` stays major.
-            Same judgement `defaultDegreeLoop` already makes, in the same place.
+      - [x] A relative chord: interval from the tonic, explicit tones, and a
+            binding of delegated or overridden. `Harmony::RelativeChord`.
+      - [x] Decide the binding when the chart is read: diatonic with the mode's
+            quality is delegated, anything else is an override. `toRelative`
+            and `resolve`, with round-tripping in one key asserted lossless
+            over seven charts and five keys.
+      - [x] A minor-mode realisation table, so a delegated `V` stays major.
+            `Harmony::modeChordOn`. A slash bass is never delegated: an
+            inversion is a voicing decision the key has no opinion on.
+      - [ ] **Spelling is not yet derived per chord.** `chartText` spells a
+            whole chart from the key signature, so a bII in a sharp key comes
+            out `D#7` where the notation wants `Eb7`. Same pitches, wrong
+            spelling, and it is the display half of section 6.4.
       - [ ] Accidentals measured against the parallel major; spelling derived
             for display, so `bIII` in a minor key echoes back as `III`.
       - [ ] `parseDegreeChart` reachable from the practice room. `PracticeBot`
