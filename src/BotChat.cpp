@@ -1,5 +1,6 @@
 #include "BotChat.h"
 #include "BotLanguage.h"
+#include "ChatFormat.h"
 
 namespace BotChat {
 
@@ -97,6 +98,51 @@ MusicalKey::Key keyAskedFor(const juce::String &text) {
   return {};
 }
 
+// The tempo somebody asked for, as (bpm, bpi); zero means "not this one",
+// which is what `BotAnswer::answerSetTempo` reads.
+//
+// The two votable ranges OVERLAP between 40 and 64 bpm/bpi, so a bare number
+// cannot be assigned by size alone. The rules, in order:
+//
+//   an explicit unit always wins  -- "16 bpi", "bpm 132"
+//   a bare number is a bpm        -- "vote for 140", which is what it means
+//   unless that reading is impossible and the bpi one is not -- "vote for 16"
+//
+// The last is not a guess about intent. It is the only reading under which the
+// request can be satisfied at all, and the alternative is answering "the tempo
+// vote only goes from 40 to 400 bpm" to somebody who asked for 16 bpi.
+void tempoAskedFor(const juce::String &text, int &bpm, int &bpi) {
+  bpm = 0;
+  bpi = 0;
+
+  const auto words = juce::StringArray::fromTokens(
+      text.removeCharacters(",.?!").toLowerCase(), " \t", "");
+
+  for (int i = 0; i < words.size(); ++i) {
+    const auto &w = words[i];
+    if (!w.containsOnly("0123456789") || w.isEmpty())
+      continue;
+
+    const int value = w.getIntValue();
+    const juce::String before = i > 0 ? words[i - 1] : juce::String();
+    const juce::String after = i + 1 < words.size() ? words[i + 1] : juce::String();
+
+    if (after == "bpi" || before == "bpi") {
+      bpi = value;
+      continue;
+    }
+    if (after == "bpm" || before == "bpm") {
+      bpm = value;
+      continue;
+    }
+
+    if (!ChatFormat::isVotableBpm(value) && ChatFormat::isVotableBpi(value))
+      bpi = value;
+    else
+      bpm = value;
+  }
+}
+
 } // namespace
 
 Response respond(const Context &ctx, const BotAddress::Incoming &in,
@@ -149,6 +195,24 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     // what was asked, which is the worst miss available here.
     out.speak = true;
     out.text = BotAnswer::answerSetKey(ctx.music, keyAskedFor(body));
+    return out;
+
+  case BotLanguage::Intent::SetTempo: {
+    // A bot is an ordinary client: it cannot set a tempo and must not start a
+    // vote, because four bots backing one person is that person having four
+    // votes. It can say which command does work.
+    int wantBpm = 0, wantBpi = 0;
+    tempoAskedFor(body, wantBpm, wantBpi);
+    out.speak = true;
+    out.text = BotAnswer::answerSetTempo(ctx.music, wantBpm, wantBpi);
+    return out;
+  }
+
+  case BotLanguage::Intent::SetChart:
+    // Never acts and never reads a chart out of the request: a chart has to
+    // lead its line, so a request for one essentially never carries one.
+    out.speak = true;
+    out.text = BotAnswer::answerSetChart(ctx.music);
     return out;
 
   case BotLanguage::Intent::ReportTempo:
