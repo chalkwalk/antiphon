@@ -183,6 +183,29 @@ bool isPartCommand(const std::string &text) {
           tokens[0] == "stop");
 }
 
+namespace {
+
+// Does the message OPEN with "name:"? The colon is the only address form that
+// is unambiguous without knowing who is in the room -- a comma is ordinary
+// punctuation ("ok, shake") and a bare leading word is just a word.
+//
+// Deliberately narrow: one leading token, then a colon. It is used only to
+// decide that a message is for somebody ELSE, so a miss costs nothing and a
+// false positive would silence a bot that was being spoken to.
+bool addressesSomebodyByColon(const std::string &text) {
+  size_t i = 0;
+  while (i < text.size() && std::isspace((unsigned char)text[i]) != 0)
+    ++i;
+
+  const size_t start = i;
+  while (i < text.size() && isWordChar(text[i]))
+    ++i;
+
+  return i > start && i < text.size() && text[i] == ':';
+}
+
+} // namespace
+
 bool isCourtesy(const std::string &text) {
   const auto tokens = tokenise(text);
   if (tokens.empty() || tokens.size() > 3)
@@ -527,6 +550,21 @@ Address classify(const Room &room, const std::string &me, const Incoming &msg,
 
   if (msg.isPrivate)
     return addressedPart ? Address::PartMe : Address::Private;
+
+  // "name: something" is aimed at that name, and by here it is established
+  // that the name is not mine, not a collective, and nobody I know -- so this
+  // is somebody addressing a player I cannot see. Answering it because a
+  // window happened to be open is the rudest thing in the design: it is a bot
+  // replying to a message that visibly says who it is for.
+  //
+  // The name being unknown is not exotic. A player who joined a moment ago is
+  // not in my list yet, a bot that has left is gone from it, and either way an
+  // explicit address is the clearest signal a conversation has moved on.
+  if (!rawTokens.empty() && addressesSomebodyByColon(msg.text)) {
+    if (attention.owner == msg.sender)
+      attention = Attention{};
+    return Address::Ignore;
+  }
 
   // Unaddressed. The only way through is a conversation already open with this
   // person -- and courtesy ends a turn rather than starting one.

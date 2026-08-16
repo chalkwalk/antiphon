@@ -267,3 +267,11 @@ KIT     mirn: what is your part
 KIT     kit hows your part going
 NOBODY  part
 NOBODY  the bass part is tricky
+
+# An address to a name nobody here recognises. A player who joined a moment ago
+# is not in the list yet, and a bot that has left is gone from it -- but
+# "name: something" says who it is for either way, so it is for nobody here.
+# The window-closing half of this is asserted in BotAddressTests, since this
+# file states no prior conversation for a COLD case.
+NOBODY  zorp: what are you playing
+NOBODY  zorp: shake
