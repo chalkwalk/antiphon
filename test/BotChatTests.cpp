@@ -191,6 +191,69 @@ public:
              "the reply gives the bpm but not the bpi: " + r.text);
     }
 
+    beginTest("asked to change the key, a bot says whose decision it is");
+    {
+      // The bots have no authority over the key -- it is whatever the room
+      // agrees -- so recognising the ask is what lets them say so instead of
+      // reciting the current key at somebody who just asked for a different
+      // one. That miss is the worst kind: it looks like an answer.
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      BotAddress::Attention att;
+
+      const auto r = BotChat::respond(
+          ctx, from("tester", "Ravo: can you play in g minor"), att);
+
+      expect(r.speak, "a request to change the key got no answer at all");
+      expect(r.text.containsIgnoreCase("G minor"),
+             "the reply does not name the key that was asked for: " + r.text);
+      expect(r.text.containsIgnoreCase("not mine"),
+             "the reply does not say whose decision the key is: " + r.text);
+      expect(r.text.containsIgnoreCase("/key"),
+             "the reply does not say how to actually change it: " + r.text);
+    }
+
+    beginTest("a key is read out of the sentence, or admitted to be unreadable");
+    {
+      // `MusicalKey::parseName` takes a BARE letter -- "a" is A major -- so
+      // scanning a sentence for something that parses will read a key out of an
+      // article. The corpus has both halves of the trap under SET_KEY: "put it
+      // in a minor" IS A minor, and "give me a minor key" is somebody asking
+      // for some minor key and naming none. Guessing wrong here puts a key up
+      // that nobody asked for, so the rule is to say so instead.
+      struct Case {
+        const char *said;
+        const char *wanted; // empty: must not claim to have read a key
+      };
+
+      const Case cases[] = {
+          {"Ravo: put it in a minor", "A minor"},
+          {"Ravo: switch to g major", "G major"},
+          {"Ravo: can you try d dorian", "D Dorian"},
+          {"Ravo: lets play in e minor", "E minor"},
+          {"Ravo: give me a minor key", ""},
+          {"Ravo: can we change the key", ""},
+          {"Ravo: play something in dorian", ""},
+      };
+
+      for (const auto &c : cases) {
+        auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(ctx, from("tester", c.said), att);
+
+        expect(r.speak, juce::String(c.said) + " got no answer at all");
+
+        if (*c.wanted != 0) {
+          expect(r.text.containsIgnoreCase(c.wanted),
+                 juce::String(c.said) + " did not read the key (wanted " +
+                     c.wanted + "): " + r.text);
+        } else {
+          expect(r.text.containsIgnoreCase("could not tell"),
+                 juce::String(c.said) +
+                     " claimed to read a key nobody named: " + r.text);
+        }
+      }
+    }
+
     beginTest("nothing a bot composes can set the key by saying it");
     {
       // `MusicalKey::parseTagged` matches `[key:` ANYWHERE in a line, and
