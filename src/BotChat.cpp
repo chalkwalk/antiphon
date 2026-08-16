@@ -99,6 +99,24 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     out.text = "we are in " + BotAnswer::describeKey(ctx.music) + ".";
     return out;
 
+  case BotLanguage::Intent::ReportChart:
+    // The lead-in is load-bearing. `describeChart` begins with a bar line when
+    // somebody put the chart up, and `Harmony::readChart` takes a leading `|`
+    // as the whole signal -- so sending the fragment alone would not report the
+    // chart, it would announce one.
+    out.speak = true;
+    out.text = "the chart is " + BotAnswer::describeChart(ctx.music) + ".";
+    return out;
+
+  case BotLanguage::Intent::ReportTempo:
+    // Both numbers, always. The bpi is what decides how long you wait to hear
+    // yourself, it is the part newcomers are surprised by, and it cannot be
+    // worked out from the bpm.
+    out.speak = true;
+    out.text = "we are at " + juce::String(ctx.music.bpm) + " bpm, " +
+               juce::String(ctx.music.bpi) + " beats to the interval.";
+    return out;
+
   default:
     break;
   }

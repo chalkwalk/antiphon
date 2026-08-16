@@ -135,6 +135,62 @@ public:
                  guessed.text);
     }
 
+    beginTest("the chart is reported without announcing itself");
+    {
+      // `describeChart` returns text that BEGINS with a bar line when somebody
+      // put the chart up, and `Harmony::readChart` treats a leading `|` as the
+      // whole signal -- so a bot answering "what are the chords" with the
+      // fragment alone would be read by every client as somebody announcing a
+      // new chart. The lead-in is the protection, not decoration.
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      ctx.music.chartSource = BotAnswer::Source::Chat;
+      BotAddress::Attention att;
+
+      const auto r =
+          BotChat::respond(ctx, from("tester", "Ravo: what are the chords"), att);
+
+      expect(r.speak, "a question about the chords got no answer at all");
+      expect(!r.text.trim().startsWithChar('|'),
+             "the reply leads with a bar line and is itself a chart: " + r.text);
+
+      const juce::String bars = Harmony::chartText(
+          ctx.music.chart, MusicalKey::usesFlats(ctx.music.key.tonic,
+                                                 ctx.music.key.mode));
+      expect(r.text.contains(bars),
+             "the reply does not contain the chart (" + bars + "): " + r.text);
+
+      // A chart nobody put up is the default for the key, and saying so is the
+      // same honesty rule the key answer follows.
+      auto fallback = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      BotAddress::Attention att2;
+      const auto d = BotChat::respond(
+          fallback, from("tester", "Ravo: whats the progression"), att2);
+      expect(d.speak, "a question about a defaulted chart got no answer");
+      expect(d.text.containsIgnoreCase("default"),
+             "a chart nobody chose is reported as though somebody put it up: " +
+                 d.text);
+    }
+
+    beginTest("the tempo is reported as both of the numbers that set it");
+    {
+      // Ninjam's tempo is two numbers and a player needs both: the bpi decides
+      // how long you wait to hear yourself, which is the thing newcomers find
+      // surprising, and it is not derivable from the bpm.
+      auto ctx = contextWith(BotBand::Voice::Drums, "Quado", "tester");
+      ctx.music.bpm = 132;
+      ctx.music.bpi = 16;
+      BotAddress::Attention att;
+
+      const auto r =
+          BotChat::respond(ctx, from("tester", "Quado: how fast are we going"), att);
+
+      expect(r.speak, "a question about the tempo got no answer at all");
+      expect(r.text.contains("132"),
+             "the reply does not give the tempo: " + r.text);
+      expect(r.text.contains("16"),
+             "the reply gives the bpm but not the bpi: " + r.text);
+    }
+
     beginTest("nothing a bot composes can set the key by saying it");
     {
       // `MusicalKey::parseTagged` matches `[key:` ANYWHERE in a line, and
@@ -154,10 +210,16 @@ public:
                                            BotAnswer::Source::Topic,
                                            BotAnswer::Source::Defaulted};
 
+      // Both provenances are swept, not just the key's. A chart put up in chat
+      // makes `describeChart` return the bars ALONE, which is the only case
+      // where the reply can parse as a chart -- sweeping the key's provenance
+      // while leaving the chart defaulted never produced one, so this guard
+      // agreed with the dedicated test without being able to catch anything.
       for (const auto source : sources) {
         for (const auto *line : asked) {
           auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
           ctx.music.keySource = source;
+          ctx.music.chartSource = source;
           BotAddress::Attention att;
 
           const auto r = BotChat::respond(ctx, from("tester", line), att);
