@@ -123,7 +123,8 @@ bool PracticeBot::isShakeCommand(const juce::String &text) {
   return t == "shake" || t == "new" || t == "again";
 }
 
-bool PracticeBot::handleStructured(const juce::String &text) {
+bool PracticeBot::handleStructured(const juce::String &text,
+                                   const juce::String &username) {
   if (!playing.load())
     return false;
 
@@ -134,6 +135,10 @@ bool PracticeBot::handleStructured(const juce::String &text) {
     juce::ScopedLock sl(stateMutex);
     settings.key = key;
     settings.chart = Harmony::defaultChart(key);
+    keySource = BotAnswer::Source::Chat;
+    keySetBy = username;
+    // The chart came with the key rather than from anybody.
+    chartSource = BotAnswer::Source::Defaulted;
     return true;
   }
 
@@ -141,99 +146,31 @@ bool PracticeBot::handleStructured(const juce::String &text) {
   if (Harmony::parseChart(text, chart)) {
     juce::ScopedLock sl(stateMutex);
     settings.chart = std::move(chart);
+    chartSource = BotAnswer::Source::Chat;
     return true;
   }
 
   return false;
 }
 
-bool PracticeBot::handleBandCommand(const juce::String &text) {
-  if (!playing.load())
-    return false;
+BotChat::Context PracticeBot::currentContext() const {
+  BotChat::Context ctx;
+  ctx.room = currentRoom();
 
-  if (isShakeCommand(text)) {
-    shake();
-    return true;
-  }
+  juce::ScopedLock sl(stateMutex);
+  ctx.music.key = settings.key;
+  ctx.music.keySource = keySource;
+  ctx.music.keySetBy = keySetBy;
+  ctx.music.chart = settings.chart;
+  ctx.music.chartSource = chartSource;
+  ctx.music.bpm = settings.bpm;
+  ctx.music.bpi = settings.bpi;
 
-  // The key travels as a tagged line or a leading `/key`, never as prose --
-  // MusicalKey refuses to guess, and so does this.
-  const auto key = MusicalKey::parseAnnouncement(text);
-  if (key.valid) {
-    juce::ScopedLock sl(stateMutex);
-    settings.key = key;
-    // A new key means the old chords are in the wrong one. An announced
-    // progression is not transposed, because nobody announcing chords means
-    // "those chords, moved".
-    settings.chart = Harmony::defaultChart(key);
-    return true;
-  }
-
-  Harmony::Chart chart;
-  if (Harmony::parseChart(text, chart)) {
-    juce::ScopedLock sl(stateMutex);
-    settings.chart = std::move(chart);
-    return true;
-  }
-
-  return false;
-}
-
-juce::String PracticeBot::handlePrivateCommand(const juce::String &text) {
-  if (!playing.load())
-    return {};
-
-  const auto t = text.trim().toLowerCase();
-
-  // Only the soloist answers to these. A drummer asked to play the guitar
-  // should say so rather than silently accepting a setting it will never read.
-  const bool leadWords = t == "epiano" || t == "piano" || t == "rhodes" ||
-                         t == "guitar" || t == "synth";
-  if (leadWords) {
-    if (bandVoice != BotBand::Voice::Lead)
-      return botName + " plays the " +
-             juce::String(BotBand::voiceName(bandVoice)).toLowerCase() +
-             ". Ask the lead.";
-
-    int wanted = (int)BotVoice::LeadInstrument::Synth;
-    if (t == "epiano" || t == "piano" || t == "rhodes")
-      wanted = (int)BotVoice::LeadInstrument::EPiano;
-    else if (t == "guitar")
-      wanted = (int)BotVoice::LeadInstrument::Guitar;
-
-    juce::ScopedLock sl(stateMutex);
-    settings.leadOverride = wanted;
-    return botName + " on " +
-           BotVoice::leadInstrumentName((BotVoice::LeadInstrument)wanted) + ".";
-  }
-
-  // What are you playing? The one question worth being able to ask, because
-  // the seed picks the answer and there is otherwise no way to find out.
-  if (t == "sound" || t == "what" || t == "kit") {
-    BotBand::Settings copy;
-    {
-      juce::ScopedLock sl(stateMutex);
-      copy = settings;
-    }
-
-    switch (bandVoice) {
-    case BotBand::Voice::Lead:
-      return botName + " is playing " +
-             BotVoice::leadInstrumentName(BotBand::leadInstrument(copy)) + ".";
-    case BotBand::Voice::Keys:
-      return botName + " is playing a " +
-             BotVoice::padCharacterName(BotBand::keysPatch(copy).character) +
-             " patch.";
-    case BotBand::Voice::Bass:
-      return botName + " is playing " +
-             BotVoice::bassTechniqueName(BotBand::bassTechnique(copy)) +
-             " bass.";
-    case BotBand::Voice::Drums:
-      return botName + " is playing the kit.";
-    }
-  }
-
-  return {};
+  ctx.self.name = botName;
+  ctx.self.voice = bandVoice;
+  ctx.self.settings = settings;
+  ctx.self.playing = playing.load();
+  return ctx;
 }
 
 bool PracticeBot::isPartCommand(const juce::String &text) {
@@ -557,37 +494,6 @@ BotAddress::Room PracticeBot::currentRoom() const {
   return room;
 }
 
-juce::String PracticeBot::describeSelf() const {
-  BotBand::Settings s;
-  BotBand::Voice v;
-  {
-    juce::ScopedLock sl(stateMutex);
-    s = settings;
-    v = bandVoice;
-  }
-
-  const juce::String key =
-      s.key.valid ? MusicalKey::displayName(s.key) : juce::String("no key yet");
-
-  switch (v) {
-  case BotBand::Voice::Drums:
-    return botName + " here -- the kit, " + juce::String(s.bpm) + " bpm.";
-  case BotBand::Voice::Bass:
-    return botName + " here -- " +
-           BotVoice::bassTechniqueName(BotBand::bassTechnique(s)) +
-           " bass, roots on the changes, " + key + ".";
-  case BotBand::Voice::Keys:
-    return botName + " here -- a " +
-           BotVoice::padCharacterName(BotBand::keysPatch(s).character) +
-           " patch, the chart held, " + key + ".";
-  case BotBand::Voice::Lead:
-    return botName + " here -- " +
-           BotVoice::leadInstrumentName(BotBand::leadInstrument(s)) + " over " +
-           key + ".";
-  }
-  return botName + " here.";
-}
-
 void PracticeBot::onChatMessage(const juce::String &type,
                                 const juce::String &username,
                                 const juce::String &text) {
@@ -625,7 +531,7 @@ void PracticeBot::onChatMessage(const juce::String &type,
   // answered by nobody. That is the one place an unaddressed room message
   // changes what a bot plays, and it is safe for the same reason `part` is:
   // the form is not something a person writes in passing.
-  if (!isPrivate && handleStructured(text))
+  if (!isPrivate && handleStructured(text, username))
     return;
 
   BotAddress::Incoming in;
@@ -634,65 +540,42 @@ void PracticeBot::onChatMessage(const juce::String &type,
   in.isPrivate = isPrivate;
   in.at = juce::Time::getMillisecondCounterHiRes() / 1000.0;
 
-  const auto verdict =
-      BotAddress::classify(currentRoom(), botName.toStdString(), in, attention);
+  // Everything from here is decided by `BotChat`, which is pure: who was
+  // addressed, what they asked, and the words that answer it. This method used
+  // to decide all three by matching exact strings, so the only way to see what
+  // a bot would say was to start a room and say it -- which is why the
+  // recognisers ended up measured to three decimal places while nothing
+  // checked the replies at all.
+  //
+  // What is left here is the part that genuinely needs a bot: the socket, the
+  // lock, and the state that outlives the message.
+  const auto answer = BotChat::respond(currentContext(), in, attention);
 
-  if (verdict == BotAddress::Address::Ignore)
-    return;
-
-  // Answer where you were asked. A public question answered privately looks
-  // like no answer at all, and the public path is how anybody else in the room
-  // discovers that the bots can be spoken to.
-  auto reply = [this, isPrivate, &username](const juce::String &line) {
-    if (isPrivate)
-      netClient.sendPrivateMessage(username, line);
+  if (answer.speak) {
+    // Answer where you were asked. A public question answered privately looks
+    // like no answer at all, and the public path is how anybody else in the
+    // room discovers that the bots can be spoken to.
+    if (answer.privately)
+      netClient.sendPrivateMessage(username, answer.text);
     else
-      netClient.sendChatMessage(line);
-  };
+      netClient.sendChatMessage(answer.text);
+  }
 
-  switch (verdict) {
-  case BotAddress::Address::PartAll:
-  case BotAddress::Address::PartMe:
-    // Anyone may evict a bot, not just whoever brought it. A bot in someone
-    // else's jam should be removable by the people it is bothering.
-    reply(botName + " leaving. Bye.");
+  switch (answer.act) {
+  case BotChat::Act::Part:
     part();
     return;
-
-  case BotAddress::Address::Opener:
-    reply(describeSelf());
+  case BotChat::Act::Reshuffle:
+    shake();
     return;
-
-  default:
-    break;
-  }
-
-  // Take the address off before matching commands. `isShakeCommand` and friends
-  // match exactly, and "Ravo: shake" is not "shake" -- so naming the bot you
-  // wanted, which is the documented way to address one, defeated every command.
-  const juce::String body = juce::String(BotAddress::withoutAddress(
-      currentRoom(), botName.toStdString(), text.toStdString()));
-
-  if (body.trim().toLowerCase().contains("help")) {
-    reply(helpLine(botName));
+  case BotChat::Act::SetLeadInstrument: {
+    juce::ScopedLock sl(stateMutex);
+    settings.leadOverride = answer.value;
     return;
   }
-
-  const auto answer = handlePrivateCommand(body);
-  if (answer.isNotEmpty()) {
-    reply(answer);
+  case BotChat::Act::None:
     return;
   }
-
-  if (handleBandCommand(body)) {
-    reply(botName + " ok.");
-    return;
-  }
-
-  // Addressed, and not understood. One honest, visibly limited reply rather
-  // than a plausible guess -- see rule 3 in docs/BOT-CHAT.md.
-  reply(botName + ": i can tell you my part, my sound, the key, the chords or "
-                  "the tempo.");
 }
 
 void PracticeBot::renderInterval(int numSamples, int intervalIndex) {
