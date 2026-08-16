@@ -90,6 +90,15 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     out.text = describePart(ctx.self);
     return out;
 
+  case BotLanguage::Intent::ReportKey:
+    // `describeKey` is a noun phrase carrying its own provenance, so the
+    // sentence is built around it rather than instead of it. Dropping the
+    // provenance here would report a key nobody chose as though the room had
+    // agreed on it, which is the failure BotAnswer is shaped to prevent.
+    out.speak = true;
+    out.text = "we are in " + BotAnswer::describeKey(ctx.music) + ".";
+    return out;
+
   default:
     break;
   }
