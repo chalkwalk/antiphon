@@ -71,6 +71,7 @@ target_sources(Antiphon
         AntiphonLookAndFeel.cpp
         ChatFormat.cpp
         BotAnswer.cpp
+        BotChat.cpp
         ClipsortLog.cpp
         SessionWriter.cpp
         MusicalKey.cpp

@@ -85,7 +85,6 @@ struct Incoming {
   double at = 0.0; // seconds, for the window
 };
 
-// The decision. `attention` is read and updated: being addressed opens the
 // The message with the address taken off the front: "Ravo: shake" -> "shake".
 //
 // Commands are matched exactly -- `isShakeCommand`, `isPartCommand` -- and
@@ -98,6 +97,7 @@ struct Incoming {
 std::string withoutAddress(const Room &room, const std::string &self,
                            const std::string &text);
 
+// The decision. `attention` is read and updated: being addressed opens the
 // window, somebody else being addressed closes it.
 Address classify(const Room &room, const std::string &me, const Incoming &msg,
                  Attention &attention);
