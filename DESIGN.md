@@ -606,6 +606,130 @@ intent where naming it by position is not.
 
 ---
 
+## 6.4 Changing the key, and what a chart is relative to
+
+**Designed, not built.** Today a key announcement replaces the chart with
+`Harmony::defaultChart` for the new key, so a progression somebody typed is
+silently discarded. This section is the model that replaces that; the work area
+is in `ROADMAP.md`.
+
+### A key change is two operations
+
+Treating it as one is what makes the naive answer wrong.
+
+- **The tonic moves** (C major -> D major). Pure transposition. Every chord
+  shifts by the same interval and nothing else changes.
+- **The mode changes** (C major -> C minor). The tonal centre does not move at
+  all. Functions survive; the pitches and qualities of diatonic chords do not.
+- **Both** (C major -> A minor) is the composition of the two.
+
+Transposing semitones alone can only ever preserve interval-from-tonic, so
+`I` stays major and the tonality has not actually changed. That is the failure
+this model exists to avoid.
+
+### The rule: preserve what was written, re-derive what was delegated
+
+A roman numeral is partly a **delegation**. An unaltered numeral whose quality
+matches the mode hands the decision to the key. An accidental, or a quality
+that contradicts the mode, is the writer overriding the key -- and an override
+survives a key change untouched. Letters are the maximal override.
+
+So each chord in a relative chart carries a binding, decided once when it is
+read:
+
+- **Delegated** -- diatonic to the key it was written in, with the quality the
+  mode gives. Re-derived from the degree in the new key: `I` -> `i`, `IV` ->
+  `iv`, `vi` -> `VI`.
+- **Overridden** -- anything else. Kept at its interval above the tonic with
+  its explicit tones, and transposed rigidly.
+
+### Delegation points at the mode's harmonic realisation, not the raw scale
+
+`| I | IV | V |` moved from C major to C minor gives `i iv V`, not `i iv v`.
+Minor-ish modes define the fifth degree as a major triad, because harmonic
+minor exists for exactly that reason and a minor `v` is not what anybody means
+by a dominant.
+
+This is not an exception bolted onto the rule -- it is the library being
+explicit that "diatonic in a minor mode" is a convention rather than a scale
+readout. `defaultDegreeLoop` already makes the same judgement in the same
+place, choosing `i-VI-III-VII` for minor-ish modes rather than mechanically
+transposing `I-V-vi-IV`. Somebody who genuinely wants the natural-minor chord
+writes `v`, which now contradicts the table, becomes an override, and is
+preserved. Both readings stay expressible, which is the test of the model.
+
+### Accidentals are measured against the parallel major
+
+`bIII` means three semitones above the tonic, in every mode, always. Measuring
+the accidental against the *current* mode makes it meaningless wherever the
+scale has no room for it -- `bIII` in natural minor would be a doubly-flattened
+third, and in Phrygian `bII` is diatonic while an unaltered `II` is the
+chromatic one.
+
+Storage is therefore an interval, and **spelling is a display concern**:
+the same chord is written `bIII` in a major key and `III` in a minor one, and
+`| bIII |` typed in a minor key is accepted and echoed back as `III`.
+
+### Intent is unrecoverable for chromatic chords, and it does not matter
+
+`bII` in C is Db under at least two incompatible readings: a Neapolitan, which
+is a predominant, and a tritone substitution of V, which is a dominant. Nothing
+in the text says which, and no analysis recovers it.
+
+It does not need to be recovered, because **the competing readings agree on
+every outcome**. Move to D major and both give Eb; move to C minor and both
+stay Db. A chromatic chord is anchored to the tonic the same way whatever it is
+called, so preserving the interval satisfies every candidate intent at once.
+The same holds for a tritone substitution of a secondary dominant, which lands
+at a different interval and is preserved bodily along with it.
+
+The one place readings genuinely diverge is an unaltered diatonic numeral --
+`V` in C major is both "the chord on the fifth degree" and "G major", identical
+until the mode changes. That is the whole of the irreducible ambiguity, and the
+delegation rule above is the answer to it.
+
+### Where intent is unknowable, offer rather than infer
+
+`bVI` in C major is borrowed colour; the same pitch in C minor is unremarkable.
+Preserving it is least surprising -- the chord sounds the same -- but it is not
+necessarily what was meant, and nothing recovers that.
+
+So the transform is applied and the other reading is offered on the chip, the
+way an inferred key already is (section 10.1): inferred, shown, never applied
+by itself. A **letter** chart is likewise never rewritten by a key change, but
+a key change with one up offers to transpose it. This converts an unknowable
+into the player's decision, which is where it belongs.
+
+### Worked examples
+
+| Written in | Chart | Moved to | Result | Why |
+|---|---|---|---|---|
+| C major | `\| I \| vi \| IV \| V \|` | A minor | `\| Am \| F \| Dm \| E \|` | all delegated; `V` major by the minor-mode table |
+| C major | `\| I \| bVII \| IV \|` | C minor | `\| Cm \| Bb \| Fm \|` | `bVII` was an override, survives; now spelled `VII` |
+| C major | `\| I \| V \|` | D major | `\| D \| A \|` | tonic move only, nothing re-derived |
+| C major | `\| Dm \| G7 \| C \|` | any | unchanged | letters are absolute; a chip offers the transpose |
+
+### The edge this shares with non-diatonic harmony
+
+The *Harmony beyond diatonic* work area -- secondary and altered dominants,
+tritone substitution, borrowing -- rewrites the same layer. A bare degree
+cannot express a tritone substitution, which is why `Chord` carries an absolute
+root at all. The relative representation must therefore be **richer than a
+degree and poorer than a chord**: an interval from the tonic, explicit tones,
+and the binding above. Get that type right and both features fit in
+`Harmony::realise`; get it wrong and they fight.
+
+### How it is tested
+
+Pure, JUCE-free, and table-driven, like the corpora: rows of *(chart, from-key,
+to-key, expected chart)*, with the interesting rows being the arguments above --
+`I IV V` major to minor, `bVII` major to minor where an override becomes
+diatonic, `bII` under both readings, `v` as a deliberate override, and a letter
+chart asserted unchanged. Disagreement later is then an edit to a table rather
+than a rereading of the code.
+
+---
+
 ## 7. Remote playback, mixing and routing
 
 Each `(username, channelIndex)` pair holds one of the fixed `streamSlots`
