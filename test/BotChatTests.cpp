@@ -254,6 +254,96 @@ public:
       }
     }
 
+    beginTest("asked to change the tempo, a bot points at the vote");
+    {
+      // A tempo is a server vote, and a bot is an ordinary client -- so it can
+      // neither set one nor start one. Saying so, with the command that does
+      // work, is the answer.
+      auto ctx = contextWith(BotBand::Voice::Drums, "Quado", "tester");
+      BotAddress::Attention att;
+
+      const auto r = BotChat::respond(
+          ctx, from("tester", "Quado: can you vote for 132 bpm"), att);
+
+      expect(r.speak, "a request to change the tempo got no answer at all");
+      expect(r.text.containsIgnoreCase("not mine"),
+             "the reply does not say whose decision the tempo is: " + r.text);
+      expect(r.text.contains("!vote bpm 132"),
+             "the reply does not carry the vote that was asked for: " + r.text);
+
+      // No number named: still answerable, with the command and a blank to
+      // fill in rather than a number nobody asked for.
+      BotAddress::Attention att2;
+      const auto vague =
+          BotChat::respond(ctx, from("tester", "Quado: can we go faster"), att2);
+      expect(vague.speak, "'can we go faster' got no answer at all");
+      expect(vague.text.contains("!vote bpm"),
+             "the reply does not say how to change the tempo: " + vague.text);
+      expect(!vague.text.contains("!vote bpm 0"),
+             "the reply invented a tempo nobody named: " + vague.text);
+    }
+
+    beginTest("a tempo number goes to the unit it was given with");
+    {
+      // The two ranges overlap between 40 and 64, so a bare number cannot be
+      // assigned by size alone. An explicit unit always wins; a bare number is
+      // a bpm, which is what "vote for 140" means -- except where that reading
+      // is impossible and the bpi one is not, since answering "the tempo vote
+      // only goes from 40 to 400" to somebody asking for 16 bpi is a confident
+      // answer to a question they did not ask.
+      struct Case {
+        const char *said;
+        const char *wanted;
+      };
+
+      const Case cases[] = {
+          {"Quado: vote for 140", "!vote bpm 140"},
+          {"Quado: can you vote 100", "!vote bpm 100"},
+          {"Quado: can we do 16 bpi", "!vote bpi 16"},
+          {"Quado: vote for 16", "!vote bpi 16"},
+          {"Quado: can you vote for 50", "!vote bpm 50"},
+      };
+
+      for (const auto &c : cases) {
+        auto ctx = contextWith(BotBand::Voice::Drums, "Quado", "tester");
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(ctx, from("tester", c.said), att);
+
+        expect(r.speak, juce::String(c.said) + " got no answer at all");
+        expect(r.text.contains(c.wanted),
+               juce::String(c.said) + " did not offer " + c.wanted + ": " +
+                   r.text);
+      }
+    }
+
+    beginTest("asked to change the chords, a bot says what it is on");
+    {
+      // Never acts, and never needs to read a chart out of the request: a chart
+      // has to lead its line, so a request for one essentially never carries
+      // one to echo.
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      ctx.music.chartSource = BotAnswer::Source::Chat;
+      BotAddress::Attention att;
+
+      const auto r = BotChat::respond(
+          ctx, from("tester", "Ravo: can we change the chords"), att);
+
+      expect(r.speak, "a request to change the chart got no answer at all");
+      expect(!r.text.trim().startsWithChar('|'),
+             "the reply leads with a bar line and is itself a chart: " + r.text);
+      expect(r.text.containsIgnoreCase("room"),
+             "the reply does not say whose decision the chart is: " + r.text);
+
+      // The example it gives is the chart it is ACTUALLY on, which is both the
+      // honest answer and the safe one -- a generic example pasted into a room
+      // in another key would silently move the harmony.
+      const juce::String bars = Harmony::chartText(
+          ctx.music.chart,
+          MusicalKey::usesFlats(ctx.music.key.tonic, ctx.music.key.mode));
+      expect(r.text.contains(bars),
+             "the reply does not say what it is on (" + bars + "): " + r.text);
+    }
+
     beginTest("nothing a bot composes can set the key by saying it");
     {
       // `MusicalKey::parseTagged` matches `[key:` ANYWHERE in a line, and
