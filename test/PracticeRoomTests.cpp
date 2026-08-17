@@ -649,6 +649,81 @@ public:
       }, 5000), "the band ignored the announced chords");
     }
 
+    beginTest("a key change moves a chart the room wrote rather than binning it");
+    {
+      // The bug DESIGN.md section 6.4 exists to fix: announcing a key called
+      // `defaultChart` and threw away a progression somebody had typed. A
+      // player who writes a chart and then names the key has not withdrawn the
+      // chart -- they have said what it is relative to.
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.key = MusicalKey::parseName("C major");
+      expect(room.start(cfg));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
+      }, 5000));
+
+      you.client.sendChatMessage("| Am | F | C | G |");
+      expect(waitUntil([&] {
+        for (const auto &s : room.bandSettings()) {
+          const auto chords = Harmony::flatten(s.chart);
+          if (chords.size() == 4 && chords[0].root == 9)
+            return true;
+        }
+        return false;
+      }, 5000), "the band ignored the announced chords");
+
+      // A tonic move with the mode unchanged is pure transposition: vi IV I V
+      // in C is vi IV I V in D, two semitones up.
+      you.client.sendChatMessage("[key: D major]");
+      expect(waitUntil([&] {
+        for (const auto &s : room.bandSettings())
+          if (s.key.tonic == 2 && !Harmony::isMinorish(s.key.mode))
+            return true;
+        return false;
+      }, 5000), "the band ignored the announced key");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(500);
+
+      for (const auto &s : room.bandSettings()) {
+        const auto chords = Harmony::flatten(s.chart);
+        expectEquals((int)chords.size(), 4, "the chart was replaced");
+        const int wanted[] = {11, 7, 2, 9};
+        for (int i = 0; i < juce::jmin(4, (int)chords.size()); ++i)
+          expectEquals(chords[(size_t)i].root, wanted[i],
+                       "the chart did not travel with the key");
+      }
+    }
+
+    beginTest("a chart written in degrees reaches the band");
+    {
+      // `parseDegreeChart` existed and nothing in the room called it, so
+      // "| ii | V | I |" was not a chart at all where the band could hear it.
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.key = MusicalKey::parseName("C major");
+      expect(room.start(cfg));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
+      }, 5000));
+
+      you.client.sendChatMessage("| ii | V | I |");
+      expect(waitUntil([&] {
+        for (const auto &s : room.bandSettings()) {
+          const auto chords = Harmony::flatten(s.chart);
+          if (chords.size() == 3 && chords[0].root == 2 &&
+              chords[1].root == 7 && chords[2].root == 0)
+            return true;
+        }
+        return false;
+      }, 5000), "degrees did not reach the band");
+    }
+
     beginTest("prose in chat does not become a progression");
     {
       PracticeRoom room;
