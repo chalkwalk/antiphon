@@ -607,6 +607,55 @@ restraint rather than conversation.
 - [ ] Unprompted speech off outside the practice room. Nothing speaks
       unprompted yet, so there is nothing to switch off; it lands with the
       tutor.
+- [ ] **Being present without playing.** A jam stops between songs and the band
+      has no state for it: it plays from connect until evicted, and the only
+      way to stop it is to send it home. **Designed in `docs/BOT-CHAT.md`
+      section 15; that section is the specification and this is the checklist.**
+      - [ ] Three states -- Silent, Playing, Ending -- sampled ONCE per interval
+            at the top of the render and held for it. Reading again part-way
+            tears an interval across two states, and delivery is
+            all-or-nothing. `PracticeBot::playing` already exists for this and
+            is dead weight today: never cleared, and `BotChat::Self::playing`
+            is passed in and never read.
+      - [ ] `stop` means stop PLAYING, not leave. It is a part command today in
+            `kPartCommands`, in `BotAddress::isPartCommand` and in the `[LEAVE]`
+            corpus, which contains `stop playing` in as many words -- the `part`
+            footgun again, with the least destructive phrase wired to the most
+            destructive act. Takes `halt`, `enough`, `thats enough` and
+            `were done` with it; leaving keeps words that can only mean leaving.
+      - [ ] `START_PLAYING` / `STOP_PLAYING` intents, corpus lines first, and
+            the acts to carry them. Individual and whole-band come free:
+            `BotAddress::Address::Collective` already sits beside `Named`.
+      - [ ] The ending: one interval, resolving on the last bar, as a flag
+            through `BotBand::renderInterval` rather than a second code path.
+            The kit already fills every fourth interval and `layoutChart`
+            already knows where the last bar starts. How it SOUNDS is an
+            `AntiphonVoiceLab` tuning job, measured like every other voice.
+      - [ ] The reply says when it lands. The conductor renders interval N at
+            the top of N and Ninjam delivers it an interval late, so an ending
+            arrives one to two intervals after it is asked for -- 4 to 8 s at
+            120/8. "ending after this one", never a reply implying it stops now.
+      - [ ] Arrive Silent. The band connects before the player does, so playing
+            on connect plays to an empty room; the roster line already re-arms
+            for the first human and is where start/stop gets taught. Disposes
+            of the wait-forever cost as a side effect, so no arrival timeout is
+            needed.
+      - [ ] **One authority tier: any human, every command.** Eviction is
+            already open to everyone deliberately, so gating anything less
+            destructive behind ownership would be incoherent. The owner is not
+            a permission -- it is who the cleanup rule watches. Bots still take
+            no orders from bots.
+      - [ ] Owner departure stops being fatal. Today a PART calls `part()` at
+            once, `onDisconnected` refuses to reconnect by design, and
+            `reapPartedBots` deletes the objects -- so a 30 s blip destroys the
+            band and the room runs on empty. New rule, on the other-humans
+            predicate `onRoomMembershipChange` already computes: others present
+            -> keep playing, no timer, since the band plays for the room and
+            anyone present can dismiss it; room empty -> Silent plus a
+            three-minute timer, and expiry parts for good.
+      - [ ] Returning inside the window does not restart them, and nothing is
+            said unless the state actually changed. Rejoining a groove whose
+            beginning you could not hear is worse than a quiet band waiting.
 - [ ] Addressing: at most one bot ever answers, cold silence is the default,
       first contact must be explicit, and a message aimed at a human is
       answered by nobody. Four bots replying to one question is the annoyance

@@ -1572,3 +1572,166 @@ generator that already works.
    to fire on a timer instead, at the cost of telling you something that might
    not have happened. This is the only place in the design where the deafness
    actually hurts.
+
+---
+
+## 15. Being present without playing
+
+A jam is not one continuous take. You play a song, you stop, you argue about the
+next key, somebody suggests a tempo, and you start again. The band has no state
+for any of that: it plays from the moment it connects until it is evicted, and
+the only way to make it stop is to make it leave.
+
+That is the gap this section closes. It also fixes two lifecycle bugs that turn
+out to be the same bug.
+
+### Three states, and one boundary
+
+```
+Silent --start--> Playing --stop--> Ending --[one interval]--> Silent
+   ^                                                             |
+   \-------------------------------------------------------------/
+```
+
+`Ending` is the only transition a bot makes on its own; every other arrow is
+somebody asking.
+
+**The state is sampled once per interval, at the top of the render, and held for
+that whole interval.** Reading it again part-way through would tear an interval
+across two states, and interval delivery is all-or-nothing -- a half-ended
+interval is not a thing the protocol can carry.
+
+`PracticeBot::playing` already exists for this and is currently dead weight: set
+once in `playAs`, never cleared, and passed to `BotChat` as `Self::playing`
+where nothing reads it. This gives it its meaning.
+
+### Stopping cannot be immediate, and the reply must say so
+
+The conductor renders interval N at the top of N, and Ninjam delivers it a whole
+interval late, so you hear it during N+1. An ending therefore lands **one to two
+intervals after you ask** -- four to eight seconds at 120 bpm and 8 bpi.
+
+This is not a defect to hide behind a hopeful reply. It is the same delay every
+player in the room is subject to (`PRINCIPLES §9`), and a bandleader says the
+same thing anyway: *"ending after this one."* A reply that implied it stops now
+would be wrong twice a minute and would teach players to distrust the band.
+
+### What an ending is
+
+One interval, played through, resolving on the last bar: the harmony lands on
+the tonic, the drums fill into it, and the lead stops rather than starting a
+phrase it cannot finish.
+
+Cheap to build, because the machinery is already there -- the kit fills every
+fourth interval, and `Harmony::layoutChart` already knows where the last bar
+begins. It is a flag through `BotBand::renderInterval`, not a second code path.
+How it actually *sounds* is a tuning job for `AntiphonVoiceLab`, measured the
+way every other voice was, and not something to settle in prose.
+
+A bot told to stop on its own plays its own ending and drops out. That is
+"laying out", and it is ordinary musical behaviour rather than a special case.
+
+### Individually or as a band, for free
+
+`BotAddress::Address::Collective` already sits beside `Named`, so `band, stop`
+and `Ravo, stop` need no work in the addressing layer at all. `PartAll` is
+simply the destructive member of a family that already exists.
+
+### `stop` means stop playing
+
+It currently means **leave** -- in `kPartCommands`, in
+`BotAddress::isPartCommand`, and in the `[LEAVE]` corpus, which contains
+`stop playing` and `you can stop now` in as many words. The scoring rule states
+the assumption outright: *"to stop playing is to leave."*
+
+That assumption is what this section overturns, and it is the `part` footgun
+again in a worse place. To a musician `stop` is the least destructive thing you
+can say, and it was wired to the most destructive thing a bot can do.
+
+So: `stop`, `halt`, `enough`, `that's enough` and `we're done` all mean **stop
+playing**. Leaving requires a word that can only mean leaving -- `leave`,
+`exit`, `go away`. The reversible action gets the natural phrase and the
+irreversible one stays deliberate, which is the rule the roster line has
+followed since it was written.
+
+### They arrive silent
+
+The band connects before you do, so a band that plays on connect plays to an
+empty room -- encoding and transmitting a full interval every few seconds to
+nobody, for as long as it takes you to arrive.
+
+They arrive, they wait, and the roster line -- which already re-arms so that it
+lands when the first human joins rather than into the empty room -- says how to
+start them. Arrival stops being a special case and becomes the first turn of the
+same stop/start loop you use between songs. It also disposes of the
+wait-forever problem completely: a band nobody ever joins now costs nothing, so
+it needs no arrival timeout.
+
+The cost is real and has to be carried by that one line: a room where nothing
+happens looks broken. The roster earns its place by being the thing that tells
+you it isn't.
+
+### Any human, every command
+
+**There is one tier.** Anybody in the room can start the band, stop it, shake
+it, hush it or send it home. There is no owner-only class of command.
+
+The argument is short: **eviction is already open to everyone**, deliberately --
+"a bot in somebody else's jam should be removable by the people it is
+bothering, not only by whoever brought it". Gating something strictly *less*
+destructive than eviction behind ownership would be incoherent. A room of
+musicians is also simply what this is modelling: anyone in a band can call a
+halt.
+
+Bots still take no orders from bots. That is enforced already and stays.
+
+The owner is not a permission at all -- it is **who the cleanup rule watches**,
+and nothing else.
+
+### Leaving, and the blip that should not be fatal
+
+Today a `PART` naming the owner calls `part()` at once, which sets `active`
+false; `onDisconnected` refuses to reconnect by design, and
+`PracticeRoom::reapPartedBots` then deletes the objects. A thirty-second network
+blip does not lose the band for thirty seconds. It destroys it, and the room
+process runs on with no bots in it.
+
+The rule turns on a question the code already asks, in `onRoomMembershipChange`,
+to decide whether to re-arm the roster: **is anyone else still here?**
+
+Today the practice room is solo, so the first branch below is unexercised there
+and only begins to matter once the band can be brought onto a shared server. It
+is written now anyway, for the same reason the eviction rule it inherits from
+was written before there was anybody to evict: the moment it *is* reachable is
+the worst possible moment to be deciding what it should do.
+
+- **Others are still in the room -- keep playing, and start no timer.** The band
+  plays for the *room*; the owner is only who summoned it. Stopping four voices
+  because one person's router hiccuped is a disruption to everybody who did not
+  drop. Nothing is leaking here, because anyone present can dismiss them.
+- **The room is empty of humans -- go Silent, and start a three-minute timer.**
+  Nobody is listening, so playing on is waste. Come back inside it and the band
+  is still there. Let it expire and they leave for good: at three minutes it was
+  either deliberate, or something bigger than a blip.
+
+Returning inside the window does **not** restart them. You dropped mid-song, and
+rejoining a groove already in progress -- whose beginning you could not hear --
+is worse than a quiet band waiting for you to say go.
+
+**Speak only when the state changed.** A return to a band that never stopped
+needs no announcement at all; a return to a silent band gets one line saying
+they are still here and how to start. Four bots saying "welcome back" is the
+chorus this whole design exists to prevent.
+
+### What this deliberately does not include
+
+- **A count-in.** A drummer counting in is natural and would answer "when does
+  it actually begin", but the interval grid already answers that and everything
+  is phase-locked to it. The state machine leaves room for a `Counting` state
+  between `Silent` and `Playing`; it does not need one yet.
+- **Ownership transfer** when the owner leaves a populated room. It reads
+  plausible and it builds a chain by which a band outlives everybody who wanted
+  it, which is the "bot nobody can get rid of" failure in a new coat. Anyone
+  present can already dismiss them, which covers the real need.
+- **Per-voice stop scheduling** -- "drop the keys for this section". That is
+  arrangement, and it belongs with staggered rests in `ROADMAP.md`, not here.
