@@ -133,17 +133,33 @@ bool PracticeBot::handleStructured(const juce::String &text,
   const auto key = MusicalKey::parseAnnouncement(text);
   if (key.valid) {
     juce::ScopedLock sl(stateMutex);
+    // Preserve what was written, re-derive what was delegated (`DESIGN.md`
+    // section 6.4). A chart the key itself implied has nothing to preserve; a
+    // chart somebody typed is relative to the key it was typed in, and naming
+    // a new key says what it moves to rather than withdrawing it.
+    if (chartSource == BotAnswer::Source::Chat && settings.key.valid)
+      settings.chart = Harmony::resolve(
+          Harmony::toRelative(settings.chart, settings.key), key);
+    else
+      settings.chart = Harmony::defaultChart(key);
     settings.key = key;
-    settings.chart = Harmony::defaultChart(key);
     keySource = BotAnswer::Source::Chat;
     keySetBy = username;
-    // The chart came with the key rather than from anybody.
-    chartSource = BotAnswer::Source::Defaulted;
     return true;
   }
 
+  // Degrees are read against the key the room is in, which is why the key is
+  // taken first: "| ii | V | I |" means nothing on its own, and the resolved
+  // absolute chart is what everything downstream sees (`PRINCIPLES §10`).
+  MusicalKey::Key against;
+  {
+    juce::ScopedLock sl(stateMutex);
+    against = settings.key;
+  }
+
   Harmony::Chart chart;
-  if (Harmony::parseChart(text, chart)) {
+  if (Harmony::parseChart(text, chart) ||
+      (against.valid && Harmony::parseDegreeChart(text, against, chart))) {
     juce::ScopedLock sl(stateMutex);
     settings.chart = std::move(chart);
     chartSource = BotAnswer::Source::Chat;
