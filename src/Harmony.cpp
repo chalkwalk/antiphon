@@ -527,6 +527,66 @@ juce::String chordName(const Chord &chord, bool flat) {
   return name;
 }
 
+juce::String spellNote(int pitchClass, const MusicalKey::Key &key) {
+  if (!key.valid)
+    return MusicalKey::noteName(pitchClass, key.flat);
+
+  const int *steps = MusicalKey::scaleSteps(key.mode);
+  const auto scale =
+      juce::StringArray::fromTokens(MusicalKey::scaleNotes(key), " ", "");
+  if (scale.size() != MusicalKey::kScaleDegrees)
+    return MusicalKey::noteName(pitchClass, key.flat);
+
+  const int interval = wrapPitchClass(pitchClass - key.tonic);
+  auto degreeAt = [&](int semitones) {
+    const int s = ((semitones % 12) + 12) % 12;
+    for (int d = 0; d < MusicalKey::kScaleDegrees; ++d)
+      if (steps[d] == s)
+        return d;
+    return -1;
+  };
+
+  // In the scale: the key has already decided how to write it, and disagreeing
+  // with the key signature is the whole bug.
+  const int degree = degreeAt(interval);
+  if (degree >= 0)
+    return scale[degree];
+
+  // Out of it, by the same rule `romanName` uses so a chart and its numerals
+  // never disagree: a lowered degree from above, except at the tritone, where
+  // "bV" is nobody's spelling and "#IV" is everybody's.
+  const int above = degreeAt(interval + 1);
+  const int below = degreeAt(interval - 1);
+  const bool lowered = above >= 0 && above != 4;
+
+  // Applying an accidental CANCELS the opposite one rather than stacking on
+  // it: the seventh of D major is C#, and lowering it gives C, not Cb.
+  auto alter = [](juce::String note, bool down) {
+    const juce::juce_wchar opposite = down ? '#' : 'b';
+    if (note.endsWithChar(opposite))
+      return note.dropLastCharacters(1);
+    return note + (down ? "b" : "#");
+  };
+
+  if (lowered)
+    return alter(scale[above], true);
+  if (below >= 0)
+    return alter(scale[below], false);
+  if (above >= 0)
+    return alter(scale[above], true);
+  return MusicalKey::noteName(pitchClass, key.flat);
+}
+
+juce::String chordName(const Chord &chord, const MusicalKey::Key &key) {
+  if (!key.valid)
+    return chordName(chord, key.flat);
+
+  juce::String name = spellNote(chord.root, key) + chordSuffix(chord);
+  if (chord.bass >= 0 && chord.bass != chord.root)
+    name += "/" + spellNote(chord.bass, key);
+  return name;
+}
+
 juce::String romanName(const Chord &chord, const MusicalKey::Key &key) {
   if (!key.valid)
     return {};
@@ -598,6 +658,19 @@ juce::String chartText(const Chart &chart, bool flat) {
   for (const auto &bar : chart) {
     for (const auto &c : bar.chords)
       out += " " + chordName(c, flat);
+    out += " |";
+  }
+  return out;
+}
+
+juce::String chartText(const Chart &chart, const MusicalKey::Key &key) {
+  if (chart.empty())
+    return {};
+
+  juce::String out = "|";
+  for (const auto &bar : chart) {
+    for (const auto &c : bar.chords)
+      out += " " + chordName(c, key);
     out += " |";
   }
   return out;

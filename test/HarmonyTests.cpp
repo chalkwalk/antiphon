@@ -843,6 +843,56 @@ public:
       expectEquals(Harmony::romanChartText(four, none), juce::String());
     }
 
+    beginTest("a chord is spelled by where it sits in the key");
+    {
+      // One flag for a whole chart cannot be right: D major takes sharps, and
+      // its flattened second is still Eb. Both facts at once are what the
+      // per-chord spelling is for.
+      const auto d = keyOf("D major");
+      struct Case {
+        const char *written;
+        const char *spelled;
+      };
+      const Case inD[] = {
+          {"Eb7", "Eb7"},   // bII: a lowered degree keeps its flat
+          {"C", "C"},       // bVII: the scale's C# lowered is C, not B#
+          {"G#dim", "G#dim"}, // #IV: the tritone is everybody's sharp
+          {"F#m", "F#m"},   // diatonic: spelled as the key spells it
+          {"Bm/A", "Bm/A"}, // a bass note is spelled by the same rule
+      };
+      for (const auto &c : inD) {
+        Harmony::Chord chord;
+        expect(Harmony::parseChordName(c.written, chord), juce::String(c.written));
+        expectEquals(Harmony::chordName(chord, d), juce::String(c.spelled));
+      }
+
+      // A flat key gets the mirror image: its raised fourth is a natural, and
+      // its lowered seventh keeps the flat the signature already implies.
+      const auto eb = keyOf("Eb major");
+      const Case inEb[] = {{"A7", "A7"}, {"Db", "Db"}, {"Bbm7", "Bbm7"}};
+      for (const auto &c : inEb) {
+        Harmony::Chord chord;
+        expect(Harmony::parseChordName(c.written, chord), juce::String(c.written));
+        expectEquals(Harmony::chordName(chord, eb), juce::String(c.spelled));
+      }
+
+      // The worked example from DESIGN.md section 6.4, which came out as
+      // "D#7" while a chart was spelled from one flag.
+      Harmony::Chart chart;
+      expect(Harmony::parseChart("| C | Db7 | C |", chart));
+      const auto moved =
+          Harmony::resolve(Harmony::toRelative(chart, keyOf("C major")), d);
+      expectEquals(Harmony::chartText(moved, d), juce::String("| D | Eb7 | D |"));
+
+      // No key, no better answer than the flag. It does NOT come back as it
+      // was written: a Chord holds pitch classes and has never remembered how
+      // somebody typed it, so a spelling with nothing to spell against is the
+      // one thing this cannot recover.
+      MusicalKey::Key unknown;
+      expectEquals(Harmony::chartText(chart, unknown),
+                   juce::String("| C | C#7 | C |"));
+    }
+
     beginTest("degrees resolve against the key");
     {
       struct Case {

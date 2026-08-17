@@ -92,6 +92,17 @@ public:
       expect(describeKey(told).contains("said in the room"), describeKey(told));
     }
 
+    beginTest("a chart is read out spelled against the key");
+    {
+      // A room reads its chart back so a player can paste it; that only works
+      // if the reading is the notation. D major takes sharps and its lowered
+      // second is still Eb, which one flag for a whole chart cannot say.
+      Room r = roomIn("D major", Source::Chat, Source::Chat);
+      expect(Harmony::parseChart("| D | Eb7 | D | A |", r.chart));
+      expect(describeChart(r).contains("Eb7"), describeChart(r));
+      expect(!describeChart(r).contains("D#"), describeChart(r));
+    }
+
     beginTest("a topic key says it came from the topic");
     {
       auto r = roomIn("G minor", Source::Topic, Source::Defaulted);

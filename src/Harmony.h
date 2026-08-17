@@ -220,6 +220,25 @@ bool parseChordName(const juce::String &text, Chord &out);
 // Canonical: "CM7" and "Cmaj7" both come back as "Cmaj7".
 juce::String chordName(const Chord &chord, bool flat);
 
+// The same, spelled against a key rather than by one flag for everything.
+//
+// A key signature does not settle the question on its own: D major takes
+// sharps and its flattened second is still Eb, so a chart spelled from one
+// boolean is wrong for exactly the chords section 6.4 exists to move. Each
+// chord is spelled by where its root sits in the scale -- a lowered degree
+// keeps its flat, the tritone takes the sharp everybody writes -- and an
+// invalid key falls back to `key.flat`, since inventing a spelling from
+// nothing would be worse than the flag.
+juce::String chordName(const Chord &chord, const MusicalKey::Key &key);
+
+// A pitch class spelled as this key would write it: "Eb" rather than "D#" in
+// D major, "B" rather than "Cb" in F minor.
+//
+// Exported because a bass note, a chord root and a chip all ask the same
+// question, and answering it three ways is how a chart ends up disagreeing
+// with itself.
+juce::String spellNote(int pitchClass, const MusicalKey::Key &key);
+
 // A chart from a chat line, bars and all: "| Dm7 | C# Csus |".
 bool parseChart(const juce::String &text, Chart &out);
 
@@ -240,6 +259,10 @@ bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
 
 // "| Dm | Bb F |": a chart as a player would write it.
 juce::String chartText(const Chart &chart, bool flat);
+
+// The same, spelled per chord against the key. This is what a room should
+// see; the boolean form remains for callers that have no key at all.
+juce::String chartText(const Chart &chart, const MusicalKey::Key &key);
 
 // The same chart in roman numerals against a key: "| i | VI IV |".
 //
