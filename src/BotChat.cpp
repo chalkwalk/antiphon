@@ -157,10 +157,11 @@ void tempoAskedFor(const juce::String &text, int &bpm, int &bpi) {
   }
 }
 
-} // namespace
-
-Response respond(const Context &ctx, const BotAddress::Incoming &in,
-                 BotAddress::Attention &attention) {
+// The whole decision, before the quiet rule is applied to it. Separate so the
+// rule is applied in ONE place: a gate at each of a dozen returns is a gate
+// somebody forgets when they add the thirteenth.
+Response decide(const Context &ctx, const BotAddress::Incoming &in,
+                BotAddress::Attention &attention) {
   Response out;
   out.privately = in.isPrivate;
 
@@ -287,6 +288,27 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     out.text = explainSelf(ctx.self);
     return out;
 
+  case BotLanguage::Intent::SetQuiet:
+    // The last thing it says, so it has to carry the way back. Everything
+    // else about a quiet bot is invisible by design, including the fact that
+    // it is quiet rather than broken.
+    out.speak = true;
+    out.act = Act::SetChatMuted;
+    out.value = 1;
+    out.text = ctx.self.name + " going quiet. say \"" + ctx.self.name +
+               " talk\" to bring it back. still playing.";
+    return out;
+
+  case BotLanguage::Intent::SetLoud:
+    // Answered whether or not it was quiet: "you can talk" to a bot that
+    // already can is a harmless thing to say, and explaining that it was
+    // never muted is the sort of pedantry the room does not need.
+    out.speak = true;
+    out.act = Act::SetChatMuted;
+    out.value = 0;
+    out.text = ctx.self.name + " talking again.";
+    return out;
+
   case BotLanguage::Intent::SetChart:
     // Never acts and never reads a chart out of the request: a chart has to
     // lead its line, so a request for one essentially never carries one.
@@ -321,6 +343,27 @@ Response respond(const Context &ctx, const BotAddress::Incoming &in,
     out.text = ctx.self.name +
                ": i can tell you my part, my sound, the key, the chords or the "
                "tempo.";
+  return out;
+}
+
+} // namespace
+
+Response respond(const Context &ctx, const BotAddress::Incoming &in,
+                 BotAddress::Attention &attention) {
+  auto out = decide(ctx, in, attention);
+
+  // "be quiet" means quiet. A bot that went on answering direct questions
+  // would be arguing with the request, and the answer to "why is it still
+  // talking" cannot be "because you asked it something".
+  //
+  // Two things still speak, and both are confirmations of an ACTION rather
+  // than commentary on one: coming back -- without which there is no way out
+  // of the mute at all -- and leaving. Everything else it was asked to do it
+  // still does; only the talking stopped.
+  if (ctx.self.chatMuted && out.act != Act::SetChatMuted &&
+      out.act != Act::Part)
+    out.speak = false;
+
   return out;
 }
 

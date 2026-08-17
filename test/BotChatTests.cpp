@@ -538,6 +538,58 @@ public:
         }
       }
     }
+
+    beginTest("a bot told to be quiet says how to bring it back, then stops");
+    {
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      BotAddress::Attention att;
+
+      const auto hush = BotChat::respond(ctx, from("tester", "Ravo: be quiet"), att);
+      expect(hush.speak, "going quiet was not acknowledged at all");
+      expect(hush.act == BotChat::Act::SetChatMuted, hush.text);
+      expectEquals(hush.value, 1);
+      // The acknowledgement is the ONLY place the way back is offered: after
+      // it, by construction, the bot says nothing. A silent mute is a bot that
+      // looks broken and cannot be fixed.
+      expect(hush.text.containsIgnoreCase("talk"),
+             "no way back was offered: " + hush.text);
+
+      ctx.self.chatMuted = true;
+      const juce::String questions[] = {"Ravo: what key are we in",
+                                        "Ravo: whats your part", "Ravo",
+                                        "Ravo: flurble"};
+      for (const auto &q : questions) {
+        BotAddress::Attention quiet;
+        const auto r = BotChat::respond(ctx, from("tester", q), quiet);
+        expect(!r.speak, "a quiet bot answered '" + q + "': " + r.text);
+      }
+    }
+
+    beginTest("a quiet bot still acts, and still says the two things it must");
+    {
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      ctx.self.chatMuted = true;
+
+      // Coming back has to be audible or there is no way out of the mute.
+      BotAddress::Attention att;
+      const auto back = BotChat::respond(ctx, from("tester", "Ravo: you can talk now"), att);
+      expect(back.speak, "a quiet bot could not be brought back");
+      expect(back.act == BotChat::Act::SetChatMuted, back.text);
+      expectEquals(back.value, 0);
+
+      // Leaving is an action, not commentary: going silently would read as
+      // having ignored the request.
+      BotAddress::Attention att2;
+      const auto bye = BotChat::respond(ctx, from("tester", "Ravo: leave"), att2);
+      expect(bye.act == BotChat::Act::Part, bye.text);
+      expect(bye.speak, "a quiet bot left without saying so");
+
+      // Everything else still happens; only the talking stopped.
+      BotAddress::Attention att3;
+      const auto shake = BotChat::respond(ctx, from("tester", "Ravo: shake"), att3);
+      expect(shake.act == BotChat::Act::Reshuffle, shake.text);
+      expect(!shake.speak, "a quiet bot narrated a shake: " + shake.text);
+    }
   }
 };
 

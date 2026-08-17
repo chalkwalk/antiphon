@@ -186,6 +186,7 @@ BotChat::Context PracticeBot::currentContext() const {
   ctx.self.voice = bandVoice;
   ctx.self.settings = settings;
   ctx.self.playing = playing.load();
+  ctx.self.chatMuted = chatMuted.load();
   return ctx;
 }
 
@@ -589,6 +590,9 @@ void PracticeBot::onChatMessage(const juce::String &type,
     settings.leadOverride = answer.value;
     return;
   }
+  case BotChat::Act::SetChatMuted:
+    chatMuted.store(answer.value != 0);
+    return;
   case BotChat::Act::None:
     return;
   }
