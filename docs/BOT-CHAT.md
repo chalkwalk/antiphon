@@ -827,6 +827,15 @@ the first one's reasoning for free.
   things it was torn between, so it can name them.
   > `you: tell me about your kick`
   > `Mirn[kit-bot]: the part or the sound? "what are you playing" or "what do you sound like".`
+  >
+  > Built, in a generic form: `not sure whether you want my part or my sound --
+  > which?`. The named pair is what matters; the worked example above also
+  > suggests the phrasing to type, which is a further step.
+  >
+  > This has to be checked **before** the winning intent is acted on.
+  > `Reading::intent` still holds the winner when `ambiguous` is set, so a
+  > switch on it fires first and answers one of the two confidently. That was
+  > the bug: the clarify reply was written, and unreachable.
 - **Nothing** -- below the floor. Even here it should not be a shrug. Report the
   concepts it *did* recognise, because that turns a dead end into a hint:
   > `you: is the snare a bit much on the turnaround`
@@ -1066,6 +1075,29 @@ same effect for none of the risk.
 
 I would deliberately **not** give them moods, opinions about your playing,
 jokes, or emoji. Every one of those is a thing that is funny twice.
+
+### They speak in the first person
+
+A bot says "i am on the keys", never "Ravo is on the keys". Every chat line
+already carries its sender, so naming itself puts the name twice on one line --
+`Ravo[keys-bot] Ravo is on the keys` -- and makes it read like a bot narrating
+somebody else. It costs nothing and it is the difference between a player and a
+status readout.
+
+The exceptions are exact, and both are about the ROOM rather than the speaker:
+
+- **Inside quotes**, where the name is text to type and typing it needs the
+  name: `say "Ravo leave" and i go`.
+- **The arrival roster**, which is a list of who is here. Naming everyone is
+  the point of it.
+
+Anything the room owns is "we" -- the key, the tempo, the chart. Anything the
+bot owns is "i". A bot that said "my key" would be claiming an authority the
+whole of section 5 exists to deny it.
+
+`BotChatTests` asserts this over every reply the module can produce rather than
+line by line, because the next reply somebody writes will make the same
+mistake.
 
 ### Names, and a position reversed
 

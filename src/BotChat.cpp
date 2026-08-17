@@ -9,25 +9,30 @@ namespace {
 // What this bot is playing, in its own terms. One line per voice because the
 // interesting fact is a different one for each: the kit has no patch to name,
 // and the lead's instrument is the thing a player most often wants changed.
+//
+// FIRST PERSON, like everything else a bot says about itself. Every chat line
+// already carries the sender's name, so "Ravo is playing the kit" arrives as
+// "Ravo[keys-bot] Ravo is playing the kit" -- the name twice, and a bot that
+// sounds like it is describing somebody else.
 juce::String describeSound(const Self &self) {
   switch (self.voice) {
   case BotBand::Voice::Drums:
-    return self.name + " is playing the kit.";
+    return "i am playing the kit.";
   case BotBand::Voice::Bass:
-    return self.name + " is playing " +
+    return juce::String("i am playing ") +
            BotVoice::bassTechniqueName(BotBand::bassTechnique(self.settings)) +
            " bass.";
   case BotBand::Voice::Keys:
-    return self.name + " is playing a " +
+    return juce::String("i am playing a ") +
            BotVoice::padCharacterName(
                BotBand::keysPatch(self.settings).character) +
            " patch.";
   case BotBand::Voice::Lead:
-    return self.name + " is playing " +
+    return juce::String("i am playing ") +
            BotVoice::leadInstrumentName(BotBand::leadInstrument(self.settings)) +
            ".";
   }
-  return self.name + " is playing.";
+  return "i am playing.";
 }
 
 // What this bot is playing MUSICALLY, which is a different question from what
@@ -47,20 +52,20 @@ juce::String describePart(const Self &self) {
   switch (self.voice) {
   case BotBand::Voice::Drums: {
     const auto f = BotBand::figureFor(self.voice, self.settings);
-    return self.name + " is on the kit -- " + juce::String(f.pulses) +
-           " hits over " + juce::String(f.steps) + ".";
+    return "i am on the kit -- " + juce::String(f.pulses) + " hits over " +
+           juce::String(f.steps) + ".";
   }
   case BotBand::Voice::Bass: {
     const auto f = BotBand::figureFor(self.voice, self.settings);
-    return self.name + " is on the bass, roots on the changes -- " +
+    return "i am on the bass, roots on the changes -- " +
            juce::String(f.pulses) + " over " + juce::String(f.steps) + ".";
   }
   case BotBand::Voice::Keys:
-    return self.name + " is on the keys, holding the chart in " + key + ".";
+    return "i am on the keys, holding the chart in " + key + ".";
   case BotBand::Voice::Lead:
-    return self.name + " is on the lead, a line over " + key + ".";
+    return "i am on the lead, a line over " + key + ".";
   }
-  return self.name + " is playing.";
+  return "i am playing.";
 }
 
 // First contact, and the answer to "what are you".
@@ -69,11 +74,15 @@ juce::String describePart(const Self &self) {
 // so this doubles as a menu. It names the way OUT before anything else it can
 // do, because somebody who did not want a bot in their room needs that more
 // than they need to know what it plays.
+//
+// The one place the bot's own name belongs in what it says, and only inside the
+// quotes: that is not the bot referring to itself, it is text to TYPE, and
+// typing it needs the name.
 juce::String explainSelf(const Self &self) {
-  return self.name + " is a bot playing the " +
-         juce::String(BotBand::voiceName(self.voice)) +
+  return juce::String("i am a bot playing the ") +
+         juce::String(BotBand::voiceName(self.voice)).toLowerCase() +
          ". say \"" + self.name +
-         " leave\" and it goes. ask it about its part, its sound, the key, the "
+         " leave\" and i go. ask me about my part, my sound, the key, the "
          "chords or the tempo.";
 }
 
@@ -157,6 +166,30 @@ void tempoAskedFor(const juce::String &text, int &bpm, int &bpi) {
   }
 }
 
+// An intent as a player would say it. `BotLanguage::intentName` is the
+// recogniser's own tag -- "DESCRIBE_PART" -- which is fine in a corpus file and
+// is an internal identifier read out loud in a room.
+const char *spokenIntent(BotLanguage::Intent i) {
+  switch (i) {
+  case BotLanguage::Intent::DescribePart: return "my part";
+  case BotLanguage::Intent::DescribeSound: return "my sound";
+  case BotLanguage::Intent::ReportKey: return "the key";
+  case BotLanguage::Intent::ReportChart: return "the chords";
+  case BotLanguage::Intent::ReportTempo: return "the tempo";
+  case BotLanguage::Intent::SetKey: return "a key change";
+  case BotLanguage::Intent::SetTempo: return "a tempo change";
+  case BotLanguage::Intent::SetChart: return "different chords";
+  case BotLanguage::Intent::ResetChart: return "the default chords";
+  case BotLanguage::Intent::Reshuffle: return "something else played";
+  case BotLanguage::Intent::SetQuiet: return "me to be quiet";
+  case BotLanguage::Intent::SetLoud: return "me talking again";
+  case BotLanguage::Intent::ExplainSelf: return "to know what i am";
+  case BotLanguage::Intent::Leave: return "me to leave";
+  case BotLanguage::Intent::None: break;
+  }
+  return "something else";
+}
+
 // The whole decision, before the quiet rule is applied to it. Separate so the
 // rule is applied in ONE place: a gate at each of a dozen returns is a gate
 // somebody forgets when they add the thirteenth.
@@ -177,7 +210,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
       who == BotAddress::Address::PartMe) {
     out.speak = true;
     out.act = Act::Part;
-    out.text = ctx.self.name + " leaving. Bye.";
+    out.text = "leaving. bye.";
     return out;
   }
 
@@ -200,7 +233,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
       wanted == "guitar" || wanted == "synth") {
     out.speak = true;
     if (ctx.self.voice != BotBand::Voice::Lead) {
-      out.text = ctx.self.name + " plays the " +
+      out.text = juce::String("i play the ") +
                  juce::String(BotBand::voiceName(ctx.self.voice)).toLowerCase() +
                  ". ask the lead.";
       return out;
@@ -214,11 +247,26 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
 
     out.act = Act::SetLeadInstrument;
     out.value = (int)pick;
-    out.text = ctx.self.name + " on " + BotVoice::leadInstrumentName(pick) + ".";
+    out.text = juce::String("now on ") + BotVoice::leadInstrumentName(pick) + ".";
     return out;
   }
 
   const auto reading = BotLanguage::read(body.toStdString());
+
+  // Torn between two readings, and ASKING rather than picking. This has to
+  // come before the switch: `intent` still holds the winner when `ambiguous`
+  // is set, so acting on it answers one of two questions the recogniser has
+  // just said it cannot separate -- confidently, and half the time wrongly.
+  //
+  // Naming the two is what makes the question useful rather than a shrug, and
+  // it is nearly free: the recogniser knows exactly what they were.
+  if (reading.ambiguous && reading.alternative != BotLanguage::Intent::None) {
+    out.speak = true;
+    out.text = juce::String("not sure whether you want ") +
+               spokenIntent(reading.intent) + " or " +
+               spokenIntent(reading.alternative) + " -- which?";
+    return out;
+  }
 
   switch (reading.intent) {
   case BotLanguage::Intent::DescribeSound:
@@ -274,13 +322,13 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     // rationing belongs to whoever owns the room, not here.
     out.speak = true;
     out.act = Act::Reshuffle;
-    out.text = ctx.self.name + " ok, something else.";
+    out.text = "ok, something else.";
     return out;
 
   case BotLanguage::Intent::Leave:
     out.speak = true;
     out.act = Act::Part;
-    out.text = ctx.self.name + " leaving. Bye.";
+    out.text = "leaving. bye.";
     return out;
 
   case BotLanguage::Intent::ExplainSelf:
@@ -295,8 +343,8 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     out.speak = true;
     out.act = Act::SetChatMuted;
     out.value = 1;
-    out.text = ctx.self.name + " going quiet. say \"" + ctx.self.name +
-               " talk\" to bring it back. still playing.";
+    out.text = "going quiet. say \"" + ctx.self.name +
+               " talk\" to bring me back. still playing.";
     return out;
 
   case BotLanguage::Intent::SetLoud:
@@ -306,7 +354,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     out.speak = true;
     out.act = Act::SetChatMuted;
     out.value = 0;
-    out.text = ctx.self.name + " talking again.";
+    out.text = "talking again.";
     return out;
 
   case BotLanguage::Intent::SetChart:
@@ -339,19 +387,11 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   }
 
   // Addressed, and not understood. One honest, visibly limited reply rather
-  // than a plausible guess (docs/BOT-CHAT.md rule 3). Ambiguity is different
-  // from incomprehension and says which two it was torn between, because it
-  // knows exactly and saying so is nearly free.
+  // than a plausible guess (docs/BOT-CHAT.md rule 3). Ambiguity is a different
+  // thing from incomprehension and was answered above.
   out.speak = true;
-  if (reading.ambiguous && reading.alternative != BotLanguage::Intent::None)
-    out.text = ctx.self.name + ": not sure whether you want " +
-               juce::String(BotLanguage::intentName(reading.intent)) + " or " +
-               juce::String(BotLanguage::intentName(reading.alternative)) +
-               " -- which?";
-  else
-    out.text = ctx.self.name +
-               ": i can tell you my part, my sound, the key, the chords or the "
-               "tempo.";
+  out.text = "i can tell you my part, my sound, the key, the chords or the "
+             "tempo.";
   return out;
 }
 

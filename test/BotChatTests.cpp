@@ -45,6 +45,20 @@ BotAddress::Incoming from(const juce::String &who, const juce::String &text) {
   return in;
 }
 
+// Everything a reply says OUTSIDE a quoted span.
+//
+// The chat transport prefixes every line with the sender, so a bot that names
+// itself says its name twice: "Ravo[keys-bot] Ravo is on the keys". The one
+// legitimate use is inside quotes, which is not the bot talking about itself
+// but text for a player to TYPE -- and typing it requires the name.
+juce::String outsideQuotes(const juce::String &text) {
+  const auto parts = juce::StringArray::fromTokens(text, "\"", "");
+  juce::String out;
+  for (int i = 0; i < parts.size(); i += 2)
+    out += parts[i] + " ";
+  return out;
+}
+
 class BotChatTests : public juce::UnitTest {
 public:
   BotChatTests() : juce::UnitTest("BotChat", "bots") {}
@@ -510,8 +524,12 @@ public:
 
         expect(sound.speak && part.speak,
                juce::String(c.name) + " did not answer both questions");
-        expect(sound.text.contains(c.name) && part.text.contains(c.name),
-               juce::String(c.name) + " did not say which bot was speaking");
+        // Which bot is speaking is the transport's job -- see "a bot answers
+        // in the first person". What matters here is that the two questions
+        // get two answers.
+        expect(!sound.text.contains(c.name) && !part.text.contains(c.name),
+               juce::String(c.name) + " named itself: " + sound.text + " / " +
+                   part.text);
         expect(sound.text != part.text,
                juce::String(c.name) + " gave one answer to two questions: " +
                    sound.text);
@@ -537,6 +555,84 @@ public:
                      juce::String(f.steps) + "): " + part.text);
         }
       }
+    }
+
+    beginTest("asking which of two says it in words, not in tag names");
+    {
+      // "tell me about your kick" is genuinely two questions -- the corpus has
+      // it as CLARIFY -- and naming the two is the whole value of asking. But
+      // the names were the recogniser's own tags, so the bot said
+      // "not sure whether you want DESCRIBE_PART or DESCRIBE_SOUND", which is
+      // an internal identifier read out to a musician.
+      auto ctx = contextWith(BotBand::Voice::Drums, "Quado", "tester");
+      BotAddress::Attention att;
+      const auto r = BotChat::respond(
+          ctx, from("tester", "Quado: tell me about your kick"), att);
+
+      expect(r.speak, "an ambiguous question got no answer at all");
+      expect(r.text.containsIgnoreCase("not sure whether"),
+             "this is no longer the clarify path, so the test proves nothing: " +
+                 r.text);
+      expect(!r.text.contains("_") && r.text == r.text.toLowerCase(),
+             "the reply reads out a tag name: " + r.text);
+      expect(r.text.contains("part") && r.text.contains("sound"),
+             "the reply does not name the two it was torn between: " + r.text);
+    }
+
+    beginTest("a bot answers in the first person, because the line already says who");
+    {
+      // Reported from a real room: "Ravo[keys-bot] Ravo is on the keys,
+      // holding the chart in C major". The transport puts the name on every
+      // line, so a reply that names itself says it twice and reads like a bot
+      // talking about somebody else.
+      //
+      // Swept over every reply this module can produce rather than fixed line
+      // by line, because the next reply somebody adds will make the same
+      // mistake.
+      const char *messages[] = {
+          "whats your sound",     "whats your part",
+          "what key are we in",   "whats the chart",
+          "whats the tempo",      "can we play in g minor",
+          "can we change the chords", "use the default chords",
+          "can you speed up",     "shake",
+          "what are you",         "guitar",
+          "be quiet",             "you can talk now",
+          "leave",                "flurble",
+      };
+      const BotBand::Voice voices[] = {
+          BotBand::Voice::Drums, BotBand::Voice::Bass, BotBand::Voice::Keys,
+          BotBand::Voice::Lead};
+
+      for (auto v : voices) {
+        auto ctx = contextWith(v, "Ravo", "tester");
+        for (const auto *m : messages) {
+          BotAddress::Attention att;
+          const auto r =
+              BotChat::respond(ctx, from("tester", "Ravo: " + juce::String(m)), att);
+          expect(r.speak, juce::String(m) + " went unanswered");
+          expect(!outsideQuotes(r.text).contains("Ravo"),
+                 "a bot named itself: \"" + r.text + "\" (asked: " + m + ")");
+        }
+      }
+
+      // ...and the questions about itself are answered as "i", not as a name
+      // simply deleted. The bot's opener is where the name legitimately
+      // survives, inside the command it is telling you to type.
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      for (const auto *m : {"whats your part", "whats your sound", "what are you"}) {
+        BotAddress::Attention att;
+        const auto r =
+            BotChat::respond(ctx, from("tester", "Ravo: " + juce::String(m)), att);
+        expect(r.text.containsWholeWord("i"),
+               juce::String(m) + " was not answered in the first person: " + r.text);
+      }
+
+      // The group is still "we": a key belongs to the room, not to the bot.
+      BotAddress::Attention att;
+      const auto key =
+          BotChat::respond(ctx, from("tester", "Ravo: what key are we in"), att);
+      expect(key.text.containsWholeWord("we"),
+             "the room's key was answered as if it were the bot's: " + key.text);
     }
 
     beginTest("asking for the default chords gets the line to paste");
