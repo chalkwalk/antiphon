@@ -482,11 +482,12 @@ Twelve, and they are the whole surface:
 | `SET_KEY` | that the room decides the key, what it is now, and how to change it |
 | `SET_TEMPO` | that a tempo is a server vote, what it is now, and how to call one |
 | `SET_CHART` | that the room decides the chart, what it is now, and how to put one up |
+| `RESET_CHART` | the chords the key implies, as a line to paste |
 | `SET_KEY` | 14 |
   | `SET_TEMPO` | 12 |
   | `SET_CHART` | 10 |
   | `RESHUFFLE` | rerolls, and says what changed |
-| `SET_QUIET` / `SET_LOUD` | stops or resumes unprompted speech |
+| `SET_QUIET` / `SET_LOUD` | stops or resumes speaking at all, per bot |
 | `EXPLAIN_SELF` | what it is and how to remove it |
 | `LEAVE` | parts, as now |
 
@@ -635,7 +636,7 @@ and for a whole class of question the answer is the same from every bot:
 | Personal -- every addressed bot answers | Common -- exactly one answers |
 |---|---|
 | `DESCRIBE_PART`, `DESCRIBE_SOUND` | `REPORT_KEY`, `REPORT_CHART`, `REPORT_TEMPO` |
-| `RESHUFFLE`, `SET_QUIET`, `SET_LOUD` | `SET_KEY`, `SET_TEMPO`, `SET_CHART` |
+| `RESHUFFLE`, `SET_QUIET`, `SET_LOUD` | `SET_KEY`, `SET_TEMPO`, `SET_CHART`, `RESET_CHART` |
 | `EXPLAIN_SELF`, `LEAVE` | |
 
 The worked transcript above has `band, what are you playing` answered by all

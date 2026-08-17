@@ -95,6 +95,11 @@ takes whatever chord the key already has on that degree. Your client works the
 chords out and sends the ordinary chord names, so nobody else in the room needs
 to know you typed it that way.
 
+Each chord is spelled against the key rather than the whole chart being spelled
+one way. D major takes sharps, so its chords are written with sharps -- but a
+flattened second in it is still `Eb7`, because that is what the notation wants
+however the key signature reads.
+
 ### The key nobody said
 
 If someone announces a chart and no key has been set, Antiphon works out what
