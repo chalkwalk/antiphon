@@ -316,6 +316,15 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     out.text = BotAnswer::answerSetChart(ctx.music);
     return out;
 
+  case BotLanguage::Intent::ResetChart:
+    // The one place a bot hands over a chart to paste. It does not act: a key
+    // change stopped discarding the chart, which is why this is askable at
+    // all, and a bot that quietly reverted its own would be playing something
+    // nobody else in the room could see.
+    out.speak = true;
+    out.text = BotAnswer::answerResetChart(ctx.music);
+    return out;
+
   case BotLanguage::Intent::ReportTempo:
     // Both numbers, always. The bpi is what decides how long you wait to hear
     // yourself, it is the part newcomers are surprised by, and it cannot be

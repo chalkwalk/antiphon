@@ -90,6 +90,20 @@ juce::String answerSetChart(const Room &room) {
          "." + how;
 }
 
+juce::String answerResetChart(const Room &room) {
+  const auto standard =
+      Harmony::chartText(Harmony::defaultChart(room.key), room.key);
+
+  // Already there. Handing back a line that would change nothing looks like an
+  // answer and wastes the paste.
+  if (room.chartSource == Source::Defaulted)
+    return "we are already on the default for " +
+           MusicalKey::displayName(room.key) + ": " + standard + ".";
+
+  return "the default in " + MusicalKey::displayName(room.key) + " is " +
+         standard + ". put it up and i will follow.";
+}
+
 juce::String answerSetTempo(const Room &room, int wantBpm, int wantBpi) {
   // Both, always: 120 at 8 and 120 at 32 are completely different rooms, and
   // one without the other says almost nothing.

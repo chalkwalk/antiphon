@@ -79,6 +79,17 @@ juce::String answerSetKey(const Room &room, const MusicalKey::Key &wanted);
 // key would silently move the harmony.
 juce::String answerSetChart(const Room &room);
 
+// Asked for the chords the KEY implies -- "use the default chords for this
+// key". Askable because a key change no longer imposes them: a chart somebody
+// wrote now travels with the key rather than being discarded (`DESIGN.md`
+// section 6.4), which is right, and leaves the old behaviour with no way to
+// ask for it.
+//
+// Offers rather than acts, for the same reason `answerSetChart` does: a chart
+// is the room's, and a bot that quietly reverted its own would be playing
+// something nobody else in the room could see.
+juce::String answerResetChart(const Room &room);
+
 // Asked to change the tempo. `wantBpm`/`wantBpi` are what was asked for; zero
 // means "not this one". Out-of-range values are refused here rather than by the
 // server, whose answer to one is a complaint about the command's parameters.

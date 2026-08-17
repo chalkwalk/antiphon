@@ -412,6 +412,38 @@ switch the progression
 can we do a different chart
 
 
+[RESET_CHART]
+# Asked for the chords a key implies, which is a thing to ask for now that
+# announcing a key no longer imposes them (DESIGN.md 6.4). Distinguished from
+# SET_CHART by naming WHICH chart: the standard one, rather than a different
+# one. Both carry the same topic word, so what separates them is the whole
+# question.
+default chords
+the default chords
+use the default chords
+use the default chords for this key
+back to the default chords
+give me the default chords
+can we have the default chords
+reset the chords
+reset the chart
+revert the chords
+the usual chords
+the standard changes
+standard chords for this key
+put the normal chords back
+the usual changes for the key
+default progression
+can you go back to the standard progression
+lets have the default chords
+the ordinary chords for this key
+restore the default chords
+use the standard chart
+normal chords please
+back to the usual progression
+default changes
+
+
 [RESHUFFLE]
 shake
 new

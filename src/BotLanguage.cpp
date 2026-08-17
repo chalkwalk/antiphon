@@ -134,6 +134,13 @@ struct Prepared {
 const char *kDeterminer[] = {"the", "a",     "an",   "your", "my",  "our",
                              "their", "this", "that", "these", "those",
                              "its",   "his",  "her",  "some", "any"};
+// Words that can only modify a noun, which is the determiner test's blind
+// spot: "the standard changes" puts an adjective where "the" would be, so the
+// determiner is no longer adjacent to the word being classed and "changes" was
+// read as the verb. Anything that can only be an adjective does the
+// determiner's job for whatever follows it.
+const char *kNounModifier[] = {"default", "standard", "usual",
+                               "normal",  "ordinary", "typical"};
 // Only the second person makes a following verb a REQUEST. "can you change it"
 // is an instruction; "how does it go" is a description asked for, and treating
 // its subject the same way answered it by leaving the room.
@@ -435,6 +442,12 @@ const Word kLexicon[] = {
     {"vote", Concept::Tempo},     {"faster", Concept::Tempo},
     {"slower", Concept::Tempo},
 
+    {"default", Concept::Standard}, {"standard", Concept::Standard},
+    {"usual", Concept::Standard},   {"normal", Concept::Standard},
+    {"ordinary", Concept::Standard},{"typical", Concept::Standard},
+    {"reset", Concept::Standard},   {"revert", Concept::Standard},
+    {"restor", Concept::Standard},
+
     {"shake", Concept::Change},   {"reroll", Concept::Change},
     {"roll", Concept::Change},    {"new", Concept::Change},
     {"differ", Concept::Change},  {"different", Concept::Change},
@@ -636,6 +649,7 @@ const char *intentName(Intent i) {
   case Intent::SetKey: return "SET_KEY";
   case Intent::SetTempo: return "SET_TEMPO";
   case Intent::SetChart: return "SET_CHART";
+  case Intent::ResetChart: return "RESET_CHART";
   case Intent::Reshuffle: return "RESHUFFLE";
   case Intent::SetQuiet: return "SET_QUIET";
   case Intent::SetLoud: return "SET_LOUD";
@@ -814,7 +828,8 @@ Reading read(const std::string &text) {
     // Word class first, for the handful of words where it decides the concept.
     for (const auto &c : kClassed)
       if (s == c.word || tok.word == c.word) {
-        const bool noun = inList(kDeterminer, tok.prev);
+        const bool noun = inList(kDeterminer, tok.prev) ||
+                          inList(kNounModifier, tok.prev);
         const bool verb = inList(kSubject, tok.prev) ||
                           inList(kModal, tok.prev) ||
                           (tok.first && !r.question);
@@ -881,8 +896,11 @@ Reading read(const std::string &text) {
 
   // "let us do another" is two players talking; "let us play in e minor" names
   // something we can act on, and the difference is whether a value was given.
+  // Naming WHICH chart counts as naming a value the same way a key does: "lets
+  // have the default chords" is as specific as a request gets.
   if (r.proposal && !keyValue && !tempoValue &&
-      !(weight.count(Concept::Chart) && weight.count(Concept::Change)))
+      !(weight.count(Concept::Chart) && (weight.count(Concept::Change) ||
+                                         weight.count(Concept::Standard))))
     return r;
 
   const bool topic =
@@ -1044,6 +1062,20 @@ Reading read(const std::string &text) {
   // part instead would be a confident answer to a question nobody asked.
   if (setKey || setTempo || setChart)
     score[Intent::Reshuffle] -= 9;
+
+  // WHICH chart, rather than a different one. "the default chords for this
+  // key" and "can we change the chords" share their only topic word, and the
+  // answers are opposites: one names the chart the key implies, the other asks
+  // for anything but. Everything else the sentence could be read as is pushed
+  // down together, because every one of them is a confident wrong answer --
+  // "the usual changes for the key" read as SET_KEY, and reporting the chart
+  // we are already playing answers a question nobody asked.
+  if (weight.count(Concept::Standard) && weight.count(Concept::Chart)) {
+    add(Intent::ResetChart, 11);
+    for (auto i : {Intent::ReportChart, Intent::SetChart, Intent::Reshuffle,
+                   Intent::SetKey, Intent::ReportKey})
+      score[i] -= 8;
+  }
   if (weight.count(Concept::Quiet)) add(Intent::SetQuiet, 6);
   if (weight.count(Concept::Loud)) add(Intent::SetLoud, 7);
   if (weight.count(Concept::Identity)) add(Intent::ExplainSelf, 6);
