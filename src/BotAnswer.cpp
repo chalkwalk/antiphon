@@ -8,7 +8,10 @@ namespace {
 
 // Bots speak lower case. It is the register the room is in.
 juce::String chart(const Room &room) {
-  return Harmony::chartText(room.chart, MusicalKey::usesFlats(room.key.tonic, room.key.mode));
+  // Spelled against the key rather than by one flag for the whole line: a room
+  // reads a chart back so it can be pasted, so the reading has to BE the
+  // notation. D major takes sharps and its lowered second is still Eb.
+  return Harmony::chartText(room.chart, room.key);
 }
 
 // Quoted, so it reads as something to type rather than running into the

@@ -395,13 +395,13 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         Harmony::Chart parsed;
         if (Harmony::parseChart(chart, parsed)) {
           audioProcessor.ninjamClient.sendChatMessage(
-              Harmony::chartText(parsed, sessionKey.valid && sessionKey.flat));
+              Harmony::chartText(parsed, sessionKey));
         } else if (!sessionKey.valid) {
           chatDisplay.insertTextAtCaret(
               "Local: set a key first, and then degrees will work: /key Dm.\n");
         } else if (Harmony::parseDegreeChart(chart, sessionKey, parsed)) {
           audioProcessor.ninjamClient.sendChatMessage(
-              Harmony::chartText(parsed, sessionKey.flat));
+              Harmony::chartText(parsed, sessionKey));
         } else {
           chatDisplay.insertTextAtCaret(
               "Local: not chords. Try /chords Am F C G, or in degrees, "
@@ -603,9 +603,9 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   // A chart arrives the same way, and from anyone. What the room was told is
   // what gets drawn -- nothing here invents a progression.
   if (Harmony::Chart chart; Harmony::parseChart(text, chart)) {
-    const auto flat = sessionKey.valid && sessionKey.flat;
     sessionChart = std::move(chart);
-    announcer.say("Chords: " + Harmony::chartText(sessionChart, flat), true);
+    announcer.say("Chords: " + Harmony::chartText(sessionChart, sessionKey),
+                  true);
 
     // Chords are evidence about the key, so this is where the guess is made.
     // It is offered on the chip and never acted on: a suggestion that set the
@@ -748,8 +748,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
           continue;
 
         g.setColour(isNow ? teal : juce::Colours::white.withAlpha(0.45f));
-        const auto name = Harmony::chordName(layout.chords[(size_t)idx],
-                                             sessionKey.valid && sessionKey.flat);
+        const auto name =
+            Harmony::chordName(layout.chords[(size_t)idx], sessionKey);
         g.drawFittedText(name,
                          juce::Rectangle<int>(x, chartRow.getY(),
                                               juce::jmax(24, room - 4),
@@ -1550,7 +1550,7 @@ bool AntiphonEditor::updateStatusReadout() {
     if (sessionKey.valid)
       s << "Key " << MusicalKey::displayName(sessionKey) << ". ";
     if (showsChartRow()) {
-      s << "Chords " << Harmony::chartText(sessionChart, sessionKey.flat)
+      s << "Chords " << Harmony::chartText(sessionChart, sessionKey)
         << ". ";
     }
 
