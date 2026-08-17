@@ -1588,13 +1588,19 @@ out to be the same bug.
 ### Three states, and one boundary
 
 ```
-Silent --start--> Playing --stop--> Ending --[one interval]--> Silent
-   ^                                                             |
-   \-------------------------------------------------------------/
+Silent --start--> Playing --stop--> Wrapping --[1 interval]--> Resolving
+   ^                     ^              |                          |
+   |                     \--start-------/           [1 interval]   |
+   \--------------------------------------------------------------/
 ```
 
-`Ending` is the only transition a bot makes on its own; every other arrow is
-somebody asking.
+`Wrapping` and `Resolving` advance on their own, exactly one interval each;
+every other arrow is somebody asking.
+
+`start` during `Wrapping` **cancels the ending** and goes back to playing, which
+is a real thing to want -- "no, keep going" is said in rehearsals constantly.
+There is deliberately no such escape from `Resolving`: by then the wrap-up has
+been heard and the final chord is the only musical way out.
 
 **The state is sampled once per interval, at the top of the render, and held for
 that whole interval.** Reading it again part-way through would tear an interval
@@ -1618,37 +1624,69 @@ would be wrong twice a minute and would teach players to distrust the band.
 
 ### What an ending is
 
-**The resolution comes first, and then silence.** The ending interval opens on
-the final chord -- usually the tonic, because that is what the loop resolves to
--- lets it ring, and stays quiet for the rest of the interval.
+**An ending is two intervals: wrap it up, then land.**
 
-An earlier draft of this had the interval played through and resolving on the
-last bar. That is wrong, and the reason is worth keeping: a resolution lands on
-a **downbeat**, and the only downbeat the ending interval owns is its own first
-beat. A band does not wind down over four bars and stop; it plays the last
-chord, together, on a beat everyone can see coming, and takes its hands off.
+```
+      you type "stop"
+            |
+   [ in flight ]  [ wrapping up ]  [ resolve ]  [ silent ...
+    unchanged      full interval    downbeat
+                   lead lays out    chord,
+                   kit fills        ring,
+                                    silence
+```
 
-That also settles what the ending costs. It is one interval, and the interval
-before it is untouched -- so this is a flag through `BotBand::renderInterval`
-rather than a second code path, and `Harmony::layoutChart` already knows which
-chord the loop resolves to. How it actually *sounds* is a tuning job for
-`AntiphonVoiceLab`, measured the way every other voice was, and not something to
-settle in prose.
+An earlier draft made it one interval that opened on the resolution. Two things
+were wrong with that, and they are the same thing seen twice.
 
-**There is no fill into it, and there cannot be.** A drummer fills into an
-ending because they know it is coming; a bot told to stop part-way through an
-interval does not, and the interval that would have carried the fill is already
-encoded and on the wire. Buying a fill means spending a second interval -- one
-that signals the end, then one that resolves -- which doubles a delay that is
-already four to eight seconds. Not worth it, unless the endings turn out to feel
-abrupt in a real room, which is the sort of thing only playing will say.
+A resolution lands on a **downbeat** -- so the final chord does belong on the
+first beat of an interval, and that part stands. But a chord arriving on a
+downbeat with nothing leading into it is not an ending, it is a dropout with a
+note on the front. What makes an ending sound intended is the bar *before* it.
 
-Two variants are worth naming because they are different musical devices rather
-than different tunings of one, and both are future work:
+That draft also argued the fill was impossible: a drummer fills into an ending
+because they know it is coming, and a bot told to stop part-way through an
+interval does not, because the interval that would carry the fill is already
+encoded and on the wire. True -- and the answer is not to give up the fill, it
+is to give it an interval of its own. **The wrap-up interval is that interval.**
 
-- **A fade across the interval**, or a velocity taper. This is what you reach
-  for when there is no cadence to land on -- it ends a groove rather than a
-  song, and it is the honest choice for a loop that never resolves anywhere.
+So:
+
+- **The wrap-up interval** is a complete interval of music, played from the same
+  chart, with the arrangement saying what is about to happen: the lead lays out,
+  the kit fills through the last bar, the texture thins toward the end.
+- **The resolving interval** opens on the chord the loop resolves to, lets it
+  ring, and is quiet for the remainder.
+
+**It costs nothing extra.** The band renders an interval every slot regardless,
+so a wrap-up and a resolve cost exactly two normal intervals of CPU and
+bandwidth. The extra interval is *full of music*, not empty; the near-empty one
+is the resolve, and it existed in the one-interval design too. What is actually
+spent here is time, not resource.
+
+**The wrap-up invents no harmony.** No turnaround, no borrowed ii-V, nothing the
+room did not write: the chart belongs to the room (section 5), and a bot adding
+a cadence of its own is a bot deciding something nobody agreed. The signal is
+arrangement -- laying out, filling, thinning -- which every musician reads and
+which needs no new chords. The kit already fills every fourth interval, so the
+machinery exists.
+
+**The delay is about three intervals from typing to silence**: one because the
+in-flight interval cannot be recalled, one to wrap up, one to resolve. Twelve
+seconds at 120 bpm and 8 bpi. That is not a cost to apologise for -- a band told
+to wrap it up and stopping instantly would be the strange behaviour. It scales
+sensibly too: the fill lives in the last bar whatever the interval length, so a
+long interval simply means one more interval of playing before the end.
+
+How the two intervals actually *sound* is a tuning job for `AntiphonVoiceLab`,
+measured the way every other voice was, and not something to settle in prose.
+
+Two further variants are worth naming because they are different musical devices
+rather than different tunings of this one, and both are future work:
+
+- **A fade across the wrap-up**, or a velocity taper. This is what you reach for
+  when there is no cadence to land on -- it ends a groove rather than a song,
+  and it is the honest choice for a loop that resolves nowhere.
 - **A ritardando.** Ruled out rather than deferred: the interval grid is the one
   thing every client in the room agrees on, and a bot that slowed down would be
   a bot leaving the grid (`PRINCIPLES` 9).

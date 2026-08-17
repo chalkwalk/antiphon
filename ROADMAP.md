@@ -611,8 +611,11 @@ restraint rather than conversation.
       has no state for it: it plays from connect until evicted, and the only
       way to stop it is to send it home. **Designed in `docs/BOT-CHAT.md`
       section 15; that section is the specification and this is the checklist.**
-      - [ ] Three states -- Silent, Playing, Ending -- sampled ONCE per interval
-            at the top of the render and held for it. Reading again part-way
+      - [ ] Four states -- Silent, Playing, Wrapping, Resolving -- sampled ONCE
+            per interval at the top of the render and held for it. `Wrapping`
+            and `Resolving` advance on their own, one interval each; `start`
+            during `Wrapping` cancels the ending, and nothing escapes
+            `Resolving`. Reading again part-way
             tears an interval across two states, and delivery is
             all-or-nothing. `PracticeBot::playing` already exists for this and
             is dead weight today: never cleared, and `BotChat::Self::playing`
@@ -626,19 +629,25 @@ restraint rather than conversation.
       - [ ] `START_PLAYING` / `STOP_PLAYING` intents, corpus lines first, and
             the acts to carry them. Individual and whole-band come free:
             `BotAddress::Address::Collective` already sits beside `Named`.
-      - [ ] The ending: one interval that OPENS on the resolution -- the final
-            chord on the downbeat, ring, then quiet for the remainder -- as a
-            flag through `BotBand::renderInterval` rather than a second code
-            path. Not a wind-down over the last bar: a resolution lands on a
-            downbeat, and the only one the ending interval owns is its first
-            beat. No fill into it, and there cannot be one -- the interval that
-            would carry it is already encoded and gone by the time anybody asks.
-            How it SOUNDS is an `AntiphonVoiceLab` tuning job, measured like
-            every other voice.
-      - [ ] The reply says when it lands. The conductor renders interval N at
-            the top of N and Ninjam delivers it an interval late, so an ending
-            arrives one to two intervals after it is asked for -- 4 to 8 s at
-            120/8. "ending after this one", never a reply implying it stops now.
+      - [ ] The ending is TWO intervals, as a phase through
+            `BotBand::renderInterval` rather than a second code path. A
+            complete wrap-up interval -- same chart, lead lays out, kit fills
+            through the last bar, texture thins -- then a resolving interval
+            that opens on the chord the loop resolves to, rings, and is quiet
+            for the remainder. A downbeat chord with nothing leading into it is
+            a dropout with a note on the front; the wrap-up is what makes the
+            ending sound intended, and it is where the fill lives.
+      - [ ] The wrap-up invents NO harmony -- no turnaround, nothing the room
+            did not write. The chart is the room's; the signal is arrangement.
+      - [ ] It costs nothing extra: the band renders an interval every slot
+            regardless, so this is two ordinary intervals of CPU and bandwidth.
+            What is spent is time -- about three intervals from typing to
+            silence, 12 s at 120/8, which is roughly how long a real band takes
+            and scales sensibly with bpi.
+      - [ ] How the two intervals SOUND is an `AntiphonVoiceLab` tuning job,
+            measured like every other voice.
+      - [ ] The reply says what is about to happen rather than implying it
+            stops now -- "wrapping up, ending on the next downbeat".
       - [ ] Arrive Silent. The band connects before the player does, so playing
             on connect plays to an empty room; the roster line already re-arms
             for the first human and is where start/stop gets taught. Disposes
