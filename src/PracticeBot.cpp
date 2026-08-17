@@ -390,7 +390,9 @@ void PracticeBot::onRoomMembershipChange(const juce::String &username,
     return;
   }
 
-  netClient.sendChatMessage(botName + " leaving -- " + ownerName + " has gone.");
+  // First person, like everything else a bot says about itself: the chat line
+  // already carries the name.
+  netClient.sendChatMessage("leaving -- " + ownerName + " has gone.");
   part();
 }
 
