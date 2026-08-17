@@ -626,11 +626,15 @@ restraint rather than conversation.
       - [ ] `START_PLAYING` / `STOP_PLAYING` intents, corpus lines first, and
             the acts to carry them. Individual and whole-band come free:
             `BotAddress::Address::Collective` already sits beside `Named`.
-      - [ ] The ending: one interval, resolving on the last bar, as a flag
-            through `BotBand::renderInterval` rather than a second code path.
-            The kit already fills every fourth interval and `layoutChart`
-            already knows where the last bar starts. How it SOUNDS is an
-            `AntiphonVoiceLab` tuning job, measured like every other voice.
+      - [ ] The ending: one interval that OPENS on the resolution -- the final
+            chord on the downbeat, ring, then quiet for the remainder -- as a
+            flag through `BotBand::renderInterval` rather than a second code
+            path. Not a wind-down over the last bar: a resolution lands on a
+            downbeat, and the only one the ending interval owns is its first
+            beat. No fill into it, and there cannot be one -- the interval that
+            would carry it is already encoded and gone by the time anybody asks.
+            How it SOUNDS is an `AntiphonVoiceLab` tuning job, measured like
+            every other voice.
       - [ ] The reply says when it lands. The conductor renders interval N at
             the top of N and Ninjam delivers it an interval late, so an ending
             arrives one to two intervals after it is asked for -- 4 to 8 s at
