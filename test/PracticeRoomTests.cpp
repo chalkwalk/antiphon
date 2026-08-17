@@ -566,6 +566,82 @@ public:
              "another bot answered too: " + others.joinIntoString(" / "));
     }
 
+    beginTest("an addressed question is answered with the answer");
+    {
+      // The counterpart to "nobody answers a question that was not aimed at
+      // anybody". That test can pass with the whole answering path dead, and
+      // for a while it was the only one over a real socket: silence proves
+      // restraint and nothing else.
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.key = MusicalKey::parseName("D minor");
+      expect(room.start(cfg));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      const auto keys = botPlaying(room, "keys");
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(keys) > 0;
+      }, 5000), "the band never arrived");
+
+      const auto handle = juce::String(BotNames::handleOf(keys.toStdString()));
+      you.client.sendChatMessage(handle + ": what key are we in");
+
+      expect(waitUntil([&] {
+        for (const auto &line : you.snapshot())
+          if (line.startsWith("MSG|" + keys + "|") &&
+              line.containsIgnoreCase("D minor"))
+            return true;
+        return false;
+      }, 4000), "the bot did not say what key the room was in");
+    }
+
+    beginTest("a bot told to be quiet stops answering, and can be brought back");
+    {
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      const auto keys = botPlaying(room, "keys");
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(keys) > 0;
+      }, 5000), "the band never arrived");
+
+      const auto handle = juce::String(BotNames::handleOf(keys.toStdString()));
+      auto linesFrom = [&](const juce::String &who) {
+        int n = 0;
+        for (const auto &line : you.snapshot())
+          if (line.startsWith("MSG|" + who + "|"))
+            ++n;
+        return n;
+      };
+
+      you.client.sendChatMessage(handle + ": be quiet");
+      expect(waitUntil([&] { return linesFrom(keys) > 0; }, 4000),
+             "going quiet was not acknowledged");
+      const int afterHush = linesFrom(keys);
+
+      // Directly addressed, and understood -- and still nothing, which is the
+      // whole of what was asked for.
+      you.client.sendChatMessage(handle + ": what key are we in");
+      you.client.sendChatMessage(handle + ": whats your part");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(1500);
+      expectEquals(linesFrom(keys), afterHush, "a quiet bot kept answering");
+
+      // And the way back, which is the only thing the acknowledgement said.
+      you.client.sendChatMessage(handle + ": talk");
+      expect(waitUntil([&] { return linesFrom(keys) > afterHush; }, 4000),
+             "the bot could not be brought back");
+
+      // Only that bot went quiet: hushing one voice is not hushing the band.
+      const auto kit = botPlaying(room, "kit");
+      const auto kitHandle = juce::String(BotNames::handleOf(kit.toStdString()));
+      you.client.sendChatMessage(kitHandle + ": what key are we in");
+      expect(waitUntil([&] { return linesFrom(kit) > 0; }, 4000),
+             "hushing one bot silenced another");
+    }
+
     beginTest("bots do not answer each other");
     {
       // The invariant that makes a feedback loop impossible rather than

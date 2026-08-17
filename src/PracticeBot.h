@@ -181,6 +181,11 @@ private:
   juce::String keySetBy;
   BotAnswer::Source chartSource = BotAnswer::Source::Defaulted;
 
+  // Told to stop talking. Per bot rather than per band, so one voice can be
+  // hushed without silencing the room -- and atomic because it is read on
+  // every message and written from the same thread that reads it.
+  std::atomic<bool> chatMuted{false};
+
   // The room and this bot, in the shape the pure answering code takes.
   BotChat::Context currentContext() const;
 

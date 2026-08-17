@@ -36,6 +36,11 @@ struct Self {
   // A bot that has parted still hears the room but answers nothing about its
   // playing, because it is not playing.
   bool playing = false;
+
+  // Told to stop talking, and still playing. Chat and music are separate
+  // requests here -- "be quiet" is about the commentary, and somebody who
+  // wanted the band to stop would have said so.
+  bool chatMuted = false;
 };
 
 // Everything a reply can depend on. Two different `Room` types, which is not an
@@ -52,9 +57,10 @@ struct Context {
 // keeping them apart is what lets the words be tested without running a band.
 enum class Act {
   None,
-  Reshuffle,        // `shake`: rerolls the band
-  Part,             // leave the room
-  SetLeadInstrument // `value` is a BotVoice::LeadInstrument
+  Reshuffle,         // `shake`: rerolls the band
+  Part,              // leave the room
+  SetLeadInstrument, // `value` is a BotVoice::LeadInstrument
+  SetChatMuted       // `value` is 1 for quiet, 0 for talking again
 };
 
 struct Response {
