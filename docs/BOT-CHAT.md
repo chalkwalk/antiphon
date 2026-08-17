@@ -1618,15 +1618,40 @@ would be wrong twice a minute and would teach players to distrust the band.
 
 ### What an ending is
 
-One interval, played through, resolving on the last bar: the harmony lands on
-the tonic, the drums fill into it, and the lead stops rather than starting a
-phrase it cannot finish.
+**The resolution comes first, and then silence.** The ending interval opens on
+the final chord -- usually the tonic, because that is what the loop resolves to
+-- lets it ring, and stays quiet for the rest of the interval.
 
-Cheap to build, because the machinery is already there -- the kit fills every
-fourth interval, and `Harmony::layoutChart` already knows where the last bar
-begins. It is a flag through `BotBand::renderInterval`, not a second code path.
-How it actually *sounds* is a tuning job for `AntiphonVoiceLab`, measured the
-way every other voice was, and not something to settle in prose.
+An earlier draft of this had the interval played through and resolving on the
+last bar. That is wrong, and the reason is worth keeping: a resolution lands on
+a **downbeat**, and the only downbeat the ending interval owns is its own first
+beat. A band does not wind down over four bars and stop; it plays the last
+chord, together, on a beat everyone can see coming, and takes its hands off.
+
+That also settles what the ending costs. It is one interval, and the interval
+before it is untouched -- so this is a flag through `BotBand::renderInterval`
+rather than a second code path, and `Harmony::layoutChart` already knows which
+chord the loop resolves to. How it actually *sounds* is a tuning job for
+`AntiphonVoiceLab`, measured the way every other voice was, and not something to
+settle in prose.
+
+**There is no fill into it, and there cannot be.** A drummer fills into an
+ending because they know it is coming; a bot told to stop part-way through an
+interval does not, and the interval that would have carried the fill is already
+encoded and on the wire. Buying a fill means spending a second interval -- one
+that signals the end, then one that resolves -- which doubles a delay that is
+already four to eight seconds. Not worth it, unless the endings turn out to feel
+abrupt in a real room, which is the sort of thing only playing will say.
+
+Two variants are worth naming because they are different musical devices rather
+than different tunings of one, and both are future work:
+
+- **A fade across the interval**, or a velocity taper. This is what you reach
+  for when there is no cadence to land on -- it ends a groove rather than a
+  song, and it is the honest choice for a loop that never resolves anywhere.
+- **A ritardando.** Ruled out rather than deferred: the interval grid is the one
+  thing every client in the room agrees on, and a bot that slowed down would be
+  a bot leaving the grid (`PRINCIPLES` 9).
 
 A bot told to stop on its own plays its own ending and drops out. That is
 "laying out", and it is ordinary musical behaviour rather than a special case.
