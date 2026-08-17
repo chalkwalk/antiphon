@@ -29,10 +29,12 @@ Authoritative docs (read these before designing anything new):
   with the measured numbers.
 - **`docs/ACCESSIBILITY.md`** -- the accessibility story, honestly.
 - **`docs/BOT-CHAT.md`** -- what the practice room's bots would say and what
-  they would never say. **Mostly still a proposal.** Built so far: who a message
-  is for (`BotAddress`), what it asks (`BotLanguage`), the name pool
-  (`BotNames`) and the arrival roster. Not built: the tutor, the cue budget,
-  and everything the bots say unprompted.
+  they would never say. **Answering is built end to end; the rest is still a
+  proposal.** Built: who a message is for (`BotAddress`), what it asks
+  (`BotLanguage`), what it says back (`BotAnswer`), the join (`BotChat`), the
+  name pool (`BotNames`) and the arrival roster. Not built: the tutor, the cue
+  budget, the vote policy, one-bot arbitration for common answers, and
+  everything the bots say unprompted.
 - **`test/README.md`** -- how to run every test layer.
 
 Ordering for any new work: **PRINCIPLES -> DESIGN -> ROADMAP**. If a proposal
@@ -100,6 +102,9 @@ src/
   BotLanguage.{h,cpp}       # WHAT it asks. Corpus: bot-phrases.txt, quarter held out
   BotAnswer.{h,cpp}         # what it SAYS back: pure functions over room state.
                             #   No reply may contain `[key:` -- saying it sets it.
+  BotChat.{h,cpp}           # the JOIN of the three, pure: context + message ->
+                            #   what to say and what to do. PracticeBot is a
+                            #   snapshot in and an intention out.
   BotDictionary.h           # GENERATED (scripts/make_wordlist.py): a real word
                             #   is not a mistyped one. Do not hand-edit.
   # --- UI ---

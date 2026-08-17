@@ -150,7 +150,7 @@ bool PracticeBot::handleStructured(const juce::String &text,
 
   // Degrees are read against the key the room is in, which is why the key is
   // taken first: "| ii | V | I |" means nothing on its own, and the resolved
-  // absolute chart is what everything downstream sees (`PRINCIPLES §10`).
+  // absolute chart is what everything downstream sees (`PRINCIPLES` 10).
   MusicalKey::Key against;
   {
     juce::ScopedLock sl(stateMutex);

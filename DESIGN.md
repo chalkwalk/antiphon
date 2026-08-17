@@ -608,10 +608,12 @@ intent where naming it by position is not.
 
 ## 6.4 Changing the key, and what a chart is relative to
 
-**Designed, not built.** Today a key announcement replaces the chart with
-`Harmony::defaultChart` for the new key, so a progression somebody typed is
-silently discarded. This section is the model that replaces that; the work area
-is in `ROADMAP.md`.
+**Built, except for one UI affordance.** `Harmony::RelativeChord`,
+`toRelative` and `resolve` carry the model; `PracticeBot` moves a chart
+somebody wrote rather than replacing it with `Harmony::defaultChart`, and
+`Harmony::spellNote` supplies the display half. What is left is the chip that
+offers a transpose when the letters in a chart were typed rather than derived
+(`ROADMAP.md`).
 
 ### A key change is two operations
 

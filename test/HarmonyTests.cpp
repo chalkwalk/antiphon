@@ -175,12 +175,9 @@ public:
            "bVII was an override and survives, now spelled VII"},
           {"C major", "| C | G |", "D major", "| D | A |",
            "tonic move only, nothing re-derived"},
-          // Spelled D#7 rather than Eb7: chartText spells the whole chart from
-          // the key signature, and D major takes sharps. Notationally a bII
-          // wants the flat whatever the key does. Same pitches, and the
-          // spelling gap is its own roadmap item.
-          {"C major", "| C | Db7 | C |", "D major", "| D | D#7 | D |",
-           "a tritone substitution transposes with the tonic"},
+          {"C major", "| C | Db7 | C |", "D major", "| D | Eb7 | D |",
+           "a tritone substitution transposes with the tonic, and keeps the "
+           "flat a bII wants whatever the key signature does"},
           {"C major", "| Csus4 | C |", "C minor", "| Csus4 | Cm |",
            "sus is a quality no mode gives, so it is an override"},
       };
@@ -195,9 +192,8 @@ public:
                juce::String(c.chart) + " did not parse");
 
         const auto moved = Harmony::resolve(Harmony::toRelative(original, from), to);
-        const auto flat = MusicalKey::usesFlats(to.tonic, to.mode);
 
-        expectEquals(Harmony::chartText(moved, flat), juce::String(c.expected),
+        expectEquals(Harmony::chartText(moved, to), juce::String(c.expected),
                      juce::String(c.chart) + " from " + c.from + " to " + c.to +
                          " -- " + c.why);
       }

@@ -395,7 +395,9 @@ the second holds two chords, so Dm7 lasts twice as long as either of them.
 
 Degrees are turned into chords by your own client before anything is sent, so
 `/chords ii V I` leaves as `| Dm7 | G7 | Cmaj7 |` and everyone else in the room
-sees chords they already understand. If a chart makes the key obvious and nobody
+sees chords they already understand. Each chord is spelled against the key
+rather than the whole chart being spelled one way: D major takes sharps, and a
+flattened second in it is still `Eb7`. If a chart makes the key obvious and nobody
 has set one, Antiphon offers it on the chip under the chat -- and stays quiet
 when the chords are genuinely ambiguous.
 

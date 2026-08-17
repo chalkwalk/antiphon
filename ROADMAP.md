@@ -460,9 +460,9 @@ a room can say about its music that Ninjam has no field for. Both halves live in
       divide the interval evenly -- is its own decision.
 - [ ] **A key change keeps the chart, and the chart says what it is relative
       to.** Designed in `DESIGN.md` section 6.4; that section is the
-      specification and this is the checklist. Today a key announcement calls
-      `Harmony::defaultChart` and throws away a progression somebody typed
-      (`src/PracticeBot.cpp`), which is the actual bug underneath all of it.
+      specification and this is the checklist. The bug underneath it -- a key
+      announcement calling `Harmony::defaultChart` and throwing away a
+      progression somebody typed -- is fixed; what is left is one UI affordance.
       - [x] A relative chord: interval from the tonic, explicit tones, and a
             binding of delegated or overridden. `Harmony::RelativeChord`.
       - [x] Decide the binding when the chart is read: diatonic with the mode's
@@ -472,22 +472,33 @@ a room can say about its music that Ninjam has no field for. Both halves live in
       - [x] A minor-mode realisation table, so a delegated `V` stays major.
             `Harmony::modeChordOn`. A slash bass is never delegated: an
             inversion is a voicing decision the key has no opinion on.
-      - [ ] **Spelling is not yet derived per chord.** `chartText` spells a
-            whole chart from the key signature, so a bII in a sharp key comes
-            out `D#7` where the notation wants `Eb7`. Same pitches, wrong
-            spelling, and it is the display half of section 6.4.
-      - [ ] Accidentals measured against the parallel major; spelling derived
-            for display, so `bIII` in a minor key echoes back as `III`.
-      - [ ] `parseDegreeChart` reachable from the practice room. `PracticeBot`
-            only calls `parseChart`, so `| ii | V | I |` is not recognised as a
-            chart at all where the band can hear it.
+      - [x] Spelling derived per chord: `Harmony::spellNote`, and `chartText`
+            and `chordName` overloads that take the key rather than a flag. In
+            the scale the key has already decided; out of it, a lowered degree
+            from above and a sharp at the tritone, by the same rule
+            `romanName` uses so a chart and its numerals cannot disagree.
+      - [x] Accidentals measured against the parallel major in
+            `RelativeChord::semitones`; display reads from the mode's own
+            scale, so `bIII` in a minor key echoes back as `III`.
+      - [x] `parseDegreeChart` reachable from the practice room, read against
+            the key the room is already in.
+      - [x] **A key change no longer bins the chart.** `PracticeBot` moves a
+            chart somebody wrote through `toRelative`/`resolve`, and rebuilds
+            only a chart the key itself implied. This was the bug underneath
+            the whole section.
+      - [x] "Use the default chords for this key" as something a player can ask
+            for: `RESET_CHART`, 24 corpus lines, answered by
+            `BotAnswer::answerResetChart`. Offers the line to paste rather than
+            acting -- a bot that reverted its own chart would be playing
+            something nobody else in the room could see.
+      - [x] The fixture table: `(chart, from-key, to-key, expected chart)`,
+            with the arguments from section 6.4 as its rows, in
+            `HarmonyTests`.
       - [ ] Letters never rewritten; a key change with one up offers the
             transpose on the chip instead, the way an inferred key is offered.
-      - [ ] "Use the default chords for this key" as something a player can ask
-            for, since a key change no longer does it silently. Needs corpus
-            lines and an intent -- `SET_CHART` only ever declines today.
-      - [ ] The fixture table: `(chart, from-key, to-key, expected chart)`, with
-            the arguments from section 6.4 as its rows.
+            The only piece left, and it is UI: the editor renumbers and
+            respells on a key change but has never re-derived, so nothing is
+            wrong today -- there is just no way to accept the move.
 - [ ] **Harmony beyond diatonic.** `Harmony::realise` is the named seam:
       secondary and altered dominants, tritone substitution, borrowing from
       adjacent modes. Functional roman naming (`V7/vi`) belongs with it, since
@@ -588,7 +599,14 @@ restraint rather than conversation.
       and never becomes a judgement.
 - [ ] The budget, and a test that asserts a hundred events produce at most N
       lines. The test that keeps it from becoming annoying.
-- [ ] `quiet`, and unprompted speech off outside the practice room.
+- [x] `quiet`, per bot: `SET_QUIET`/`SET_LOUD` reach
+      `BotChat::Act::SetChatMuted`. The gate is applied once, after the
+      decision, so a new intent cannot forget it; only two things still speak,
+      and both confirm an action rather than commenting on one -- coming back,
+      without which there is no way out of the mute, and leaving.
+- [ ] Unprompted speech off outside the practice room. Nothing speaks
+      unprompted yet, so there is nothing to switch off; it lands with the
+      tutor.
 - [ ] Addressing: at most one bot ever answers, cold silence is the default,
       first contact must be explicit, and a message aimed at a human is
       answered by nobody. Four bots replying to one question is the annoyance
@@ -606,32 +624,21 @@ restraint rather than conversation.
       asked* is decided by the measured recogniser. `withoutAddress` strips the
       name before command matching, which is what stopped "Ravo: shake"
       defeating every command.
-- [ ] **Wire the other half: `BotLanguage` and `BotAnswer` have no caller at
-      all.** This is the next thing to do on this feature, and it is the whole
-      gap between what has been built and what a player can reach. Both headers
-      are included only by their own `.cpp` and their own tests -- checked, not
-      assumed. What runs instead, once addressing has decided a bot was asked,
-      is ad-hoc exact string matching (`body.contains("help")`,
-      `handlePrivateCommand`, `handleBandCommand`) ending in a fallback line
-      that *advertises the five things the recogniser was built to understand*:
-      "i can tell you my part, my sound, the key, the chords or the tempo."
-      Every phrasing in the corpus that is not an exact command reaches that
-      line. The two halves interlock nearly one-to-one -- `ReportKey` ->
-      `describeKey`, `SetTempo` -> `answerSetTempo`, and so on -- so this is
-      joining finished parts rather than designing anything, and the seam is a
-      single function. `Reading::ambiguous`/`alternative` already carry what the
-      "ask which of the two" behaviour needs.
-- [ ] **The trap in that wiring, and the reason to do it test-first.**
-      `handleStructured` acts on `[key:` appearing *anywhere* in a message
-      (`src/PracticeBot.cpp:627`), so a reply that quotes the syntax sets the
-      key by explaining it. `BotAnswer` already asserts its own replies do not
-      parse as a key announcement; the same assertion is needed at the
-      `PracticeBot` level, over whatever it actually emits. See the
-      self-triggering item above.
-- [ ] **`PracticeBot` has no test file of its own.** `src/PracticeBot.cpp` is
-      listed in `test/CMakeLists.txt` and covered only incidentally through
-      `PracticeRoomTests`. It is about to become the place where two measured
-      modules meet, which is the wrong place to have no direct coverage.
+- [x] **Wire the other half.** `src/BotChat.{h,cpp}` is the join: a pure
+      function from (room, music, self, message) to *what to say and what to
+      do*, with `PracticeBot` reduced to a snapshot in and an intention out.
+      The ad-hoc exact matching it replaced (`handlePrivateCommand`,
+      `handleBandCommand`) is gone. Covered by `test/BotChatTests.cpp`, which
+      is where the words are asserted without a socket.
+- [x] **The trap in that wiring.** A reply quoting `[key:` would set the key by
+      explaining it. `BotAnswer` asserts it over its own replies, and the sweep
+      runs over every provenance combination -- both `keySource` and
+      `chartSource`, since varying only one leaves `describeChart` unable to
+      return the bare chart text that is the actual hazard.
+- [ ] **`PracticeBot` still has no test file of its own.** Covered by
+      `BotChatTests` for what it says and `PracticeRoomTests` for what crosses
+      a socket, which is most of what mattered; what is left uncovered is the
+      class's own state transitions.
 
 ### A legal BPI can exhaust memory
 
