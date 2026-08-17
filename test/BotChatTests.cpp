@@ -539,6 +539,29 @@ public:
       }
     }
 
+    beginTest("asking for the default chords gets the line to paste");
+    {
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      expect(Harmony::parseChart("| Dm | A7 | Dm | Gm |", ctx.music.chart));
+      ctx.music.chartSource = BotAnswer::Source::Chat;
+
+      BotAddress::Attention att;
+      const auto r = BotChat::respond(
+          ctx, from("tester", "Ravo: use the default chords for this key"), att);
+
+      expect(r.speak, "the request was not answered at all");
+      expect(r.act == BotChat::Act::None,
+             "a bot changed the room's chart by itself");
+      expect(r.text.contains(
+                 Harmony::chartText(Harmony::defaultChart(ctx.music.key),
+                                    ctx.music.key)),
+             "the default was not named: " + r.text);
+
+      // It must not be mistaken for a bot ANNOUNCING that chart, which is the
+      // hazard every chart-shaped reply in this module carries.
+      expect(!Harmony::looksLikeChart(r.text), r.text);
+    }
+
     beginTest("a bot told to be quiet says how to bring it back, then stops");
     {
       auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");

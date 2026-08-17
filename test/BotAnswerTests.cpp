@@ -39,6 +39,7 @@ public:
         const juce::StringArray replies{answerSetKey(r, wanted),
                                         answerSetKey(r, {}),
                                         answerSetChart(r),
+                                        answerResetChart(r),
                                         answerSetTempo(r, 130, 0),
                                         answerSetTempo(r, 0, 16),
                                         answerSetTempo(r, 0, 0),
@@ -90,6 +91,31 @@ public:
 
       const auto told = roomIn("D minor", Source::Chat, Source::Chat);
       expect(describeKey(told).contains("said in the room"), describeKey(told));
+    }
+
+    beginTest("the default chords for a key are offered, never imposed");
+    {
+      // Askable because a key change no longer does it silently (DESIGN.md
+      // 6.4). A bot has no more authority over a chart than over a key, so the
+      // answer is the line to paste rather than the chart itself.
+      Room r = roomIn("D minor", Source::Chat, Source::Chat);
+      expect(Harmony::parseChart("| Dm | A7 | Dm | Gm |", r.chart));
+
+      const auto reply = answerResetChart(r);
+      const auto wanted =
+          Harmony::chartText(Harmony::defaultChart(r.key), r.key);
+      expect(reply.contains(wanted),
+             "the default was not named: " + reply + " (wanted " + wanted + ")");
+      // Naming it must not BE announcing it: a client reads a leading bar as
+      // somebody putting a chart up, and the chart being offered is not the
+      // one the room is on.
+      expect(!Harmony::looksLikeChart(reply), reply);
+
+      // A room already on the default has nothing to change, and saying so is
+      // more useful than handing back a line that would do nothing.
+      const auto already = roomIn("D minor", Source::Chat, Source::Defaulted);
+      expect(answerResetChart(already).containsIgnoreCase("already"),
+             answerResetChart(already));
     }
 
     beginTest("a chart is read out spelled against the key");

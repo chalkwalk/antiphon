@@ -74,6 +74,10 @@ enum class Intent {
   SetKey,
   SetTempo,
   SetChart,
+  // Asked for the chords the KEY implies, rather than for different ones.
+  // Separate from SetChart because the answer is: naming a chart is something
+  // a bot declines to do, but it can say exactly what to paste.
+  ResetChart,
   Reshuffle,
   SetQuiet,
   SetLoud,
@@ -103,6 +107,7 @@ enum class Concept {
   Speak,      // tell, say, describe, explain -- the REQUEST, not the topic
   Chat,       // chat, talk, commentary -- talking as an activity, our topic
   Cease,      // stop, enough, less -- ceasing WHAT is decided by the object
+  Standard,   // default, usual, standard, reset -- the expected one, or back to it
   Hear,       // hear, listen, sounds like -- what we cannot do
 };
 
