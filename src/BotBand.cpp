@@ -2,7 +2,7 @@
 
 #include "BotDsp.h"
 #include "BotVoice.h"
-#include "Euclidean.h"
+#include <chalkwalk/music/Euclidean.h>
 #include <algorithm>
 
 namespace BotBand {
@@ -152,7 +152,7 @@ Figure figureFor(Voice voice, const Settings &s) {
     const Figure kick = kickFigure(s);
     Figure f;
     f.steps = kick.steps * 2;
-    f.pulses = Euclidean::nearestCoprimePulses(f.steps, kick.pulses * 2,
+    f.pulses = chalkwalk::music::nearestCoprimePulses(f.steps, kick.pulses * 2,
                                                rng.range(0, 1) == 1);
     f.rotation = 0;
     f.accents = std::max(1, f.pulses / 4);
@@ -223,7 +223,7 @@ std::vector<int> leadLine(const Settings &s, int intervalIndex) {
   const int span = 12;
 
   for (int step = 0; step < eighths; ++step) {
-    if (!Euclidean::hit(step, f.steps, f.pulses, f.rotation))
+    if (!chalkwalk::music::hit(step, f.steps, f.pulses, f.rotation))
       continue;
 
     const int strength = metricStrength(step, s.bpi);
@@ -362,7 +362,7 @@ void renderDrums(const Settings &s, int intervalIndex, Phase phase, float *out,
   const Figure kick = kickFigure(s);
   Rng rng(saltedSeed(Voice::Drums, s.seed) ^ 0xB5297A4DU);
 
-  const auto kickVel = Euclidean::accents(kick.steps, kick.pulses,
+  const auto kickVel = chalkwalk::music::accents(kick.steps, kick.pulses,
                                           kick.rotation, kick.accents);
 
   // The snare answers the kick rather than rolling its own: two onsets, half an
@@ -384,12 +384,12 @@ void renderDrums(const Settings &s, int intervalIndex, Phase phase, float *out,
     if (v > 0)
       BotVoice::renderKick(out + at, numSamples - at, s.sampleRate,
                            kDrumHeadroom *
-                               (v >= Euclidean::kAccentedVelocity ? 0.9f
+                               (v >= chalkwalk::music::kAccentedVelocity ? 0.9f
                                                                   : 0.65f));
   }
 
   for (int step = 0; step < s.bpi; ++step) {
-    if (!Euclidean::hit(step, s.bpi, snarePulses, snareRotation))
+    if (!chalkwalk::music::hit(step, s.bpi, snarePulses, snareRotation))
       continue;
     const int at = step * beatSamples;
     if (at >= numSamples)
@@ -410,7 +410,7 @@ void renderDrums(const Settings &s, int intervalIndex, Phase phase, float *out,
   const int hatRotation = intervalIndex % std::max(1, hatSteps);
 
   for (int step = 0; step < hatSteps; ++step) {
-    if (!Euclidean::hit(step, hatSteps, hatPulses, hatRotation))
+    if (!chalkwalk::music::hit(step, hatSteps, hatPulses, hatRotation))
       continue;
     const int at = step * halfBeat;
     if (at >= numSamples)
@@ -513,11 +513,11 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     // on it, and the doubled Euclidean does not do that by itself.
     const bool onKick =
         step % stepsPerBeat == 0 &&
-        Euclidean::hit(step / stepsPerBeat, kick.steps, kick.pulses,
+        chalkwalk::music::hit(step / stepsPerBeat, kick.steps, kick.pulses,
                        kick.rotation);
 
     if (!onChange && !onKick &&
-        !Euclidean::hit(step, f.steps, f.pulses, f.rotation))
+        !chalkwalk::music::hit(step, f.steps, f.pulses, f.rotation))
       continue;
 
     onsets.push_back(step);
@@ -581,7 +581,7 @@ void renderBass(const Settings &s, float *out, int numSamples) {
     if (onChange)
       velocity = 1.0f;
     else if (step % stepsPerBeat == 0 &&
-             Euclidean::hit(step / stepsPerBeat, kick.steps, kick.pulses,
+             chalkwalk::music::hit(step / stepsPerBeat, kick.steps, kick.pulses,
                             kick.rotation))
       velocity = 0.72f;
 

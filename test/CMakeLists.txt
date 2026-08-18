@@ -36,7 +36,6 @@ target_sources(NinjamTests
         RoomHarmonyTests.cpp
         BotChatTests.cpp
         MusicalKeyTests.cpp
-        EuclideanTests.cpp
         SharedContractTests.cpp
         HarmonyTests.cpp
         AudioMeasureTests.cpp
@@ -99,6 +98,7 @@ target_compile_definitions(NinjamTests
 # would break headless runs.
 target_link_libraries(NinjamTests
     PRIVATE
+        chalkwalk::music
         juce::juce_audio_formats
         juce::juce_events
         ogg
@@ -165,6 +165,7 @@ target_compile_definitions(AntiphonAudit
         JUCE_MODAL_LOOPS_PERMITTED=1)
 
 target_link_libraries(AntiphonAudit
+    PRIVATE chalkwalk::music
     PRIVATE
         Antiphon
         antiphon_fonts

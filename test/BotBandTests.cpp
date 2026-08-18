@@ -2,7 +2,7 @@
 #include "../src/BotBand.h"
 #include "../src/AudioMeasure.h"
 #include "../src/BotVoice.h"
-#include "../src/Euclidean.h"
+#include <chalkwalk/music/Euclidean.h>
 #include "TestSignal.h"
 #include <map>
 #include <JuceHeader.h>
@@ -347,7 +347,7 @@ public:
         // another route. Exactly twice the kick's pulses always shares a
         // factor with twice its steps, so the count is nudged to the nearest
         // coprime one.
-        expectEquals(Euclidean::patternPeriod(bass.steps, bass.pulses),
+        expectEquals(chalkwalk::music::patternPeriod(bass.steps, bass.pulses),
                      bass.steps,
                      "seed " + juce::String((int)seed) + ": E(" +
                          juce::String(bass.pulses) + "," +
@@ -368,7 +368,7 @@ public:
         const auto buf = render(BotBand::Voice::Bass, s);
         const int beat = (int)(s.sampleRate * 60.0 / s.bpm);
         for (int step = 0; step < kick.steps; ++step) {
-          if (!Euclidean::hit(step, kick.steps, kick.pulses, kick.rotation))
+          if (!chalkwalk::music::hit(step, kick.steps, kick.pulses, kick.rotation))
             continue;
           const int at = step * beat;
           if (at + 256 >= (int)buf.size())
@@ -394,12 +394,12 @@ public:
         for (std::uint32_t seed = 1; seed <= 40; ++seed) {
           const auto s = settingsFor("C major", 120, bpi, seed);
           const auto bass = BotBand::figureFor(BotBand::Voice::Bass, s);
-          if (Euclidean::patternPeriod(bass.steps, bass.pulses) != bass.steps) {
+          if (chalkwalk::music::patternPeriod(bass.steps, bass.pulses) != bass.steps) {
             expect(false, "bpi " + juce::String(bpi) + " seed " +
                               juce::String((int)seed) + ": E(" +
                               juce::String(bass.pulses) + "," +
                               juce::String(bass.steps) + ") repeats every " +
-                              juce::String(Euclidean::patternPeriod(
+                              juce::String(chalkwalk::music::patternPeriod(
                                   bass.steps, bass.pulses)));
             return;
           }
@@ -415,7 +415,7 @@ public:
       for (std::uint32_t seed = 1; seed <= 40; ++seed) {
         const auto s = settingsFor("C major", 120, 16, seed);
         const auto kick = BotBand::figureFor(BotBand::Voice::Drums, s);
-        if (Euclidean::patternPeriod(kick.steps, kick.pulses) < kick.steps)
+        if (chalkwalk::music::patternPeriod(kick.steps, kick.pulses) < kick.steps)
           ++repeating;
       }
       expect(repeating > 0,
