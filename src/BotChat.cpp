@@ -181,6 +181,8 @@ const char *spokenIntent(BotLanguage::Intent i) {
   case BotLanguage::Intent::SetChart: return "different chords";
   case BotLanguage::Intent::ResetChart: return "the default chords";
   case BotLanguage::Intent::Reshuffle: return "something else played";
+  case BotLanguage::Intent::StopPlaying: return "me to stop playing";
+  case BotLanguage::Intent::StartPlaying: return "me to start playing";
   case BotLanguage::Intent::SetQuiet: return "me to be quiet";
   case BotLanguage::Intent::SetLoud: return "me talking again";
   case BotLanguage::Intent::ExplainSelf: return "to know what i am";
@@ -334,6 +336,23 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   case BotLanguage::Intent::ExplainSelf:
     out.speak = true;
     out.text = explainSelf(ctx.self);
+    return out;
+
+  // INTERIM. The states to stop into do not exist yet (docs/BOT-CHAT.md
+  // section 15), and `stop` has just been taken away from leaving -- so the one
+  // thing these must not do is claim to have done something. They say what they
+  // cannot do and what does work instead, which is the honest reply, and they
+  // are replaced by real behaviour when the state machine lands.
+  case BotLanguage::Intent::StopPlaying:
+    out.speak = true;
+    out.text = "i can't stop playing yet -- only leave. say \"" +
+               ctx.self.name + " leave\" and i'll go.";
+    return out;
+
+  case BotLanguage::Intent::StartPlaying:
+    out.speak = true;
+    out.text = "already playing -- i can't stop and start yet. say \"" +
+               ctx.self.name + " leave\" if you want me gone.";
     return out;
 
   case BotLanguage::Intent::SetQuiet:

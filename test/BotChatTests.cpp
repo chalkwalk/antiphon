@@ -635,6 +635,38 @@ public:
              "the room's key was answered as if it were the bot's: " + key.text);
     }
 
+    beginTest("stopping is not leaving, and the bot does not pretend it stopped");
+    {
+      // The reassignment, at the level a player meets it. "stop" used to send
+      // the whole band home; it must not, and it must not claim to have
+      // stopped either, because the states to stop into are not built yet
+      // (docs/BOT-CHAT.md section 15).
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+
+      for (const char *said : {"Ravo: stop", "Ravo: stop playing",
+                               "Ravo: thats enough", "Ravo: were done",
+                               "Ravo: wrap it up"}) {
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(ctx, from("tester", said), att);
+        expect(r.speak, juce::String(said) + " went unanswered");
+        expect(r.act != BotChat::Act::Part,
+               juce::String(said) + " sent the band home: " + r.text);
+        expect(!r.text.containsIgnoreCase("i can tell you my part"),
+               juce::String(said) + " fell through to the catch-all: " + r.text);
+        // Says how to do the thing it cannot do, rather than only refusing.
+        expect(r.text.containsIgnoreCase("leave"),
+               juce::String(said) + " does not say what does work: " + r.text);
+      }
+
+      // Leaving still works, and still takes a word that can only mean it.
+      for (const char *said : {"Ravo: leave", "Ravo: go away"}) {
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(ctx, from("tester", said), att);
+        expect(r.act == BotChat::Act::Part,
+               juce::String(said) + " no longer sends the bot home: " + r.text);
+      }
+    }
+
     beginTest("asking for the default chords gets the line to paste");
     {
       auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");

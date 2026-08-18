@@ -646,7 +646,6 @@ what are the commads
 part
 leave
 exit
-stop
 go away
 get out
 get lost
@@ -658,13 +657,6 @@ off you go
 leave the room
 leave please
 im done with you
-thats enough
-thats enough thanks
-we are done
-were done
-you can stop now
-stop playing
-stop please
 disconnect
 quit
 bye
@@ -696,6 +688,74 @@ can you leave please
 # `keys` stemming onto `key`, and a negated question about the chart being
 # read as somebody talking to themselves.
 off you pop
+[STOP_PLAYING]
+# Stop PLAYING, which is neither leaving nor going quiet. These lines lived in
+# [LEAVE] until the band had a state between playing and gone -- "stop playing"
+# filed as an eviction, which put the least destructive phrase in the room on
+# the most destructive act. See docs/BOT-CHAT.md section 15.
+stop
+stop playing
+stop please
+please stop
+please stop playing
+can you stop
+can you stop playing
+you can stop now
+halt
+thats enough
+thats enough thanks
+we are done
+were done
+lets stop
+lets stop there
+lets end it
+end it
+end there
+lets wrap it up
+wrap it up
+wrap up
+finish up
+lets finish
+stop the music
+stop the band
+lay out
+take five
+hold it
+cut it
+ok stop
+enough
+
+
+[START_PLAYING]
+# Start playing, and the counterpart to stopping. The band arrives silent, so
+# this is also the first thing anybody ever says to it.
+play
+play please
+start
+start playing
+lets play
+lets start
+you can start
+you can play
+you can play now
+start the band
+hit it
+kick it off
+from the top
+whenever youre ready
+start when youre ready
+fire it up
+lets get going
+music please
+play for us
+play something
+come in
+back in
+lets have some music
+carry on
+keep going
+
+
 [CLARIFY]
 tell me about your kick
 tell me about the kick

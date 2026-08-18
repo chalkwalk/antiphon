@@ -177,10 +177,20 @@ bool isPartCommand(const std::string &text) {
   // ordinary question in the room. A player found it the obvious way: asking
   // a bot what its part was sent the whole band home. IRC spells it `/part`,
   // and a slash form would be unambiguous; a bare word cannot be.
+  //
+  // "stop" is NOT among these either, and for the same reason turned up to
+  // eleven: to a musician it is the least destructive thing you can say, and it
+  // was wired to the most destructive thing a bot can do. Stopping and leaving
+  // are separate states now, and "stop" belongs to the reversible one
+  // (docs/BOT-CHAT.md section 15).
+  //
+  // Nor is bare "go", which on its own is as likely to mean start as leave.
+  // Leaving takes a phrase that can only mean leaving.
   const auto tokens = tokenise(text);
-  return tokens.size() == 1 &&
-         (tokens[0] == "leave" || tokens[0] == "go" || tokens[0] == "exit" ||
-          tokens[0] == "stop");
+  if (tokens.size() == 1)
+    return tokens[0] == "leave" || tokens[0] == "exit";
+  return tokens.size() == 2 && tokens[0] == "go" &&
+         (tokens[1] == "away" || tokens[1] == "home");
 }
 
 namespace {

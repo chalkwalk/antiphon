@@ -83,6 +83,21 @@ public:
             "can you play that part again", "part of the chart is wrong"})
         expect(!BotAddress::isPartCommand(ordinary),
                juce::String(ordinary) + " was taken for the command");
+
+      // `stop` is withdrawn for the same reason `part` was, and it is the
+      // worse of the two: to a musician it is the LEAST destructive thing you
+      // can say, and it was wired to the most destructive act a bot can do.
+      // Stopping and leaving are different states now (docs/BOT-CHAT.md 15).
+      for (const char *playing : {"stop", "STOP", " stop ", "halt", "enough"})
+        expect(!BotAddress::isPartCommand(playing),
+               juce::String(playing) + " still sends the band home");
+
+      // `go` goes with it: on its own it is as likely to mean start as leave.
+      // Leaving needs a phrase that can only mean leaving.
+      expect(!BotAddress::isPartCommand("go"));
+      for (const char *leaving : {"go away", "go home", "GO AWAY", "exit"})
+        expect(BotAddress::isPartCommand(leaving),
+               juce::String(leaving) + " no longer sends the band home");
     }
 
     beginTest("naming a bot does not turn an ordinary sentence into a command");

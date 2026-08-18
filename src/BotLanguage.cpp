@@ -158,6 +158,22 @@ Prepared prepare(const std::string &text) {
   Prepared p;
   auto tokens = split(text);
 
+  // A pronoun object inside a phrasal verb -- "kick it off", "wrap it up",
+  // "fire it up" -- hides the two halves from each other. Drop the "it" so the
+  // idiom rules below see an adjacent pair, which is what they are.
+  for (size_t i = 0; i + 2 < tokens.size(); ++i) {
+    if (tokens[i + 1] != "it")
+      continue;
+    const auto &v = tokens[i];
+    const auto &particle = tokens[i + 2];
+    const bool phrasal =
+        (v == "kick" && particle == "off") || (v == "wrap" && particle == "up") ||
+        (v == "fire" && particle == "up") || (v == "cut" && particle == "out") ||
+        (v == "take" && particle == "away") || (v == "lay" && particle == "out");
+    if (phrasal)
+      tokens.erase(tokens.begin() + (long)i + 1);
+  }
+
   // Idioms first: two tokens meaning one thing, which the stemmer will never
   // reach on its own.
   for (size_t i = 0; i + 1 < tokens.size(); ++i) {
@@ -169,6 +185,35 @@ Prepared prepare(const std::string &text) {
     };
     if (a == "up" && b == "to")
       fuse("doing");
+    // Phrasal verbs of starting and stopping. Each is two tokens meaning one
+    // thing, and the halves point opposite ways on their own -- "kick" is a
+    // drum, "wrap" is nothing, and "out" and "off" are both leaving words.
+    else if (a == "kick" && b == "off")
+      fuse("start");
+    else if (a == "fire" && b == "up")
+      fuse("start");
+    else if (a == "hit" && b == "it")
+      fuse("start");
+    else if (a == "carry" && b == "on")
+      fuse("start");
+    else if (a == "keep" && b == "going")
+      fuse("start");
+    else if ((a == "come" || a == "back") && b == "in" && tokens.size() == 2)
+      // The whole message, or it is not a cue: "back in five" is somebody
+      // saying when they will return.
+      fuse("start");
+    else if (a == "get" && b == "going")
+      fuse("start");
+    else if (a == "lay" && b == "out")
+      fuse("stop");
+    else if (a == "hold" && b == "it")
+      fuse("stop");
+    else if (a == "take" && b == "five")
+      fuse("stop");
+    // "i am done with you" is a dismissal; "we are done" is the end of a tune.
+    // One preposition carries the whole difference.
+    else if (a == "done" && b == "with")
+      fuse("dismiss");
     else if (a == "playing" && i + 2 == tokens.size() &&
              (b == "in" || b == "over" || b == "on"))
       // "what are we playing in" asks the key; "what are we playing over" asks
@@ -470,7 +515,13 @@ const Word kLexicon[] = {
 
     {"stop", Concept::Cease},     {"enough", Concept::Cease},
     {"less", Concept::Cease},     {"ceas", Concept::Cease},
-    {"quit", Concept::Cease},     {"halt", Concept::Cease},
+    {"halt", Concept::Cease},     {"wrap", Concept::Cease},
+    {"finish", Concept::Cease},   {"end", Concept::Cease},
+    {"cut", Concept::Cease},      {"done", Concept::Cease},
+
+    {"start", Concept::Begin},    {"begin", Concept::Begin},
+    {"music", Concept::Begin},    {"top", Concept::Begin},
+    {"readi", Concept::Begin},    {"ready", Concept::Begin},
 
     {"chat", Concept::Chat},      {"talk", Concept::Chat},
     {"speak", Concept::Chat},     {"say", Concept::Chat},
@@ -496,7 +547,7 @@ const Word kLexicon[] = {
     {"begon", Concept::Leave},    {"scram", Concept::Leave},
     {"away", Concept::Leave},     {"go", Concept::Leave},
     {"out", Concept::Leave},      {"off", Concept::Leave},
-    {"home", Concept::Leave},     {"done", Concept::Leave},
+    {"home", Concept::Leave},     {"quit", Concept::Leave},
     {"lost", Concept::Leave},
 
     {"kick", Concept::Drum},      {"snare", Concept::Drum},
@@ -651,6 +702,8 @@ const char *intentName(Intent i) {
   case Intent::SetChart: return "SET_CHART";
   case Intent::ResetChart: return "RESET_CHART";
   case Intent::Reshuffle: return "RESHUFFLE";
+  case Intent::StopPlaying: return "STOP_PLAYING";
+  case Intent::StartPlaying: return "START_PLAYING";
   case Intent::SetQuiet: return "SET_QUIET";
   case Intent::SetLoud: return "SET_LOUD";
   case Intent::ExplainSelf: return "EXPLAIN_SELF";
@@ -826,6 +879,24 @@ Reading read(const std::string &text) {
       continue;
 
     // Word class first, for the handful of words where it decides the concept.
+    // `play` is the one word that both asks and instructs, and WHERE IT SITS is
+    // the difference. First in the clause, or straight after a modal or a "let
+    // us", it is an instruction to start; anywhere else it is the ordinary word
+    // for what a bot is doing.
+    //
+    // Position rather than the absence of a question mark, deliberately. Keying
+    // this off "no question detected" turned every phrasing whose question we
+    // failed to spot -- "wat r u playin" -- into a confident command, which is
+    // the worst way to be wrong here. The default has to stay DESCRIBE_PART.
+    // "lets" is expanded to "let us" upstream, so the token before the verb in
+    // a proposal is "us" rather than anything that looks like "let".
+    if ((s == "play" || tok.word == "play") && !r.possessive &&
+        (tok.first || inList(kModal, tok.prev) ||
+         (r.proposal && tok.prev == "us"))) {
+      note(Concept::Begin);
+      continue;
+    }
+
     for (const auto &c : kClassed)
       if (s == c.word || tok.word == c.word) {
         const bool noun = inList(kDeterminer, tok.prev) ||
@@ -898,7 +969,10 @@ Reading read(const std::string &text) {
   // something we can act on, and the difference is whether a value was given.
   // Naming WHICH chart counts as naming a value the same way a key does: "lets
   // have the default chords" is as specific as a request gets.
+  // "lets stop", "lets play", "lets wrap it up" -- beginning and ceasing are as
+  // specific as a request gets, so a proposal carrying one is aimed at us.
   if (r.proposal && !keyValue && !tempoValue &&
+      !weight.count(Concept::Begin) && !weight.count(Concept::Cease) &&
       !(weight.count(Concept::Chart) && (weight.count(Concept::Change) ||
                                          weight.count(Concept::Standard))))
     return r;
@@ -1101,8 +1175,20 @@ Reading read(const std::string &text) {
   // Ceasing WHAT. With talk in the sentence it is the talk; with anything else,
   // or nothing at all, it is the playing -- and to stop playing is to leave.
   if (weight.count(Concept::Cease) && !weight.count(Concept::Chat)) {
-    add(Intent::Leave, 6);
+    // To stop playing is NOT to leave. It used to be, which put the least
+    // destructive phrase in a jam on the most destructive act a bot can do:
+    // "stop playing" sent the whole band home (docs/BOT-CHAT.md section 15).
+    add(Intent::StopPlaying, 8);
     score[Intent::DescribePart] -= 4;
+  }
+  // The mirror of it. What is being begun is decided the same way -- by what
+  // else is in the sentence -- and with nothing else named it is the playing.
+  if (weight.count(Concept::Begin) && !weight.count(Concept::Chat)) {
+    add(Intent::StartPlaying, 8);
+    // "stop the music" names both directions and means the first one. Ceasing
+    // wins, because the thing being ceased is what the other word named.
+    if (weight.count(Concept::Cease))
+      score[Intent::StartPlaying] -= 9;
   }
 
   // A drum or an instrument on its own is the ambiguity the corpus is full of:

@@ -4,8 +4,9 @@
 
 namespace {
 // One place, so the help line and the parser cannot drift apart.
-// "part" is deliberately absent -- see BotAddress::isPartCommand.
-const char *const kPartCommands[] = {"leave", "exit", "stop", "go"};
+// "part" is deliberately absent, and so are "stop" and bare "go" -- see
+// BotAddress::isPartCommand for why each was withdrawn.
+const char *const kPartCommands[] = {"leave", "exit", "go away", "go home"};
 } // namespace
 
 PracticeBot::PracticeBot(juce::String name, juce::StringArray channelNames)
