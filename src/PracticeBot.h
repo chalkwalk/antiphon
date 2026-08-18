@@ -1,8 +1,9 @@
 #pragma once
 
+#include "BandPlayState.h"
 #include "BotAddress.h"
-#include "BotChat.h"
 #include "BotBand.h"
+#include "BotChat.h"
 #include "NinjamClient.h"
 #include <JuceHeader.h>
 #include <functional>
@@ -58,7 +59,17 @@ public:
   void shake();
 
   BotBand::Settings currentSettings() const;
-  bool isPlaying() const { return playing.load(); }
+
+  // Whether this bot is transmitting at all, and how it stops. `BandPlayState`
+  // carries the rules; this class only samples it once per interval.
+  BandPlayState::State playPhase() const;
+  bool isPlaying() const { return playPhase() != BandPlayState::State::Silent; }
+
+  // Asked to play, or to bring it to an end. Both go through `BandPlayState`,
+  // so "start during the wrap-up cancels the ending" is decided in one place
+  // rather than at each caller.
+  void startPlaying();
+  void stopPlaying();
 
   // The commands a bot answers to, beyond parting.
   static bool isShakeCommand(const juce::String &text);
@@ -148,7 +159,15 @@ private:
 
   BotBand::Voice bandVoice = BotBand::Voice::Drums;
   BotBand::Settings settings;
-  std::atomic<bool> playing{false};
+  // Whether this bot has been given a voice at all -- a bot that never had
+  // `playAs` called on it is not a band member and follows nothing. Distinct
+  // from being SILENT, which is a band member between tunes.
+  std::atomic<bool> inBand{false};
+
+  // Guarded by stateMutex, and sampled exactly once per interval at the top of
+  // the render: reading it again part-way would tear an interval across two
+  // states, and interval delivery is all-or-nothing.
+  BandPlayState playState;
 
   NinjamClient netClient;
   juce::AudioBuffer<float> renderBuffer;

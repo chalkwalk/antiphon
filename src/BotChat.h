@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BandPlayState.h"
 #include "BotAddress.h"
 #include "BotAnswer.h"
 #include "BotBand.h"
@@ -33,9 +34,10 @@ struct Self {
   BotBand::Voice voice = BotBand::Voice::Drums;
   BotBand::Settings settings;
 
-  // A bot that has parted still hears the room but answers nothing about its
-  // playing, because it is not playing.
-  bool playing = false;
+  // Whether it is playing, and if it is stopping, how far through the ending.
+  // A bot answering "stop" needs this: telling somebody it is wrapping up when
+  // it is already silent is as wrong as not answering.
+  BandPlayState::State phase = BandPlayState::State::Silent;
 
   // Told to stop talking, and still playing. Chat and music are separate
   // requests here -- "be quiet" is about the commentary, and somebody who
@@ -60,7 +62,9 @@ enum class Act {
   Reshuffle,         // `shake`: rerolls the band
   Part,              // leave the room
   SetLeadInstrument, // `value` is a BotVoice::LeadInstrument
-  SetChatMuted       // `value` is 1 for quiet, 0 for talking again
+  SetChatMuted,      // `value` is 1 for quiet, 0 for talking again
+  StartPlaying,      // come in, or cancel an ending already under way
+  StopPlaying        // bring it to an end: wrap up, resolve, then silence
 };
 
 struct Response {

@@ -338,21 +338,51 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     out.text = explainSelf(ctx.self);
     return out;
 
-  // INTERIM. The states to stop into do not exist yet (docs/BOT-CHAT.md
-  // section 15), and `stop` has just been taken away from leaving -- so the one
-  // thing these must not do is claim to have done something. They say what they
-  // cannot do and what does work instead, which is the honest reply, and they
-  // are replaced by real behaviour when the state machine lands.
   case BotLanguage::Intent::StopPlaying:
+    // Future tense, always. An ending is two intervals and Ninjam delivers
+    // them a whole interval late, so it lands four to eight seconds from here
+    // -- a reply claiming to have stopped would be wrong twice a minute and
+    // would teach the room to distrust the band.
     out.speak = true;
-    out.text = "i can't stop playing yet -- only leave. say \"" +
-               ctx.self.name + " leave\" and i'll go.";
+    switch (ctx.self.phase) {
+    case BandPlayState::State::Playing:
+      out.act = Act::StopPlaying;
+      out.text = "wrapping it up -- ending on the downbeat after this one.";
+      break;
+    case BandPlayState::State::Wrapping:
+    case BandPlayState::State::Resolving:
+      out.text = "already bringing it to an end.";
+      break;
+    case BandPlayState::State::Silent:
+      out.text = "already stopped. say \"" + ctx.self.name +
+                 " play\" when you want me back in.";
+      break;
+    }
     return out;
 
   case BotLanguage::Intent::StartPlaying:
     out.speak = true;
-    out.text = "already playing -- i can't stop and start yet. say \"" +
-               ctx.self.name + " leave\" if you want me gone.";
+    switch (ctx.self.phase) {
+    case BandPlayState::State::Silent:
+      out.act = Act::StartPlaying;
+      out.text = "coming in on the next interval.";
+      break;
+    case BandPlayState::State::Wrapping:
+      // The cancel. Worth its own line rather than the "already playing" one:
+      // an ending was under way and is not any more, which is a change the
+      // room should hear about.
+      out.act = Act::StartPlaying;
+      out.text = "right, keeping it going.";
+      break;
+    case BandPlayState::State::Resolving:
+      // Nothing escapes the resolve. Saying so is better than silently doing
+      // nothing, and the wait is one interval.
+      out.text = "too late, i'm on the last chord -- ask me again after it.";
+      break;
+    case BandPlayState::State::Playing:
+      out.text = "already playing.";
+      break;
+    }
     return out;
 
   case BotLanguage::Intent::SetQuiet:

@@ -71,7 +71,8 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
     bandVoice = voice;
     settings = BotBand::defaults(key, bpm, bpi, sampleRate, seed);
   }
-  playing = true;
+  inBand = true;
+  startPlaying();
 
   setRender([this](juce::AudioBuffer<float> &buffer, int numSamples,
                    int intervalIndex) {
@@ -114,6 +115,21 @@ void PracticeBot::shake() {
   settings.seed = s | 1u;
 }
 
+BandPlayState::State PracticeBot::playPhase() const {
+  juce::ScopedLock sl(stateMutex);
+  return playState.current();
+}
+
+void PracticeBot::startPlaying() {
+  juce::ScopedLock sl(stateMutex);
+  playState.start();
+}
+
+void PracticeBot::stopPlaying() {
+  juce::ScopedLock sl(stateMutex);
+  playState.stop();
+}
+
 BotBand::Settings PracticeBot::currentSettings() const {
   juce::ScopedLock sl(stateMutex);
   return settings;
@@ -126,7 +142,11 @@ bool PracticeBot::isShakeCommand(const juce::String &text) {
 
 bool PracticeBot::handleStructured(const juce::String &text,
                                    const juce::String &username) {
-  if (!playing.load())
+  // Band membership, not audibility. A silent bot is still in the room and
+  // still follows the key and the chart -- that is most of what somebody does
+  // BETWEEN tunes, and a bot that stopped listening while stopped would have
+  // to be told everything again when it came back in.
+  if (!inBand.load())
     return false;
 
   // The key travels as a tagged line or a leading `/key`, never as prose --
@@ -186,7 +206,7 @@ BotChat::Context PracticeBot::currentContext() const {
   ctx.self.name = botName;
   ctx.self.voice = bandVoice;
   ctx.self.settings = settings;
-  ctx.self.playing = playing.load();
+  ctx.self.phase = playState.current();
   ctx.self.chatMuted = chatMuted.load();
   return ctx;
 }
@@ -593,6 +613,12 @@ void PracticeBot::onChatMessage(const juce::String &type,
     settings.leadOverride = answer.value;
     return;
   }
+  case BotChat::Act::StartPlaying:
+    startPlaying();
+    return;
+  case BotChat::Act::StopPlaying:
+    stopPlaying();
+    return;
   case BotChat::Act::SetChatMuted:
     chatMuted.store(answer.value != 0);
     return;
@@ -606,12 +632,25 @@ void PracticeBot::renderInterval(int numSamples, int intervalIndex) {
     return;
 
   Render r;
+  BandPlayState::State phase;
   {
     juce::ScopedLock sl(stateMutex);
     r = render;
+    // Sampled ONCE, and the state advanced ONCE, for this interval. Reading it
+    // again part-way through would tear an interval across two states, and
+    // delivery is all-or-nothing -- half an ending is not something the
+    // protocol can carry.
+    phase = playState.current();
+    playState.advance();
   }
   if (!r)
     return; // A silent bot is a valid bot.
+
+  // Nothing on the wire at all, rather than an interval of zeroes: an
+  // unsubscribed silent client costs the server nothing and the room hears no
+  // difference.
+  if (phase == BandPlayState::State::Silent)
+    return;
 
   if (renderBuffer.getNumSamples() < numSamples)
     renderBuffer.setSize(2, numSamples, false, true, true);
