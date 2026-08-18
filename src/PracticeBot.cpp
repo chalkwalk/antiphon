@@ -77,8 +77,11 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
     bandVoice = voice;
     settings = BotBand::defaults(key, bpm, bpi, sampleRate, seed);
   }
+  // In the band, and SILENT. The bots connect before the player does, so a
+  // band that played on connect played to an empty room -- and arrival then
+  // becomes the first turn of the same stop/start loop you use between tunes
+  // rather than a special case (docs/BOT-CHAT.md section 15).
   inBand = true;
-  startPlaying();
 
   setRender([this](juce::AudioBuffer<float> &buffer, int numSamples,
                    int intervalIndex, BotBand::Phase phase) {
@@ -311,8 +314,12 @@ void PracticeBot::timerCallback() {
   // The interesting thing first, and the destructive one stated so plainly
   // that nobody types it idly. Leading with `part` would invite a curious
   // player to empty their own room with the first command they were shown.
+  // The way IN first, because the band is silent and a room where nothing
+  // happens looks broken; then how to talk to one of us; and the destructive
+  // one last and stated plainly enough that nobody types it idly.
   netClient.sendChatMessage(
-      "say a name to talk to one of us. say \"leave\" and we all go home.");
+      "say \"band play\" to start us and \"band stop\" to end the tune. say a "
+      "name to talk to one of us. say \"leave\" and we all go home.");
 }
 
 void PracticeBot::BandReply::timerCallback() {

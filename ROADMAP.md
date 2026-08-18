@@ -682,11 +682,12 @@ restraint rather than conversation.
             one."
       - [ ] Nothing outside the practice room can start or stop the band yet:
             the states are reachable only from chat.
-      - [ ] Arrive Silent. The band connects before the player does, so playing
-            on connect plays to an empty room; the roster line already re-arms
-            for the first human and is where start/stop gets taught. Disposes
-            of the wait-forever cost as a side effect, so no arrival timeout is
-            needed.
+      - [x] Arrive Silent. The band connects before the player does, so playing
+            on connect played to an empty room; the roster line already re-arms
+            for the first human and is where start/stop is taught -- the way IN
+            first, because a room where nothing happens looks broken. Disposes
+            of the wait-forever COST as a side effect: a band nobody joins now
+            encodes nothing.
       - [ ] **One authority tier: any human, every command.** Eviction is
             already open to everyone deliberately, so gating anything less
             destructive behind ownership would be incoherent. The owner is not
