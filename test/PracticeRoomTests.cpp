@@ -56,6 +56,12 @@ juce::String botPlaying(const PracticeRoom &room, const juce::String &instrument
   return {};
 }
 
+MusicalKey::Key keyOf(const juce::String &name) {
+  auto k = MusicalKey::parseName(name);
+  jassert(k.valid);
+  return k;
+}
+
 PracticeRoom::Config testConfig(const juce::String &owner = "you") {
   PracticeRoom::Config c;
   c.bpm = 120;
@@ -603,6 +609,44 @@ public:
             return true;
         return false;
       }, 4000), "the bot did not say what key the room was in");
+    }
+
+    beginTest("the phase the renderer is given is the phase the bot is in");
+    {
+      // The seam between the state machine and the sound, which nothing else
+      // reaches: `BandPlayState` decides WHEN a bot is ending and
+      // `BotBand::Phase` decides what that sounds like, and a bot that tracked
+      // its states perfectly while always rendering the groove would pass
+      // every other test in this file.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      PracticeBot bot("Probe[kit-bot]", {"kit"});
+      expect(bot.join(PracticeRoom::host(), room.port(), 48000.0));
+      bot.playAs(BotBand::Voice::Drums, keyOf("C major"), 120, 8, 48000.0, 7u);
+
+      // Replaces the band's own render, which is the point: we care about the
+      // phase it is handed, not the audio it would have made from it.
+      std::vector<BotBand::Phase> seen;
+      bot.setRender([&seen](juce::AudioBuffer<float> &, int, int,
+                            BotBand::Phase phase) { seen.push_back(phase); });
+
+      bot.renderInterval(4800, 0);
+      bot.stopPlaying();
+      bot.renderInterval(4800, 1);
+      bot.renderInterval(4800, 2);
+      bot.renderInterval(4800, 3);
+
+      // Three calls, not four: a silent bot does not render at all, let alone
+      // transmit an interval of zeroes.
+      expectEquals((int)seen.size(), 3, "a silent bot still rendered");
+      if (seen.size() == 3) {
+        expect(seen[0] == BotBand::Phase::Groove, "the tune was not the groove");
+        expect(seen[1] == BotBand::Phase::Wrapping, "no wrap-up interval");
+        expect(seen[2] == BotBand::Phase::Resolving, "no resolving interval");
+      }
+
+      bot.part();
     }
 
     beginTest("stopping ends the tune over two intervals, and does not leave");

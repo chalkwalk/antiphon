@@ -651,29 +651,32 @@ restraint rather than conversation.
             ending sound intended, and it is where the fill lives.
       - [ ] The wrap-up invents NO harmony -- no turnaround, nothing the room
             did not write. The chart is the room's; the signal is arrangement.
-      - [ ] The resolve lands on **the room's own tonic chord if the chart
-            contains one, otherwise the mode's tonic triad** -- scan
-            `Harmony::flatten` for a chord rooted on the tonic, use it whole
-            (`C7` stays `C7`), else `diatonicTriad(key, 0)`. NOT the chart's
-            last chord, which is often the V precisely so the loop loops. One
-            rule covers blues, modal vamps and plain diatonic, and it only
-            invents when the chart never said what the tonic sounds like here.
-      - [ ] Do NOT reach for `inferKey` when the ending sounds wrong in an
-            unannounced key. A key guess is offered, never acted on; the wrong
+      - [x] The resolve lands on `Harmony::resolutionChord`: the room's own
+            tonic chord if the chart contains one, otherwise the mode's tonic
+            triad. NOT the chart's last chord, which is often the V precisely
+            so the loop loops. One rule covers blues, modal vamps and plain
+            diatonic, and it only invents when the chart never said what the
+            tonic sounds like here.
+      - [x] Do NOT reach for `inferKey` when the ending sounds wrong in an
+            unannounced key. Held to: nothing in the ending path consults it. A key guess is offered, never acted on; the wrong
             ending is a symptom of an unset key and the fix is to set it.
-      - [ ] It costs nothing extra: the band renders an interval every slot
+      - [x] It costs nothing extra: the band renders an interval every slot
             regardless, so this is two ordinary intervals of CPU and bandwidth.
             What is spent is time -- about three intervals from typing to
             silence, 12 s at 120/8, which is roughly how long a real band takes
             and scales sensibly with bpi.
-      - [ ] How the two intervals SOUND is an `AntiphonVoiceLab` tuning job,
-            measured like every other voice.
+      - [ ] Tune how the two intervals SOUND by ear, in `AntiphonBandLab` or
+            `AntiphonVoiceLab`. The SHAPE is asserted -- energy on the downbeat
+            and quiet after, the lead out by the last quarter, a fill present,
+            each phase distinguishable -- but the numbers behind it have never
+            been listened to: how long the chord rings, how far the keys thin,
+            and whether the kit's landing wants more than an open hat over the
+            kick, which is standing in for a crash the kit does not have.
       - [x] The reply says what is about to happen rather than implying it
             stops now: "wrapping it up -- ending on the downbeat after this
             one."
-      - [ ] The two ending intervals still SOUND like ordinary playing: the
-            states and their timing are built, the taper and the resolve are
-            not. That is the next piece, and the only one wanting ears.
+      - [ ] Nothing outside the practice room can start or stop the band yet:
+            the states are reachable only from chat.
       - [ ] Arrive Silent. The band connects before the player does, so playing
             on connect plays to an empty room; the roster line already re-arms
             for the first human and is where start/stop gets taught. Disposes

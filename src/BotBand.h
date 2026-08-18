@@ -166,6 +166,22 @@ BotVoice::PadPatch keysPatch(const Settings &s);
 // so the listener's pan control decides where they sit.
 bool isStereo(Voice voice);
 
+// Where in a tune this interval falls.
+//
+// A jam stops between songs, and stopping is an ENDING rather than an off
+// switch: a band plays a last time through, thinning as it goes, and then lands
+// together on the final chord. Two intervals, because a chord arriving on a
+// downbeat with nothing leading into it is a dropout with a note on the front
+// (`docs/BOT-CHAT.md` section 15).
+//
+// `BandPlayState` owns which of these an interval is; this is only what each
+// one sounds like.
+enum class Phase {
+  Groove,   // the tune
+  Wrapping, // play it out and say the end is coming: taper, lay out, fill
+  Resolving // the final chord on the downbeat, then quiet
+};
+
 // Renders one interval into `left`, and into `right` when the voice is stereo.
 // Both must hold `numSamples` frames.
 //
@@ -177,12 +193,19 @@ bool isStereo(Voice voice);
 // `right` may be null, which renders a stereo voice's left channel only. A
 // mono voice never touches `right` at all, so the caller mirrors it.
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
-                    float *left, float *right, int numSamples);
+                    Phase phase, float *left, float *right, int numSamples);
+
+// The groove, for the callers that never end anything -- the labs, and every
+// test that is about the tune rather than about stopping it.
+inline void renderInterval(Voice voice, const Settings &s, int intervalIndex,
+                           float *left, float *right, int numSamples) {
+  renderInterval(voice, s, intervalIndex, Phase::Groove, left, right, numSamples);
+}
 
 // Mono, for callers that do not care: the same thing with no right channel.
 inline void renderInterval(Voice voice, const Settings &s, int intervalIndex,
                            float *out, int numSamples) {
-  renderInterval(voice, s, intervalIndex, out, nullptr, numSamples);
+  renderInterval(voice, s, intervalIndex, Phase::Groove, out, nullptr, numSamples);
 }
 
 // The seed a voice actually uses. Salting matters enough to be testable on its

@@ -839,6 +839,50 @@ public:
       expectEquals(Harmony::romanChartText(four, none), juce::String());
     }
 
+    beginTest("the chord a loop resolves to is the tonic, as the chart spells it");
+    {
+      // What an ending lands on (DESIGN section 6.4, docs/BOT-CHAT.md 15). The
+      // tempting answer -- the chart's LAST chord -- is wrong: a loop often
+      // ends on the V precisely so that it loops, and landing there is how you
+      // get an ending that sounds like a mistake.
+      struct Case {
+        const char *key;
+        const char *chart;
+        const char *wanted;
+        const char *why;
+      };
+      const Case cases[] = {
+          {"C major", "| Am | F | C | G |", "C",
+           "not G, which is where the loop turns around"},
+          {"A minor", "| Am | F | C | G |", "Am",
+           "the same chart in the relative minor lands somewhere else"},
+          {"C major", "| C7 | F7 | C7 | G7 |", "C7",
+           "a blues has a dominant seventh on the I, and ending on a plain "
+           "triad would be as wrong as ending unresolved"},
+          {"D dorian", "| Dm7 | G |", "Dm7",
+           "a modal vamp lands on its own tonic chord, seventh and all"},
+          {"C major", "| F | G | Am |", "C",
+           "no chord on the tonic anywhere, so the mode's triad is invented -- "
+           "the one case where it has to be"},
+          {"C minor", "| Fm | Gm | Ab |", "Cm",
+           "and the invented one takes its quality from the mode"},
+      };
+
+      for (const auto &c : cases) {
+        const auto key = keyOf(c.key);
+        Harmony::Chart chart;
+        expect(Harmony::parseChart(c.chart, chart), c.chart);
+        const auto chord = Harmony::resolutionChord(chart, key);
+        expectEquals(Harmony::chordName(chord, key), juce::String(c.wanted),
+                     juce::String(c.chart) + " in " + c.key + " -- " + c.why);
+      }
+
+      // No chart at all: there is still a key, and still an answer.
+      const auto bare = Harmony::resolutionChord({}, keyOf("E minor"));
+      expectEquals(Harmony::chordName(bare, keyOf("E minor")),
+                   juce::String("Em"));
+    }
+
     beginTest("a chord is spelled by where it sits in the key");
     {
       // One flag for a whole chart cannot be right: D major takes sharps, and
