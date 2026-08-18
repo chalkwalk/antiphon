@@ -122,6 +122,34 @@ public:
       expectState(b, S::Wrapping, "stopping twice does not skip the wrap-up");
     }
 
+    beginTest("an empty room gets silence, not an ending");
+    {
+      // The one transition that skips the ending, and it earns it: an ending
+      // is FOR somebody. Played to a room with nobody in it, it is two
+      // intervals of encoding and a gesture nobody sees. `silence` is what the
+      // owner-departure rule reaches for, and nothing else should.
+      BandPlayState b;
+      b.start();
+      b.silence();
+      expectState(b, S::Silent, "silencing a playing bot");
+      expect(!b.audible(), "a silenced bot is still audible");
+
+      // From mid-ending too: if the room empties while a tune is ending, the
+      // rest of the ending has no audience either.
+      BandPlayState ending;
+      ending.start();
+      ending.stop();
+      ending.silence();
+      expectState(ending, S::Silent, "silencing during the wrap-up");
+
+      // ...and it is not a way to skip an ending you asked for: `stop` still
+      // goes through both intervals.
+      BandPlayState asked;
+      asked.start();
+      asked.stop();
+      expectState(asked, S::Wrapping, "stop still wraps up");
+    }
+
     beginTest("only silence is inaudible");
     {
       // What the render path branches on. The two ending states are audible --

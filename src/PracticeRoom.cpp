@@ -68,6 +68,7 @@ bool PracticeRoom::start(const Config &config) {
       auto bot = std::make_unique<PracticeBot>(botUsername,
                                                juce::StringArray{instrument});
       bot->setOwner(cfg.ownerName);
+      bot->setGrace(cfg.ownerGraceMs, cfg.initialGraceMs);
       bot->playAs(voice, cfg.key, cfg.bpm, cfg.bpi, cfg.sampleRate, seed);
       bots.push_back(std::move(bot));
 
