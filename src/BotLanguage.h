@@ -79,6 +79,10 @@ enum class Intent {
   // a bot declines to do, but it can say exactly what to paste.
   ResetChart,
   Reshuffle,
+  // Stop and start PLAYING, which is not leaving and not going quiet. A jam
+  // stops between songs; the band needs a state for it (docs/BOT-CHAT.md 15).
+  StopPlaying,
+  StartPlaying,
   SetQuiet,
   SetLoud,
   ExplainSelf,
@@ -107,6 +111,7 @@ enum class Concept {
   Speak,      // tell, say, describe, explain -- the REQUEST, not the topic
   Chat,       // chat, talk, commentary -- talking as an activity, our topic
   Cease,      // stop, enough, less -- ceasing WHAT is decided by the object
+  Begin,      // play, start, hit it -- beginning, likewise decided by object
   Standard,   // default, usual, standard, reset -- the expected one, or back to it
   Hear,       // hear, listen, sounds like -- what we cannot do
 };

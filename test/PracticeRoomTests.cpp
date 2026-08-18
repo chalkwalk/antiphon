@@ -184,13 +184,22 @@ public:
     {
       expect(PracticeBot::isPartCommand("leave"));
       expect(PracticeBot::isPartCommand("exit"));
-      expect(PracticeBot::isPartCommand("stop"));
+      expect(PracticeBot::isPartCommand("go away"));
+      expect(PracticeBot::isPartCommand("go home"));
       expect(PracticeBot::isPartCommand("  LEAVE  "), "not trimmed or folded");
 
       // Withdrawn: "part" is the most ordinary word in a jam, and using it for
       // a destructive command put it one word from "what's your part".
       expect(!PracticeBot::isPartCommand("part"));
       expect(!PracticeBot::isPartCommand("whats your part"));
+
+      // Withdrawn for the same reason, and it was the worse of the two: to a
+      // musician "stop" is the least destructive thing you can say, and it
+      // sent the whole band home. It means stop PLAYING now
+      // (docs/BOT-CHAT.md section 15). Bare "go" goes with it -- on its own it
+      // is as likely to mean start.
+      expect(!PracticeBot::isPartCommand("stop"));
+      expect(!PracticeBot::isPartCommand("go"));
 
       expect(!PracticeBot::isPartCommand("particularly"));
       expect(!PracticeBot::isPartCommand("please leave"));
