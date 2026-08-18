@@ -33,6 +33,7 @@ target_sources(NinjamTests
         ChatFormatTests.cpp
         BotAnswerTests.cpp
         BandPlayStateTests.cpp
+        RoomHarmonyTests.cpp
         BotChatTests.cpp
         MusicalKeyTests.cpp
         EuclideanTests.cpp

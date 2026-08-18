@@ -92,6 +92,9 @@ src/
   IntervalProbe.h           # shared test signal: plugin Test Tone and the tests
   AudioMeasure.h            # peak, rms, crest, pitch, brightness, LUFS: one instrument
   ChatFormat.{h,cpp}        # chat rendering: vote lines, chord progressions
+  RoomHarmony.h             # what a chat line does to the room's key and chart.
+                            #   ONE place: the band and the display both read it,
+                            #   and they drifted when they each had their own
   # --- the practice room's bots ---
   PracticeRoom.{h,cpp}      # the room: seeds, band settings, the bots in it
   PracticeBot.{h,cpp}       # one bot: renders its part, answers what it is asked

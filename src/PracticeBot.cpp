@@ -168,48 +168,33 @@ bool PracticeBot::handleStructured(const juce::String &text,
   // Band membership, not audibility. A silent bot is still in the room and
   // still follows the key and the chart -- that is most of what somebody does
   // BETWEEN tunes, and a bot that stopped listening while stopped would have
-  // to be told everything again when it came back in.
+  // to be told everything again when it came back.
   if (!inBand.load())
     return false;
 
-  // The key travels as a tagged line or a leading `/key`, never as prose --
-  // MusicalKey refuses to guess, and so does this.
-  const auto key = MusicalKey::parseAnnouncement(text);
-  if (key.valid) {
-    juce::ScopedLock sl(stateMutex);
-    // Preserve what was written, re-derive what was delegated (`DESIGN.md`
-    // section 6.4). A chart the key itself implied has nothing to preserve; a
-    // chart somebody typed is relative to the key it was typed in, and naming
-    // a new key says what it moves to rather than withdrawing it.
-    if (chartSource == BotAnswer::Source::Chat && settings.key.valid)
-      settings.chart = Harmony::resolve(
-          Harmony::toRelative(settings.chart, settings.key), key);
-    else
-      settings.chart = Harmony::defaultChart(key);
-    settings.key = key;
+  juce::ScopedLock sl(stateMutex);
+
+  // The decision itself lives in RoomHarmony, because the editor has to make
+  // exactly the same one and the two used to disagree (`PRINCIPLES` 8).
+  RoomHarmony::State st;
+  st.key = settings.key;
+  st.chart = settings.chart;
+  st.chartFromChat = chartSource == BotAnswer::Source::Chat;
+
+  switch (RoomHarmony::apply(text, st)) {
+  case RoomHarmony::Change::Key:
+    settings.key = st.key;
+    settings.chart = st.chart;
     keySource = BotAnswer::Source::Chat;
     keySetBy = username;
     return true;
-  }
-
-  // Degrees are read against the key the room is in, which is why the key is
-  // taken first: "| ii | V | I |" means nothing on its own, and the resolved
-  // absolute chart is what everything downstream sees (`PRINCIPLES` 10).
-  MusicalKey::Key against;
-  {
-    juce::ScopedLock sl(stateMutex);
-    against = settings.key;
-  }
-
-  Harmony::Chart chart;
-  if (Harmony::parseChart(text, chart) ||
-      (against.valid && Harmony::parseDegreeChart(text, against, chart))) {
-    juce::ScopedLock sl(stateMutex);
-    settings.chart = std::move(chart);
+  case RoomHarmony::Change::Chart:
+    settings.chart = st.chart;
     chartSource = BotAnswer::Source::Chat;
     return true;
+  case RoomHarmony::Change::None:
+    break;
   }
-
   return false;
 }
 

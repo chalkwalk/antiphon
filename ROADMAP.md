@@ -481,7 +481,12 @@ a room can say about its music that Ninjam has no field for. Both halves live in
             `RelativeChord::semitones`; display reads from the mode's own
             scale, so `bIII` in a minor key echoes back as `III`.
       - [x] `parseDegreeChart` reachable from the practice room, read against
-            the key the room is already in.
+            the key the room is already in -- and from the CLIENT too, via
+            `src/RoomHarmony.h`, which is the one place a chat line's effect on
+            the key and the chart is decided. It was two places and they
+            drifted: the band followed `| ii | V | I |` and carried a chart
+            through a key change while the chord row above the phase bar did
+            neither, so the display went stale with nothing to say so.
       - [x] **A key change no longer bins the chart.** `PracticeBot` moves a
             chart somebody wrote through `toRelative`/`resolve`, and rebuilds
             only a chart the key itself implied. This was the bug underneath

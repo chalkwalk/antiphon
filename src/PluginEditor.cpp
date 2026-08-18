@@ -1,5 +1,7 @@
 #include "GainUtils.h"
 #include "PluginEditor.h"
+
+#include "RoomHarmony.h"
 #include "PluginProcessor.h"
 #include "AccessibilityTree.h"
 #include "ServerBrowserDialog.h"
@@ -588,22 +590,40 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   chatDisplay.moveCaretToEnd();
   chatDisplay.insertTextAtCaret(line.text + "\n");
 
-  // A key can arrive as chat or inside a topic, tagged or as `/key`; all land
-  // here.
-  if (const auto key = MusicalKey::parseAnnouncement(text); key.valid) {
-    if (key != sessionKey) {
-      sessionKey = key;
-      announcer.say("Key: " + MusicalKey::displayName(key) + ". " +
-                        MusicalKey::scaleNotes(key),
-                    true);
-      repaint(headerRepaintArea);
-    }
-  }
+  // A key or a chart can arrive as chat or inside a topic, tagged, as `/key`,
+  // in letters or in degrees -- and what each does to the other is decided in
+  // `RoomHarmony`, the one place the band consults too.
+  //
+  // It used to be decided here as well, and the two drifted: the band learned
+  // to read `| ii | V | I |` and to carry a chart through a key change, and
+  // this did neither. The chord row and the marks on the phase bar went on
+  // showing the chart before, with nothing to say they were stale
+  // (`PRINCIPLES` 8).
+  RoomHarmony::State room;
+  room.key = sessionKey;
+  room.chart = sessionChart;
+  room.chartFromChat = chartFromChat;
 
-  // A chart arrives the same way, and from anyone. What the room was told is
-  // what gets drawn -- nothing here invents a progression.
-  if (Harmony::Chart chart; Harmony::parseChart(text, chart)) {
-    sessionChart = std::move(chart);
+  switch (RoomHarmony::apply(text, room)) {
+  case RoomHarmony::Change::Key: {
+    sessionKey = room.key;
+    sessionChart = room.chart;
+    announcer.say("Key: " + MusicalKey::displayName(sessionKey) + ". " +
+                      MusicalKey::scaleNotes(sessionKey),
+                  true);
+    // The chart moved with it, so say so rather than leaving a reader to
+    // wonder whether the chords they were told still apply.
+    if (!sessionChart.empty())
+      announcer.say("Chords: " + Harmony::chartText(sessionChart, sessionKey),
+                    true);
+    updateTempoChip();
+    resized();
+    repaint();
+    break;
+  }
+  case RoomHarmony::Change::Chart: {
+    sessionChart = room.chart;
+    chartFromChat = true;
     announcer.say("Chords: " + Harmony::chartText(sessionChart, sessionKey),
                   true);
 
@@ -614,6 +634,10 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
     updateTempoChip();
     resized(); // the header grows the first time a chart appears
     repaint(headerRepaintArea);
+    break;
+  }
+  case RoomHarmony::Change::None:
+    break;
   }
 
   // The voting system talks through chat, so this is also where a vote is
@@ -1382,6 +1406,7 @@ void AntiphonEditor::onDisconnected(const juce::String &) {
   // The key and the chords belong to the session, not to us.
   sessionKey = {};
   sessionChart.clear();
+  chartFromChat = false;
   keyFromChords = {};
   dismissedKeyGuess = {};
   setChatConnectedState(false);
