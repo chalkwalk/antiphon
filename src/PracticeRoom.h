@@ -51,6 +51,22 @@ public:
     // afterwards; this is only where they start.
     MusicalKey::Key key = MusicalKey::parseName("C major");
 
+    // How long the band waits for the owner before leaving for good.
+    //
+    // A departure used to be fatal: a PART parted the bot at once, there is no
+    // reconnect by design, and the room reaped it -- so a thirty-second blip
+    // destroyed the band and left the room running empty. Three minutes covers
+    // a router reboot or a client restart; past that it was either deliberate
+    // or something bigger than a blip.
+    int ownerGraceMs = 3 * 60 * 1000;
+
+    // Twice as long before the owner has EVER arrived. Starting a room and
+    // then going to find your instrument is ordinary, and a band that has
+    // never seen anybody is costing nothing while it waits -- it arrives
+    // silent. This exists so a forgotten room does not sit on a real server
+    // for ever, not to hurry anybody.
+    int initialGraceMs = 6 * 60 * 1000;
+
     // Rerolled by "shake". Fixed by default so a practice room is the same
     // room twice, which matters more for learning a piece than novelty does.
     std::uint32_t seed = 20260811u;

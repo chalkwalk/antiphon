@@ -42,6 +42,63 @@ void PracticeBot::setOwner(juce::String ownerUsername) {
   owner = std::move(ownerUsername);
 }
 
+void PracticeBot::setGrace(int afterDepartureMs, int beforeFirstArrivalMs) {
+  graceMs = afterDepartureMs;
+  initialGraceMs = beforeFirstArrivalMs;
+}
+
+int PracticeBot::humansPresent() const {
+  int n = 0;
+  for (const auto &m : netClient.getRoomMembers())
+    if (m.username != botName && !BotNames::looksLikeBot(m.username.toStdString()))
+      ++n;
+  return n;
+}
+
+void PracticeBot::OwnerGrace::timerCallback() {
+  stopTimer();
+  bot.part();
+}
+
+void PracticeBot::ownerAbsent(bool everArrived) {
+  if (!active.load())
+    return;
+
+  // Others are still here, so keep playing and start no clock at all. The band
+  // plays for the ROOM; the owner is only who summoned it, and stopping four
+  // voices because one person's router hiccuped disrupts everybody who did not
+  // drop. Nothing leaks: anyone present can send them home
+  // (docs/BOT-CHAT.md section 15).
+  if (everArrived && humansPresent() > 0) {
+    ownerGrace.disarm();
+    return;
+  }
+
+  // Nobody is listening, so playing on is waste -- and an ending is FOR
+  // somebody, so this cuts rather than wrapping up.
+  if (everArrived) {
+    juce::ScopedLock sl(stateMutex);
+    playState.silence();
+  }
+
+  ownerGrace.arm(everArrived ? graceMs : initialGraceMs);
+}
+
+void PracticeBot::ownerBack() {
+  ownerGrace.disarm();
+
+  // Deliberately says nothing of its own.
+  //
+  // The arrival roster already re-arms for the first human in a room, which on
+  // a reconnect is the returning player -- and it says the band is here and
+  // how to start it, which is the whole of what a welcome back would say. Where
+  // the roster does NOT re-arm, other people were present, so the band never
+  // stopped and there is nothing to announce. Both cases are covered without a
+  // line, which is better than a line: four bots saying "welcome back" is the
+  // chorus this design exists to prevent, and the cheapest way not to have it
+  // is not to have the line.
+}
+
 void PracticeBot::setListensTo(juce::String username) {
   {
     juce::ScopedLock sl(stateMutex);
@@ -66,6 +123,7 @@ void PracticeBot::part() {
     return;
   stopTimer();
   bandReply.cancel();
+  ownerGrace.disarm();
   netClient.disconnectFromServer();
 }
 
@@ -366,6 +424,10 @@ bool PracticeBot::isOwnerName(const juce::String &username,
 }
 
 void PracticeBot::onConnected() {
+  // The long clock starts now: nobody has ever arrived, and this is what stops
+  // a room being started and forgotten. Cancelled the moment the owner shows.
+  ownerGrace.arm(initialGraceMs);
+
   // The arrival window: four seconds plus up to two more.
   //
   // The wait lets the join notices finish scrolling before the one line anybody
@@ -445,13 +507,14 @@ void PracticeBot::onRoomMembershipChange(const juce::String &username,
 
   if (joined) {
     sawOwner = true;
+    ownerBack();
     return;
   }
 
-  // First person, like everything else a bot says about itself: the chat line
-  // already carries the name.
-  netClient.sendChatMessage("leaving -- " + ownerName + " has gone.");
-  part();
+  // Not fatal any more. A departure starts a countdown, because people's
+  // connections drop and there is deliberately no reconnect -- so a bot that
+  // parted on a thirty-second blip could not be got back at all.
+  ownerAbsent(true);
 }
 
 bool PracticeBot::checkOwnerStillHere() {
@@ -486,17 +549,17 @@ bool PracticeBot::checkOwnerStillHere() {
     }
 
   if (ownerPresent) {
-    sawOwner = true;
+    const bool wasAway = !sawOwner.exchange(true) || ownerGrace.running();
+    if (wasAway)
+      ownerBack();
     return true;
   }
 
-  // Absent is only "left" once they have actually turned up: bots connect
-  // before the player does.
-  if (!sawOwner.load())
-    return true;
-
-  part();
-  return false;
+  // Absent before ever arriving is not "left" -- the bots connect before the
+  // player does. It still counts down, on the longer clock, so a forgotten
+  // room does not sit on a real server for ever.
+  ownerAbsent(sawOwner.load());
+  return active.load();
 }
 
 void PracticeBot::onUserInfoChange() {

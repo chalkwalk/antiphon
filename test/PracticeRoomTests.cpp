@@ -97,6 +97,11 @@ PracticeRoom::Config testConfig(const juce::String &owner = "you") {
   c.bpi = 8;
   c.sampleRate = 48000.0;
   c.ownerName = owner;
+  // Minutes of grace are right for a person whose connection dropped and wrong
+  // for a test: what is under test is that the countdown runs and what stops
+  // it, never how long three minutes is.
+  c.ownerGraceMs = 1200;
+  c.initialGraceMs = 60000;
   return c;
 }
 
@@ -294,16 +299,91 @@ public:
   }
 
   void runOwnerDepartureTests() {
-    beginTest("bots leave when the player who brought them leaves");
+    beginTest("an empty room takes the band with it, after the grace");
     {
       // The rule that matters most on a real server: walking away is enough to
       // clean up after yourself, with nothing to remember.
+      //
+      // Not INSTANTLY, which it used to be. A part was terminal, there is no
+      // reconnect by design and the room reaped the object, so a thirty-second
+      // blip did not lose the band for thirty seconds -- it destroyed it, and
+      // the room ran on with nothing in it (docs/BOT-CHAT.md section 15).
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      {
+        Joiner you;
+        expect(you.join(room, "you"));
+        expect(waitUntil([&] {
+          return you.client.getRemoteUsers().count(room.botNames()[0]) > 0;
+        }, 5000), "the bot never appeared");
+        // `you` disconnects here, leaving nobody at all.
+      }
+
+      // Still there immediately afterwards: the grace is the whole point.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(300);
+      expect(room.botCount() > 0, "the band went the instant the room emptied");
+
+      expect(waitUntil([&] { return room.botCount() == 0; }, 8000),
+             "the band outlived the empty room");
+    }
+
+    beginTest("a blip does not lose the band");
+    {
+      // The case the grace exists for. Leave and come back inside it and the
+      // band is still there -- silent, because there was nobody to play to,
+      // and waiting to be asked.
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.ownerGraceMs = 4000;
+      expect(room.start(cfg));
+
+      {
+        Joiner you;
+        expect(you.join(room, "you"));
+        expect(waitUntil([&] {
+          return you.client.getRemoteUsers().count(room.botNames()[0]) > 0;
+        }, 5000), "the bot never appeared");
+      }
+
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(800);
+      expect(room.botCount() > 0, "the band did not survive the blip");
+
+      Joiner back;
+      expect(back.join(room, "you"));
+      expect(waitUntil([&] {
+        return back.client.getRemoteUsers().count(room.botNames()[0]) > 0;
+      }, 5000), "the band was gone when the player came back");
+
+      // The room says the band is still there and how to start it. Not a
+      // separate "welcome back" line: the arrival roster already re-arms for
+      // the first human in a room, which on a reconnect is you -- so a line of
+      // our own would say what the roster is about to say anyway.
+      expect(waitUntil([&] {
+        for (const auto &line : back.snapshot())
+          if (line.contains("-bot]") && line.containsIgnoreCase("play"))
+            return true;
+        return false;
+      }, 12000), "nothing told the returning player the band was still there");
+
+      // ...and the countdown really was cancelled, rather than merely
+      // outrun: past the original expiry, they are still here.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(5000);
+      expect(room.botCount() > 0,
+             "the band left anyway after the player came back");
+    }
+
+    beginTest("a room that still has people in it keeps its band");
+    {
+      // The owner is who summoned the band, not who it plays for. Stopping
+      // four voices because one person's router hiccuped disrupts everybody
+      // who did not drop -- and nothing leaks, because anyone present can send
+      // them home.
       PracticeRoom room;
       expect(room.start(testConfig("you")));
 
       Joiner watcher;
       expect(watcher.join(room, "watcher"));
-
       const auto botName = room.botNames()[0];
 
       {
@@ -312,12 +392,18 @@ public:
         expect(waitUntil([&] {
           return watcher.client.getRemoteUsers().count(botName) > 0;
         }, 5000), "the bot never appeared");
-        // `you` disconnects here.
       }
 
-      expect(waitUntil([&] {
-        return watcher.client.getRemoteUsers().count(botName) == 0;
-      }, 8000), "the bot outlived the player who brought it");
+      // Well past the grace, and still playing for the room.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(3000);
+      expect(watcher.client.getRemoteUsers().count(botName) > 0,
+             "the band left a room that still had people in it");
+
+      // And whoever is left can still get rid of them, which is what makes
+      // staying safe rather than a bot nobody can remove.
+      watcher.client.sendChatMessage("leave");
+      expect(waitUntil([&] { return room.botCount() == 0; }, 8000),
+             "the band could not be dismissed by whoever was left");
     }
 
     beginTest("an owner who comes and goes unseen still takes the bots");
@@ -343,12 +429,9 @@ public:
       PracticeRoom room;
       expect(room.start(testConfig("you")));
 
-      Joiner watcher;
-      expect(watcher.join(room, "watcher"));
       const auto botName = room.botNames()[0];
-      expect(waitUntil([&] {
-        return watcher.client.getRemoteUsers().count(botName) > 0;
-      }, 5000), "the bot never appeared");
+      expect(waitUntil([&] { return room.botCount() > 0; }, 5000),
+             "the bot never appeared");
 
       {
         NinjamClient you;
@@ -359,9 +442,9 @@ public:
         juce::Thread::sleep(300);
       }
 
-      expect(waitUntil([&] {
-        return watcher.client.getRemoteUsers().count(botName) == 0;
-      }, 8000), "a bot outlived an owner it never saw arrive");
+      juce::ignoreUnused(botName);
+      expect(waitUntil([&] { return room.botCount() == 0; }, 8000),
+             "a bot outlived an owner it never saw arrive");
     }
 
     beginTest("a bot does not leave before its owner has ever arrived");

@@ -612,10 +612,10 @@ restraint rather than conversation.
 - [ ] Unprompted speech off outside the practice room. Nothing speaks
       unprompted yet, so there is nothing to switch off; it lands with the
       tutor.
-- [ ] **Being present without playing.** A jam stops between songs and the band
-      has no state for it: it plays from connect until evicted, and the only
-      way to stop it is to send it home. **Designed in `docs/BOT-CHAT.md`
-      section 15; that section is the specification and this is the checklist.**
+- [ ] **Being present without playing.** Built, bar two things: the endings have
+      never been listened to, and nothing outside the practice room can reach
+      the states. **Designed in `docs/BOT-CHAT.md` section 15; that section is
+      the specification and this is the checklist.**
       - [x] Four states -- Silent, Playing, Wrapping, Resolving -- sampled ONCE
             per interval at the top of the render and held for it. `Wrapping`
             and `Resolving` advance on their own, one interval each; `start`
@@ -634,27 +634,27 @@ restraint rather than conversation.
             all-or-nothing. `PracticeBot::playing` already exists for this and
             is dead weight today: never cleared, and `BotChat::Self::playing`
             is passed in and never read.
-      - [ ] `stop` means stop PLAYING, not leave. It is a part command today in
+      - [x] `stop` means stop PLAYING, not leave. It was a part command in
             `kPartCommands`, in `BotAddress::isPartCommand` and in the `[LEAVE]`
             corpus, which contains `stop playing` in as many words -- the `part`
             footgun again, with the least destructive phrase wired to the most
             destructive act. Takes `halt`, `enough`, `thats enough` and
             `were done` with it; leaving keeps words that can only mean leaving.
-      - [ ] `START_PLAYING` / `STOP_PLAYING` intents, corpus lines first, and
+      - [x] `START_PLAYING` / `STOP_PLAYING` intents, corpus lines first, and
             the acts to carry them. Individual and whole-band come free:
             `BotAddress::Address::Collective` already sits beside `Named`.
-      - [ ] The ending is TWO intervals, as a phase through
-            `BotBand::renderInterval` rather than a second code path. A
-            complete wrap-up interval -- same chart, lead lays out, kit fills
-            in its SECOND HALF, kit fills through the last bar -- a taper
-            rather than a switch, since nobody winds down all at once, and the
-            halfway point is a clean boundary because `layoutChart` already
-            counts the interval in steps. Then a resolving interval
-            that opens on the chord the loop resolves to, rings, and is quiet
-            for the remainder. A downbeat chord with nothing leading into it is
-            a dropout with a note on the front; the wrap-up is what makes the
+      - [x] The ending is TWO intervals, as `BotBand::Phase` through
+            `renderInterval` rather than a second code path. A complete wrap-up
+            interval -- same chart, lead laying out at the halfway point, keys
+            thinning behind it, kit filling through the last bar -- a taper
+            rather than a switch, since nobody winds down all at once. The BASS
+            is deliberately unchanged: the rhythm section carries the time into
+            the final downbeat. Then a resolving interval that opens on the
+            chord the loop resolves to, rings two beats, and is quiet for the
+            remainder. A downbeat chord with nothing leading into it is a
+            dropout with a note on the front; the wrap-up is what makes the
             ending sound intended, and it is where the fill lives.
-      - [ ] The wrap-up invents NO harmony -- no turnaround, nothing the room
+      - [x] The wrap-up invents NO harmony -- no turnaround, nothing the room
             did not write. The chart is the room's; the signal is arrangement.
       - [x] The resolve lands on `Harmony::resolutionChord`: the room's own
             tonic chord if the chart contains one, otherwise the mode's tonic
@@ -688,22 +688,29 @@ restraint rather than conversation.
             first, because a room where nothing happens looks broken. Disposes
             of the wait-forever COST as a side effect: a band nobody joins now
             encodes nothing.
-      - [ ] **One authority tier: any human, every command.** Eviction is
+      - [x] **One authority tier: any human, every command.** Eviction is
             already open to everyone deliberately, so gating anything less
             destructive behind ownership would be incoherent. The owner is not
             a permission -- it is who the cleanup rule watches. Bots still take
             no orders from bots.
-      - [ ] Owner departure stops being fatal. Today a PART calls `part()` at
-            once, `onDisconnected` refuses to reconnect by design, and
-            `reapPartedBots` deletes the objects -- so a 30 s blip destroys the
-            band and the room runs on empty. New rule, on the other-humans
-            predicate `onRoomMembershipChange` already computes: others present
-            -> keep playing, no timer, since the band plays for the room and
-            anyone present can dismiss it; room empty -> Silent plus a
-            three-minute timer, and expiry parts for good.
-      - [ ] Returning inside the window does not restart them, and nothing is
-            said unless the state actually changed. Rejoining a groove whose
-            beginning you could not hear is worse than a quiet band waiting.
+      - [x] Owner departure stops being fatal. A PART used to call `part()` at
+            once, `onDisconnected` refuses to reconnect by design and
+            `reapPartedBots` deletes the objects -- so a 30 s blip destroyed the
+            band and the room ran on empty. Now, on the other-humans predicate
+            the roster already computed: others present -> keep playing and
+            start no clock, since the band plays for the room and anyone present
+            can dismiss it; room empty -> silence plus three minutes; nobody
+            arrived yet -> six. Silencing CUTS rather than ending, because an
+            ending played to nobody is encoding for its own sake, and the
+            departure rule is `BandPlayState::silence`'s only caller.
+            `PracticeRoom::Config` carries both durations, so the countdown is
+            testable in seconds rather than minutes.
+      - [x] Returning inside the window does not restart them, and needs no line
+            of its own: the arrival roster already re-arms for the first human in
+            a room, which on a reconnect is the returning player, and says
+            exactly what a welcome back would. Where it does not re-arm, others
+            were present and the band never stopped -- so both cases are covered
+            without a line, which beats having one.
 - [x] **One bot speaks for the band.** A collectively addressed message whose
       answer would be the same from everyone gets exactly one reply, phrased
       for the band ("we're wrapping it up"); one whose answer differs -- what

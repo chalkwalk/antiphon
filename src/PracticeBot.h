@@ -76,9 +76,14 @@ public:
   // The commands a bot answers to, beyond parting.
   static bool isShakeCommand(const juce::String &text);
 
-  // When this player leaves the room, so does the bot. Empty means nothing but
-  // the connection itself ends it. PracticeRoom always sets it.
+  // When this player leaves the room, so does the bot -- but not at once. Empty
+  // means nothing but the connection itself ends it. PracticeRoom always sets
+  // it.
   void setOwner(juce::String ownerUsername);
+
+  // How long to wait for the owner: after they leave, and before they have
+  // ever arrived. See PracticeRoom::Config for why the second is longer.
+  void setGrace(int afterDepartureMs, int beforeFirstArrivalMs);
 
   // Who else this bot arrived with, and what the group is called.
   //
@@ -188,6 +193,38 @@ private:
   };
   friend struct BandReply;
   BandReply bandReply{*this};
+
+  // Counting down to leaving, because the owner is not here.
+  //
+  // A departure is not a decision: people's connections drop, and a band that
+  // vanished on a thirty-second blip could not be got back at all, since there
+  // is deliberately no reconnect.
+  struct OwnerGrace : private juce::Timer {
+    explicit OwnerGrace(PracticeBot &b) : bot(b) {}
+    void arm(int ms) {
+      if (!isTimerRunning())
+        startTimer(ms);
+    }
+    void disarm() { stopTimer(); }
+    bool running() const { return isTimerRunning(); }
+
+  private:
+    void timerCallback() override;
+    PracticeBot &bot;
+  };
+  friend struct OwnerGrace;
+  OwnerGrace ownerGrace{*this};
+
+  int graceMs = 3 * 60 * 1000;
+  int initialGraceMs = 6 * 60 * 1000;
+
+  // Everybody in the room who is not a bot and not us.
+  int humansPresent() const;
+
+  // The owner has gone, or has not turned up yet. Starts the countdown, and
+  // stops the music if there is nobody left to play it to.
+  void ownerAbsent(bool everArrived);
+  void ownerBack();
 
   int speakDelayMs() const { return speakDelayMs(botName); }
 

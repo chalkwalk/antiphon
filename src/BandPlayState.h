@@ -54,6 +54,17 @@ public:
       state = State::Playing;
   }
 
+  // Cut, with no ending at all.
+  //
+  // For the one case that earns it: the room has emptied, so there is nobody
+  // to play an ending TO. Two intervals of wrapping up and resolving to an
+  // audience of nobody is encoding for its own sake, and the gesture is only a
+  // gesture if somebody hears it.
+  //
+  // Nothing a PLAYER asks for reaches this. "stop" goes through both intervals,
+  // because that is what makes it an ending rather than a mute.
+  void silence() { state = State::Silent; }
+
   // Asked to stop. Only from playing: stopping something already stopping
   // would skip the wrap-up, which is the half that makes the ending an ending.
   void stop() {
