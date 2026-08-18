@@ -1653,8 +1653,12 @@ is to give it an interval of its own. **The wrap-up interval is that interval.**
 So:
 
 - **The wrap-up interval** is a complete interval of music, played from the same
-  chart, with the arrangement saying what is about to happen: the lead lays out,
-  the kit fills through the last bar, the texture thins toward the end.
+  chart, with the arrangement saying what is about to happen. It is a **taper
+  rather than a switch**: the first half plays, and the second half winds down.
+  The lead lays out at the halfway point, the texture thins behind it, and the
+  kit fills through the last bar. Nobody drops out all at once, because that is
+  not what winding down sounds like -- and the halfway point is a clean boundary
+  to test against, since `layoutChart` already counts the interval in steps.
 - **The resolving interval** opens on the chord the loop resolves to, lets it
   ring, and is quiet for the remainder.
 
@@ -1677,6 +1681,59 @@ seconds at 120 bpm and 8 bpi. That is not a cost to apologise for -- a band told
 to wrap it up and stopping instantly would be the strange behaviour. It scales
 sensibly too: the fill lives in the last bar whatever the interval length, so a
 long interval simply means one more interval of playing before the end.
+
+### Which chord the resolve lands on
+
+The one part of this that is theory rather than taste, and the one that would be
+silently wrong if it were guessed. Three plausible rules disagree constantly.
+Take `| Am | F | C | G |`:
+
+| Rule | In C major | In A minor |
+|---|---|---|
+| Last chord of the chart | G -- the V, unresolved | G -- wrong |
+| First chord of the chart | Am -- the vi | Am -- right |
+| Tonic of the key | C -- right | Am -- right |
+
+The chart's last chord is the tempting one and it is wrong: a loop often ends on
+the V *precisely so that it loops*, and landing there is how you get an ending
+that sounds like a mistake.
+
+So it is the tonic -- but not blindly the tonic triad, because a blues has a
+dominant seventh on the I and ending a blues on a plain `C` triad is as wrong as
+ending it unresolved. The rule:
+
+> **The room's own tonic chord if the chart contains one, otherwise the mode's
+> tonic triad.**
+>
+> Scan `Harmony::flatten(chart)` for a chord rooted on the tonic. Found, use it
+> whole -- `C7` stays `C7`, `Dm7` stays `Dm7`. Not found,
+> `Harmony::diatonicTriad(key, 0)`.
+
+One rule covers blues, modal vamps and plain diatonic, and it **minimises
+invention**: it only introduces a chord when the chart never said what the tonic
+sounds like in this tune. That keeps faith with the wrap-up inventing no harmony
+at all -- the wrap-up plays the chart, and the resolve prefers the chart's own
+answer whenever there is one.
+
+**A consequence to accept rather than fix.** If nobody set the key, the band is
+in the default C major, so a tune that is really in A minor gets a C ending and
+sounds wrong. The temptation is to reach for `Harmony::inferKey`. Don't: a key
+guess is offered and never acted on (section 5), and a bot quietly ending in a
+key nobody announced is deciding something the room did not. The wrong ending is
+a *symptom* of an unset key, and the fix is to set it. The key already drives
+the bass roots and the lead lines, so the ending is not introducing the problem
+-- it is making an existing one audible, which is useful.
+
+### What is taste, and belongs in the lab
+
+None of these can be argued from first principles, and all of them want ears:
+
+- how long the final chord rings, and whether it is gated or left to decay;
+- whether the kit's last hit is a crash alone or a crash with the kick;
+- whether the resolve is voiced by `voiceLead` from where the wrap-up left off,
+  or dropped to root position for finality;
+- how far the texture drops across the wrap-up's second half;
+- whether the lead is silent on the resolve or plays the tonic once.
 
 How the two intervals actually *sound* is a tuning job for `AntiphonVoiceLab`,
 measured the way every other voice was, and not something to settle in prose.

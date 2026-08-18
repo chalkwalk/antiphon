@@ -632,13 +632,26 @@ restraint rather than conversation.
       - [ ] The ending is TWO intervals, as a phase through
             `BotBand::renderInterval` rather than a second code path. A
             complete wrap-up interval -- same chart, lead lays out, kit fills
-            through the last bar, texture thins -- then a resolving interval
+            in its SECOND HALF, kit fills through the last bar -- a taper
+            rather than a switch, since nobody winds down all at once, and the
+            halfway point is a clean boundary because `layoutChart` already
+            counts the interval in steps. Then a resolving interval
             that opens on the chord the loop resolves to, rings, and is quiet
             for the remainder. A downbeat chord with nothing leading into it is
             a dropout with a note on the front; the wrap-up is what makes the
             ending sound intended, and it is where the fill lives.
       - [ ] The wrap-up invents NO harmony -- no turnaround, nothing the room
             did not write. The chart is the room's; the signal is arrangement.
+      - [ ] The resolve lands on **the room's own tonic chord if the chart
+            contains one, otherwise the mode's tonic triad** -- scan
+            `Harmony::flatten` for a chord rooted on the tonic, use it whole
+            (`C7` stays `C7`), else `diatonicTriad(key, 0)`. NOT the chart's
+            last chord, which is often the V precisely so the loop loops. One
+            rule covers blues, modal vamps and plain diatonic, and it only
+            invents when the chart never said what the tonic sounds like here.
+      - [ ] Do NOT reach for `inferKey` when the ending sounds wrong in an
+            unannounced key. A key guess is offered, never acted on; the wrong
+            ending is a symptom of an unset key and the fix is to set it.
       - [ ] It costs nothing extra: the band renders an interval every slot
             regardless, so this is two ordinary intervals of CPU and bandwidth.
             What is spent is time -- about three intervals from typing to
