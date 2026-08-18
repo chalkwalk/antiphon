@@ -29,11 +29,18 @@ public:
       expectEquals(countOnsets(r), 3);
     }
 
-    beginTest("E(5,8) is the cinquillo");
+    // This case used to be called "E(5,8) is the cinquillo" and only counted
+    // the onsets, so the name went unchecked -- and it was wrong. The cinquillo
+    // is x.xx.xx.; E(5,8) here is x.x.xx.x, a rotation of it. Same necklace,
+    // different starting point, which is the same relationship this
+    // formulation has with arps-euclidya's. See SharedContractTests.cpp.
+    beginTest("E(5,8) is a rotation of the cinquillo");
     {
       const auto r = Euclidean::pattern(8, 5);
       expectEquals((int)r.size(), 8);
       expectEquals(countOnsets(r), 5);
+      expect(r[0] && !r[1] && r[2] && !r[3] && r[4] && r[5] && !r[6] && r[7],
+             "E(5,8) should be x.x.xx.x");
     }
 
     beginTest("E(4,16) is four on the floor");
