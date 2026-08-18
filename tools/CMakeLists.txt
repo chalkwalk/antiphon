@@ -27,6 +27,7 @@ target_compile_definitions(AntiphonStems PRIVATE
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonStems
+    PRIVATE chalkwalk::music
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events
@@ -66,6 +67,7 @@ target_compile_definitions(AntiphonVoiceLab PRIVATE
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonVoiceLab
+    PRIVATE chalkwalk::music
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events
@@ -103,6 +105,7 @@ target_compile_definitions(AntiphonBandLab PRIVATE
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonBandLab
+    PRIVATE chalkwalk::music
     PRIVATE
         juce::juce_audio_utils
     PUBLIC
@@ -160,6 +163,7 @@ target_compile_definitions(AntiphonPractice PRIVATE
         JUCE_MODAL_LOOPS_PERMITTED=1)
 
 target_link_libraries(AntiphonPractice
+    PRIVATE chalkwalk::music
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events

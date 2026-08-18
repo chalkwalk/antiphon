@@ -71,6 +71,17 @@ add_subdirectory(modules/ogg EXCLUDE_FROM_ALL)
 add_subdirectory(modules/vorbis EXCLUDE_FROM_ALL)
 
 # Add the sources subdirectory
+# ---------------------------------------------------------------------------
+# chalkwalk-music -- shared, JUCE-free music theory (../ECOSYSTEM.md).
+# Submodule: https://github.com/chalkwalk/chalkwalk-music (MIT).
+#
+# It builds and tests standalone, with no JUCE and no parent, which is the test
+# of the boundary. Its own Catch2 suite is turned on here so this project
+# verifies its dependency rather than assuming it.
+# ---------------------------------------------------------------------------
+set(CHALKWALK_MUSIC_TESTS ON CACHE BOOL "" FORCE)
+add_subdirectory(libs/music)
+
 add_subdirectory(src)
 
 # Offline tools. Kept out of src/ because nothing here is part of the plugin --

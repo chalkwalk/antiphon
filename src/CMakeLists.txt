@@ -94,6 +94,7 @@ target_compile_definitions(Antiphon
 
 target_link_libraries(Antiphon
     PRIVATE
+        chalkwalk::music
         antiphon_fonts
         juce::juce_audio_utils
         juce::juce_audio_plugin_client

@@ -18,3 +18,6 @@
 [submodule "modules/vorbis"]
 	path = modules/vorbis
 	url = https://github.com/xiph/vorbis.git
+[submodule "libs/music"]
+	path = libs/music
+	url = https://github.com/chalkwalk/chalkwalk-music.git

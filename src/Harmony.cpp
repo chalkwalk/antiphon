@@ -1,6 +1,6 @@
 #include "Harmony.h"
 
-#include "Euclidean.h"
+#include <chalkwalk/music/Euclidean.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -923,7 +923,7 @@ int chordIndexForBeat(int beat, int bpi, int numChords, int rotation) {
   // it, with the chords taking turns being a beat longer.
   int idx = -1;
   for (int i = 0; i <= b; ++i)
-    if (Euclidean::hit(i, bpi, numChords, rotation))
+    if (chalkwalk::music::hit(i, bpi, numChords, rotation))
       ++idx;
 
   // Rotated far enough that the interval opens before the first change: the
