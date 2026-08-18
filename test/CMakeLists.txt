@@ -37,6 +37,7 @@ target_sources(NinjamTests
         BotChatTests.cpp
         MusicalKeyTests.cpp
         EuclideanTests.cpp
+        SharedContractTests.cpp
         HarmonyTests.cpp
         AudioMeasureTests.cpp
         BotDspTests.cpp
