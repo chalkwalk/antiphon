@@ -13,6 +13,11 @@ For architecture see `DESIGN.md`. For the principles every piece of work must
 satisfy, see `PRINCIPLES.md`, and for the standing refusals `NON-GOALS.md`.
 **Before adding a work area here, confirm it clears both.**
 
+**Shared code across the four Chalkwalk plugins is planned in
+[`../ECOSYSTEM.md`](../ECOSYSTEM.md)** -- which libraries are extracted, which
+third-party dependencies are taken, the licence and JUCE-free rules, and the
+phase ordering. Do not restate that argument here; link to it.
+
 ---
 
 ## Active focus
@@ -1227,6 +1232,17 @@ bowed strings, reeds.
 
 ### Breaking the repository up
 
+> **Superseded by [`../ECOSYSTEM.md`](../ECOSYSTEM.md), 2026-08-18.** The
+> analysis below is where this thinking was done and it is kept for the
+> reasoning; the decisions it reached now live in the ecosystem document, which
+> covers all four projects rather than this one. Where the two differ, the
+> ecosystem document wins. Two things it corrects: the shared libraries are
+> MIT and strictly JUCE-free (so the `juce::String` dependency in the `music`
+> layer goes away, and with it the objection that every layer needs JUCE), and
+> `arps-euclidya`'s Scala tuning parser -- missed entirely below -- is a
+> first-class part of `chalkwalk-music`.
+
+
 Wanted, planned here, and **not next** -- see the ordering argument at the end.
 
 #### It is four layers, not three
@@ -1697,6 +1713,12 @@ inside the form.
       Key detection from audio is its own project and is not this.
 
 ### Split the client out
+
+> **Superseded by [`../ECOSYSTEM.md`](../ECOSYSTEM.md), 2026-08-18,** which
+> schedules `chalkwalk-ninjam` last of the five libraries: one consumer, the
+> largest surface, and a licence provenance note (`PRINCIPLES §6`) to write
+> before it can go permissive.
+
 
 `NinjamClient`, `NinjamProtocol`, `VorbisCodec`, `Harmony` and the bots have no
 dependency on the plugin -- `tools/StemsMain.cpp` and the wanted
