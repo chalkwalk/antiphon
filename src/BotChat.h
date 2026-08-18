@@ -31,6 +31,13 @@ namespace BotChat {
 // the live copy under its lock and passes a copy in.
 struct Self {
   juce::String name;
+
+  // What a player TYPES to address this bot: "Ravo", where `name` is
+  // "Ravo[keys-bot]". Every reply that quotes a command back has to use this
+  // one -- `say "Ravo[keys-bot] play"` is not something anybody would type,
+  // and a bot whose instructions cannot be followed is worse than one that
+  // gives none. Falls back to `name` when it is empty.
+  juce::String handle;
   BotBand::Voice voice = BotBand::Voice::Drums;
   BotBand::Settings settings;
 
@@ -78,6 +85,18 @@ struct Response {
 
   Act act = Act::None;
   int value = 0;
+
+  // This reply is on behalf of everyone, so exactly ONE bot should say it.
+  //
+  // Set when the message was addressed to the band AND the answer would be the
+  // same from every bot. What each one is playing differs and all four should
+  // say so; "wrapping it up" does not, and four bots saying it is the chorus
+  // this design exists to prevent (docs/BOT-CHAT.md section 5).
+  //
+  // ACTING is still collective -- every addressed bot does the thing. Only the
+  // LINE about it is rationed, and the rationing belongs to the caller, which
+  // is the only part of this that needs a clock.
+  bool forBand = false;
 };
 
 // The decision for one message. `attention` is read and updated the way

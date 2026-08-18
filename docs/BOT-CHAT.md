@@ -635,9 +635,27 @@ and for a whole class of question the answer is the same from every bot:
 
 | Personal -- every addressed bot answers | Common -- exactly one answers |
 |---|---|
-| `DESCRIBE_PART`, `DESCRIBE_SOUND` | `REPORT_KEY`, `REPORT_CHART`, `REPORT_TEMPO` |
-| `RESHUFFLE`, `SET_QUIET`, `SET_LOUD` | `SET_KEY`, `SET_TEMPO`, `SET_CHART`, `RESET_CHART` |
-| `EXPLAIN_SELF`, `LEAVE` | |
+| `DESCRIBE_PART`, `DESCRIBE_SOUND` | everything else |
+| `EXPLAIN_SELF` | |
+
+**Built.** An earlier version of this table put `RESHUFFLE`, `SET_QUIET`,
+`SET_LOUD` and `LEAVE` in the personal column, which contradicts the rule stated
+directly above it: "ok, something else" is the same sentence from all four, and
+four bots saying it is exactly the chorus this exists to prevent. The test is
+not which intent it is -- it is **whether the answer would differ between
+bots**. Only three do: what each one is playing, what each one sounds like, and
+what each one is.
+
+**The half-stopped band is the case that rule alone gets wrong.** Tell a band
+where two are playing and two are silent to stop, and the sentences genuinely
+differ -- "we're wrapping it up" against "already stopped" -- but it is still
+one thing happening to one band, and one bot should say so. Worse, whoever won
+a flat race would answer for everybody, so a silent bot could tell the room
+nothing was happening while the rest ended the tune.
+
+So the delay has two tiers: **a bot that acted speaks ahead of one that had
+nothing to do.** If nobody acted, the deferred line is the right answer and
+still gets said.
 
 The worked transcript above has `band, what are you playing` answered by all
 four, and that is right -- those are four different answers. `band, what are the

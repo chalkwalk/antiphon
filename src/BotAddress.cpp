@@ -600,6 +600,13 @@ std::string withoutAddress(const Room &room, const std::string &self,
   std::vector<std::string> names{me->username, me->instrument, me->channel};
   if (me->handleUsable)
     names.push_back(me->handle);
+  // A collective is an address too, and leaving it in the body is not
+  // harmless: "band" is not a word the lexicon knows, so it counted as an
+  // unrecognised one and silenced the rules that require a sentence to be
+  // fully understood. "band what are you" fell to the catch-all where "ravo:
+  // what are you" answered.
+  for (const auto *c : kCollectives)
+    names.push_back(c);
   std::sort(names.begin(), names.end(),
             [](const std::string &a, const std::string &b) {
               return a.size() > b.size();

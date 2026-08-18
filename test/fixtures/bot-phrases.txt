@@ -755,6 +755,16 @@ lets have some music
 carry on
 keep going
 
+# "again" is a rerolling word, and beside a starting word it is not: asking a
+# silent band to start again is asking for what it was already playing, not for
+# something new. Reported from a real room, where "start playing again" got
+# "ok, something else" -- a confident answer to a question nobody asked.
+start playing again
+play again
+start again
+back to it
+pick it up again
+
 
 [CLARIFY]
 tell me about your kick

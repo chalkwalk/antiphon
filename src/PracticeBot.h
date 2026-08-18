@@ -109,6 +109,15 @@ public:
   static bool isPartCommand(const juce::String &text);
   static juce::String helpLine(const juce::String &botName);
 
+  // How long a bot waits before speaking for the band. Derived from the name,
+  // like the arrival stagger, so a room is reproducible and no two bots wake
+  // together.
+  //
+  // Public because a test of the arbitration that cannot say WHICH bot would
+  // win a race is not testing the arbitration: it passes or fails on which
+  // names the seed happened to pick.
+  static int speakDelayMs(const juce::String &botName);
+
 private:
   void onConnected() override;
   void onDisconnected(const juce::String &reason) override;
@@ -151,6 +160,35 @@ private:
 
   // False once the bot has parted because its owner left.
   bool checkOwnerStillHere();
+
+  // A reply the whole band owes the room, waiting to see whether one of the
+  // others says it first.
+  //
+  // Delay-and-watch rather than a fixed order, for the reason section 5 of
+  // docs/BOT-CHAT.md gives: a fixed order can elect a bot that has been told to
+  // be quiet, and then the room gets silence where it asked a question. Nobody
+  // coordinates and nothing is shared -- each bot waits its own interval and
+  // drops the line if it hears one.
+  struct BandReply : private juce::Timer {
+    explicit BandReply(PracticeBot &b) : bot(b) {}
+    void schedule(juce::String line, int delayMs) {
+      text = std::move(line);
+      heardOne = false;
+      startTimer(delayMs);
+    }
+    void somebodySpoke() { heardOne = true; }
+    void cancel() { stopTimer(); }
+
+  private:
+    void timerCallback() override;
+    PracticeBot &bot;
+    juce::String text;
+    bool heardOne = false;
+  };
+  friend struct BandReply;
+  BandReply bandReply{*this};
+
+  int speakDelayMs() const { return speakDelayMs(botName); }
 
   juce::String botName;
   juce::StringArray channels;

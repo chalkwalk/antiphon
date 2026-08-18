@@ -2,6 +2,7 @@
 #include "../src/PracticeBot.h"
 #include "../src/PracticeRoom.h"
 #include "FakeNinjamServer.h" // for waitUntil
+#include <limits>
 #include <JuceHeader.h>
 
 // Two things are under test here, and the second matters more than it looks.
@@ -60,6 +61,20 @@ MusicalKey::Key keyOf(const juce::String &name) {
   auto k = MusicalKey::parseName(name);
   jassert(k.valid);
   return k;
+}
+
+// The band introduces itself a few seconds after the first human arrives, so a
+// test that starts talking straight away races the roster and counts it as a
+// reply. Wait for it to land instead of filtering it out afterwards -- the
+// roster is a real thing the room says, and a test that ignored it could not
+// tell it apart from a bot answering twice.
+bool waitForRoster(const Joiner &you) {
+  return waitUntil([&] {
+    for (const auto &line : you.snapshot())
+      if (line.contains("say a name to talk to one of us"))
+        return true;
+    return false;
+  }, 12000);
 }
 
 PracticeRoom::Config testConfig(const juce::String &owner = "you") {
@@ -609,6 +624,148 @@ public:
             return true;
         return false;
       }, 4000), "the bot did not say what key the room was in");
+    }
+
+    beginTest("one bot speaks for the band, and all four still act");
+    {
+      // Reported from a real room: "band stop" got four identical replies.
+      // Acting is collective -- every bot ends the tune -- and only the LINE
+      // about it is rationed (docs/BOT-CHAT.md section 5).
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
+      }, 5000), "the band never arrived");
+
+      auto botLinesSince = [&](int from) {
+        juce::StringArray out;
+        const auto all = you.snapshot();
+        for (int i = from; i < all.size(); ++i)
+          if (all[i].startsWith("MSG|") && all[i].contains("-bot]"))
+            out.add(all[i]);
+        return out;
+      };
+
+      expect(waitForRoster(you), "the band never introduced itself");
+
+      const int before = you.snapshot().size();
+      you.client.sendChatMessage("band stop");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(2500);
+
+      const auto replies = botLinesSince(before);
+      expectEquals(replies.size(), 1,
+                   "the band answered as a chorus: " +
+                       replies.joinIntoString(" / "));
+      if (replies.size() == 1)
+        expect(replies[0].containsIgnoreCase("we"),
+               "the one reply does not speak for the band: " + replies[0]);
+
+      // ...and every bot acted, not just the one that spoke.
+      expect(waitUntil([&] {
+        for (auto p : room.bandPhases())
+          if (p == BandPlayState::State::Playing)
+            return false;
+        return !room.bandPhases().empty();
+      }, 8000), "only the bot that spoke actually stopped");
+    }
+
+    beginTest("with the band half stopped, the one that acts speaks");
+    {
+      // The mixed case, which the "same answer" rule alone gets wrong. Some
+      // bots wrap up and some say "already stopped" -- different sentences,
+      // but still one thing happening to one band. Whoever won a flat race
+      // would answer for everybody, and a silent bot winning would tell the
+      // room nothing was happening while the rest ended the tune.
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.bpm = 240;
+      cfg.bpi = 4; // one second per interval, so an ending takes about two
+      expect(room.start(cfg));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      const auto keys = botPlaying(room, "keys");
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(keys) > 0;
+      }, 5000), "the band never arrived");
+
+      expect(waitForRoster(you), "the band never introduced itself");
+
+      // Stop the bot that would WIN a flat race, so that a race is exactly
+      // what this catches. Picking any other one makes the test pass or fail
+      // on which names the seed happened to draw, which is no test at all.
+      juce::String first;
+      int best = std::numeric_limits<int>::max();
+      for (const auto &n : room.botNames()) {
+        const int d = PracticeBot::speakDelayMs(n);
+        if (d < best) {
+          best = d;
+          first = n;
+        }
+      }
+      expect(first.isNotEmpty());
+
+      const auto handle = juce::String(BotNames::handleOf(first.toStdString()));
+      you.client.sendChatMessage(handle + ": stop");
+      expect(waitUntil([&] {
+        int silent = 0, playing = 0;
+        for (auto p : room.bandPhases()) {
+          if (p == BandPlayState::State::Silent) ++silent;
+          if (p == BandPlayState::State::Playing) ++playing;
+        }
+        return silent >= 1 && playing >= 1;
+      }, 10000), "never reached a half-stopped band");
+
+      const int before = you.snapshot().size();
+      you.client.sendChatMessage("band stop");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(2500);
+
+      juce::StringArray replies;
+      const auto all = you.snapshot();
+      for (int i = before; i < all.size(); ++i)
+        if (all[i].startsWith("MSG|") && all[i].contains("-bot]"))
+          replies.add(all[i]);
+
+      expectEquals(replies.size(), 1,
+                   "a half-stopped band answered as a chorus: " +
+                       replies.joinIntoString(" / "));
+      if (replies.size() == 1)
+        expect(replies[0].containsIgnoreCase("wrapping"),
+               "a bot with nothing to do answered for the band: " + replies[0]);
+    }
+
+    beginTest("each bot answers for itself when the answers differ");
+    {
+      // The case the arbitration must NOT swallow. "band what are you playing"
+      // is four different facts and deserves four replies; collapsing it to
+      // one would lose three of them.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
+      }, 5000), "the band never arrived");
+
+      expect(waitForRoster(you), "the band never introduced itself");
+
+      const int before = you.snapshot().size();
+      you.client.sendChatMessage("band what are you playing");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(2500);
+
+      juce::StringArray replies;
+      const auto all = you.snapshot();
+      for (int i = before; i < all.size(); ++i)
+        if (all[i].startsWith("MSG|") && all[i].contains("-bot]"))
+          replies.add(all[i]);
+
+      expect(replies.size() >= 3,
+             "the band gave one answer to a question with four: " +
+                 replies.joinIntoString(" / "));
     }
 
     beginTest("the phase the renderer is given is the phase the bot is in");
