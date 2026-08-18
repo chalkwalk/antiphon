@@ -68,6 +68,20 @@ MusicalKey::Key keyOf(const juce::String &name) {
 // reply. Wait for it to land instead of filtering it out afterwards -- the
 // roster is a real thing the room says, and a test that ignored it could not
 // tell it apart from a bot answering twice.
+// The band arrives silent now, so anything about playing has to start it.
+bool startBand(Joiner &you, const PracticeRoom &room) {
+  you.client.sendChatMessage("band play");
+  return waitUntil([&] {
+    const auto phases = room.bandPhases();
+    if (phases.empty())
+      return false;
+    for (auto p : phases)
+      if (p != BandPlayState::State::Playing)
+        return false;
+    return true;
+  }, 6000);
+}
+
 bool waitForRoster(const Joiner &you) {
   return waitUntil([&] {
     for (const auto &line : you.snapshot())
@@ -626,6 +640,44 @@ public:
       }, 4000), "the bot did not say what key the room was in");
     }
 
+    beginTest("the band arrives silent, and the roster says how to start it");
+    {
+      // Bots connect before the player does, so a band that played on connect
+      // played to an empty room -- encoding and sending a full interval every
+      // few seconds to nobody for as long as it took you to arrive. Arriving
+      // silent also disposes of the wait-forever cost entirely
+      // (docs/BOT-CHAT.md section 15).
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
+      }, 5000), "the band never arrived");
+      expect(waitForRoster(you), "the band never introduced itself");
+
+      for (auto p : room.bandPhases())
+        expect(p == BandPlayState::State::Silent,
+               "a bot started playing without being asked");
+
+      // A room where nothing happens looks broken, so the one line anybody
+      // reads has to carry the way in.
+      bool taught = false;
+      for (const auto &line : you.snapshot())
+        if (line.contains("-bot]") && line.containsIgnoreCase("play"))
+          taught = true;
+      expect(taught, "nothing told the room how to start the band");
+
+      you.client.sendChatMessage("band play");
+      expect(waitUntil([&] {
+        for (auto p : room.bandPhases())
+          if (p != BandPlayState::State::Playing)
+            return false;
+        return !room.bandPhases().empty();
+      }, 5000), "the band would not start");
+    }
+
     beginTest("one bot speaks for the band, and all four still act");
     {
       // Reported from a real room: "band stop" got four identical replies.
@@ -650,6 +702,7 @@ public:
       };
 
       expect(waitForRoster(you), "the band never introduced itself");
+      expect(startBand(you, room), "the band would not start");
 
       const int before = you.snapshot().size();
       you.client.sendChatMessage("band stop");
@@ -693,6 +746,7 @@ public:
       }, 5000), "the band never arrived");
 
       expect(waitForRoster(you), "the band never introduced itself");
+      expect(startBand(you, room), "the band would not start");
 
       // Stop the bot that would WIN a flat race, so that a race is exactly
       // what this catches. Picking any other one makes the test pass or fail
@@ -781,6 +835,7 @@ public:
       PracticeBot bot("Probe[kit-bot]", {"kit"});
       expect(bot.join(PracticeRoom::host(), room.port(), 48000.0));
       bot.playAs(BotBand::Voice::Drums, keyOf("C major"), 120, 8, 48000.0, 7u);
+      bot.startPlaying(); // it joins silent, like every bot now does
 
       // Replaces the band's own render, which is the point: we care about the
       // phase it is handed, not the audio it would have made from it.
@@ -823,6 +878,8 @@ public:
       expect(waitUntil([&] {
         return you.client.getRemoteUsers().count(keys) > 0;
       }, 5000), "the band never arrived");
+
+      expect(startBand(you, room), "the band would not start");
 
       auto everyoneIs = [&](BandPlayState::State want) {
         const auto phases = room.bandPhases();
