@@ -786,11 +786,59 @@ acknowledges a key change, one bot answers a question, and now the whole band
 follows one arc -- and it is worth recognising as the pattern it is: identical
 inputs, identical deterministic function, agreement for free.
 
+**The enabling change is to split the seed in two.** Today one seed plus the
+interval index decides everything, which is exactly why repetition and
+staleness cannot be separated: repeating a phrase means reusing the seed, and
+reusing the seed reproduces the interval sample for sample. So:
+
+- `figureSeed = f(roomSeed, voice, section)` decides **what** is played, and is
+  the same for every interval of the same section;
+- `performanceSeed = f(roomSeed, voice, intervalIndex)` decides **how** it is
+  played, and is different every time.
+
+A phrase that returns is then the same music and a different take, which is
+what the interlock at the bottom of this section asks for -- reached by
+construction rather than by hoping the jitter is enough.
+
+**Two axes of repetition, and they are independent.** Both are missing and the
+first is probably the larger win per unit of work:
+
+- *Within* an interval -- a phrase shorter than the interval, repeated. Every
+  figure currently spans the whole interval, so nothing recurs inside one. A
+  two-bar riff played four times is the difference between a riff and eight
+  bars of through-composed line.
+- *Across* intervals -- the form. AABA.
+
+**The hard constraint, from the interval delay: form varies TEXTURE, never
+HARMONY.** You hear the band a whole interval late, so the form you hear is
+rotated against the form they are playing. That is harmless while every section
+shares the chart -- a rotation of the same chords is the same chords. Give the
+sections different chords and it becomes fatal: you would be soloing over a
+progression you cannot hear. The chart stays one chart.
+
+**And the form is illegible unless something marks it.** A listener a whole
+interval behind cannot infer where the phrase begins from the notes alone. The
+turnaround is what makes the structure perceptible, which promotes it from
+decoration to the thing that makes the rest of this audible at all.
+
+- [ ] **Split the seed**, per above. No audible change on its own -- with a
+      one-section form the band plays exactly as it does now -- which is what
+      makes it safe to land first and measure against.
 - [ ] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
       interval, so a phrase is a thing the listener can recognise coming back
       rather than a fresh roll each time. The table and the section length come
       from the room seed, so `shake` changes the shape of the music and not just
       its notes.
+- [ ] **Phrase length inside the interval.** A figure whose period is a half or
+      a quarter of the interval, repeated, rather than one that spans it. Seed
+      chosen per voice, since a bass riff and a lead line do not want the same
+      answer -- and the bass figure is already nudged AWAY from repeating
+      inside the interval on purpose, so that rule becomes a choice rather than
+      a constant.
+- [ ] **Starting a tune starts the form.** `BandPlayState` going from Silent to
+      Playing should reset the form origin, or the band comes in mid-structure
+      -- which is not what "start playing" means. The play states already exist;
+      this is where they meet the form.
 - [ ] **A shared intensity curve.** One deterministic arc over a section, read
       by every voice and mapped to its own parameters: hats thicken, the bass
       gets busier, the keys add extensions, the lead climbs. Tension and release
@@ -803,14 +851,35 @@ inputs, identical deterministic function, agreement for free.
       interval; make that the section boundary rather than a fixed count.
 - [ ] Deviation, so the form does not become its own kind of stale: an
       occasional departure whose likelihood grows the longer a phrase has
-      repeated.
+      repeated. With the seed split this has a natural home -- the departure is
+      a figure decision, so it belongs to the section seed and the repeat
+      count, not to the performance.
+- [ ] **The keys should be able to comp.** Today `renderKeys` holds one
+      sustained chord per chord-span: it is a pad, and a pad is the only thing
+      the keyboard player ever does. A Euclidean figure of stabs with a short
+      hold, re-striking the current chord while the chart still decides which
+      chord it is, would give the band a rhythmic middle it does not have.
+
+      **Seed-chosen**, like every other timbre decision here: some sessions
+      pad, some comp, some sit between. That keeps `shake` meaningful and means
+      the question "which is right" does not have to be answered.
+
+      The envelope is the actual work and it wants ears rather than a rule.
+      `PadPatch` was shaped for chords that ring into each other -- its release
+      is two seconds -- and a stab is a different instrument's gesture. This is
+      an `AntiphonVoiceLab` job (`docs/BOT-CHAT.md` has no opinion on it).
+- [ ] **Being told a form.** `band, play ABACBA` as a chat intent: parse a
+      letter string, bound its length, store it in `Settings`. Cheap once the
+      mechanism exists and worth having last rather than first -- the default
+      form has to be good before choosing one is interesting.
 
 **One interlock to get right.** `test/BotBandTests.cpp` asserts that two
 consecutive drum intervals are not bit-identical -- today the hat rotation
-carries that -- and genuine repetition is exactly what would break it. The
-answer is not to weaken the test: it is that repetition should be identical in
-its *figure* and never in its *performance*, which is what the swing and
-per-hit jitter in the synthesis work provide. A phrase that returns played
+carries that -- and genuine repetition is exactly what would break it: AABA
+puts two A intervals next to each other, and under one seed they would be the
+same samples. The answer is not to weaken the test. It is the seed split above:
+repetition is identical in its *figure* and never in its *performance*, which
+is what the swing and per-hit jitter in the synthesis work provide. A phrase that returns played
 exactly the same way twice is a loop; played fractionally differently, it is a
 band. The two pieces of work want doing in that order.
 
