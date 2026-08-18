@@ -611,11 +611,20 @@ restraint rather than conversation.
       has no state for it: it plays from connect until evicted, and the only
       way to stop it is to send it home. **Designed in `docs/BOT-CHAT.md`
       section 15; that section is the specification and this is the checklist.**
-      - [ ] Four states -- Silent, Playing, Wrapping, Resolving -- sampled ONCE
+      - [x] Four states -- Silent, Playing, Wrapping, Resolving -- sampled ONCE
             per interval at the top of the render and held for it. `Wrapping`
             and `Resolving` advance on their own, one interval each; `start`
             during `Wrapping` cancels the ending, and nothing escapes
-            `Resolving`. Reading again part-way
+            `Resolving`. `src/BandPlayState.h`, pure and driven directly by
+            `test/BandPlayStateTests.cpp` -- through a room the timing is only
+            observable as several seconds of audio.
+      - [x] `Silent` transmits NOTHING, rather than an interval of zeroes, and
+            a silent bot still follows the key and the chart: that is most of
+            what anybody does between tunes. Band membership (`inBand`) and
+            audibility are separate questions now.
+      - [x] `START_PLAYING`/`STOP_PLAYING` reach `BotChat::Act`, and the reply
+            depends on what the bot is already doing -- four states, four
+            different truths. Reading again part-way
             tears an interval across two states, and delivery is
             all-or-nothing. `PracticeBot::playing` already exists for this and
             is dead weight today: never cleared, and `BotChat::Self::playing`
@@ -659,8 +668,12 @@ restraint rather than conversation.
             and scales sensibly with bpi.
       - [ ] How the two intervals SOUND is an `AntiphonVoiceLab` tuning job,
             measured like every other voice.
-      - [ ] The reply says what is about to happen rather than implying it
-            stops now -- "wrapping up, ending on the next downbeat".
+      - [x] The reply says what is about to happen rather than implying it
+            stops now: "wrapping it up -- ending on the downbeat after this
+            one."
+      - [ ] The two ending intervals still SOUND like ordinary playing: the
+            states and their timing are built, the taper and the resolve are
+            not. That is the next piece, and the only one wanting ears.
       - [ ] Arrive Silent. The band connects before the player does, so playing
             on connect plays to an empty room; the roster line already re-arms
             for the first human and is where start/stop gets taught. Disposes

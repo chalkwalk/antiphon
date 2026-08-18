@@ -149,6 +149,15 @@ std::vector<BotBand::Settings> PracticeRoom::bandSettings() const {
   return out;
 }
 
+std::vector<BandPlayState::State> PracticeRoom::bandPhases() const {
+  juce::ScopedLock sl(botsMutex);
+  std::vector<BandPlayState::State> out;
+  out.reserve(bots.size());
+  for (const auto &b : bots)
+    out.push_back(b->playPhase());
+  return out;
+}
+
 void PracticeRoom::reapPartedBots() {
   // A bot that has parted -- because its owner left, because someone asked it
   // to, or because the connection went -- is not coming back. Drop it rather

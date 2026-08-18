@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BandPlayState.h"
 #include "PracticeBot.h"
 #include "PracticeServer.h"
 #include <JuceHeader.h>
@@ -72,6 +73,11 @@ public:
   // What each bot is currently playing. For tests and for the UI to report the
   // key and chords the band has settled on.
   std::vector<BotBand::Settings> bandSettings() const;
+
+  // What each bot is playing, or how far through stopping it is. The observable
+  // for the play/stop states: from outside, the difference between wrapping up
+  // and being silent is several seconds of audio, which no test can watch.
+  std::vector<BandPlayState::State> bandPhases() const;
 
   PracticeServer &practiceServer() { return server; }
 

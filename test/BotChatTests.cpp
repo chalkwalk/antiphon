@@ -29,7 +29,7 @@ BotChat::Context contextWith(BotBand::Voice voice, const juce::String &botName,
 
   ctx.self.name = botName;
   ctx.self.voice = voice;
-  ctx.self.playing = true;
+  ctx.self.phase = BandPlayState::State::Playing;
   // A real band's settings rather than a hand-built one, so the figures a bot
   // quotes are the figures the renderer would actually play.
   ctx.self.settings = BotBand::defaults(ctx.music.key, 120, 8, 48000.0, 20260811);
@@ -635,27 +635,27 @@ public:
              "the room's key was answered as if it were the bot's: " + key.text);
     }
 
-    beginTest("stopping is not leaving, and the bot does not pretend it stopped");
+    beginTest("stopping ends the tune, and says what is about to happen");
     {
-      // The reassignment, at the level a player meets it. "stop" used to send
-      // the whole band home; it must not, and it must not claim to have
-      // stopped either, because the states to stop into are not built yet
-      // (docs/BOT-CHAT.md section 15).
+      // What a player meets. Stopping is an ENDING, so the reply says the
+      // ending is coming rather than claiming it has already happened -- it
+      // lands one to two intervals later and a reply implying otherwise would
+      // be wrong twice a minute (docs/BOT-CHAT.md section 15).
       auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      ctx.self.phase = BandPlayState::State::Playing;
 
       for (const char *said : {"Ravo: stop", "Ravo: stop playing",
-                               "Ravo: thats enough", "Ravo: were done",
-                               "Ravo: wrap it up"}) {
+                               "Ravo: thats enough", "Ravo: wrap it up"}) {
         BotAddress::Attention att;
         const auto r = BotChat::respond(ctx, from("tester", said), att);
         expect(r.speak, juce::String(said) + " went unanswered");
+        expect(r.act == BotChat::Act::StopPlaying,
+               juce::String(said) + " did not stop the playing: " + r.text);
         expect(r.act != BotChat::Act::Part,
                juce::String(said) + " sent the band home: " + r.text);
-        expect(!r.text.containsIgnoreCase("i can tell you my part"),
-               juce::String(said) + " fell through to the catch-all: " + r.text);
-        // Says how to do the thing it cannot do, rather than only refusing.
-        expect(r.text.containsIgnoreCase("leave"),
-               juce::String(said) + " does not say what does work: " + r.text);
+        // Present or future, never past: it has not stopped yet.
+        expect(!r.text.containsIgnoreCase("stopped"),
+               juce::String(said) + " claims to have stopped already: " + r.text);
       }
 
       // Leaving still works, and still takes a word that can only mean it.
@@ -664,6 +664,69 @@ public:
         const auto r = BotChat::respond(ctx, from("tester", said), att);
         expect(r.act == BotChat::Act::Part,
                juce::String(said) + " no longer sends the bot home: " + r.text);
+      }
+    }
+
+    beginTest("the answer depends on what it is already doing");
+    {
+      // Four states, four different truths. A bot that said "wrapping up" from
+      // silence, or "coming in" while already playing, would be describing
+      // somebody else's band.
+      struct Case {
+        BandPlayState::State phase;
+        const char *said;
+        BotChat::Act act;
+        const char *wanted;
+      };
+      const Case cases[] = {
+          {BandPlayState::State::Silent, "stop", BotChat::Act::None, "already"},
+          {BandPlayState::State::Playing, "play", BotChat::Act::None, "already"},
+          {BandPlayState::State::Silent, "play", BotChat::Act::StartPlaying, "in"},
+          // The cancel: the wrap-up is the window in which "no, keep going"
+          // still means something.
+          {BandPlayState::State::Wrapping, "play", BotChat::Act::StartPlaying,
+           "keep"},
+          {BandPlayState::State::Wrapping, "stop", BotChat::Act::None, "already"},
+          // Nothing escapes the resolve; the reply says so rather than
+          // silently doing nothing.
+          {BandPlayState::State::Resolving, "play", BotChat::Act::None, "last"},
+      };
+
+      for (const auto &c : cases) {
+        auto ctx = contextWith(BotBand::Voice::Bass, "Vessa", "tester");
+        ctx.self.phase = c.phase;
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(
+            ctx, from("tester", juce::String("Vessa: ") + c.said), att);
+        const juce::String what = juce::String(c.said) + " while " +
+                                  juce::String((int)c.phase);
+        expect(r.speak, what + " went unanswered");
+        expect(r.act == c.act, what + " gave the wrong action: " + r.text);
+        expect(r.text.containsIgnoreCase(c.wanted),
+               what + " should mention '" + c.wanted + "': " + r.text);
+      }
+    }
+
+    beginTest("no phrasing for stopping ever sends the band home");
+    {
+      // The regression guard for the reassignment. "stop playing" used to be
+      // an eviction, and the corpus is wide enough that a scoring change could
+      // quietly hand one of these back to LEAVE -- which is the one mistake
+      // here that cannot be undone by typing again.
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      ctx.self.phase = BandPlayState::State::Playing;
+
+      for (const char *said :
+           {"Ravo: stop", "Ravo: stop playing", "Ravo: please stop",
+            "Ravo: thats enough", "Ravo: were done", "Ravo: wrap it up",
+            "Ravo: halt", "Ravo: lets stop", "Ravo: take five",
+            "Ravo: hold it", "Ravo: finish up", "Ravo: lay out"}) {
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(ctx, from("tester", said), att);
+        expect(r.act != BotChat::Act::Part,
+               juce::String(said) + " sent the band home: " + r.text);
+        expect(!r.text.containsIgnoreCase("i can tell you my part"),
+               juce::String(said) + " fell through to the catch-all: " + r.text);
       }
     }
 

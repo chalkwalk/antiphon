@@ -605,6 +605,74 @@ public:
       }, 4000), "the bot did not say what key the room was in");
     }
 
+    beginTest("stopping ends the tune over two intervals, and does not leave");
+    {
+      // The whole point of the four states, end to end over a real socket. A
+      // short interval so the ending is observable in about a second rather
+      // than twelve (docs/BOT-CHAT.md section 15).
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.bpm = 240;
+      cfg.bpi = 4; // one second per interval
+      expect(room.start(cfg));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      const auto keys = botPlaying(room, "keys");
+      expect(waitUntil([&] {
+        return you.client.getRemoteUsers().count(keys) > 0;
+      }, 5000), "the band never arrived");
+
+      auto everyoneIs = [&](BandPlayState::State want) {
+        const auto phases = room.bandPhases();
+        if (phases.empty())
+          return false;
+        for (auto p : phases)
+          if (p != want)
+            return false;
+        return true;
+      };
+      expect(everyoneIs(BandPlayState::State::Playing),
+             "the band did not start out playing");
+
+      const auto handle = juce::String(BotNames::handleOf(keys.toStdString()));
+      you.client.sendChatMessage(handle + ": stop");
+
+      // Poll fast enough to see the ending happen rather than only its result:
+      // the states between playing and silence ARE the ending, and a bot that
+      // jumped straight to silence would have none.
+      bool sawEnding = false, sawSilent = false;
+      for (int i = 0; i < 400 && !sawSilent; ++i) {
+        const auto phases = room.bandPhases();
+        for (auto p : phases) {
+          if (p == BandPlayState::State::Wrapping ||
+              p == BandPlayState::State::Resolving)
+            sawEnding = true;
+        }
+        for (auto p : phases)
+          if (p == BandPlayState::State::Silent)
+            sawSilent = true;
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+      }
+
+      expect(sawEnding, "the bot went silent without playing an ending");
+      expect(sawSilent, "the bot never stopped");
+
+      // Stopping is NOT leaving: it is still in the room, still a remote
+      // player, and can be asked to come back.
+      expect(room.botCount() > 0, "stopping sent the band home");
+      expect(you.client.getRemoteUsers().count(keys) > 0,
+             "the bot left the room instead of stopping");
+
+      you.client.sendChatMessage(handle + ": play");
+      expect(waitUntil([&] {
+        for (auto p : room.bandPhases())
+          if (p == BandPlayState::State::Playing)
+            return true;
+        return false;
+      }, 5000), "the bot could not be brought back in");
+    }
+
     beginTest("a bot told to be quiet stops answering, and can be brought back");
     {
       PracticeRoom room;
