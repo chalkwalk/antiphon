@@ -192,6 +192,11 @@ private:
   // so nothing is inferred or defaulted into this.
   Harmony::Chart sessionChart;
 
+  // Whether the chart is one somebody put up or one the key implied. What a
+  // key change turns on: preserve what was written, re-derive what was
+  // delegated (`DESIGN.md` section 6.4, `RoomHarmony`).
+  bool chartFromChat = false;
+
   // A key the chords imply but nobody has declared. Offered on the chip, never
   // acted on by itself, and never sent anywhere: clicking is what announces it.
   Harmony::KeyGuess keyFromChords;

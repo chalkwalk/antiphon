@@ -5,6 +5,7 @@
 #include "BotBand.h"
 #include "BotChat.h"
 #include "NinjamClient.h"
+#include "RoomHarmony.h"
 #include <JuceHeader.h>
 #include <functional>
 
