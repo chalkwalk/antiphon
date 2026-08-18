@@ -257,6 +257,21 @@ bool parseChart(const juce::String &text, Chart &out);
 bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
                       Chart &out);
 
+// The chord a loop resolves to: what an ending lands on.
+//
+// The room's own tonic chord if the chart contains one, otherwise the mode's
+// tonic triad. Scanning for the tonic first is what makes a blues end on `C7`
+// rather than a bare `C`, and a modal vamp end on `Dm7` -- the chart has
+// already said what the tonic sounds like in this tune, and that answer beats
+// anything derived.
+//
+// NOT the chart's last chord, which is often the V precisely so that the loop
+// loops. Landing there is how you get an ending that sounds like a mistake.
+//
+// Invents a chord only when the chart never named one on the tonic, which is
+// the one case where it has to (`docs/BOT-CHAT.md` section 15).
+Chord resolutionChord(const Chart &chart, const MusicalKey::Key &key);
+
 // "| Dm | Bb F |": a chart as a player would write it.
 juce::String chartText(const Chart &chart, bool flat);
 

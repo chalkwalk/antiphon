@@ -46,10 +46,11 @@ float rms(const std::vector<float> &v, int from, int to) {
 }
 
 std::vector<float> render(BotBand::Voice voice, const BotBand::Settings &s,
-                          int intervalIndex = 0) {
+                          int intervalIndex = 0,
+                          BotBand::Phase phase = BotBand::Phase::Groove) {
   const int n = intervalSamplesFor(s);
   std::vector<float> buf((size_t)n, 0.0f);
-  BotBand::renderInterval(voice, s, intervalIndex, buf.data(), n);
+  BotBand::renderInterval(voice, s, intervalIndex, phase, buf.data(), nullptr, n);
   return buf;
 }
 
@@ -62,6 +63,7 @@ public:
   void runTest() override {
     runSeedTests();
     runFigureTests();
+    runEndingTests();
     runAudioTests();
     runKeysTests();
     runLeadTests();
@@ -186,6 +188,127 @@ public:
       const auto a = render(BotBand::Voice::Drums, settingsFor("C major", 120, 8, 1));
       const auto b = render(BotBand::Voice::Drums, settingsFor("C major", 120, 8, 999));
       expect(a != b, "rerolling the seed changed nothing");
+    }
+  }
+
+  void runEndingTests() {
+    // An ending is two intervals: one that winds down and one that lands. The
+    // STATES and their timing are BandPlayState's business; this is what they
+    // sound like (docs/BOT-CHAT.md section 15).
+    const auto s = settingsFor("C major");
+    const int n = intervalSamplesFor(s);
+
+    beginTest("the resolve lands on the downbeat and then gets out of the way");
+    {
+      // The shape that makes it an ending rather than a dropout: everything
+      // arrives together on beat one, rings, and the rest of the interval is
+      // quiet. Measured as a ratio between the two halves rather than against
+      // an absolute, because the voices differ in level by design.
+      for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
+                         BotBand::Voice::Keys, BotBand::Voice::Lead}) {
+        const auto out = render(voice, s, 0, BotBand::Phase::Resolving);
+        const juce::String who = BotBand::voiceName(voice);
+
+        // The lead is silent on the resolve: a soloist who hears the band
+        // ending does not start another phrase.
+        if (voice == BotBand::Voice::Lead) {
+          expect(AudioMeasure::peak(out.data(), n) < 0.001f,
+                 who + " played over the final chord");
+          continue;
+        }
+
+        const float opening = rms(out, 0, n / 8);
+        const float tail = rms(out, n / 2, n);
+        expect(opening > 0.002f, who + " did not land on the downbeat");
+        expect(tail < opening * 0.25f,
+               who + " is still going in the second half of the resolve: "
+                   + juce::String(opening) + " then " + juce::String(tail));
+      }
+    }
+
+    beginTest("the wrap-up plays through, and thins in its second half");
+    {
+      // A taper rather than a switch: the first half is the tune, the second
+      // half winds down. A wrap-up that went quiet immediately would be an
+      // ending one interval early.
+      for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
+                         BotBand::Voice::Keys}) {
+        const auto out = render(voice, s, 0, BotBand::Phase::Wrapping);
+        const juce::String who = BotBand::voiceName(voice);
+        expect(rms(out, 0, n / 2) > 0.002f,
+               who + " stopped playing during the wrap-up");
+        expect(rms(out, n / 2, n) > 0.0005f,
+               who + " dropped out entirely instead of thinning: " + who);
+      }
+
+      // The lead lays out at the halfway point. It is the clearest "we are
+      // ending" signal there is, and it is why the fill has room to be heard.
+      const auto lead = render(BotBand::Voice::Lead, s, 0, BotBand::Phase::Wrapping);
+      const float first = rms(lead, 0, n / 2);
+      const float last = rms(lead, 3 * n / 4, n);
+      expect(first > 0.001f, "the lead never played in the wrap-up at all");
+      // The LAST QUARTER, not the second half. A note already under way when
+      // the lead lays out rings on and finishes -- that is deliberate, and it
+      // is what a player does -- so the half straight after the cutoff is
+      // still full of tail. By the last quarter the ring-out has gone and only
+      // a lead that kept playing would show up.
+      expect(last < first * 0.15f,
+             "the lead did not lay out: " + juce::String(first) +
+                 " over the first half, " + juce::String(last) + " at the end");
+    }
+
+    beginTest("an ending is not an ordinary interval");
+    {
+      // The whole feature, stated as the difference a listener hears. If any
+      // of these matched, the states would be real and inaudible.
+      for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
+                         BotBand::Voice::Keys, BotBand::Voice::Lead}) {
+        const auto groove = render(voice, s, 0, BotBand::Phase::Groove);
+        const auto wrap = render(voice, s, 0, BotBand::Phase::Wrapping);
+        const auto land = render(voice, s, 0, BotBand::Phase::Resolving);
+        const juce::String who = BotBand::voiceName(voice);
+
+        // The BASS is deliberately unchanged in the wrap-up. Winding down is a
+        // taper and not everybody drops at once: the bass and the kit carry
+        // the time into the final downbeat, and a rhythm section that thinned
+        // out too would leave the landing with nothing to land from. The kit
+        // still differs because it gains a fill.
+        if (voice != BotBand::Voice::Bass)
+          expect(groove != wrap, who + " wraps up exactly as it grooves");
+        else
+          expect(groove == wrap, "the bass stopped keeping time in the wrap-up");
+
+        expect(groove != land, who + " resolves exactly as it grooves");
+        expect(wrap != land, who + " cannot tell the two ending intervals apart");
+      }
+    }
+
+    beginTest("the resolve lands on the chord the chart resolves to");
+    {
+      // The theory, heard rather than asserted about: the bass plays the root
+      // of `Harmony::resolutionChord`, which for a blues is the chart's own
+      // seventh chord and not a derived triad.
+      struct Case { const char *key; const char *chart; int wantedPc; };
+      const Case cases[] = {
+          {"C major", "| Am | F | C | G |", 0},  // C, not the G it loops on
+          {"A minor", "| Am | F | C | G |", 9},  // the same chart, A minor
+          {"E minor", "| Em | C | G | D |", 4},
+      };
+
+      for (const auto &c : cases) {
+        auto st = settingsFor(c.key);
+        expect(Harmony::parseChart(c.chart, st.chart), c.chart);
+        const auto out = render(BotBand::Voice::Bass, st, 0,
+                                BotBand::Phase::Resolving);
+        const double hz = AudioMeasure::fundamentalHz(out.data(), n / 8,
+                                                      st.sampleRate);
+        expect(hz > 20.0, juce::String(c.chart) + ": no pitch on the resolve");
+        // Semitones above C0, folded into a pitch class.
+        const int pc = ((int)std::lround(12.0 * std::log2(hz / 16.3516)) % 12 + 12) % 12;
+        expectEquals(pc, c.wantedPc,
+                     juce::String(c.chart) + " in " + c.key +
+                         " resolved to the wrong root (" + juce::String(hz) + " Hz)");
+      }
     }
   }
 

@@ -75,7 +75,7 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
   startPlaying();
 
   setRender([this](juce::AudioBuffer<float> &buffer, int numSamples,
-                   int intervalIndex) {
+                   int intervalIndex, BotBand::Phase phase) {
     BotBand::Voice v;
     BotBand::Settings snapshot;
     {
@@ -95,7 +95,7 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
     // two channels here, so the stereo was already being paid for and simply
     // carried the same samples twice.
     const bool stereo = BotBand::isStereo(v) && buffer.getNumChannels() > 1;
-    BotBand::renderInterval(v, snapshot, intervalIndex,
+    BotBand::renderInterval(v, snapshot, intervalIndex, phase,
                             buffer.getWritePointer(0),
                             stereo ? buffer.getWritePointer(1) : nullptr,
                             numSamples);
@@ -114,6 +114,23 @@ void PracticeBot::shake() {
   s ^= s >> 15;
   settings.seed = s | 1u;
 }
+
+namespace {
+// The two vocabularies meet here and nowhere else: `BandPlayState` says WHEN a
+// bot is ending and `BotBand::Phase` says what that sounds like.
+BotBand::Phase phaseFor(BandPlayState::State s) {
+  switch (s) {
+  case BandPlayState::State::Wrapping:
+    return BotBand::Phase::Wrapping;
+  case BandPlayState::State::Resolving:
+    return BotBand::Phase::Resolving;
+  case BandPlayState::State::Playing:
+  case BandPlayState::State::Silent:
+    break;
+  }
+  return BotBand::Phase::Groove;
+}
+} // namespace
 
 BandPlayState::State PracticeBot::playPhase() const {
   juce::ScopedLock sl(stateMutex);
@@ -656,7 +673,9 @@ void PracticeBot::renderInterval(int numSamples, int intervalIndex) {
     renderBuffer.setSize(2, numSamples, false, true, true);
   renderBuffer.clear(0, numSamples);
 
-  r(renderBuffer, numSamples, intervalIndex);
+  // The phase sampled at the top of this interval, so what is rendered and what
+  // the state machine thinks are the same thing by construction.
+  r(renderBuffer, numSamples, intervalIndex, phaseFor(phase));
 
   if (!active.load())
     return;

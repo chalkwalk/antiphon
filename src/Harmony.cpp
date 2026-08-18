@@ -650,6 +650,29 @@ juce::String romanName(const Chord &chord, const MusicalKey::Key &key) {
   return out;
 }
 
+Chord resolutionChord(const Chart &chart, const MusicalKey::Key &key) {
+  const auto tonicTriad = key.valid ? modeChordOn(key, 0, false)
+                                    : chordOn(0, Quality::Major);
+  if (!key.valid)
+    return tonicTriad;
+
+  // The chart's own answer wins wherever it gave one. A blues says its tonic is
+  // a dominant seventh and a modal vamp says its tonic carries a seventh too;
+  // deriving a plain triad instead would end the tune on a chord the tune never
+  // contained.
+  //
+  // First rather than last, so a chart that touches the tonic twice ends on the
+  // way it was introduced.
+  for (const auto &c : flatten(chart))
+    if (c.root == key.tonic && c.bass < 0)
+      return c;
+
+  // Nothing on the tonic anywhere -- "| F | G | Am |" in C. This is the one
+  // case where the ending has to invent a chord, and the mode decides its
+  // quality.
+  return tonicTriad;
+}
+
 juce::String chartText(const Chart &chart, bool flat) {
   if (chart.empty())
     return {};

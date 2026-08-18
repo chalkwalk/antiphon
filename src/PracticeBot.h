@@ -36,7 +36,8 @@ public:
   // Fills one interval. Called on the conductor thread, never the audio thread,
   // so it may allocate -- though there is no reason for it to.
   using Render = std::function<void(juce::AudioBuffer<float> &buffer,
-                                    int numSamples, int intervalIndex)>;
+                                    int numSamples, int intervalIndex,
+                                    BotBand::Phase phase)>;
 
   PracticeBot(juce::String botName, juce::StringArray channelNames);
   ~PracticeBot() override;

@@ -353,7 +353,7 @@ inline constexpr double kKitDrive = 1.8;
 // sounding like a reverb rather than a room. 0.32 costs 0.2 LU of level.
 inline constexpr float kRoomMix = 0.32f;
 
-void renderDrums(const Settings &s, int intervalIndex, float *out,
+void renderDrums(const Settings &s, int intervalIndex, Phase phase, float *out,
                  float *right, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
   if (beatSamples <= 0)
@@ -426,7 +426,11 @@ void renderDrums(const Settings &s, int intervalIndex, float *out,
   // A fill at the end of every fourth interval: extra snares through the last
   // beat. Four intervals is the phrase length a listener hears whether or not
   // anyone intended one, so it is where a fill belongs.
-  if (intervalIndex % 4 == 3) {
+  // A wrap-up always fills, whatever the phrase count says. This is the whole
+  // reason the ending has a first interval: the fill is what tells the room the
+  // next downbeat is the last one, and a resolve with nothing leading into it
+  // is a dropout with a note on the front (docs/BOT-CHAT.md section 15).
+  if (intervalIndex % 4 == 3 || phase == Phase::Wrapping) {
     const int lastBeat = (s.bpi - 1) * beatSamples;
     for (int sub = 0; sub < 4; ++sub) {
       const int at = lastBeat + sub * (beatSamples / 4);
@@ -738,8 +742,8 @@ void renderKeys(const Settings &s, float *out, float *right, int numSamples) {
   }
 }
 
-void renderLead(const Settings &s, int intervalIndex, float *out,
-                int numSamples) {
+void renderLead(const Settings &s, int intervalIndex, int noNewNotesAfter,
+                float *out, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
   if (beatSamples <= 0)
     return;
@@ -764,6 +768,11 @@ void renderLead(const Settings &s, int intervalIndex, float *out,
 
     const int at = (int)step * eighth;
     if (at >= numSamples)
+      break;
+    // Laying out. A note already under way rings on and finishes its phrase,
+    // which is what a player does -- stopping dead mid-note is a mute, not a
+    // musician deciding the tune is ending.
+    if (at >= noNewNotesAfter)
       break;
 
     // Held until the next note or rest, so a line has phrasing rather than a
@@ -966,8 +975,70 @@ bool isStereo(Voice voice) {
   return voice == Voice::Drums || voice == Voice::Keys;
 }
 
+// The final chord: everything arrives together on the downbeat, rings, and the
+// rest of the interval is quiet.
+//
+// Its own function rather than a modified groove, because it IS different
+// material -- one event, not a figure. The chord is
+// `Harmony::resolutionChord`, so a blues ends on its own seventh rather than a
+// derived triad (docs/BOT-CHAT.md section 15).
+void renderResolve(Voice voice, const Settings &s, float *out, float *right,
+                   int numSamples) {
+  const auto chord = Harmony::resolutionChord(s.chart, s.key);
+  const int beatSamples = samplesPerBeat(s);
+  if (beatSamples <= 0)
+    return;
+
+  // Held for two beats, then released -- the tail does the rest. Deliberately
+  // short of the whole interval: the point of the resolve is that the band
+  // lands and gets out of the way, and at 32 bpi holding it would be half a
+  // minute of one chord.
+  const int ring = std::min(numSamples, beatSamples * 2);
+
+  switch (voice) {
+  case Voice::Drums: {
+    // A crash is what a band lands on, and the kit has no crash -- so an open
+    // hat with a long tail plus the kick underneath it, which is the same
+    // gesture made from the pieces that exist.
+    BotVoice::renderKick(out, numSamples, s.sampleRate, kDrumHeadroom * 0.95f);
+    BotVoice::renderHat(out, numSamples, s.sampleRate, kDrumHeadroom * 0.62f,
+                        saltedSeed(Voice::Drums, s.seed) + 4111u, true);
+    if (right != nullptr)
+      std::copy(out, out + numSamples, right);
+    break;
+  }
+  case Voice::Bass: {
+    // The root, low and alone. The bass is what makes a landing sound final.
+    const auto patch = bassPatch(s);
+    const int midi = 36 + chord.root; // C2 upward, the register it lives in
+    BotVoice::renderBassString(out, numSamples, s.sampleRate,
+                               BotVoice::midiToHz((double)midi), 0.9f, patch,
+                               saltedSeed(Voice::Bass, s.seed));
+    break;
+  }
+  case Voice::Keys: {
+    const auto patch = keysPatch(s);
+    const auto voicing = Harmony::voiceLead({chord});
+    if (voicing.empty())
+      break;
+    for (int note : voicing.front())
+      BotVoice::renderPad(out, numSamples, ring, s.sampleRate,
+                          BotVoice::midiToHz((double)note), 0.8f, patch,
+                          saltedSeed(Voice::Keys, s.seed) +
+                              97u * (std::uint32_t)note);
+    if (right != nullptr)
+      std::copy(out, out + numSamples, right);
+    break;
+  }
+  case Voice::Lead:
+    // Silent. A soloist who hears the band ending does not start another
+    // phrase over the top of the final chord.
+    break;
+  }
+}
+
 void renderInterval(Voice voice, const Settings &s, int intervalIndex,
-                    float *left, float *right, int numSamples) {
+                    Phase phase, float *left, float *right, int numSamples) {
   if (left == nullptr || numSamples <= 0 || s.sampleRate <= 0.0 || s.bpi <= 0)
     return;
 
@@ -979,19 +1050,44 @@ void renderInterval(Voice voice, const Settings &s, int intervalIndex,
   if (intervalIndex < 0)
     intervalIndex = 0;
 
-  switch (voice) {
-  case Voice::Drums:
-    renderDrums(s, intervalIndex, out, right, numSamples);
-    break;
-  case Voice::Bass:
-    renderBass(s, out, numSamples);
-    break;
-  case Voice::Keys:
-    renderKeys(s, out, right, numSamples);
-    break;
-  case Voice::Lead:
-    renderLead(s, intervalIndex, out, numSamples);
-    break;
+  // The wrap-up is a TAPER, not a switch: the first half is the tune and the
+  // second half winds down. Everyone dropping out at once is not what winding
+  // down sounds like, so only the lead actually stops -- it is the clearest
+  // signal there is, and it leaves room for the fill to be heard.
+  const int halfway = numSamples / 2;
+  const int leadStops =
+      phase == Phase::Wrapping ? halfway : numSamples;
+
+  if (phase == Phase::Resolving) {
+    renderResolve(voice, s, out, right, numSamples);
+  } else {
+    switch (voice) {
+    case Voice::Drums:
+      renderDrums(s, intervalIndex, phase, out, right, numSamples);
+      break;
+    case Voice::Bass:
+      renderBass(s, out, numSamples);
+      break;
+    case Voice::Keys:
+      renderKeys(s, out, right, numSamples);
+      break;
+    case Voice::Lead:
+      renderLead(s, intervalIndex, leadStops, out, numSamples);
+      break;
+    }
+  }
+
+  // The thinning, for the voices that keep playing. The bass and the kit carry
+  // the time into the downbeat and are left alone; the keys back off, which is
+  // what a player does when the tune is ending.
+  if (phase == Phase::Wrapping && voice == Voice::Keys) {
+    for (int i = halfway; i < numSamples; ++i) {
+      const float t = (float)(i - halfway) / (float)std::max(1, numSamples - halfway);
+      const float g = 1.0f - 0.45f * t;
+      out[i] *= g;
+      if (right != nullptr)
+        right[i] *= g;
+    }
   }
 
   // Balance, then a ceiling.
