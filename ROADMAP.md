@@ -698,6 +698,12 @@ restraint rather than conversation.
       - [ ] Returning inside the window does not restart them, and nothing is
             said unless the state actually changed. Rejoining a groove whose
             beginning you could not hear is worse than a quiet band waiting.
+- [x] **One bot speaks for the band.** A collectively addressed message whose
+      answer would be the same from everyone gets exactly one reply, phrased
+      for the band ("we're wrapping it up"); one whose answer differs -- what
+      each is playing, sounds like, is -- gets all four. Delay-and-watch, with
+      a bot that ACTED speaking ahead of one that had nothing to do, so a
+      half-stopped band does not have a silent bot answer for it.
 - [ ] Addressing: at most one bot ever answers, cold silence is the default,
       first contact must be explicit, and a message aimed at a human is
       answered by nobody. Four bots replying to one question is the annoyance

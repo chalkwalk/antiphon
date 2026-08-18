@@ -3,6 +3,11 @@
 #include "BotNames.h"
 
 namespace {
+// How much longer a bot with nothing to do waits before speaking for the band.
+// Comfortably past the whole of the acting bots' spread, so any bot that
+// actually did something wins.
+constexpr int kIdleSpeakerPenaltyMs = 700;
+
 // One place, so the help line and the parser cannot drift apart.
 // "part" is deliberately absent, and so are "stop" and bare "go" -- see
 // BotAddress::isPartCommand for why each was withdrawn.
@@ -60,6 +65,7 @@ void PracticeBot::part() {
   if (!active.exchange(false))
     return;
   stopTimer();
+  bandReply.cancel();
   netClient.disconnectFromServer();
 }
 
@@ -221,6 +227,7 @@ BotChat::Context PracticeBot::currentContext() const {
   ctx.music.bpi = settings.bpi;
 
   ctx.self.name = botName;
+  ctx.self.handle = juce::String(BotNames::handleOf(botName.toStdString()));
   ctx.self.voice = bandVoice;
   ctx.self.settings = settings;
   ctx.self.phase = playState.current();
@@ -321,6 +328,27 @@ void PracticeBot::timerCallback() {
   // player to empty their own room with the first command they were shown.
   netClient.sendChatMessage(
       "say a name to talk to one of us. say \"leave\" and we all go home.");
+}
+
+void PracticeBot::BandReply::timerCallback() {
+  stopTimer();
+  // Somebody got there first, so the room already has its answer. Saying it
+  // again is the chorus this exists to prevent.
+  if (heardOne || text.isEmpty())
+    return;
+  if (bot.chatMuted.load())
+    return;
+  bot.netClient.sendChatMessage(text);
+}
+
+int PracticeBot::speakDelayMs(const juce::String &botName) {
+  // Long enough that the winner's line has crossed the server and come back to
+  // everyone else -- loopback is immediate, a real server is tens of
+  // milliseconds -- and short enough to read as an answer rather than a pause.
+  std::uint32_t h = 2166136261u;
+  for (auto c : botName)
+    h = (h ^ (std::uint32_t)(juce::juce_wchar)c) * 16777619u;
+  return 220 + (int)(h % 380u);
 }
 
 int PracticeBot::arrivalDelayMs() const {
@@ -578,6 +606,11 @@ void PracticeBot::onChatMessage(const juce::String &type,
           juce::String(BotNames::handleOf(botName.toStdString()))))
     announcedMe = true;
 
+  // Another bot has spoken, so a band-wide line we were about to give has
+  // already been given. This is the whole of the arbitration.
+  if (BotNames::looksLikeBot(username.toStdString()))
+    bandReply.somebodySpoke();
+
   const bool isPrivate = (type == "PRIVMSG");
 
   // The structured instructions are shouted, and take no address at all.
@@ -614,6 +647,21 @@ void PracticeBot::onChatMessage(const juce::String &type,
     // room discovers that the bots can be spoken to.
     if (answer.privately)
       netClient.sendPrivateMessage(username, answer.text);
+    else if (answer.forBand)
+      // Acting is collective and speaking is arbitrated: the action below
+      // happens in every addressed bot, and only the LINE about it is rationed.
+      //
+      // A bot that ACTED speaks ahead of one that had nothing to do. With the
+      // band half stopped, "band stop" makes the playing ones wrap up and
+      // leaves the silent ones with "already stopped" -- and whoever won a
+      // flat race would answer for everybody. That is not merely noisy, it is
+      // wrong: the room would be told nothing was happening while three bots
+      // ended the tune. If nobody acted, the deferred line is the right answer
+      // and it still gets said.
+      bandReply.schedule(answer.text,
+                         answer.act != BotChat::Act::None
+                             ? speakDelayMs()
+                             : speakDelayMs() + kIdleSpeakerPenaltyMs);
     else
       netClient.sendChatMessage(answer.text);
   }

@@ -10,7 +10,9 @@ BotChat::Context contextWith(BotBand::Voice voice, const juce::String &botName,
   BotChat::Context ctx;
 
   BotAddress::Participant bot;
-  bot.username = botName.toStdString();
+  bot.username = (botName + "[" +
+                  juce::String(BotBand::voiceName(voice)).toLowerCase() +
+                  "-bot]").toStdString();
   bot.handle = botName.toLowerCase().toStdString();
   bot.instrument = BotBand::voiceName(voice);
   bot.isBot = true;
@@ -27,7 +29,11 @@ BotChat::Context contextWith(BotBand::Voice voice, const juce::String &botName,
   ctx.music.keySetBy = human;
   ctx.music.chart = Harmony::defaultChart(ctx.music.key);
 
-  ctx.self.name = botName;
+  ctx.self.name = botName + "[" + juce::String(BotBand::voiceName(voice)).toLowerCase() + "-bot]";
+  // The real shape of a bot's identity: the username carries the instrument
+  // suffix and the HANDLE is what a player types. Building them apart is what
+  // catches a reply quoting `say "Ravo[keys-bot] play"` at somebody.
+  ctx.self.handle = botName;
   ctx.self.voice = voice;
   ctx.self.phase = BandPlayState::State::Playing;
   // A real band's settings rather than a hand-built one, so the figures a bot
@@ -612,6 +618,11 @@ public:
           expect(r.speak, juce::String(m) + " went unanswered");
           expect(!outsideQuotes(r.text).contains("Ravo"),
                  "a bot named itself: \"" + r.text + "\" (asked: " + m + ")");
+          // Nor the username with its instrument suffix, even inside quotes:
+          // `say "Ravo[keys-bot] play"` is not something anybody would type,
+          // and instructions that cannot be followed are worse than none.
+          expect(!r.text.containsChar('['),
+                 "a reply quotes the suffixed username: " + r.text);
         }
       }
 
@@ -633,6 +644,64 @@ public:
           BotChat::respond(ctx, from("tester", "Ravo: what key are we in"), att);
       expect(key.text.containsWholeWord("we"),
              "the room's key was answered as if it were the bot's: " + key.text);
+    }
+
+    beginTest("a reply the whole band would give is marked as the band's");
+    {
+      // Four bots saying "wrapping it up" is the chorus this whole design
+      // exists to prevent. The rule is not which intent it is but whether the
+      // answer DIFFERS between bots: what each one is playing differs, and
+      // everything about the band as a whole does not.
+      struct Case { const char *said; bool forBand; const char *why; };
+      const Case cases[] = {
+          {"stop", true, "one ending, not four"},
+          {"play", true, "one band coming in"},
+          {"shake", true, "'ok, something else' is the same from everyone"},
+          {"be quiet", true, "one acknowledgement, and one way back"},
+          {"what key are we in", true, "one fact"},
+          {"whats the chart", true, "one fact"},
+          // ...and the ones that are genuinely four different answers.
+          {"whats your part", false, "four different parts"},
+          {"whats your sound", false, "four different sounds"},
+          {"what are you", false, "four different instruments"},
+      };
+
+      for (const auto &c : cases) {
+        auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+        ctx.self.phase = BandPlayState::State::Playing;
+        BotAddress::Attention att;
+        const auto r = BotChat::respond(
+            ctx, from("tester", juce::String("band ") + c.said), att);
+        expect(r.speak, juce::String(c.said) + " went unanswered");
+        expect(r.forBand == c.forBand,
+               juce::String("band ") + c.said + " -- " + c.why + ": " + r.text);
+      }
+
+      // Addressed to ONE bot, the same words are that bot's own reply and
+      // nothing is arbitrated: there is nobody else to defer to.
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      ctx.self.phase = BandPlayState::State::Playing;
+      BotAddress::Attention att;
+      const auto one = BotChat::respond(ctx, from("tester", "Ravo: stop"), att);
+      expect(!one.forBand, "a reply to one bot claimed to speak for the band");
+    }
+
+    beginTest("speaking for the band says we, not i");
+    {
+      auto ctx = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
+      ctx.self.phase = BandPlayState::State::Playing;
+
+      BotAddress::Attention att;
+      const auto band =
+          BotChat::respond(ctx, from("tester", "band stop"), att);
+      BotAddress::Attention att2;
+      const auto mine =
+          BotChat::respond(ctx, from("tester", "Ravo: stop"), att2);
+
+      expect(band.text != mine.text,
+             "the band's ending reads exactly like one bot's: " + band.text);
+      expect(band.text.containsWholeWord("we"),
+             "speaking for the band without saying we: " + band.text);
     }
 
     beginTest("stopping ends the tune, and says what is about to happen");

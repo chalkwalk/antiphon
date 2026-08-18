@@ -6,6 +6,12 @@ namespace BotChat {
 
 namespace {
 
+// What to put inside quotes when telling somebody how to address this bot:
+// "Ravo", where the username is "Ravo[keys-bot]".
+juce::String typedAs(const Self &self) {
+  return self.handle.isNotEmpty() ? self.handle : self.name;
+}
+
 // What this bot is playing, in its own terms. One line per voice because the
 // interesting fact is a different one for each: the kit has no patch to name,
 // and the lead's instrument is the thing a player most often wants changed.
@@ -81,7 +87,7 @@ juce::String describePart(const Self &self) {
 juce::String explainSelf(const Self &self) {
   return juce::String("i am a bot playing the ") +
          juce::String(BotBand::voiceName(self.voice)).toLowerCase() +
-         ". say \"" + self.name +
+         ". say \"" + typedAs(self) +
          " leave\" and i go. ask me about my part, my sound, the key, the "
          "chords or the tempo.";
 }
@@ -205,6 +211,20 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   if (who == BotAddress::Address::Ignore)
     return {};
 
+  // Addressed to everyone, so the answer is the band's rather than this bot's.
+  //
+  // Set here and cleared only by the replies that genuinely DIFFER between
+  // bots -- what each is playing, what each sounds like, what each one is.
+  // Everything else is one fact or one action, and four bots reciting it is
+  // the chorus this design exists to prevent (docs/BOT-CHAT.md section 5).
+  const bool everyone = who == BotAddress::Address::Collective ||
+                        who == BotAddress::Address::PartAll;
+  out.forBand = everyone;
+
+  // Speaking for four players rather than as one of them.
+  const juce::String iAm = everyone ? "we're" : "i'm";
+  const juce::String me = everyone ? "us" : "me";
+
   // Decided by the address rather than the sentence. Anyone may evict a bot --
   // a bot in somebody else's jam should be removable by the people it is
   // bothering, not only by whoever brought it.
@@ -212,7 +232,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
       who == BotAddress::Address::PartMe) {
     out.speak = true;
     out.act = Act::Part;
-    out.text = "leaving. bye.";
+    out.text = everyone ? "we're off. bye." : "leaving. bye.";
     return out;
   }
 
@@ -220,6 +240,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   // is the same line as "what are you".
   if (who == BotAddress::Address::Opener) {
     out.speak = true;
+    out.forBand = false;
     out.text = explainSelf(ctx.self);
     return out;
   }
@@ -248,6 +269,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
       pick = BotVoice::LeadInstrument::Guitar;
 
     out.act = Act::SetLeadInstrument;
+    out.forBand = false; // only the soloist changed anything
     out.value = (int)pick;
     out.text = juce::String("now on ") + BotVoice::leadInstrumentName(pick) + ".";
     return out;
@@ -272,12 +294,18 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
 
   switch (reading.intent) {
   case BotLanguage::Intent::DescribeSound:
+    // Four different answers, so all four give them. This is the case the
+    // arbitration must NOT swallow.
     out.speak = true;
+    out.forBand = false;
     out.text = describeSound(ctx.self);
     return out;
 
   case BotLanguage::Intent::DescribePart:
+    // Four different answers, so all four give them. This is the case the
+    // arbitration must NOT swallow.
     out.speak = true;
+    out.forBand = false;
     out.text = describePart(ctx.self);
     return out;
 
@@ -324,7 +352,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     // rationing belongs to whoever owns the room, not here.
     out.speak = true;
     out.act = Act::Reshuffle;
-    out.text = "ok, something else.";
+    out.text = everyone ? "ok, something else." : "ok, something else from me.";
     return out;
 
   case BotLanguage::Intent::Leave:
@@ -334,7 +362,10 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     return out;
 
   case BotLanguage::Intent::ExplainSelf:
+    // Four different answers, so all four give them. This is the case the
+    // arbitration must NOT swallow.
     out.speak = true;
+    out.forBand = false;
     out.text = explainSelf(ctx.self);
     return out;
 
@@ -347,15 +378,18 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     switch (ctx.self.phase) {
     case BandPlayState::State::Playing:
       out.act = Act::StopPlaying;
-      out.text = "wrapping it up -- ending on the downbeat after this one.";
+      out.text = (everyone ? juce::String("we're wrapping it up")
+                           : juce::String("wrapping it up")) +
+                 " -- ending on the downbeat after this one.";
       break;
     case BandPlayState::State::Wrapping:
     case BandPlayState::State::Resolving:
       out.text = "already bringing it to an end.";
       break;
     case BandPlayState::State::Silent:
-      out.text = "already stopped. say \"" + ctx.self.name +
-                 " play\" when you want me back in.";
+      out.text = "already stopped. say \"" +
+                 (everyone ? juce::String("band") : typedAs(ctx.self)) +
+                 " play\" when you want " + me + " back in.";
       break;
     }
     return out;
@@ -365,7 +399,9 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     switch (ctx.self.phase) {
     case BandPlayState::State::Silent:
       out.act = Act::StartPlaying;
-      out.text = "coming in on the next interval.";
+      out.text = (everyone ? juce::String("we're coming in")
+                           : juce::String("coming in")) +
+                 " on the next interval.";
       break;
     case BandPlayState::State::Wrapping:
       // The cancel. Worth its own line rather than the "already playing" one:
@@ -392,8 +428,9 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     out.speak = true;
     out.act = Act::SetChatMuted;
     out.value = 1;
-    out.text = "going quiet. say \"" + ctx.self.name +
-               " talk\" to bring me back. still playing.";
+    out.text = "going quiet. say \"" +
+               (everyone ? juce::String("band") : typedAs(ctx.self)) +
+               " talk\" to bring " + me + " back. still playing.";
     return out;
 
   case BotLanguage::Intent::SetLoud:

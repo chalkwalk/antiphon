@@ -168,6 +168,7 @@ Prepared prepare(const std::string &text) {
     const auto &particle = tokens[i + 2];
     const bool phrasal =
         (v == "kick" && particle == "off") || (v == "wrap" && particle == "up") ||
+        (v == "pick" && particle == "up") ||
         (v == "fire" && particle == "up") || (v == "cut" && particle == "out") ||
         (v == "take" && particle == "away") || (v == "lay" && particle == "out");
     if (phrasal)
@@ -197,6 +198,12 @@ Prepared prepare(const std::string &text) {
     else if (a == "carry" && b == "on")
       fuse("start");
     else if (a == "keep" && b == "going")
+      fuse("start");
+    else if (a == "pick" && b == "up")
+      fuse("start");
+    else if (a == "back" && b == "to")
+      // "back to it", "back to the tune". Resuming, and the only other reading
+      // -- "back to" as a direction -- is not something anybody says to a bot.
       fuse("start");
     else if ((a == "come" || a == "back") && b == "in" && tokens.size() == 2)
       // The whole message, or it is not a cue: "back in five" is somebody
@@ -1228,9 +1235,36 @@ Reading read(const std::string &text) {
   // Except beside a talking word, where it means resume rather than reroll:
   // "talk again" and "speak again" are asking for the commentary back, and
   // rerolling the part instead is a wrong answer that costs a bar of music.
+  // Change words come in two senses that the concept does not separate: ask for
+  // something DIFFERENT, or ask for the same thing AGAIN. Everywhere else they
+  // mean the same, and beside a starting word they are opposites.
+  bool wantsNewContent = false;
+  for (const auto &t : p.raw)
+    if (t == "different" || t == "differently" || t == "else" || t == "new" ||
+        t == "another" || t == "other" || t == "fresh" || t == "vary" ||
+        t == "varied" || t == "alter" || t == "switch" || t == "swap" ||
+        t == "random" || t == "shake" || t == "reroll" || t == "redo" ||
+        t == "rework")
+      wantsNewContent = true;
+
   if (weight.count(Concept::Change) && (!r.question || r.request)) {
     if (weight.count(Concept::Chat) && !topic)
       add(Intent::SetLoud, 4);
+    else if ((weight.count(Concept::Begin) || weight.count(Concept::Cease)) &&
+             !wantsNewContent)
+      // Beside a starting or stopping word, a REPEAT word is resuming rather
+      // than rerolling: asking a silent band to start again asks for what it
+      // was already playing, not for something new. The same shape as the rule
+      // above, which is what "talk again" needed for the same reason.
+      //
+      // Reported from a real room: "start playing again" got "ok, something
+      // else", which is a confident answer to a question nobody asked.
+      //
+      // Only a repeat word, though. "play something different" carries a
+      // starting word too and is a reroll, and the change words divide cleanly
+      // into the two senses -- which is why the distinction is drawn on the
+      // word rather than on the concept they share.
+      score[Intent::Reshuffle] -= 6;
     else
       add(Intent::Reshuffle, 4);
   }
