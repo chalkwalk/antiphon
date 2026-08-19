@@ -202,7 +202,158 @@ int noteTier(int midiNote, const Harmony::Chord &chord) {
   return 1;
 }
 
-std::vector<int> leadLine(const Settings &s, int intervalIndex) {
+chalkwalk::music::KeySig toKeySig(const MusicalKey::Key &key) {
+  namespace m = chalkwalk::music;
+
+  // Brightness is the fifths window's position, which IS the mode: Lydian
+  // brightest through Locrian darkest, one accidental per step. Major and
+  // Minor are Ionian and Aeolian -- they differ here only in what a player
+  // should be shown, which is `MusicalKey`'s business and not the mask's.
+  int brightness = m::kIonian;
+  switch (key.mode) {
+  case MusicalKey::Mode::Major:
+  case MusicalKey::Mode::Ionian:
+    brightness = m::kIonian;
+    break;
+  case MusicalKey::Mode::Minor:
+  case MusicalKey::Mode::Aeolian:
+    brightness = m::kAeolian;
+    break;
+  case MusicalKey::Mode::Dorian:
+    brightness = m::kDorian;
+    break;
+  case MusicalKey::Mode::Phrygian:
+    brightness = m::kPhrygian;
+    break;
+  case MusicalKey::Mode::Lydian:
+    brightness = m::kLydian;
+    break;
+  case MusicalKey::Mode::Mixolydian:
+    brightness = m::kMixolydian;
+    break;
+  case MusicalKey::Mode::Locrian:
+    brightness = m::kLocrian;
+    break;
+  }
+  return m::KeySig{((key.tonic % 12) + 12) % 12,
+                   static_cast<std::int8_t>(brightness),
+                   {},
+                   m::ScaleType::Diatonic};
+}
+
+chalkwalk::music::SoundingChord toSoundingChord(const Harmony::Chord &chord) {
+  // `Chord::tones` are semitones above the root and NOT octave-reduced -- a
+  // ninth is 14 rather than 2 -- because a chord that names a ninth wants it
+  // voiced above the seventh. Ranking is a pitch-class question, so they fold.
+  std::vector<int> intervals;
+  intervals.reserve(static_cast<std::size_t>(chord.toneCount));
+  for (int t = 0; t < chord.toneCount; ++t)
+    intervals.push_back(static_cast<int>(chord.tones[static_cast<std::size_t>(t)]));
+  return chalkwalk::music::chordOf(chord.root, intervals);
+}
+
+// The lead's line under chalkwalk-music's ranking.
+//
+// Deliberately the SAME candidates, contour, jitter, rest rule and seed
+// stream as the legacy version, so an A/B isolates the one thing that
+// changed: how a note is chosen from among the candidates. The legacy model
+// builds a hard allowed-set and takes the nearest survivor; this ranks every
+// candidate and snaps outward from the contour to the nearest one the beat
+// admits.
+std::vector<int> leadLineShared(const Settings &s, int intervalIndex) {
+  namespace m = chalkwalk::music;
+
+  const int eighths = std::max(1, s.bpi * 2);
+  std::vector<int> line((size_t)eighths, -1);
+  if (!s.key.valid || s.chart.empty())
+    return line;
+
+  const auto layout = layoutOf(s);
+  const Figure f = figureFor(Voice::Lead, s);
+  Rng rng(saltedSeed(Voice::Lead, s.seed) + 7919u * (std::uint32_t)intervalIndex);
+  const auto contour = (Contour)(rng.next() % 4);
+
+  const int centre = 72;
+  const int span = 12;
+  const auto keySig = toKeySig(s.key);
+
+  for (int step = 0; step < eighths; ++step) {
+    if (!m::hit(step, f.steps, f.pulses, f.rotation))
+      continue;
+
+    const int strength = metricStrength(step, s.bpi);
+    const auto &chord = Harmony::chordAtStep(layout, step);
+    const auto sounding = toSoundingChord(chord);
+
+    const double u = (double)step / (double)eighths;
+    double target = 0.0;
+    switch (contour) {
+    case Contour::Rise:
+      target = -0.5 + u;
+      break;
+    case Contour::Fall:
+      target = 0.5 - u;
+      break;
+    case Contour::Arch:
+      target = -0.5 + std::sin(u * 3.14159265358979);
+      break;
+    case Contour::Walk:
+      target = 0.35 * std::sin(u * 6.2831853 * 1.5);
+      break;
+    }
+    const int wanted = centre + (int)std::lround(target * span);
+
+    // The pool: the scale across the lead's register, plus the chord's own
+    // tones, which a borrowed or altered chord can put outside the scale.
+    std::vector<int> cand;
+    for (int degree = 0; degree < MusicalKey::kScaleDegrees; ++degree)
+      for (int octave = 4; octave <= 6; ++octave) {
+        const int note = MusicalKey::degreeToMidi(s.key, degree, octave);
+        if (note >= 0 && note <= 127)
+          cand.push_back(note);
+      }
+    for (int t = 0; t < chord.toneCount; ++t)
+      for (int octave = 5; octave <= 6; ++octave) {
+        const int note =
+            chord.root + chord.tones[(size_t)t] + 12 * octave;
+        if (note >= 0 && note <= 127)
+          cand.push_back(note);
+      }
+    std::sort(cand.begin(), cand.end());
+    cand.erase(std::unique(cand.begin(), cand.end()), cand.end());
+    if (cand.empty())
+      continue;
+
+    std::vector<int> ranks(cand.size());
+    for (size_t i = 0; i < cand.size(); ++i)
+      ranks[i] = m::noteStrength(keySig, cand[i] % 12, sounding);
+
+    // Nearest candidate to where the contour wants to be, then outward to the
+    // nearest one this beat allows.
+    const int jitter = rng.range(-2, 2);
+    const int aim = wanted + jitter;
+    size_t idx0 = 0;
+    int best = std::abs(cand[0] - aim);
+    for (size_t i = 1; i < cand.size(); ++i) {
+      const int d = std::abs(cand[i] - aim);
+      if (d < best) {
+        best = d;
+        idx0 = i;
+      }
+    }
+    const size_t idx =
+        m::snapToRank(ranks, idx0, m::rankCeiling(strength, /*hasChart=*/true));
+
+    if (strength == 0 && rng.range(0, 2) == 0)
+      continue;
+
+    line[(size_t)step] = cand[idx];
+  }
+
+  return line;
+}
+
+std::vector<int> leadLineLegacy(const Settings &s, int intervalIndex) {
   const int eighths = std::max(1, s.bpi * 2);
   std::vector<int> line((size_t)eighths, -1);
   if (!s.key.valid || s.chart.empty())
@@ -301,6 +452,11 @@ std::vector<int> leadLine(const Settings &s, int intervalIndex) {
   }
 
   return line;
+}
+
+std::vector<int> leadLine(const Settings &s, int intervalIndex) {
+  return s.leadModel == LeadModel::Shared ? leadLineShared(s, intervalIndex)
+                                          : leadLineLegacy(s, intervalIndex);
 }
 
 namespace {

@@ -2,6 +2,8 @@
 
 #include "BotVoice.h"
 #include "Harmony.h"
+
+#include <chalkwalk/music/NoteStrength.h>
 #include "MusicalKey.h"
 #include <cstdint>
 #include <vector>
@@ -33,6 +35,21 @@ enum class Contour { Rise, Fall, Arch, Walk };
 
 const char *voiceName(Voice v);
 
+// Which ranking decides the lead's notes.
+//
+// `Legacy` is the model the band shipped with: a hard allowed-set built from
+// scale degrees, filtered by a chord tier, then the nearest survivor to the
+// contour. `Shared` is chalkwalk-music's ordering -- the same candidates and
+// the same contour, but ranked by tier and snapped with the shared gate.
+//
+// Both exist at once ON PURPOSE, and only for as long as it takes to decide.
+// The lines the band already plays sound right, so the shared model has to
+// earn the swap by ear rather than by argument: `antiphon-voicelab leadcompare`
+// measures how far apart they are, and `--lead-model` renders either.
+// Whichever wins, the other goes -- this is a comparison, not a setting, and
+// it should not outlive the decision.
+enum class LeadModel { Legacy, Shared };
+
 struct Settings {
   int bpm = 120;
   int bpi = 8;
@@ -48,6 +65,9 @@ struct Settings {
   // every instrument the same shape -- the mistake seq_play's MelodyGen
   // documents having made and fixed.
   std::uint32_t seed = 1;
+
+  // Temporary, for the A/B only. See LeadModel.
+  LeadModel leadModel = LeadModel::Legacy;
 
   // Which instrument the soloist is holding, or negative for whatever the seed
   // chose, which is the default.
@@ -134,6 +154,16 @@ int noteTier(int midiNote, const Harmony::Chord &chord);
 // entry per eighth. Exposed so the note choices can be asserted exactly,
 // where the audio can only be measured.
 std::vector<int> leadLine(const Settings &s, int intervalIndex);
+
+// A key and a chord in the shared library's terms.
+//
+// Antiphon keeps `MusicalKey::Key` for harmony, spelling and roman numerals,
+// all of which are meaningfully diatonic -- chalkwalk-music's `KeySig` is a
+// pitch-class mask of any size, and `spellNote` and the numerals genuinely need
+// exactly seven degrees. The conversion runs the other way only, at the seam
+// where ranking happens. See `../ECOSYSTEM.md`.
+chalkwalk::music::KeySig toKeySig(const MusicalKey::Key &key);
+chalkwalk::music::SoundingChord toSoundingChord(const Harmony::Chord &chord);
 
 // How the bass player plays, chosen once from the seed and then held for the
 // whole session.
