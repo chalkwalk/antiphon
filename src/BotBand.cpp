@@ -214,19 +214,29 @@ int noteTier(int midiNote, const Harmony::Chord &chord) {
 // to follow the shape at all and wanders in a narrow band, which is a
 // different fault and a more boring one.
 //
-// The direction weight is DERIVED rather than chosen, because the two terms
-// have a region where they cancel: gap-fill makes any reversal free, so above
-// half the interval weight the tie-breaker starts buying the leaps the
-// interval term exists to prevent. Measured here: at 1 the wide leaps stay at
-// 6 per 1939 moves, at 2 they reach 41, at 3 they reach 85.
+// DIRECTION IS OFF HERE, and that is a decision rather than an oversight. All
+// four of antiphon's contours state a direction of their own -- even Walk,
+// which is a fixed sine wiggle rather than the true random walk seq_play has
+// -- so the term had almost nothing left to say: it moved the proportion of
+// continued runs from 57.6% to 61.5% and did not sound more musical for it,
+// while pushing repeats up and occasionally buying a leap. seq_play keeps it,
+// because its Walk genuinely has no shape and it has a smoothing dial that
+// goes high enough for a line to zigzag without it.
 //
-// Unlike seq_play, antiphon does not scale this by contour. Its Walk is a
-// fixed sine wiggle rather than a true random walk, so all four of its
-// contours state a direction of their own and none of them needs the term
-// carrying the shape single-handed.
+// THE REPEAT COST IS NOT CONSTANT. A repeated note over a chord that changed
+// is a common tone, and one under a static chord is standing still; the same
+// interval, two different musical events. Taxing both equally measured as one
+// key keeping 5.2% repeats and sounding right while another kept 1.8% and
+// sounded like it was dodging the unison -- and 93% of what survived in the
+// second was common tones, so the tax was landing hardest where the repeat was
+// most justified. Waived on a chord change, charged otherwise.
+inline constexpr int kRepeatCost = 4;
+
 inline constexpr chalkwalk::music::MelodyWeights kLeadWeights{
-    /*contour=*/1, /*interval=*/2,
-    /*direction=*/chalkwalk::music::safeDirectionWeight(2)};
+    /*contour=*/1, /*interval=*/2, /*direction=*/0, /*repeat=*/kRepeatCost};
+
+inline constexpr chalkwalk::music::MelodyWeights kLeadWeightsOverChange{
+    /*contour=*/1, /*interval=*/2, /*direction=*/0, /*repeat=*/0};
 
 chalkwalk::music::KeySig toKeySig(const MusicalKey::Key &key) {
   namespace m = chalkwalk::music;
@@ -323,6 +333,10 @@ std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
   m::MelodyState melody;
   melody.lastNote = carryIn;
 
+  // The harmony under the previous SOUNDING note, which is what a common tone
+  // is measured against -- not the previous step, which may have been a rest.
+  m::SoundingChord lastSounding{};
+
   for (int step = 0; step < eighths; ++step) {
     if (!m::hit(step, f.steps, f.pulses, f.rotation))
       continue;
@@ -330,6 +344,13 @@ std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
     const int strength = metricStrength(step, s.bpi);
     const auto &chord = Harmony::chordAtStep(layout, step);
     const auto sounding = toSoundingChord(chord);
+
+    // Has the harmony moved since the note the line is about to repeat? If so
+    // a repeat is a common tone rather than standing still, and is not charged
+    // for. `sounding` is already the chord reduced to pitch classes, so this
+    // compares what the ear compares.
+    const bool harmonyMoved =
+        sounding.root != lastSounding.root || sounding.tones != lastSounding.tones;
 
     const double u = (double)step / (double)eighths;
     double target = 0.0;
@@ -380,7 +401,8 @@ std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
     const int jitter = rng.range(-2, 2);
     const size_t idx =
         m::chooseNote(cand, ranks, m::rankCeiling(strength, /*hasChart=*/true),
-                      wanted + jitter, melody, kLeadWeights);
+                      wanted + jitter, melody,
+                      harmonyMoved ? kLeadWeightsOverChange : kLeadWeights);
 
     // Both draws happen on every onset step whether or not the note sounds,
     // so the seed stream does not depend on the outcome -- otherwise one
@@ -391,6 +413,7 @@ std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
 
     line[(size_t)step] = cand[idx];
     melody.advance(cand[idx]);
+    lastSounding = sounding;
   }
 
   return line;

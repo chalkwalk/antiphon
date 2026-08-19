@@ -192,16 +192,11 @@ private:
   // so each one is a real regression detector rather than a guess:
   //
   //                        before      after     threshold
-  //   mean interval     2.17-2.84  2.31-2.47         < 2.6
-  //   stepwise          53%-67%      74%-76%         > 70%
-  //   repeated notes    20%        1.8%-5.2%          < 10%
-  //   awkward wide      20-31 per 1939     0    < 0.5% of moves
-  //
-  // The mean is HIGHER than the 1.74-2.08 an earlier revision measured, and
-  // that is arithmetic rather than a regression: a repeated note is a move of
-  // zero, so 20% repeats drag a mean down. Pricing the unison removed most of
-  // them, and what is left is the real melodic motion. Stepwise and awkward
-  // wide are the qualities to read; the mean is a cross-check.
+  //   mean interval     2.17-2.84  2.17-2.34         < 2.6
+  //   stepwise          53%-67%      77%-79%         > 70%
+  //   repeated notes    20%       7.2%-9.5%          < 15%
+  //   ... of them static   most       0%-0.3%           < 1%
+  //   awkward wide      20-31 per 1939   2-5    < 0.5% of moves
   //
   // The awkward-wide count is the sharpest: it was 31 in C major even AFTER
   // the interval objective landed, because the melody's memory still reset at
@@ -210,22 +205,34 @@ private:
   void runMelodicShape() {
     beginTest("the line moves mostly by step, and leaps idiomatically");
     for (const char *name : {"C major", "D minor", "Bb Lydian", "G Mixolydian"}) {
-      int moves = 0, stepwise = 0, wideAwkward = 0, repeats = 0;
+      int moves = 0, stepwise = 0, wideAwkward = 0, repeats = 0, staticRepeats = 0;
       long long motion = 0;
 
       for (std::uint32_t seed = 1; seed <= 40; ++seed) {
         const auto s = settingsFor(name, seed);
+        const auto layout = Harmony::layoutChart(s.chart, s.bpi);
         int last = -1;
-        for (int interval = 0; interval < 6; ++interval)
+        chalkwalk::music::SoundingChord lastChord{};
+        for (int interval = 0; interval < 6; ++interval) {
+          int step = -1;
           for (int n : BotBand::leadLine(s, interval)) {
+            ++step;
             if (n < 0)
               continue;
+            const auto here =
+                BotBand::toSoundingChord(Harmony::chordAtStep(layout, step));
+            const bool harmonyMoved =
+                here.root != lastChord.root || here.tones != lastChord.tones;
+            lastChord = here;
             if (last >= 0) {
               const int d = std::abs(n - last);
               ++moves;
               motion += d;
-              if (d == 0)
+              if (d == 0) {
                 ++repeats;
+                if (!harmonyMoved)
+                  ++staticRepeats;
+              }
               if (d <= 2)
                 ++stepwise;
               // Wide AND not one of the leaps a melody actually makes.
@@ -234,14 +241,17 @@ private:
             }
             last = n;
           }
+        }
       }
 
       const double mean = moves ? (double)motion / moves : 0.0;
       const double stepRate = moves ? (double)stepwise / moves : 0.0;
       const double repeatRate = moves ? (double)repeats / moves : 0.0;
+      const double staticRate = moves ? (double)staticRepeats / moves : 0.0;
       logMessage(juce::String(name) + ": mean " + juce::String(mean, 2) +
                  ", stepwise " + juce::String(100.0 * stepRate, 1) +
                  "%, repeats " + juce::String(100.0 * repeatRate, 1) +
+                 "% (static " + juce::String(100.0 * staticRate, 2) + "%), " +
                  "%, wide awkward " + juce::String(wideAwkward));
 
       expect(mean < 2.6, juce::String(name) + ": mean interval " +
@@ -254,12 +264,22 @@ private:
                  " awkward wide leaps in " + juce::String(moves) + " moves");
 
       // A line that mostly repeats itself is a drone, and nothing else here
-      // notices. This was NOT hypothetical: with the unison priced at 0 like
-      // a step, raising the direction weight took repeats to 54% of all moves
-      // -- the objective had made standing still the cheapest thing to do.
-      expect(repeatRate < 0.10, juce::String(name) + ": " +
+      // notices. This was NOT hypothetical: with the repeat unpriced, adding
+      // a direction weight took repeats to 54% of all moves, because the
+      // objective had made standing still the cheapest thing to do.
+      //
+      // But the assertion that matters is the SECOND one. Repeats are not all
+      // the same event: over a chord that changed, a repeat is a common tone
+      // and belongs in the line; under a static chord it is standing still.
+      // Charging for one and not the other is the whole design, so the static
+      // rate is the exact quantity -- it should be near zero, while the total
+      // sits near a musical 7%-10%.
+      expect(repeatRate < 0.15, juce::String(name) + ": " +
                                     juce::String(100.0 * repeatRate, 1) +
                                     "% of moves repeat the note");
+      expect(staticRate < 0.01, juce::String(name) + ": " +
+                                    juce::String(100.0 * staticRate, 2) +
+                                    "% of moves repeat under an unchanged chord");
     }
   }
   // The seam between two intervals is a real melodic move and must be priced

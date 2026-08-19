@@ -664,6 +664,12 @@ int main(int argc, char *argv[]) {
     int biggest = 0;
     std::array<int, 64> hist{};
     int reversals = 0, continuations = 0;
+    // A repeated note over a chord that CHANGED is a common tone -- the same
+    // pitch re-heard as a new colour, which is a melodic device. A repeated
+    // note over the same chord is just standing still. The cost table cannot
+    // tell them apart, so count them apart.
+    int repeatSameChord = 0, repeatNewChord = 0;
+    int stepSameChord = 0, stepNewChord = 0;
 
     const int seeds = juce::jmax(1, o.repeats);
     for (int sd = 0; sd < seeds; ++sd) {
@@ -673,13 +679,25 @@ int main(int argc, char *argv[]) {
       // The line is continuous across intervals, so the interval between the
       // last note of one and the first of the next is a real melodic move and
       // is counted as one.
-      int last = -1, lastMove = 0;
-      for (int interval = 0; interval < o.bars; ++interval)
+      const auto layout = Harmony::layoutChart(s.chart, s.bpi);
+      int last = -1, lastMove = 0, lastChordRoot = -999, lastChordTones = -1;
+      for (int interval = 0; interval < o.bars; ++interval) {
+        int step = -1;
         for (int n : BotBand::leadLine(s, interval)) {
+          ++step;
           if (n < 0) {
             ++rests;
             continue;
           }
+          const auto &ch = Harmony::chordAtStep(layout, step);
+          int tonesKey = ch.toneCount;
+          for (int t = 0; t < ch.toneCount; ++t)
+            tonesKey = tonesKey * 31 + ch.tones[(size_t)t];
+          const bool chordChanged =
+              (ch.root != lastChordRoot || tonesKey != lastChordTones);
+          lastChordRoot = ch.root;
+          lastChordTones = tonesKey;
+
           ++notes;
           if (last >= 0) {
             const int d = n - last;
@@ -695,9 +713,15 @@ int main(int argc, char *argv[]) {
             }
             if (d != 0)
               lastMove = d;
+            if (d == 0) {
+              if (chordChanged) ++repeatNewChord; else ++repeatSameChord;
+            } else {
+              if (chordChanged) ++stepNewChord; else ++stepSameChord;
+            }
           }
           last = n;
         }
+      }
     }
 
     std::printf("leadstats  %s  %d bpm  %d bpi  seeds %u..%u  %d intervals each\n",
@@ -723,6 +747,15 @@ int main(int argc, char *argv[]) {
                   100.0 * leaps / moves);
       std::printf("  wide (>=8)        %5d  %5.1f%%\n", wide,
                   100.0 * wide / moves);
+      const int repeats = repeatSameChord + repeatNewChord;
+      std::printf("  repeated notes    %5d  %5.1f%%   of which %d over a NEW "
+                  "chord (%.1f%%) and %d over the same (%.1f%%)\n",
+                  repeats, 100.0 * repeats / moves, repeatNewChord,
+                  repeats ? 100.0 * repeatNewChord / repeats : 0.0,
+                  repeatSameChord, repeats ? 100.0 * repeatSameChord / repeats : 0.0);
+      const int chordChanges = repeatNewChord + stepNewChord;
+      std::printf("  chord changed under %5.1f%% of moves\n",
+                  100.0 * chordChanges / moves);
       if (continuations + reversals > 0)
         std::printf("  direction kept    %5.1f%%  (of %d turns)\n",
                     100.0 * continuations / (continuations + reversals),
