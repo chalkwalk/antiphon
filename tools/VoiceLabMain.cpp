@@ -20,6 +20,8 @@
 #include "BotVoice.h"
 #include "MusicalKey.h"
 
+#include <chalkwalk/music/Duration.h>
+
 #include <array>
 
 namespace {
@@ -670,6 +672,12 @@ int main(int argc, char *argv[]) {
     // tell them apart, so count them apart.
     int repeatSameChord = 0, repeatNewChord = 0;
     int stepSameChord = 0, stepNewChord = 0;
+    // How much of the space between two onsets the note actually fills. Under
+    // the old rule this was always 1.0 except for a colour note; the shared
+    // duration model gives a downbeat more room than an off-beat, which is
+    // articulation rather than note choice and is worth seeing separately.
+    long long fillGap = 0, fillHeld = 0;
+    int shortened = 0, sounded = 0;
 
     const int seeds = juce::jmax(1, o.repeats);
     for (int sd = 0; sd < seeds; ++sd) {
@@ -695,6 +703,23 @@ int main(int argc, char *argv[]) {
             tonesKey = tonesKey * 31 + ch.tones[(size_t)t];
           const bool chordChanged =
               (ch.root != lastChordRoot || tonesKey != lastChordTones);
+          {
+            const auto lineNow = BotBand::leadLine(s, interval);
+            size_t nx = (size_t)step + 1;
+            while (nx < lineNow.size() && lineNow[nx] < 0) ++nx;
+            const int beatSamples = (int)(o.sampleRate * 60.0 / o.bpm);
+            const int eighth = beatSamples / 2;
+            const int gap = (int)(nx - (size_t)step) * eighth;
+            const auto sd = BotBand::toSoundingChord(ch);
+            const auto tr = chalkwalk::music::tierOf(BotBand::toKeySig(s.key),
+                                                     ((n % 12) + 12) % 12, sd);
+            const int want = chalkwalk::music::holdIn(
+                chalkwalk::music::holdTicks(BotBand::metricStrength(step, s.bpi), tr),
+                beatSamples);
+            const int held = juce::jmin(gap, want);
+            fillGap += gap; fillHeld += held; ++sounded;
+            if (held < gap) ++shortened;
+          }
           lastChordRoot = ch.root;
           lastChordTones = tonesKey;
 
@@ -753,6 +778,10 @@ int main(int argc, char *argv[]) {
                   repeats, 100.0 * repeats / moves, repeatNewChord,
                   repeats ? 100.0 * repeatNewChord / repeats : 0.0,
                   repeatSameChord, repeats ? 100.0 * repeatSameChord / repeats : 0.0);
+      if (sounded > 0)
+        std::printf("  note fills        %5.1f%% of the space to the next onset;"
+                    " %d of %d shortened\n",
+                    100.0 * (double)fillHeld / (double)fillGap, shortened, sounded);
       const int chordChanges = repeatNewChord + stepNewChord;
       std::printf("  chord changed under %5.1f%% of moves\n",
                   100.0 * chordChanges / moves);

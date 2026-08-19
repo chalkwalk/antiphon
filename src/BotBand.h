@@ -3,6 +3,7 @@
 #include "BotVoice.h"
 #include "Harmony.h"
 
+#include <chalkwalk/music/Duration.h>
 #include <chalkwalk/music/Melody.h>
 #include <chalkwalk/music/NoteStrength.h>
 #include "MusicalKey.h"
