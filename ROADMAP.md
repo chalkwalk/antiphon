@@ -446,6 +446,38 @@ deliberate "read me the levels now" gesture is the missing half of that decision
       can never be announced on a timer -- which is exactly the argument above,
       and the reason it is the same work area.
 
+### Voicing by register, not by pitch class
+
+The band's lead avoids a semitone above a sounding chord tone
+(`noteTier` in `BotBand.cpp`), and that rule is **register-blind**: it
+compares pitch classes, so `B4`/`C5` and `B6`/`C7` are the same question to
+it. They are not the same answer. A semitone that is unusable in a close
+mid-register voicing is playable two octaves up.
+
+That matters here more than anywhere else in the ecosystem, because the band
+puts its chords below its lead by design ("an octave above the keys, so it is
+heard as a melody over the chords rather than as part of them"). The chords sit
+in the muddy register and the lead in the clean one, so the same pitch class is
+a mistake in one octave and fine in another -- and the current model can only
+veto it, never move it.
+
+The theory, the measurements and the interface change belong to
+chalkwalk-music and are written up in its
+[ROADMAP](https://github.com/chalkwalk/chalkwalk-music/blob/main/ROADMAP.md).
+The short version: roughness depends on how many CRITICAL BANDS an interval
+spans, pitch is logarithmic and the critical band is not, so the same interval
+is a different amount of rough depending where it is played. Thirds and wider
+clean up monotonically as they rise; the semitone does not, and is roughest
+around C4-C5 -- which is exactly the register the band's keys occupy.
+
+- [ ] Wait for chalkwalk-music to grow a register-aware rank. This is not
+      antiphon's to solve; it is one model and it should have one home.
+- [ ] When it lands, the lead's clash rule becomes a VOICING decision rather
+      than a veto: a colour note that clashes below can be taken an octave up
+      instead of being dropped.
+- [ ] Re-check the band's register split afterwards. The lead sits at 72 and
+      the keys below it because of a rule that will have changed.
+
 ### The band's harmony
 
 The practice room's band plays over a chart, and a chart is also the one thing
