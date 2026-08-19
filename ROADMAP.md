@@ -446,6 +446,61 @@ deliberate "read me the levels now" gesture is the missing half of that decision
       can never be announced on a timer -- which is exactly the argument above,
       and the reason it is the same work area.
 
+### Melodic shaping: the two terms held back
+
+The lead now prices the interval it moves by (`chalkwalk::music::chooseNote`),
+which is what stopped it leaping oddly. Two further terms were designed at the
+same time and deliberately **not** shipped with it, so each can be heard on its
+own rather than as part of one large change to how the melody sounds.
+
+**Direction memory.** After moving up, moving down again should cost a little,
+and vice versa -- so a run reads as intentional rather than as a sequence of
+independent decisions. The classical rule is the opposite (reverse after a
+leap, to fill the gap), and both are right at different sizes. One term
+captures both, with the sign set by how big the previous move was:
+
+```
+directionCost = same direction as the last move ? 0 : reversalCost
+  reversalCost = +2  when |lastMove| <= 4   -- continuing a run reads as intent
+               = -3  when |lastMove| >= 7   -- a leap wants filling in
+```
+
+It must stay small relative to the contour weight, because the contour
+(Rise/Fall/Arch/Walk) is already doing directional work and a strong direction
+term will fight it. `leadstats` reports "direction kept", which is the number
+to watch: it sits near 58% today.
+
+**Rest and duration by strength.** Duration in `renderLead` is *emergent*, not
+chosen -- a note is held until the next sounding step -- so "spend longer on
+strong notes" and "rest after strong notes" are the same lever, not two. The
+place to pull it is the existing dropout rule:
+
+```cpp
+// was: if (strength == 0 && rng.range(0, 2) == 0) continue;
+if (strength == 0 && rng.range(0, 5) < 3 - tierOfPrevious / 2) continue;
+```
+
+Rest more readily after a strong note, and the strong note is held longer for
+free.
+
+**The coupling question, answered: one way only.** Note choice may inform the
+rhythm; the rhythm must never depend on it. The onset grid is the Euclidean
+figure the rest of the band shares, and a lead whose figure moved with its note
+choice would stop playing the same groove as everyone else. That invariant is
+asserted -- `LeadLineTests` checks that every sounding step is an onset of the
+lead's own figure -- and it must survive this change.
+
+There is a second, independent duration lever that touches no rhythm at all:
+the colour-note cap in `renderLead` (`held = min(length, eighth)` for tier 2)
+generalised to `capForTier()`. It shortens weak notes with a note-off rather
+than by moving a note-on, so it composes with the rest bias instead of
+competing with it.
+
+- [ ] Direction memory, measured with `leadstats --repeats 40`, heard before
+      and after.
+- [ ] Strength-biased rests, with the figure invariant still asserted.
+- [ ] `capForTier()` in `renderLead`, replacing the hard-coded tier-2 cap.
+
 ### Voicing by register, not by pitch class
 
 The band's lead avoids a semitone above a sounding chord tone
