@@ -202,6 +202,20 @@ int noteTier(int midiNote, const Harmony::Chord &chord) {
   return 1;
 }
 
+// How the lead trades its phrase shape against its own smoothness.
+//
+// `contour` is the unit: the cost of sitting one semitone away from where the
+// shape wants the line. At interval 0 this is exactly the old behaviour --
+// take the admissible note nearest the contour, wherever the last one was.
+//
+// 2 was chosen by measurement rather than taste. At 1 the wide leaps in Bb
+// Lydian roughly halve; at 2 they nearly vanish while the contour is still
+// clearly audible as rising, falling or arching; at 4 the line starts refusing
+// to follow the shape at all and wanders in a narrow band, which is a
+// different fault and a more boring one.
+inline constexpr chalkwalk::music::MelodyWeights kLeadWeights{/*contour=*/1,
+                                                              /*interval=*/2};
+
 chalkwalk::music::KeySig toKeySig(const MusicalKey::Key &key) {
   namespace m = chalkwalk::music;
 
@@ -252,15 +266,29 @@ chalkwalk::music::SoundingChord toSoundingChord(const Harmony::Chord &chord) {
   return chalkwalk::music::chordOf(chord.root, intervals);
 }
 
-// The lead's line under chalkwalk-music's ranking.
+// The lead's line.
 //
-// Deliberately the SAME candidates, contour, jitter, rest rule and seed
-// stream as the legacy version, so an A/B isolates the one thing that
-// changed: how a note is chosen from among the candidates. The legacy model
-// builds a hard allowed-set and takes the nearest survivor; this ranks every
-// candidate and snaps outward from the contour to the nearest one the beat
-// admits.
-std::vector<int> leadLineShared(const Settings &s, int intervalIndex) {
+// Three things decide a note, and keeping them apart is the whole design:
+//
+//   THE POOL       the scale across the lead's register, plus the chord's own
+//                  tones, which a borrowed or altered chord can put outside it
+//   THE GATE       metric strength -> rankCeiling -> which of those are
+//                  ADMISSIBLE here. A hard constraint; a strong beat taking a
+//                  clashing chromatic sounds wrong however it was approached
+//   THE OBJECTIVE  contour distance plus interval cost -> which admissible
+//                  note WINS
+//
+// The objective is the part that arrived last and the part that makes this
+// sound like a melody rather than a sequence of individually defensible
+// notes. Before it, each step independently took the admissible note nearest
+// the contour, with nothing anywhere that knew where the previous note was --
+// so a step whose nearest note was inadmissible could land a long way off and
+// nothing objected to the size of the jump. Over forty seeds of Bb Lydian
+// that produced 33 moves of an octave or wider; with the interval term it
+// produces far fewer, and the ones that remain are fourths, fifths and
+// octaves rather than sevenths.
+std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
+                              int carryIn) {
   namespace m = chalkwalk::music;
 
   const int eighths = std::max(1, s.bpi * 2);
@@ -276,6 +304,11 @@ std::vector<int> leadLineShared(const Settings &s, int intervalIndex) {
   const int centre = 72;
   const int span = 12;
   const auto keySig = toKeySig(s.key);
+
+  // The line's memory, and the only state this loop carries. Negative when
+  // nothing came before, which is what makes that note pure contour following
+  // -- there is no interval to price.
+  int lastNote = carryIn;
 
   for (int step = 0; step < eighths; ++step) {
     if (!m::hit(step, f.steps, f.pulses, f.rotation))
@@ -328,135 +361,53 @@ std::vector<int> leadLineShared(const Settings &s, int intervalIndex) {
     for (size_t i = 0; i < cand.size(); ++i)
       ranks[i] = m::noteStrength(keySig, cand[i] % 12, sounding);
 
-    // Nearest candidate to where the contour wants to be, then outward to the
-    // nearest one this beat allows.
+    // The admissible candidate that best serves the contour AND the interval
+    // from the last note. A little seeded deviation on the aim so two
+    // intervals with the same contour are not the same line.
     const int jitter = rng.range(-2, 2);
-    const int aim = wanted + jitter;
-    size_t idx0 = 0;
-    int best = std::abs(cand[0] - aim);
-    for (size_t i = 1; i < cand.size(); ++i) {
-      const int d = std::abs(cand[i] - aim);
-      if (d < best) {
-        best = d;
-        idx0 = i;
-      }
-    }
     const size_t idx =
-        m::snapToRank(ranks, idx0, m::rankCeiling(strength, /*hasChart=*/true));
+        m::chooseNote(cand, ranks, m::rankCeiling(strength, /*hasChart=*/true),
+                      wanted + jitter, lastNote, kLeadWeights);
 
+    // Both draws happen on every onset step whether or not the note sounds,
+    // so the seed stream does not depend on the outcome -- otherwise one
+    // dropped note reshuffles everything after it and the same seed stops
+    // giving the same line.
     if (strength == 0 && rng.range(0, 2) == 0)
       continue;
 
     line[(size_t)step] = cand[idx];
+    lastNote = cand[idx];
   }
 
   return line;
 }
 
-std::vector<int> leadLineLegacy(const Settings &s, int intervalIndex) {
-  const int eighths = std::max(1, s.bpi * 2);
-  std::vector<int> line((size_t)eighths, -1);
-  if (!s.key.valid || s.chart.empty())
-    return line;
-
-  const auto layout = layoutOf(s);
-  const Figure f = figureFor(Voice::Lead, s);
-  Rng rng(saltedSeed(Voice::Lead, s.seed) + 7919u * (std::uint32_t)intervalIndex);
-
-  // The contour is rerolled per interval, so the line develops across a phrase
-  // instead of repeating verbatim, while the seed still makes the whole
-  // sequence reproducible.
-  const auto contour = (Contour)(rng.next() % 4);
-
-  // Where the line sits: an octave above the keys, so it is heard as a melody
-  // over the chords rather than as part of them.
-  const int centre = 72;
-  const int span = 12;
-
-  for (int step = 0; step < eighths; ++step) {
-    if (!chalkwalk::music::hit(step, f.steps, f.pulses, f.rotation))
-      continue;
-
-    const int strength = metricStrength(step, s.bpi);
-    // The lead already runs in eighths, which is the layout's own grid, so it
-    // sees a chord change inside a beat rather than only on one.
-    const auto &chord = Harmony::chordAtStep(layout, step);
-
-    // Where the contour wants to be, as a fraction of the way through.
-    const double u = (double)step / (double)eighths;
-    double target = 0.0;
-    switch (contour) {
-    case Contour::Rise:
-      target = -0.5 + u;
-      break;
-    case Contour::Fall:
-      target = 0.5 - u;
-      break;
-    case Contour::Arch:
-      target = -0.5 + std::sin(u * 3.14159265358979);
-      break;
-    case Contour::Walk:
-      // A random walk that still has to come home, so it wanders without
-      // drifting off the end of the register.
-      target = 0.35 * std::sin(u * 6.2831853 * 1.5);
-      break;
-    }
-    const int wanted = centre + (int)std::lround(target * span);
-
-    // The coupling: beat strength decides how strong a note may be. A strong
-    // beat takes a chord tone; an ordinary one takes any comfortable scale
-    // tone; only an off-beat may touch a semitone above a chord tone, and only
-    // in passing (see the duration cap below).
-    //
-    // Porting the beat axis without this one is what made minor keys sound
-    // wrong: the flat sixth was as welcome on beat three as the fifth was.
-    const int worstTierAllowed = strength >= 3 ? 0 : (strength >= 1 ? 1 : 2);
-
-    std::vector<int> allowed;
-    for (int degree = 0; degree < MusicalKey::kScaleDegrees; ++degree)
-      for (int octave = 4; octave <= 6; ++octave) {
-        const int note = MusicalKey::degreeToMidi(s.key, degree, octave);
-        if (note >= 0 && noteTier(note, chord) <= worstTierAllowed)
-          allowed.push_back(note);
-      }
-
-    // A chord may be borrowed or altered, in which case its tones are not all
-    // in the scale. On a strong beat the chord wins.
-    if (worstTierAllowed == 0)
-      for (int t = 0; t < chord.toneCount; ++t)
-        for (int octave = 5; octave <= 6; ++octave)
-          allowed.push_back(chord.root + chord.tones[(size_t)t] + 12 * octave);
-
-    if (allowed.empty())
-      continue;
-
-    // The allowed note nearest the contour, with a little seeded deviation so
-    // two intervals with the same contour are not the same line.
-    const int jitter = rng.range(-2, 2);
-    int best = allowed[0];
-    int bestDistance = std::abs(best - (wanted + jitter));
-    for (int note : allowed) {
-      const int d = std::abs(note - (wanted + jitter));
-      if (d < bestDistance) {
-        bestDistance = d;
-        best = note;
-      }
-    }
-
-    // Rests matter as much as notes: a line that never stops is a drone. Weak
-    // beats drop out often enough to leave the phrase somewhere to breathe.
-    if (strength == 0 && rng.range(0, 2) == 0)
-      continue;
-
-    line[(size_t)step] = best;
-  }
-
-  return line;
-}
-
+// The line for one interval, joined to the one before it.
+//
+// An interval is a closed unit everywhere else in this file, and for the lead
+// that was quietly wrong: the melody's memory reset every four seconds, so the
+// seam between two intervals was the one move in the line with no interval
+// cost priced against it. It showed up exactly where you would expect --
+// excluding boundary moves dropped the measured mean interval from 2.17
+// semitones to 1.93, so the seams were carrying far more than their share of
+// the leaps.
+//
+// So the previous interval is generated first, purely to learn its last note.
+// That is one extra evaluation and never more: the interval before THAT is not
+// consulted, so this cannot recurse. The cost is arithmetic -- renderLead
+// already generates the previous line for its own reasons -- and the price of
+// the bound is that the previous line's own opening note was chosen without a
+// predecessor, which changes which note is carried in only rarely. The
+// alternative is a generator whose cost grows with how long the band has been
+// playing, which is not a trade worth making for one note.
 std::vector<int> leadLine(const Settings &s, int intervalIndex) {
-  return s.leadModel == LeadModel::Shared ? leadLineShared(s, intervalIndex)
-                                          : leadLineLegacy(s, intervalIndex);
+  int carryIn = -1;
+  if (intervalIndex > 0)
+    for (int n : leadLineFrom(s, intervalIndex - 1, -1))
+      if (n >= 0)
+        carryIn = n;
+  return leadLineFrom(s, intervalIndex, carryIn);
 }
 
 namespace {

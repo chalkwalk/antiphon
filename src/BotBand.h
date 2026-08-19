@@ -3,6 +3,7 @@
 #include "BotVoice.h"
 #include "Harmony.h"
 
+#include <chalkwalk/music/Melody.h>
 #include <chalkwalk/music/NoteStrength.h>
 #include "MusicalKey.h"
 #include <cstdint>
@@ -35,21 +36,6 @@ enum class Contour { Rise, Fall, Arch, Walk };
 
 const char *voiceName(Voice v);
 
-// Which ranking decides the lead's notes.
-//
-// `Legacy` is the model the band shipped with: a hard allowed-set built from
-// scale degrees, filtered by a chord tier, then the nearest survivor to the
-// contour. `Shared` is chalkwalk-music's ordering -- the same candidates and
-// the same contour, but ranked by tier and snapped with the shared gate.
-//
-// Both exist at once ON PURPOSE, and only for as long as it takes to decide.
-// The lines the band already plays sound right, so the shared model has to
-// earn the swap by ear rather than by argument: `antiphon-voicelab leadcompare`
-// measures how far apart they are, and `--lead-model` renders either.
-// Whichever wins, the other goes -- this is a comparison, not a setting, and
-// it should not outlive the decision.
-enum class LeadModel { Legacy, Shared };
-
 struct Settings {
   int bpm = 120;
   int bpi = 8;
@@ -65,9 +51,6 @@ struct Settings {
   // every instrument the same shape -- the mistake seq_play's MelodyGen
   // documents having made and fixed.
   std::uint32_t seed = 1;
-
-  // Temporary, for the A/B only. See LeadModel.
-  LeadModel leadModel = LeadModel::Legacy;
 
   // Which instrument the soloist is holding, or negative for whatever the seed
   // chose, which is the default.
