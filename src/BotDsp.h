@@ -5,6 +5,12 @@
 #include <cmath>
 #include <cstdint>
 
+#include <chalkwalk/dsp/Denormal.h>
+#include <chalkwalk/dsp/Interpolation.h>
+#include <chalkwalk/dsp/PolyBlep.h>
+#include <chalkwalk/dsp/SoftClip.h>
+#include <chalkwalk/dsp/Svf.h>
+
 // The band's DSP primitives: filters, delay lines, strings, resonators.
 //
 // Everything here is a building block rather than an instrument. BotVoice.h
@@ -28,88 +34,35 @@ namespace BotDsp {
 
 inline constexpr double kPi = 3.14159265358979323846;
 
-// Below this a decaying tail is snapped to zero rather than left to approach it
-// forever.
+// Denormal flushing, adopted from chalkwalk-dsp.
 //
-// -180 dBFS: two hundred times below the quietest thing 24-bit audio can
-// represent, so nothing audible is ever truncated. Denormals do not begin until
-// around 1e-38, so a far smaller threshold would still avoid them -- this one is
-// chosen so that tails actually END, within a second or so of becoming
-// inaudible, rather than ringing at 1e-12 for a minute. That turns "silence" into
-// a property a test can assert as an equality instead of a small number.
-inline constexpr float kFlushLevel = 1.0e-9f;
+// The threshold is the 1e-9 this file chose, and the reasoning is worth
+// keeping: at -180 dBFS it is two hundred times below the quietest thing
+// 24-bit audio can represent, and denormals do not begin until around 1e-38,
+// so a far smaller number would still avoid the CPU cliff. This one is chosen
+// so that tails actually END, within a second or so of becoming inaudible,
+// rather than ringing at 1e-12 for a minute -- which is what turns "silence"
+// into a property a test can assert as an equality rather than a small number.
+using chalkwalk::dsp::kFlushLevel;
+using chalkwalk::dsp::flush;
 
-inline float flush(float x) noexcept {
-  return (x > -kFlushLevel && x < kFlushLevel) ? 0.0f : x;
-}
-
-// A state-variable filter: one 12 dB/octave pole pair, four outputs.
+// A state-variable filter, adopted from chalkwalk-dsp.
 //
-// Lifted essentially verbatim from chalkwalk/seq_play src/machine/SvfFilter.h,
-// which is the Cytomic topology-preserving form. Worth taking rather than
-// writing: it is stable at every cutoff up to Nyquist, its modes come from one
-// pass, and the coefficients are three multiplies.
+// Lifted from Lockstep and then diverged: this copy grew a
+// set(cutoffHz, q, sampleRate) with the Nyquist and zero-cutoff edges handled,
+// and denormal flushing on the state, neither of which went back. The shared
+// version has both, plus Lockstep's raw setCoeffs(g, k) for callers that
+// smooth their own coefficients per sample.
 //
-// It replaces two hand-rolled one-poles in BotVoice -- the snare's lowpass
+// It replaced two hand-rolled one-poles in BotVoice -- the snare's lowpass
 // accumulator and the hat's highpass-by-subtraction -- neither of which had a
 // controllable cutoff or any resonance at all.
-struct Svf {
-  enum Mode { LowPass = 0, HighPass = 1, BandPass = 2, Notch = 3 };
+using chalkwalk::dsp::Svf;
 
-  float ic1eq = 0.0f, ic2eq = 0.0f;
-  float a1 = 1.0f, a2 = 0.0f, a3 = 0.0f, k = 0.0f;
-
-  void set(double cutoffHz, double q, double sampleRate) noexcept {
-    if (sampleRate <= 0.0)
-      return;
-    // tan() runs away at Nyquist, so the cutoff is clamped short of it. The
-    // floor matters too: a cutoff of zero makes g zero and the filter a wire.
-    const double nyquistish = 0.45 * sampleRate;
-    const double fc = cutoffHz < 1.0 ? 1.0
-                                     : (cutoffHz > nyquistish ? nyquistish
-                                                              : cutoffHz);
-    const double safeQ = q < 0.05 ? 0.05 : q;
-    const double g = std::tan(kPi * fc / sampleRate);
-    k = (float)(1.0 / safeQ);
-    a1 = (float)(1.0 / (1.0 + g * (g + (double)k)));
-    a2 = (float)(g * (double)a1);
-    a3 = (float)(g * (double)a2);
-  }
-
-  float process(float v, Mode mode) noexcept {
-    const float v3 = v - ic2eq;
-    const float v1 = a1 * ic1eq + a2 * v3;
-    const float v2 = ic2eq + a2 * ic1eq + a3 * v3;
-    ic1eq = flush(2.0f * v1 - ic1eq);
-    ic2eq = flush(2.0f * v2 - ic2eq);
-
-    switch (mode) {
-    case LowPass:
-      return v2;
-    case HighPass:
-      return v - k * v1 - v2;
-    case BandPass:
-      return v1;
-    default:
-      return v - k * v1;
-    }
-  }
-
-  void reset() noexcept { ic1eq = ic2eq = 0.0f; }
-};
-
-// 4-point, 3rd-order Hermite interpolation, from chalkwalk/seq_play
-// src/deckcore/Interpolation.h. For fractional reads that are NOT inside a
-// feedback loop -- see DelayLine::readLinear for why the loop uses something
-// duller.
-inline float hermite4(float ym1, float y0, float y1, float y2,
-                      float t) noexcept {
-  const float c0 = y0;
-  const float c1 = 0.5f * (y1 - ym1);
-  const float c2 = ym1 - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
-  const float c3 = 0.5f * (y2 - ym1) + 1.5f * (y0 - y1);
-  return ((c3 * t + c2) * t + c1) * t + c0;
-}
+// 4-point Hermite interpolation, adopted from chalkwalk-dsp. For fractional
+// reads that are NOT inside a feedback loop -- see DelayLine::readLinear for
+// why the loop uses something duller.
+using chalkwalk::dsp::hermite4;
 
 // A circular delay line with a fixed, power-of-two capacity, so the wrap is a
 // mask rather than a branch.
@@ -434,82 +387,38 @@ private:
 // people mean by "cheap digital synth". This subtracts a polynomial
 // approximation of the step's spectrum at the moment it happens.
 //
-// PORTED WITH A CORRECTION, and it is worth knowing about upstream. seq_play
-// ADDS the correction to a rising saw and has the two signs of the pulse's
-// edges the other way round as well. The polynomial itself carries a downward
-// step, so adding it to a saw that already steps downward doubles the
-// discontinuity instead of cancelling it. Measured here, aliasing below the
-// fundamental of a 5 kHz saw at 48 kHz:
+// THE SIGN WAS THE BUG, and it has since been fixed at both ends. This file
+// once carried a note saying Lockstep ADDED the correction where it should
+// subtract: measured, its 5 kHz saw aliased 82% worse than no correction at
+// all. Lockstep fixed that independently, and both are now the same code in
+// chalkwalk-dsp -- whose tests assert that the inverted version is worse than
+// a naive oscillator, so it cannot come back quietly.
 //
-//   naive, no correction     0.071
-//   seq_play's signs         0.129   -- 82% WORSE than no correction
-//   as written below         0.033   -- 53% better
+// ONE BEHAVIOUR CHANGE came with the move. This file clamped pulse width to a
+// fixed [0.05, 0.95]; the shared version clamps to a multiple of the phase
+// INCREMENT, because a pulse has two discontinuities and each correction spans
+// a sample either side of its own. Measured, the fixed clamp was wrong at both
+// ends: at 110 Hz it is twenty-one increments, forbidding narrow pulses that
+// would have been clean, and at 3520 Hz it is two thirds of one, so it did not
+// protect in the case it existed for.
+using chalkwalk::dsp::polyBlep;
+using chalkwalk::dsp::polyBlepSaw;
+using chalkwalk::dsp::polyBlepPulse;
+
+using chalkwalk::dsp::softClip;
+
+// This band's ceiling, which is NOT the shared default.
 //
-// So the upstream oscillators alias harder than if the feature were switched
-// off. Found by porting it and testing the claim rather than the code.
-inline float polyBlep(double t, double dt) noexcept {
-  if (dt <= 0.0)
-    return 0.0f;
-  if (t < dt) {
-    const double x = t / dt;
-    return (float)(x + x - x * x - 1.0);
-  }
-  if (t > 1.0 - dt) {
-    const double x = (t - 1.0) / dt;
-    return (float)(x * x + x + x + 1.0);
-  }
-  return 0.0f;
-}
-
-// `phase` and `increment` are in cycles, 0..1.
-inline float polyBlepSaw(double phase, double increment) noexcept {
-  // Subtracted: the saw steps down once a cycle and so does the polynomial.
-  return (float)(2.0 * phase - 1.0) - polyBlep(phase, increment);
-}
-
-inline float polyBlepPulse(double phase, double increment,
-                           double width) noexcept {
-  if (width < 0.05)
-    width = 0.05;
-  if (width > 0.95)
-    width = 0.95;
-
-  // Two edges, opposite directions, opposite signs: the pulse steps UP at the
-  // start of the cycle and DOWN at the width.
-  float s = phase < width ? 1.0f : -1.0f;
-  s += polyBlep(phase, increment);
-  double shifted = phase - width;
-  if (shifted < 0.0)
-    shifted += 1.0;
-  s -= polyBlep(shifted, increment);
-  return s;
-}
-
-// A transparent ceiling, lifted from chalkwalk/seq_play src/dsp/SoftClip.h.
+// The shared default is the transparent master-bus pair -- knee 0.71, ceiling
+// 0.99 -- for catching peaks on a mix that is already staged. These are for
+// shaping a voice: a lower ceiling, because the level here is set by gain and
+// this is what makes that gain safe.
 //
-// The distinction from `saturate` is the whole reason both exist. Saturation
-// shapes everything it touches, so using it to raise a level costs the same
-// number of dB in transient that it gains in loudness -- measured on the kit,
-// pushing the bus drive from 1.8 to 5.0 bought 6 dB of level and spent 5 dB of
-// crest factor, which is the punch the modal drums were built for. This is
-// exactly the identity below the knee and only engages above it, so the body
-// of the signal is untouched and only the peaks that would have clipped are
-// caught.
-//
-// Level is set by gain, and the ceiling is what makes that gain safe.
-inline float softClip(float x, float knee = 0.70f,
-                      float ceiling = 0.95f) noexcept {
-  const float range = ceiling - knee;
-  if (range <= 0.0f)
-    return x;
-
-  const float a = std::abs(x);
-  if (a <= knee)
-    return x; // transparent
-
-  const float shaped = knee + range * std::tanh((a - knee) / range);
-  return std::copysign(shaped, x);
-}
+// Named and passed explicitly because both projects that had this function
+// baked in different constants AND called it bare, so "the default" silently
+// meant two things. Whichever is right, it belongs at the call site.
+inline constexpr float kBandKnee = 0.70f;
+inline constexpr float kBandCeiling = 0.95f;
 
 // A speaker cabinet, close-miked.
 //

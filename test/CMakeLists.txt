@@ -100,6 +100,7 @@ target_compile_definitions(NinjamTests
 target_link_libraries(NinjamTests
     PRIVATE
         chalkwalk::music
+        chalkwalk::dsp
         juce::juce_audio_formats
         juce::juce_events
         ogg
@@ -166,7 +167,7 @@ target_compile_definitions(AntiphonAudit
         JUCE_MODAL_LOOPS_PERMITTED=1)
 
 target_link_libraries(AntiphonAudit
-    PRIVATE chalkwalk::music
+    PRIVATE chalkwalk::music chalkwalk::dsp
     PRIVATE
         Antiphon
         antiphon_fonts
