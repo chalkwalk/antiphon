@@ -213,8 +213,20 @@ int noteTier(int midiNote, const Harmony::Chord &chord) {
 // clearly audible as rising, falling or arching; at 4 the line starts refusing
 // to follow the shape at all and wanders in a narrow band, which is a
 // different fault and a more boring one.
-inline constexpr chalkwalk::music::MelodyWeights kLeadWeights{/*contour=*/1,
-                                                              /*interval=*/2};
+//
+// The direction weight is DERIVED rather than chosen, because the two terms
+// have a region where they cancel: gap-fill makes any reversal free, so above
+// half the interval weight the tie-breaker starts buying the leaps the
+// interval term exists to prevent. Measured here: at 1 the wide leaps stay at
+// 6 per 1939 moves, at 2 they reach 41, at 3 they reach 85.
+//
+// Unlike seq_play, antiphon does not scale this by contour. Its Walk is a
+// fixed sine wiggle rather than a true random walk, so all four of its
+// contours state a direction of their own and none of them needs the term
+// carrying the shape single-handed.
+inline constexpr chalkwalk::music::MelodyWeights kLeadWeights{
+    /*contour=*/1, /*interval=*/2,
+    /*direction=*/chalkwalk::music::safeDirectionWeight(2)};
 
 chalkwalk::music::KeySig toKeySig(const MusicalKey::Key &key) {
   namespace m = chalkwalk::music;
@@ -308,7 +320,8 @@ std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
   // The line's memory, and the only state this loop carries. Negative when
   // nothing came before, which is what makes that note pure contour following
   // -- there is no interval to price.
-  int lastNote = carryIn;
+  m::MelodyState melody;
+  melody.lastNote = carryIn;
 
   for (int step = 0; step < eighths; ++step) {
     if (!m::hit(step, f.steps, f.pulses, f.rotation))
@@ -367,7 +380,7 @@ std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
     const int jitter = rng.range(-2, 2);
     const size_t idx =
         m::chooseNote(cand, ranks, m::rankCeiling(strength, /*hasChart=*/true),
-                      wanted + jitter, lastNote, kLeadWeights);
+                      wanted + jitter, melody, kLeadWeights);
 
     // Both draws happen on every onset step whether or not the note sounds,
     // so the seed stream does not depend on the outcome -- otherwise one
@@ -377,7 +390,7 @@ std::vector<int> leadLineFrom(const Settings &s, int intervalIndex,
       continue;
 
     line[(size_t)step] = cand[idx];
-    lastNote = cand[idx];
+    melody.advance(cand[idx]);
   }
 
   return line;

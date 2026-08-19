@@ -192,9 +192,16 @@ private:
   // so each one is a real regression detector rather than a guess:
   //
   //                        before      after     threshold
-  //   mean interval     2.17-2.84  1.74-2.08         < 2.4
-  //   stepwise          53%-67%      78%-82%         > 70%
+  //   mean interval     2.17-2.84  2.31-2.47         < 2.6
+  //   stepwise          53%-67%      74%-76%         > 70%
+  //   repeated notes    20%        1.8%-5.2%          < 10%
   //   awkward wide      20-31 per 1939     0    < 0.5% of moves
+  //
+  // The mean is HIGHER than the 1.74-2.08 an earlier revision measured, and
+  // that is arithmetic rather than a regression: a repeated note is a move of
+  // zero, so 20% repeats drag a mean down. Pricing the unison removed most of
+  // them, and what is left is the real melodic motion. Stepwise and awkward
+  // wide are the qualities to read; the mean is a cross-check.
   //
   // The awkward-wide count is the sharpest: it was 31 in C major even AFTER
   // the interval objective landed, because the melody's memory still reset at
@@ -203,7 +210,7 @@ private:
   void runMelodicShape() {
     beginTest("the line moves mostly by step, and leaps idiomatically");
     for (const char *name : {"C major", "D minor", "Bb Lydian", "G Mixolydian"}) {
-      int moves = 0, stepwise = 0, wideAwkward = 0;
+      int moves = 0, stepwise = 0, wideAwkward = 0, repeats = 0;
       long long motion = 0;
 
       for (std::uint32_t seed = 1; seed <= 40; ++seed) {
@@ -217,6 +224,8 @@ private:
               const int d = std::abs(n - last);
               ++moves;
               motion += d;
+              if (d == 0)
+                ++repeats;
               if (d <= 2)
                 ++stepwise;
               // Wide AND not one of the leaps a melody actually makes.
@@ -229,11 +238,13 @@ private:
 
       const double mean = moves ? (double)motion / moves : 0.0;
       const double stepRate = moves ? (double)stepwise / moves : 0.0;
+      const double repeatRate = moves ? (double)repeats / moves : 0.0;
       logMessage(juce::String(name) + ": mean " + juce::String(mean, 2) +
                  ", stepwise " + juce::String(100.0 * stepRate, 1) +
+                 "%, repeats " + juce::String(100.0 * repeatRate, 1) +
                  "%, wide awkward " + juce::String(wideAwkward));
 
-      expect(mean < 2.4, juce::String(name) + ": mean interval " +
+      expect(mean < 2.6, juce::String(name) + ": mean interval " +
                              juce::String(mean, 2) + " is too wide");
       expect(stepRate > 0.7, juce::String(name) + ": only " +
                                  juce::String(100.0 * stepRate, 1) +
@@ -241,6 +252,14 @@ private:
       expect(wideAwkward * 200 < moves,
              juce::String(name) + ": " + juce::String(wideAwkward) +
                  " awkward wide leaps in " + juce::String(moves) + " moves");
+
+      // A line that mostly repeats itself is a drone, and nothing else here
+      // notices. This was NOT hypothetical: with the unison priced at 0 like
+      // a step, raising the direction weight took repeats to 54% of all moves
+      // -- the objective had made standing still the cheapest thing to do.
+      expect(repeatRate < 0.10, juce::String(name) + ": " +
+                                    juce::String(100.0 * repeatRate, 1) +
+                                    "% of moves repeat the note");
     }
   }
   // The seam between two intervals is a real melodic move and must be priced
@@ -287,8 +306,11 @@ private:
     expect(seams > 100, "the sweep actually produced seams to measure");
 
     // Measured with the carry disabled: mean 4.00 and 90 awkward leaps in 800
-    // seams. With it: 2.97 and none. The awkward count is the assertion that
-    // matters and it is exact.
+    // seams. With it: 3.29 and 4. The awkward count is the assertion that
+    // matters, and the mean has the same caveat as the shape test above -- it
+    // rose from 2.97 when the unison was repriced, because a seam that used to
+    // repeat the note is now a real move rather than a zero dragging the mean
+    // down.
     expect(wide * 100 < seams, juce::String(wide) + " awkward leaps across " +
                                    juce::String(seams) + " seams");
 
@@ -299,7 +321,7 @@ private:
     // interval cost should lose that argument. What must not survive is the
     // seam being the most leap-prone moment in the melody, which is what 4.00
     // and 90 awkward leaps meant.
-    expect(mean < 3.3, "the boundary leaps more than a new phrase justifies: " +
+    expect(mean < 3.7, "the boundary leaps more than a new phrase justifies: " +
                            juce::String(mean, 2));
   }
 };
