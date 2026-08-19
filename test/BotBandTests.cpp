@@ -7,6 +7,49 @@
 #include <map>
 #include <JuceHeader.h>
 
+namespace {
+
+// An INDEPENDENT reading of "how strong is this note against this chord",
+// kept deliberately separate from the one the band actually uses.
+//
+// This was BotBand's own model, and the generator has since moved to
+// chalkwalk-music's tier order. Rather than delete it, it stays here as a
+// second opinion: the tests below check the shared gate against this, so a
+// change to either has to be argued for rather than merely compiling. Two
+// implementations that agree is evidence; one implementation checked against
+// itself is a tautology.
+//
+// The tiers are derived from the chord rather than listed per mode, using the
+// avoid-note rule: a scale tone a semitone above a chord tone is the one that
+// clashes. That gives the flat sixth in Aeolian over i, the fourth in Ionian
+// over I, and the flat second in Phrygian -- and correctly leaves Lydian's
+// sharp fourth alone, since it is a whole tone above the third and is the
+// characteristic note of the mode rather than a note to handle carefully.
+//
+//   0  a chord tone
+//   1  a scale tone that sits comfortably
+//   2  a semitone above a chord tone: colour, and only in passing
+int noteTier(int midiNote, const Harmony::Chord &chord) {
+  const int pc = ((midiNote % 12) + 12) % 12;
+
+  for (int t = 0; t < chord.toneCount; ++t) {
+    const int tone = (((chord.root + chord.tones[(size_t)t]) % 12) + 12) % 12;
+    if (pc == tone)
+      return 0;
+  }
+
+  for (int t = 0; t < chord.toneCount; ++t) {
+    const int tone = (((chord.root + chord.tones[(size_t)t]) % 12) + 12) % 12;
+    if (pc == (tone + 1) % 12)
+      return 2;
+  }
+
+  return 1;
+}
+
+}  // namespace
+
+
 // Two kinds of assertion here, and the split is the point (AGENTS.md).
 //
 // The pattern layer is exact -- a figure either has three pulses or it does
@@ -1649,7 +1692,7 @@ public:
 
             const int strength = BotBand::metricStrength((int)step, s.bpi);
             const auto &chord = Harmony::chordAtStep(layout, (int)step);
-            const int tier = BotBand::noteTier(line[step], chord);
+            const int tier = noteTier(line[step], chord);
             const int worst = strength >= 3 ? 0 : (strength >= 1 ? 1 : 2);
 
             expect(tier <= worst,
@@ -1669,20 +1712,20 @@ public:
       // Derived from the chord rather than listed per mode, which is what
       // makes it right in all seven.
       const auto cMajor = Harmony::chordOn(0, Harmony::Quality::Major);
-      expectEquals(BotBand::noteTier(60, cMajor), 0, "C over C is the root");
-      expectEquals(BotBand::noteTier(64, cMajor), 0, "E over C is the third");
-      expectEquals(BotBand::noteTier(65, cMajor), 2, "F sits above the third");
-      expectEquals(BotBand::noteTier(62, cMajor), 1, "D is comfortable");
+      expectEquals(noteTier(60, cMajor), 0, "C over C is the root");
+      expectEquals(noteTier(64, cMajor), 0, "E over C is the third");
+      expectEquals(noteTier(65, cMajor), 2, "F sits above the third");
+      expectEquals(noteTier(62, cMajor), 1, "D is comfortable");
 
       const auto aMinor = Harmony::chordOn(9, Harmony::Quality::Minor);
-      expectEquals(BotBand::noteTier(65, aMinor), 2,
+      expectEquals(noteTier(65, aMinor), 2,
                    "the flat sixth sits above the fifth -- the minor problem");
-      expectEquals(BotBand::noteTier(62, aMinor), 1, "the fourth is fine");
+      expectEquals(noteTier(62, aMinor), 1, "the fourth is fine");
 
       // Lydian's sharp fourth is a whole tone above the third, so it is the
       // characteristic note rather than one to handle carefully.
       const auto fMajor = Harmony::chordOn(5, Harmony::Quality::Major);
-      expectEquals(BotBand::noteTier(71, fMajor), 1, "B over F is Lydian");
+      expectEquals(noteTier(71, fMajor), 1, "B over F is Lydian");
     }
 
     beginTest("every note is in the key");

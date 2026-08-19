@@ -184,24 +184,6 @@ Figure figureFor(Voice voice, const Settings &s) {
   return {};
 }
 
-int noteTier(int midiNote, const Harmony::Chord &chord) {
-  const int pc = ((midiNote % 12) + 12) % 12;
-
-  for (int t = 0; t < chord.toneCount; ++t) {
-    const int tone = (((chord.root + chord.tones[(size_t)t]) % 12) + 12) % 12;
-    if (pc == tone)
-      return 0;
-  }
-
-  for (int t = 0; t < chord.toneCount; ++t) {
-    const int tone = (((chord.root + chord.tones[(size_t)t]) % 12) + 12) % 12;
-    if (pc == (tone + 1) % 12)
-      return 2;
-  }
-
-  return 1;
-}
-
 // How the lead trades its phrase shape against its own smoothness.
 //
 // `contour` is the unit: the cost of sitting one semitone away from where the
