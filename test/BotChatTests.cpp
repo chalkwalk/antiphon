@@ -396,6 +396,57 @@ public:
       }
     }
 
+    beginTest("shorter and longer notes are a nudge, and the whole band takes it");
+    {
+      namespace m = chalkwalk::music;
+
+      // A nudge, not a number: "more legato" from a player means "than you are
+      // now", so each request steps from wherever the band already is.
+      auto ctx = contextWith(BotBand::Voice::Lead, "Pemo", "tester");
+      BotAddress::Attention att;
+
+      const auto shorter =
+          BotChat::respond(ctx, from("tester", "Pemo: shorter notes"), att);
+      expect(shorter.act == BotChat::Act::SetArticulation,
+             "asking for shorter notes did nothing: " + shorter.text);
+      expect(shorter.value < m::kArticulationNatural,
+             "shorter should be below the natural setting");
+      expect(shorter.speak && shorter.text.isNotEmpty(),
+             "the band said nothing about it");
+
+      // Unlike an instrument this is not the soloist's alone -- a band asked to
+      // play more legato all plays more legato.
+      expect(shorter.forBand, "articulation should be answered for the band");
+
+      auto drums = contextWith(BotBand::Voice::Drums, "Ravo", "tester");
+      const auto drumsToo =
+          BotChat::respond(drums, from("tester", "Ravo: more legato"), att);
+      expect(drumsToo.act == BotChat::Act::SetArticulation,
+             "a non-soloist refused the setting: " + drumsToo.text);
+
+      // Stepping from where the band IS, rather than from the default.
+      ctx.music.articulation = 0;
+      const auto up =
+          BotChat::respond(ctx, from("tester", "Pemo: legato"), att);
+      expect(up.value > 0 && up.value <= m::kArticulationNatural,
+             "a nudge from the bottom should step up, not jump to normal");
+
+      // And saying so at the end of the range rather than pretending to move.
+      ctx.music.articulation = m::kArticulationLegato;
+      const auto atTop =
+          BotChat::respond(ctx, from("tester", "Pemo: smoother"), att);
+      expect(atTop.value == m::kArticulationLegato, "it moved past the top");
+      expect(atTop.text.containsIgnoreCase("already"),
+             "at the limit it should say so: " + atTop.text);
+
+      ctx.music.articulation = m::kArticulationShortest;
+      const auto atBottom =
+          BotChat::respond(ctx, from("tester", "Pemo: shorter"), att);
+      expect(atBottom.value == m::kArticulationShortest, "it moved past the bottom");
+      expect(atBottom.text.containsIgnoreCase("already"),
+             "at the limit it should say so: " + atBottom.text);
+    }
+
     beginTest("only the soloist answers to an instrument, and says so if not");
     {
       // The one thing about the band a player may pin, and it survives a shake:

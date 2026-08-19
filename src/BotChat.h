@@ -70,6 +70,7 @@ enum class Act {
   Part,              // leave the room
   SetLeadInstrument, // `value` is a BotVoice::LeadInstrument
   SetChatMuted,      // `value` is 1 for quiet, 0 for talking again
+  SetArticulation,   // `value` is 0..100: staccato, as written, legato
   StartPlaying,      // come in, or cancel an ending already under way
   StopPlaying        // bring it to an end: wrap up, resolve, then silence
 };

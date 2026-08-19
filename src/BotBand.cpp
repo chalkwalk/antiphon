@@ -907,7 +907,17 @@ int leadHoldSamples(const Settings &s, int step, int gapSamples,
   const auto tier = m::tierOf(toKeySig(s.key), ((note % 12) + 12) % 12, sounding);
   const int want =
       m::holdIn(m::holdTicks(metricStrength(step, s.bpi), tier), beatSamples);
-  return std::min(gapSamples, want);
+  const int held = m::articulate(want, gapSamples, s.articulation);
+
+  // A floor the shared model cannot supply, because it does not know the unit
+  // is samples. `articulate` guarantees at least one of whatever the caller
+  // counts, and one SAMPLE is not a short note, it is a discontinuity: at the
+  // staccato extreme the crest factor went from 2.07 to 3.57 and the peak
+  // nearly doubled, which is the note-off clicking rather than the line
+  // playing shorter. Thirty milliseconds is about the shortest a plucked or
+  // struck note can be and still read as a note.
+  const int floorSamples = (int)(0.030 * s.sampleRate);
+  return std::min(gapSamples, std::max(held, floorSamples));
 }
 
 void renderLead(const Settings &s, int intervalIndex, int noNewNotesAfter,
