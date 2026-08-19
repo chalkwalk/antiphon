@@ -38,6 +38,9 @@ struct Options {
   juce::String keyName = "C major";
   int bpm = 120, bpi = 8, bars = 4;
 
+  // Temporary, for the lead A/B. See BotBand::LeadModel.
+  BotBand::LeadModel leadModel = BotBand::LeadModel::Legacy;
+
   // Bass articulation.
   BotVoice::BassTechnique technique = BotVoice::BassTechnique::Fingered;
 
@@ -211,7 +214,8 @@ void renderVoice(const Options &o, BotBand::Voice voice,
   if (!key.valid)
     key = MusicalKey::parseName("C major");
 
-  const auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+  auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+  settings.leadModel = o.leadModel;
   const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
 
   left.clear();
@@ -242,8 +246,8 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
       for (int step = 0; step < (int)voice; ++step)
         seed = seed * 1664525u + 1013904223u;
 
-      const auto settings =
-          BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, seed);
+      auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, seed);
+      settings.leadModel = o.leadModel;
       const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
       if (accL.empty()) {
         accL.assign((size_t)n, 0.0f);
@@ -295,8 +299,8 @@ std::vector<float> renderBand(const Options &o) {
       for (int step = 0; step < (int)voice; ++step)
         s = s * 1664525u + 1013904223u;
 
-      const auto settings =
-          BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, s);
+      auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, s);
+      settings.leadModel = o.leadModel;
       const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
       if (acc.empty())
         acc.assign((size_t)n, 0.0f);
@@ -535,6 +539,11 @@ int main(int argc, char *argv[]) {
       o.repeats = next().getIntValue();
     else if (arg == "--spacing")
       o.spacing = next().getDoubleValue();
+    else if (arg == "--lead-model") {
+      const auto v = next().toLowerCase();
+      o.leadModel = (v == "shared") ? BotBand::LeadModel::Shared
+                                    : BotBand::LeadModel::Legacy;
+    }
     else if (arg == "--key")
       o.keyName = next();
     else if (arg == "--bpm")
@@ -630,7 +639,8 @@ int main(int argc, char *argv[]) {
   }
 
   const juce::StringArray known{"kick", "snare", "hat",  "bass", "lead",
-                                "pad",  "kit",   "keys", "solo", "band"};
+                                "pad",  "kit",   "keys", "solo", "band",
+                                "leadcompare"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -639,6 +649,93 @@ int main(int argc, char *argv[]) {
   if (o.sampleRate <= 0.0) {
     std::fprintf(stderr, "voicelab: sample rate must be positive\n");
     return 1;
+  }
+
+  // leadcompare: how far apart are the two lead models?
+  //
+  // The audio A/B answers "which sounds better"; this answers "how much did
+  // anything move at all", which is the question you want first. If the two
+  // agree on nine notes in ten there is little to listen for; if they disagree
+  // constantly, listening to one seed proves nothing.
+  if (o.voice == "leadcompare") {
+    auto key = MusicalKey::parseName(o.keyName);
+    if (!key.valid)
+      key = MusicalKey::parseName("C major");
+
+    int steps = 0, sounded = 0, differed = 0, restDiff = 0;
+    int semitoneMoved = 0, octaveMoved = 0, farMoved = 0;
+    juce::String firstExample;
+
+    const int seeds = juce::jmax(1, o.repeats);
+    for (int sd = 0; sd < seeds; ++sd) {
+      const std::uint32_t seed = o.seed + (std::uint32_t)sd;
+      auto legacy = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, seed);
+      legacy.leadModel = BotBand::LeadModel::Legacy;
+      auto shared = legacy;
+      shared.leadModel = BotBand::LeadModel::Shared;
+
+      for (int interval = 0; interval < o.bars; ++interval) {
+        const auto a = BotBand::leadLine(legacy, interval);
+        const auto b = BotBand::leadLine(shared, interval);
+        if (a.size() != b.size())
+          continue;
+
+        juce::String rowA, rowB;
+        bool rowDiffers = false;
+        for (size_t i = 0; i < a.size(); ++i) {
+          ++steps;
+          const bool aRest = a[i] < 0, bRest = b[i] < 0;
+          if (!aRest || !bRest)
+            ++sounded;
+          if (a[i] == b[i])
+            continue;
+          ++differed;
+          rowDiffers = true;
+          if (aRest != bRest) {
+            ++restDiff;
+          } else {
+            const int d = std::abs(a[i] - b[i]);
+            if (d % 12 == 0)
+              ++octaveMoved;
+            else if (d <= 2)
+              ++semitoneMoved;
+            else
+              ++farMoved;
+          }
+          rowA += (aRest ? juce::String("  . ") : juce::String(a[i]).paddedLeft(' ', 4));
+          rowB += (bRest ? juce::String("  . ") : juce::String(b[i]).paddedLeft(' ', 4));
+        }
+        if (rowDiffers && firstExample.isEmpty()) {
+          juce::String la, lb;
+          for (size_t i = 0; i < a.size(); ++i) {
+            la += (a[i] < 0 ? juce::String("  . ") : juce::String(a[i]).paddedLeft(' ', 4));
+            lb += (b[i] < 0 ? juce::String("  . ") : juce::String(b[i]).paddedLeft(' ', 4));
+          }
+          firstExample = "  seed " + juce::String((int)seed) + " interval " +
+                         juce::String(interval) + "\n    legacy" + la +
+                         "\n    shared" + lb;
+        }
+      }
+    }
+
+    std::printf("leadcompare  %s  %d bpm  %d bpi  seeds %u..%u  %d intervals each\n",
+                o.keyName.toRawUTF8(), o.bpm, o.bpi, (unsigned)o.seed,
+                (unsigned)(o.seed + (std::uint32_t)seeds - 1), o.bars);
+    std::printf("  steps compared      %d\n", steps);
+    std::printf("  either sounded      %d\n", sounded);
+    if (sounded > 0) {
+      std::printf("  differed            %d  (%.1f%% of sounding steps)\n",
+                  differed, 100.0 * differed / sounded);
+      std::printf("    note vs rest      %d\n", restDiff);
+      std::printf("    moved <= 2 semis  %d\n", semitoneMoved);
+      std::printf("    moved by octaves  %d\n", octaveMoved);
+      std::printf("    moved further     %d\n", farMoved);
+    }
+    if (firstExample.isNotEmpty())
+      std::printf("  first differing interval:\n%s\n", firstExample.toRawUTF8());
+    else
+      std::printf("  the two models agree everywhere in this sweep.\n");
+    return 0;
   }
 
   if (o.voice == "band") {
@@ -669,6 +766,7 @@ int main(int argc, char *argv[]) {
     if (!key.valid)
       key = MusicalKey::parseName("C major");
     auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+    settings.leadModel = o.leadModel;
     if (o.instrumentNamed)
       settings.leadOverride = (int)o.instrument;
 
@@ -718,8 +816,8 @@ int main(int argc, char *argv[]) {
           o.seed += 1u;
         }
 
-      const auto settings =
-          BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+      auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+      settings.leadModel = o.leadModel;
       const auto patch = BotBand::keysPatch(settings);
       std::printf("keys  seed %u  patch %s: detune %.1f cents, cutoff %.1f "
                   "partials, res %.2f, env x%.1f, attack %.0f ms, drive %.2f\n",
