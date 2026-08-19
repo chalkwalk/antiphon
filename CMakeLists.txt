@@ -82,6 +82,18 @@ add_subdirectory(modules/vorbis EXCLUDE_FROM_ALL)
 set(CHALKWALK_MUSIC_TESTS ON CACHE BOOL "" FORCE)
 add_subdirectory(libs/music)
 
+# ---------------------------------------------------------------------------
+# chalkwalk-dsp -- shared, JUCE-free DSP primitives (../ECOSYSTEM.md).
+# Submodule: https://github.com/chalkwalk/chalkwalk-dsp (MIT).
+#
+# Same arrangement and the same reasoning as chalkwalk-music above. The filter,
+# the polyBLEP oscillators, the soft clipper and the Hermite reader lived here
+# and in Lockstep, and the two copies had diverged; the shared versions take
+# both halves.
+# ---------------------------------------------------------------------------
+set(CHALKWALK_DSP_TESTS ON CACHE BOOL "" FORCE)
+add_subdirectory(libs/dsp)
+
 add_subdirectory(src)
 
 # Offline tools. Kept out of src/ because nothing here is part of the plugin --

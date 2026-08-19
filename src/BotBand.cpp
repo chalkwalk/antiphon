@@ -1253,10 +1253,12 @@ void renderInterval(Voice voice, const Settings &s, int intervalIndex,
                          ? (float)s.trimOverride[(int)voice]
                          : kVoiceTrim[(int)voice];
   for (int i = 0; i < numSamples; ++i)
-    out[i] = BotDsp::softClip(out[i] * trim);
+    out[i] = BotDsp::softClip(out[i] * trim, BotDsp::kBandKnee,
+                              BotDsp::kBandCeiling);
   if (right != nullptr && isStereo(voice))
     for (int i = 0; i < numSamples; ++i)
-      right[i] = BotDsp::softClip(right[i] * trim);
+      right[i] = BotDsp::softClip(right[i] * trim, BotDsp::kBandKnee,
+                                  BotDsp::kBandCeiling);
 }
 
 } // namespace BotBand
