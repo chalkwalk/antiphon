@@ -885,6 +885,31 @@ void renderKeys(const Settings &s, float *out, float *right, int numSamples) {
   }
 }
 
+// How long a lead note rings, under the shared duration model.
+//
+// This gained an axis. Antiphon capped by TIER only -- a colour note passes
+// rather than sits -- and held everything else until the next onset, which is
+// legato by default and gives a downbeat no more room than an off-beat.
+// seq_play had the other half, scaling sustain by BEAT STRENGTH, and the merged
+// model is the smaller of the two: strength says how much room the moment
+// deserves, tier says how long the note can bear to be heard.
+//
+// The gap to the next onset still caps everything, and what is left over is
+// the space that makes a line phrase instead of drone.
+int leadHoldSamples(const Settings &s, int step, int gapSamples,
+                    int note, const Harmony::Layout &layout) {
+  namespace m = chalkwalk::music;
+  const int beatSamples = samplesPerBeat(s);
+  if (beatSamples <= 0)
+    return gapSamples;
+
+  const auto sounding = toSoundingChord(Harmony::chordAtStep(layout, step));
+  const auto tier = m::tierOf(toKeySig(s.key), ((note % 12) + 12) % 12, sounding);
+  const int want =
+      m::holdIn(m::holdTicks(metricStrength(step, s.bpi), tier), beatSamples);
+  return std::min(gapSamples, want);
+}
+
 void renderLead(const Settings &s, int intervalIndex, int noNewNotesAfter,
                 float *out, int numSamples) {
   const int beatSamples = samplesPerBeat(s);
@@ -931,14 +956,7 @@ void renderLead(const Settings &s, int intervalIndex, int noNewNotesAfter,
     const int strength = metricStrength((int)step, s.bpi);
     const float velocity = strength >= 3 ? 0.85f : (strength >= 1 ? 0.7f : 0.5f);
 
-    // A colour note passes; it does not sit. Holding a semitone above a chord
-    // tone until the next note is the difference between a line that leans
-    // into the clash and one that trips over it -- and it is the other half of
-    // why minor sounded wrong, because that is where those notes live.
-    int held = length;
-    const auto &chord = Harmony::chordAtStep(layout, (int)step);
-    if (noteTier(line[step], chord) == 2)
-      held = std::min(length, eighth);
+    const int held = leadHoldSamples(s, (int)step, length, line[step], layout);
 
     BotVoice::renderLead(out + at, std::min(numSamples - at, held + tail), held,
                          s.sampleRate, BotVoice::midiToHz((double)line[step]),
@@ -970,11 +988,9 @@ void renderLead(const Settings &s, int intervalIndex, int noNewNotesAfter,
       int held = std::min(numSamples - at,
                           (int)((int)previous.size() - lastStep) * eighth);
 
-      // A colour note is cut short wherever it falls, so if it was one it had
-      // already stopped well before the boundary and there is nothing to carry.
-      const auto &chord = Harmony::chordAtStep(layout, lastStep);
-      if (noteTier(previous[(size_t)lastStep], chord) == 2)
-        held = std::min(held, eighth);
+      // The same duration rule as any other note, so a note that was already
+      // going to stop short does not suddenly ring across the boundary.
+      held = leadHoldSamples(s, lastStep, held, previous[(size_t)lastStep], layout);
 
       if (held > 0 && at + held >= numSamples) {
         const int strength = metricStrength(lastStep, s.bpi);
