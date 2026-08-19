@@ -20,6 +20,8 @@
 #include "BotVoice.h"
 #include "MusicalKey.h"
 
+#include <array>
+
 namespace {
 
 struct Options {
@@ -96,6 +98,13 @@ void usage() {
       "band mode only:\n"
       "  --key <name>       C major, D minor, F# Dorian (default C major)\n"
       "  --bpm <n> --bpi <n> --bars <n>\n"
+      "  --lead-model <m>   legacy or shared, while both exist\n"
+      "\n"
+      "lead analysis:\n"
+      "  leadcompare        how far apart the two lead models are, in notes\n"
+      "  leadstats          the melodic interval histogram of one model --\n"
+      "                     what the line actually DOES, seed after seed\n"
+      "                     (--repeats seeds, --bars intervals each)\n"
       "\n"
       "Prints peak, rms, crest, fundamental and brightness for what it wrote.\n"
       "Those are the quantities the unit tests assert, measured the same way.\n");
@@ -640,7 +649,7 @@ int main(int argc, char *argv[]) {
 
   const juce::StringArray known{"kick", "snare", "hat",  "bass", "lead",
                                 "pad",  "kit",   "keys", "solo", "band",
-                                "leadcompare"};
+                                "leadcompare", "leadstats"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -735,6 +744,101 @@ int main(int argc, char *argv[]) {
       std::printf("  first differing interval:\n%s\n", firstExample.toRawUTF8());
     else
       std::printf("  the two models agree everywhere in this sweep.\n");
+    return 0;
+  }
+
+  // leadstats: what shape is the line, measured rather than described.
+  //
+  // "It leaps oddly" is a real complaint and not a testable one. This counts
+  // every melodic interval across a sweep of seeds and prints the histogram,
+  // which turns a judgement about one bar into a number that moves when the
+  // objective changes -- and, unlike leadcompare, it outlives whichever model
+  // wins, because it measures a line rather than a difference.
+  if (o.voice == "leadstats") {
+    auto key = MusicalKey::parseName(o.keyName);
+    if (!key.valid)
+      key = MusicalKey::parseName("C major");
+
+    int notes = 0, rests = 0, moves = 0;
+    long long totalMotion = 0;
+    int biggest = 0;
+    std::array<int, 64> hist{};
+    int reversals = 0, continuations = 0;
+
+    const int seeds = juce::jmax(1, o.repeats);
+    for (int sd = 0; sd < seeds; ++sd) {
+      auto s = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate,
+                                 o.seed + (std::uint32_t)sd);
+      s.leadModel = o.leadModel;
+
+      // The line is continuous across intervals, so the interval between the
+      // last note of one and the first of the next is a real melodic move and
+      // is counted as one.
+      int last = -1, lastMove = 0;
+      for (int interval = 0; interval < o.bars; ++interval)
+        for (int n : BotBand::leadLine(s, interval)) {
+          if (n < 0) {
+            ++rests;
+            continue;
+          }
+          ++notes;
+          if (last >= 0) {
+            const int d = n - last;
+            ++moves;
+            totalMotion += std::abs(d);
+            biggest = juce::jmax(biggest, std::abs(d));
+            hist[(size_t)juce::jmin(63, std::abs(d))]++;
+            if (d != 0 && lastMove != 0) {
+              if ((d > 0) == (lastMove > 0))
+                ++continuations;
+              else
+                ++reversals;
+            }
+            if (d != 0)
+              lastMove = d;
+          }
+          last = n;
+        }
+    }
+
+    std::printf("leadstats  %s  %s  %d bpm  %d bpi  seeds %u..%u  %d intervals each\n",
+                o.keyName.toRawUTF8(),
+                o.leadModel == BotBand::LeadModel::Shared ? "shared" : "legacy",
+                o.bpm, o.bpi, (unsigned)o.seed,
+                (unsigned)(o.seed + (std::uint32_t)seeds - 1), o.bars);
+    std::printf("  notes %d   rests %d   moves %d\n", notes, rests, moves);
+    if (moves > 0) {
+      std::printf("  mean |interval|   %.2f semitones\n",
+                  (double)totalMotion / moves);
+      std::printf("  largest           %d\n", biggest);
+      int stepwise = 0, leaps = 0, wide = 0;
+      for (size_t d = 0; d < hist.size(); ++d) {
+        if (d <= 2)
+          stepwise += hist[d];
+        else if (d <= 7)
+          leaps += hist[d];
+        else
+          wide += hist[d];
+      }
+      std::printf("  stepwise (<=2)    %5d  %5.1f%%\n", stepwise,
+                  100.0 * stepwise / moves);
+      std::printf("  small leap (3-7)  %5d  %5.1f%%\n", leaps,
+                  100.0 * leaps / moves);
+      std::printf("  wide (>=8)        %5d  %5.1f%%\n", wide,
+                  100.0 * wide / moves);
+      if (continuations + reversals > 0)
+        std::printf("  direction kept    %5.1f%%  (of %d turns)\n",
+                    100.0 * continuations / (continuations + reversals),
+                    continuations + reversals);
+      std::printf("  histogram:\n");
+      for (size_t d = 0; d < hist.size(); ++d)
+        if (hist[d] > 0)
+          std::printf("   %3d  %5d  %5.1f%%  %s\n", (int)d, hist[d],
+                      100.0 * hist[d] / moves,
+                      juce::String::repeatedString(
+                          "#", juce::jmax(0, (int)(200.0 * hist[d] / moves)))
+                          .toRawUTF8());
+    }
     return 0;
   }
 
