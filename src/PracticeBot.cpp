@@ -271,6 +271,7 @@ BotChat::Context PracticeBot::currentContext() const {
   ctx.music.chartSource = chartSource;
   ctx.music.bpm = settings.bpm;
   ctx.music.bpi = settings.bpi;
+  ctx.music.articulation = settings.articulation;
 
   ctx.self.name = botName;
   ctx.self.handle = juce::String(BotNames::handleOf(botName.toStdString()));
@@ -728,6 +729,11 @@ void PracticeBot::onChatMessage(const juce::String &type,
   case BotChat::Act::Reshuffle:
     shake();
     return;
+  case BotChat::Act::SetArticulation: {
+    juce::ScopedLock sl(stateMutex);
+    settings.articulation = answer.value;
+    return;
+  }
   case BotChat::Act::SetLeadInstrument: {
     juce::ScopedLock sl(stateMutex);
     settings.leadOverride = answer.value;

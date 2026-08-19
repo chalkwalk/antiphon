@@ -198,6 +198,20 @@ const char *spokenIntent(BotLanguage::Intent i) {
   return "something else";
 }
 
+// What to call the setting, so the band answers like players rather than
+// reporting a number nobody asked for.
+const char *articulationWord(int value) {
+  if (value <= 12)
+    return "right off the ends.";
+  if (value <= 37)
+    return "shorter.";
+  if (value <= 62)
+    return "back to normal.";
+  if (value <= 87)
+    return "smoother.";
+  return "all joined up.";
+}
+
 // The whole decision, before the quiet rule is applied to it. Separate so the
 // rule is applied in ONE place: a gate at each of a dozen returns is a gate
 // somebody forgets when they add the thirteenth.
@@ -247,6 +261,45 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
 
   const juce::String body = juce::String(BotAddress::withoutAddress(
       ctx.room, ctx.self.name.toStdString(), in.text));
+
+  // Asking for shorter or longer notes. Like an instrument name this is a
+  // SETTING rather than a question, so it is matched before the sentence is
+  // read -- and unlike an instrument it applies to every voice, because a band
+  // asked to play more legato all plays more legato.
+  //
+  // Deliberately a nudge and not a number. "more legato" from a player means
+  // "than you are now", so each request steps and the band says where it
+  // landed, which is how you would talk to people.
+  {
+    const auto phrase = juce::String(BotAddress::withoutAddress(
+                            ctx.room, ctx.self.name.toStdString(), in.text))
+                            .trim()
+                            .toLowerCase();
+    int step = 0;
+    if (phrase.contains("legato") || phrase.contains("smoother") ||
+        phrase.contains("longer notes") || phrase.contains("hold") ||
+        phrase.contains("sustain"))
+      step = +25;
+    else if (phrase.contains("staccato") || phrase.contains("shorter") ||
+             phrase.contains("clipped") || phrase.contains("tighter") ||
+             phrase.contains("choppy"))
+      step = -25;
+
+    if (step != 0) {
+      const int now = ctx.music.articulation;
+      const int wanted = juce::jlimit(0, 100, now + step);
+      out.speak = true;
+      out.forBand = true;   // one voice answers for the band; all of them act
+      out.act = Act::SetArticulation;
+      out.value = wanted;
+      if (wanted == now)
+        out.text = step > 0 ? "already as legato as we get."
+                            : "already as short as we get.";
+      else
+        out.text = articulationWord(wanted);
+      return out;
+    }
+  }
 
   // Naming an instrument, which is a setting rather than a question and so is
   // matched before the sentence is read. Only the soloist has one to change;

@@ -30,6 +30,7 @@ public:
     runChordAwareness();
     runMelodicShape();
     runIntervalSeam();
+    runArticulation();
   }
 
 private:
@@ -343,6 +344,39 @@ private:
     // and 90 awkward leaps meant.
     expect(mean < 3.7, "the boundary leaps more than a new phrase justifies: " +
                            juce::String(mean, 2));
+  }
+  // Articulation is a separate decision from how long a note deserves to be,
+  // and the invariants are about what it must NOT do.
+  void runArticulation() {
+    beginTest("articulation moves the notes and nothing else");
+    namespace m = chalkwalk::music;
+
+    for (const char *name : {"C major", "D minor", "Bb Lydian"})
+      for (std::uint32_t seed = 1; seed <= 12; ++seed) {
+        auto base = settingsFor(name, seed);
+
+        // The line itself is note CHOICE, which articulation must not touch:
+        // it decides how long a note is held, never which one is played or
+        // whether it sounds at all.
+        const auto reference = BotBand::leadLine(base, 1);
+        for (int a : {0, 25, 50, 75, 100}) {
+          auto s = base;
+          s.articulation = a;
+          expect(BotBand::leadLine(s, 1) == reference,
+                 juce::String(name) + ": articulation " + juce::String(a) +
+                     " changed which notes are played");
+        }
+      }
+
+    beginTest("the default is the duration model untouched");
+    // The migration constraint: a Settings nobody has touched must behave
+    // exactly as it did before this existed.
+    expectEquals(BotBand::Settings{}.articulation, m::kArticulationNatural,
+                 "the default should be the natural setting");
+    for (int hold = 1; hold <= 500; hold += 37)
+      for (int gap = 1; gap <= 500; gap += 53)
+        expectEquals(m::articulate(hold, gap, m::kArticulationNatural),
+                     std::min(hold, gap), "the natural setting must not move");
   }
 };
 

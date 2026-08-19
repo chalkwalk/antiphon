@@ -34,6 +34,7 @@ struct Options {
   float velocity = 0.8f;
   int midiNote = 40; // E2, a bass note
   std::uint32_t seed = 1;
+  int articulation = chalkwalk::music::kArticulationNatural;
   bool open = false;
   int repeats = 1;
   double spacing = 0.5;
@@ -98,6 +99,7 @@ void usage() {
       "band mode only:\n"
       "  --key <name>       C major, D minor, F# Dorian (default C major)\n"
       "  --bpm <n> --bpi <n> --bars <n>\n"
+      "  --articulation <n> 0 staccato, 50 as written, 100 legato\n"
       "\n"
       "lead analysis:\n"
       "  leadstats          the lead's melodic interval histogram --\n"
@@ -222,6 +224,8 @@ void renderVoice(const Options &o, BotBand::Voice voice,
     key = MusicalKey::parseName("C major");
 
   auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+
+  settings.articulation = o.articulation;
   const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
 
   left.clear();
@@ -253,6 +257,8 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
         seed = seed * 1664525u + 1013904223u;
 
       auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, seed);
+
+      settings.articulation = o.articulation;
       const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
       if (accL.empty()) {
         accL.assign((size_t)n, 0.0f);
@@ -305,6 +311,8 @@ std::vector<float> renderBand(const Options &o) {
         s = s * 1664525u + 1013904223u;
 
       auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, s);
+
+      settings.articulation = o.articulation;
       const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
       if (acc.empty())
         acc.assign((size_t)n, 0.0f);
@@ -535,6 +543,8 @@ int main(int argc, char *argv[]) {
       o.seconds = next().getDoubleValue();
     else if (arg == "--velocity")
       o.velocity = (float)next().getDoubleValue();
+    else if (arg == "--articulation")
+      o.articulation = next().getIntValue();
     else if (arg == "--seed")
       o.seed = (std::uint32_t)next().getLargeIntValue();
     else if (arg == "--open")
@@ -683,6 +693,7 @@ int main(int argc, char *argv[]) {
     for (int sd = 0; sd < seeds; ++sd) {
       auto s = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate,
                                  o.seed + (std::uint32_t)sd);
+      s.articulation = o.articulation;
 
       // The line is continuous across intervals, so the interval between the
       // last note of one and the first of the next is a real melodic move and
@@ -716,7 +727,7 @@ int main(int argc, char *argv[]) {
             const int want = chalkwalk::music::holdIn(
                 chalkwalk::music::holdTicks(BotBand::metricStrength(step, s.bpi), tr),
                 beatSamples);
-            const int held = juce::jmin(gap, want);
+            const int held = chalkwalk::music::articulate(want, gap, s.articulation);
             fillGap += gap; fillHeld += held; ++sounded;
             if (held < gap) ++shortened;
           }
@@ -829,6 +840,7 @@ int main(int argc, char *argv[]) {
     if (!key.valid)
       key = MusicalKey::parseName("C major");
     auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+    settings.articulation = o.articulation;
     if (o.instrumentNamed)
       settings.leadOverride = (int)o.instrument;
 
@@ -879,6 +891,8 @@ int main(int argc, char *argv[]) {
         }
 
       auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+
+      settings.articulation = o.articulation;
       const auto patch = BotBand::keysPatch(settings);
       std::printf("keys  seed %u  patch %s: detune %.1f cents, cutoff %.1f "
                   "partials, res %.2f, env x%.1f, attack %.0f ms, drive %.2f\n",

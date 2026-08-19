@@ -2,6 +2,7 @@
 
 #include "Harmony.h"
 #include "MusicalKey.h"
+#include <chalkwalk/music/Duration.h>
 #include <JuceHeader.h>
 
 // What a bot SAYS when asked about the room, as pure functions over what the
@@ -48,6 +49,12 @@ struct Room {
 
   int bpm = 120;
   int bpi = 8;
+
+  // How much of the space between two onsets the band's notes fill: 0 clipped,
+  // 50 as the metre and the harmony asked for, 100 running into each other.
+  // Here rather than in `Self` because it is a property of the band -- asked to
+  // play more legato, everyone does.
+  int articulation = chalkwalk::music::kArticulationNatural;
 
   // The owner is the one player whose client we know for certain, because they
   // are running the plugin the bots came from. Nobody else's client is

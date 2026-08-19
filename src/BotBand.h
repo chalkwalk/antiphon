@@ -53,6 +53,16 @@ struct Settings {
   // documents having made and fixed.
   std::uint32_t seed = 1;
 
+  // Legato against staccato: how much of the space between two onsets a note
+  // fills. 0 is as short as it can be and still be heard, 50 is what the metre
+  // and the harmony asked for, 100 runs each note into the next.
+  //
+  // Separate from the duration model rather than part of it, because they
+  // answer different questions: the model says how much room this note
+  // DESERVES, and this says how smoothly the player is playing today. A band
+  // asked for a smoother line should not thereby lose its phrasing.
+  int articulation = chalkwalk::music::kArticulationNatural;
+
   // Which instrument the soloist is holding, or negative for whatever the seed
   // chose, which is the default.
   //
