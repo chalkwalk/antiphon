@@ -1,6 +1,6 @@
 #pragma once
 
-// Adopted from chalkwalk-ninjam (libs/ninjam, MIT). See ../ECOSYSTEM.md.
+// Adopted from chalkwalk-ninjam (libs/ninjam, MIT).
 //
 // One producer, one consumer, no locks. The single-writer/single-reader
 // requirement and what happens if you break it are documented on the library

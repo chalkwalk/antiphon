@@ -1,6 +1,6 @@
 #pragma once
 
-// Adopted from chalkwalk-ninjam (libs/ninjam, MIT). See ../ECOSYSTEM.md.
+// Adopted from chalkwalk-ninjam (libs/ninjam, MIT).
 //
 // The reasoning about why the beat grid is precomputed per interval rather
 // than accumulated -- which is the whole point of the class -- travelled with

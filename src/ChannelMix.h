@@ -1,6 +1,6 @@
 #pragma once
 
-// Adopted from chalkwalk-ninjam (libs/ninjam, MIT). See ../ECOSYSTEM.md.
+// Adopted from chalkwalk-ninjam (libs/ninjam, MIT).
 //
 // A namespace alias rather than a pile of using-declarations, because
 // ChannelMix is a namespace of free functions and aliasing it keeps every

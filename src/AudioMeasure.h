@@ -312,7 +312,7 @@ inline double firstNoteHz(const float *data, int numSamples, double sampleRate,
 // two-stage gate in this file, and they were correct -- validated against
 // ffmpeg's ebur128 to inside 0.05 LU on all five cases below, which is why the
 // swap could be checked rather than trusted. They were deleted anyway, on the
-// rule in ../ECOSYSTEM.md: take the dependency when the thing has a
+// standing rule: take the dependency when the thing has a
 // SPECIFICATION you could fail to meet.
 //
 // The failure being avoided is not today's. It is the momentary and
@@ -325,7 +325,7 @@ inline double firstNoteHz(const float *data, int numSamples, double sampleRate,
 // What is kept is the interface. `integratedLufs` still takes two channel
 // pointers and a sample rate and returns LUFS, so that peak, rms, crest,
 // brightness, pitch and loudness continue to come from ONE place -- which is
-// the whole argument for this header, and the one shim ../ECOSYSTEM.md
+// the whole argument for this header, and the one shim the dependency rule
 // defends by name.
 
 inline constexpr double kSilenceLufs = -70.0;

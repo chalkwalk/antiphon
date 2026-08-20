@@ -1,6 +1,6 @@
 #pragma once
 
-// Adopted from chalkwalk-ninjam (libs/ninjam, MIT). See ../ECOSYSTEM.md.
+// Adopted from chalkwalk-ninjam (libs/ninjam, MIT).
 //
 // This header exists only so that call sites keep saying `Sha1` rather than
 // `chalkwalk::ninjam::Sha1`. The implementation, its comments and its tests
