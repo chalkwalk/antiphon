@@ -99,14 +99,32 @@ Everything is reachable by Tab and operable from the keyboard. Tab order is:
 session status, local channels, remote players, chat, toolbar.
 
 A few shortcuts exist for things worth doing quickly mid-performance. They use
-`Ctrl+Alt` to stay clear of what a DAW claims, and none of them is the only
+`Cmd+Option` on macOS (avoiding VoiceOver's `Control+Option` VO key collisions) and
+`Ctrl+Alt` on Windows/Linux to stay clear of what a DAW claims, and none of them is the only
 route to its action -- each control can also be tabbed to and pressed.
 
-| Shortcut | Action |
+| Shortcut (macOS / Win+Linux) | Action |
 |---|---|
-| `Ctrl+Alt+C` | Focus the chat message box |
-| `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
-| `Ctrl+Alt+A` | Write an accessibility audit report to the desktop |
+| `Cmd+Option+S` / `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
+| `Cmd+Option+C` / `Ctrl+Alt+C` | Focus the chat message box |
+| `Cmd+Option+O` / `Ctrl+Alt+O` | Open Server Browser / Connect dialog |
+| `Cmd+Option+M` / `Ctrl+Alt+M` | Toggle Mute All local channels |
+| `Cmd+Option+H` / `Ctrl+Alt+H` or `?` | Open Keyboard Shortcuts Help dialog |
+| `Cmd+Option+A` / `Ctrl+Alt+A` | Write an accessibility audit report to the desktop |
+| `Cmd+Option+Shift+T` / `Ctrl+Alt+Shift+T` | Toggle Transmit retroactively for current interval |
+| `Cmd+Option+L` / `Ctrl+Alt+L` | Focus Local Channels section |
+| `Cmd+Option+R` / `Ctrl+Alt+R` | Focus Remote Users section |
+| `Alt+Right` / `Cmd+Option+Right` / `Ctrl+Alt+Right` | Select Next Local Channel |
+| `Alt+Left` / `Cmd+Option+Left` / `Ctrl+Alt+Left` | Select Previous Local Channel |
+| `Alt+Down` / `Cmd+Option+Down` / `Ctrl+Alt+Down` | Select Next Remote Player |
+| `Alt+Up` / `Cmd+Option+Up` / `Ctrl+Alt+Up` | Select Previous Remote Player |
+| `Cmd+Option+1`..`9` / `Ctrl+Alt+1`..`9` | Jump directly to Local Channel 1..9 |
+| `Cmd+Option+Shift+1`..`9` / `Ctrl+Alt+Shift+1`..`9` | Jump directly to Remote Player 1..9 |
+| `M` (when channel active) | Toggle Mute for selected channel |
+| `S` (when channel active) | Toggle Solo for selected channel |
+| `X` (when local channel active) | Toggle Transmit for selected local channel |
+| `Up` / `Down` / `+` / `-` | Nudge volume for selected channel (+/- 1 dB) |
+| `Left` / `Right` | Adjust pan for selected channel |
 
 The shortcuts match the key **code**, not the text character. With Ctrl held,
 X11 hands JUCE a control character -- Ctrl+Alt+A arrives with a text character

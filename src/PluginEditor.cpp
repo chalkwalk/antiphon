@@ -41,9 +41,10 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   browseButton.setButtonText("Connect...");
   browseButton.onClick = [this]() { openServerBrowser(); };
   browseButton.setRepaintsOnMouseActivity(true);
-  browseButton.setTitle("Connect");
+  browseButton.setTitle("Connect (" + Shortcuts::globalModifierName() + "O)");
   browseButton.setDescription(
-      "Open the server browser to choose a server and connect");
+      "Open the server browser to choose a server and connect. Shortcut: " +
+      Shortcuts::globalModifierName() + "O");
   addAndMakeVisible(browseButton);
 
   disconnectButton.setButtonText("Disconnect");
@@ -129,9 +130,10 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       "as well as with a loop.");
   syncButton.onClick = [this]() { audioProcessor.requestSync(); };
   syncButton.setRepaintsOnMouseActivity(true);
-  syncButton.setTitle("Sync");
-  syncButton.setDescription(
-      "Lock the interval grid to the next start of the DAW transport");
+  syncButton.setTitle("Sync (" + Shortcuts::globalModifierName() + "S)");
+  syncButton.setDescription("Lock the interval grid to the next start of the "
+                            "DAW transport. Shortcut: " +
+                            Shortcuts::globalModifierName() + "S");
   addAndMakeVisible(syncButton);
 
   transportButton.onClick = [this]() {
@@ -279,14 +281,17 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
     resized();
   };
   chatToggle.setRepaintsOnMouseActivity(true);
-  chatToggle.setTitle("Chat panel");
-  chatToggle.setDescription("Show or hide the chat panel");
+  chatToggle.setTitle("Chat panel (" + Shortcuts::globalModifierName() + "C)");
+  chatToggle.setDescription("Show or hide the chat panel. Shortcut: " +
+                            Shortcuts::globalModifierName() + "C");
   addAndMakeVisible(chatToggle);
 
   localChannelsViewport.setViewedComponent(&localChannelsContainer, false);
-  localChannelsViewport.setTitle("Local channels");
+  localChannelsViewport.setTitle("Local channels (" +
+                                 Shortcuts::globalModifierName() + "L)");
   localChannelsViewport.setDescription(
-      "Scrollable list of the channels you transmit");
+      "Scrollable list of the channels you transmit. Shortcut: " +
+      Shortcuts::globalModifierName() + "L to focus section");
   addAndMakeVisible(localChannelsViewport);
 
   roomMembersLabel.setText("In room (0)", juce::dontSendNotification);
@@ -443,15 +448,18 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       chatInput.clear();
     }
   };
-  chatInput.setTitle("Chat message");
+  chatInput.setTitle("Chat message (" + Shortcuts::globalModifierName() + "C)");
   chatInput.setDescription(
-      "Type a message or a command and press return to send");
+      "Type a message or a command and press return to send. Shortcut: " +
+      Shortcuts::globalModifierName() + "C to focus");
   addAndMakeVisible(chatInput);
 
   remoteUsersViewport.setViewedComponent(&remoteUsersContainer, false);
-  remoteUsersViewport.setTitle("Remote players");
+  remoteUsersViewport.setTitle("Remote players (" +
+                               Shortcuts::globalModifierName() + "R)");
   remoteUsersViewport.setDescription(
-      "Scrollable list of the other players in the room");
+      "Scrollable list of the other players in the room. Shortcut: " +
+      Shortcuts::globalModifierName() + "R to focus section");
   addAndMakeVisible(remoteUsersViewport);
 
   for (const auto &msg : audioProcessor.ninjamClient.getChatLog())
@@ -1123,6 +1131,57 @@ void AntiphonEditor::closeServerBrowser() {
   focusBeforeDialog = nullptr;
 }
 
+void AntiphonEditor::openShortcutsDialog() {
+  if (shortcutsDialog)
+    return;
+
+  shortcutsDialog = std::make_unique<ShortcutsDialog>();
+  shortcutsDialog->onClose = [this]() { closeShortcutsDialog(); };
+
+  focusBeforeDialog = juce::Component::getCurrentlyFocusedComponent();
+  shortcutsDialog->setSize(600, 460);
+
+  juce::DialogWindow::LaunchOptions opts;
+  opts.dialogTitle = "Keyboard Shortcuts";
+  opts.dialogBackgroundColour = juce::Colour(0xff1a1a2e);
+  opts.content.setNonOwned(shortcutsDialog.get());
+  opts.escapeKeyTriggersCloseButton = true;
+  opts.useNativeTitleBar = true;
+  opts.resizable = false;
+  shortcutsDialogWindow = opts.launchAsync();
+
+  if (auto *w = shortcutsDialogWindow.getComponent())
+    w->addKeyListener(this);
+
+  if (auto *w = shortcutsDialogWindow.getComponent())
+    juce::ModalComponentManager::getInstance()->attachCallback(
+        w, juce::ModalCallbackFunction::create(
+               [safeThis =
+                    juce::Component::SafePointer<AntiphonEditor>(this)](int) {
+                 if (safeThis != nullptr)
+                   safeThis->closeShortcutsDialog();
+               }));
+}
+
+void AntiphonEditor::closeShortcutsDialog() {
+  if (shortcutsDialog == nullptr && shortcutsDialogWindow == nullptr)
+    return;
+
+  if (auto *w = shortcutsDialogWindow.getComponent()) {
+    shortcutsDialogWindow = nullptr;
+    w->removeKeyListener(this);
+    w->exitModalState(0);
+  }
+  shortcutsDialog.reset();
+
+  if (auto *previous = focusBeforeDialog.getComponent();
+      previous != nullptr && previous->isShowing() && previous->isEnabled())
+    previous->grabKeyboardFocus();
+  else
+    statusReadout.grabKeyboardFocus();
+  focusBeforeDialog = nullptr;
+}
+
 void AntiphonEditor::mouseExit(const juce::MouseEvent &) { repaint(); }
 
 // A shortcut must not depend on which of our descendants happens to hold focus.
@@ -1148,20 +1207,71 @@ bool AntiphonEditor::keyPressed(const juce::KeyPress &key, juce::Component *) {
   return handleShortcut(key);
 }
 
+void AntiphonEditor::updateSelectionHighlights() {
+  selectionModel.clamp(localChannelStrips.size(), remoteUserStrips.size());
+
+  const auto section = selectionModel.getSection();
+  const int localIdx = selectionModel.getLocalIndex();
+  const int remoteIdx = selectionModel.getRemoteIndex();
+
+  for (int i = 0; i < localChannelStrips.size(); ++i) {
+    localChannelStrips[i]->setSelected(
+        section == Selection::Section::LocalChannels && i == localIdx);
+  }
+
+  for (int i = 0; i < remoteUserStrips.size(); ++i) {
+    remoteUserStrips[i]->setSelected(
+        section == Selection::Section::RemoteUsers && i == remoteIdx);
+  }
+}
+
+void AntiphonEditor::announceCurrentSelection() {
+  updateSelectionHighlights();
+  const auto section = selectionModel.getSection();
+
+  if (section == Selection::Section::LocalChannels) {
+    const int idx = selectionModel.getLocalIndex();
+    if (idx >= 0 && idx < localChannelStrips.size()) {
+      auto *strip = localChannelStrips[idx];
+      announcer.say("Selected Local Channel " + juce::String(idx + 1) + ": " +
+                        strip->getChannelName(),
+                    true);
+    } else {
+      announcer.say("No local channels available", true);
+    }
+  } else if (section == Selection::Section::RemoteUsers) {
+    const int idx = selectionModel.getRemoteIndex();
+    if (idx >= 0 && idx < remoteUserStrips.size()) {
+      auto *strip = remoteUserStrips[idx];
+      announcer.say("Selected Remote Player " + juce::String(idx + 1) + ": " +
+                        strip->getUsername(),
+                    true);
+    } else {
+      announcer.say("No remote players connected", true);
+    }
+  }
+}
+
 bool AntiphonEditor::keyPressed(const juce::KeyPress &key) {
   return handleShortcut(key);
 }
 
 bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
-  // Ctrl+Alt combinations, chosen to stay clear of the shortcuts a DAW claims.
-  // Documented in docs/ACCESSIBILITY.md; every one of these is also reachable by
-  // tabbing to the control and pressing it, so none of them is the only route.
-  // Match the key CODE, never the text character: with Ctrl held, X11 hands
-  // JUCE a control character, so Ctrl+Alt+A arrives as 0x01 and comparing
-  // against 'A' silently never fires. See Shortcuts.h.
+  auto *focused = juce::Component::getCurrentlyFocusedComponent();
+  const bool isTextEditor =
+      (dynamic_cast<juce::TextEditor *>(focused) != nullptr);
+
+  const bool isLeft = (key.getKeyCode() == juce::KeyPress::leftKey);
+  const bool isRight = (key.getKeyCode() == juce::KeyPress::rightKey);
+  const bool isUp = (key.getKeyCode() == juce::KeyPress::upKey);
+  const bool isDown = (key.getKeyCode() == juce::KeyPress::downKey);
+
   const auto action = Shortcuts::match(
       key.getKeyCode(), key.getModifiers().isCtrlDown(),
-      key.getModifiers().isAltDown(), key.getModifiers().isShiftDown());
+      key.getModifiers().isAltDown(), key.getModifiers().isShiftDown(),
+      isTextEditor, isLeft, isRight, isUp, isDown,
+      key.getModifiers().isCommandDown());
+
   if (action == Shortcuts::Action::None)
     return false;
 
@@ -1186,9 +1296,6 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   }
 
   if (action == Shortcuts::Action::RetroactiveTransmit) {
-    // Applies to the strip the focus is in, so it behaves like holding that
-    // strip's own TX button. Falls back to the first channel when focus is
-    // elsewhere, which is the common single-channel case.
     LocalChannelStrip *target = nullptr;
     for (auto *strip : localChannelStrips)
       if (strip->hasKeyboardFocus(true)) {
@@ -1206,11 +1313,6 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   }
 
   if (action == Shortcuts::Action::WriteAudit) {
-    // The audit this project relies on instead of a screen reader nobody here
-    // can run. Writes beside the other debug dumps.
-    // Audit every root we own, not just this one. The connect dialog is a
-    // separate top-level window, so walking the editor never reached it and
-    // none of its controls had ever been checked.
     std::vector<const juce::Component *> roots{getTopLevelComponent()};
     if (serverBrowser != nullptr)
       roots.push_back(serverBrowser.get());
@@ -1218,8 +1320,6 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
     auto f = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
                  .getChildFile("antiphon-accessibility-audit.txt");
     const bool ok = f.replaceWithText(report);
-    // Name the file and admit failure: this shortcut has no other visible
-    // effect, so "nothing happened" and "it worked" looked identical.
     announcer.say(ok ? "Accessibility audit written to " + f.getFullPathName()
                      : "Could not write the accessibility audit to " +
                            f.getFullPathName(),
@@ -1228,6 +1328,161 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
                                      f.getFullPathName()
                                : "Could not write the accessibility audit");
     return true;
+  }
+
+  if (action == Shortcuts::Action::OpenConnect) {
+    openServerBrowser();
+    announcer.say("Opening Server Browser dialog", true);
+    return true;
+  }
+
+  if (action == Shortcuts::Action::ToggleMuteAll) {
+    for (auto *strip : localChannelStrips) {
+      strip->toggleMute();
+    }
+    announcer.say("Toggled Mute All", true);
+    return true;
+  }
+
+  if (action == Shortcuts::Action::AnnounceShortcutsHelp) {
+    openShortcutsDialog();
+    announcer.say("Keyboard Shortcuts dialog opened", true);
+    return true;
+  }
+
+  if (action == Shortcuts::Action::FocusLocalSection) {
+    selectionModel.setSection(Selection::Section::LocalChannels);
+    announceCurrentSelection();
+    return true;
+  }
+
+  if (action == Shortcuts::Action::FocusRemoteSection) {
+    selectionModel.setSection(Selection::Section::RemoteUsers);
+    announceCurrentSelection();
+    return true;
+  }
+
+  if (action == Shortcuts::Action::SelectNextLocalChannel) {
+    selectionModel.selectNextLocal(localChannelStrips.size());
+    announceCurrentSelection();
+    return true;
+  }
+
+  if (action == Shortcuts::Action::SelectPrevLocalChannel) {
+    selectionModel.selectPrevLocal(localChannelStrips.size());
+    announceCurrentSelection();
+    return true;
+  }
+
+  if (action == Shortcuts::Action::SelectNextRemoteUser) {
+    selectionModel.selectNextRemote(remoteUserStrips.size());
+    announceCurrentSelection();
+    return true;
+  }
+
+  if (action == Shortcuts::Action::SelectPrevRemoteUser) {
+    selectionModel.selectPrevRemote(remoteUserStrips.size());
+    announceCurrentSelection();
+    return true;
+  }
+
+  if (action >= Shortcuts::Action::SelectLocalChannel1 &&
+      action <= Shortcuts::Action::SelectLocalChannel9) {
+    const int idx = (int)action - (int)Shortcuts::Action::SelectLocalChannel1;
+    selectionModel.setSection(Selection::Section::LocalChannels);
+    selectionModel.setLocalIndex(idx);
+    announceCurrentSelection();
+    return true;
+  }
+
+  if (action >= Shortcuts::Action::SelectRemoteUser1 &&
+      action <= Shortcuts::Action::SelectRemoteUser9) {
+    const int idx = (int)action - (int)Shortcuts::Action::SelectRemoteUser1;
+    selectionModel.setSection(Selection::Section::RemoteUsers);
+    selectionModel.setRemoteIndex(idx);
+    announceCurrentSelection();
+    return true;
+  }
+
+  // Contextual Channel Actions: Mute, Solo, Transmit, Volume, Pan
+  selectionModel.clamp(localChannelStrips.size(), remoteUserStrips.size());
+  const auto section = selectionModel.getSection();
+
+  if (section == Selection::Section::LocalChannels) {
+    const int idx = selectionModel.getLocalIndex();
+    if (idx >= 0 && idx < localChannelStrips.size()) {
+      auto *strip = localChannelStrips[idx];
+      switch (action) {
+      case Shortcuts::Action::ToggleMute:
+        strip->toggleMute();
+        announcer.say(strip->getChannelName() + " Mute toggled", true);
+        break;
+      case Shortcuts::Action::ToggleSolo:
+        strip->toggleSolo();
+        announcer.say(strip->getChannelName() + " Solo toggled", true);
+        break;
+      case Shortcuts::Action::ToggleTransmit:
+        strip->toggleTransmit();
+        announcer.say(strip->getChannelName() + " Transmit toggled", true);
+        break;
+      case Shortcuts::Action::NudgeVolumeUp:
+        strip->nudgeVolume(1.0f);
+        announcer.say(strip->getChannelName() + " Volume up", true);
+        break;
+      case Shortcuts::Action::NudgeVolumeDown:
+        strip->nudgeVolume(-1.0f);
+        announcer.say(strip->getChannelName() + " Volume down", true);
+        break;
+      case Shortcuts::Action::NudgePanLeft:
+        strip->nudgePan(-0.1f);
+        announcer.say(strip->getChannelName() + " Pan left", true);
+        break;
+      case Shortcuts::Action::NudgePanRight:
+        strip->nudgePan(0.1f);
+        announcer.say(strip->getChannelName() + " Pan right", true);
+        break;
+      default:
+        break;
+      }
+      return true;
+    }
+  } else if (section == Selection::Section::RemoteUsers) {
+    const int idx = selectionModel.getRemoteIndex();
+    if (idx >= 0 && idx < remoteUserStrips.size()) {
+      auto *userStrip = remoteUserStrips[idx];
+      auto *row = userStrip->getChannelRow(0);
+      if (row != nullptr) {
+        switch (action) {
+        case Shortcuts::Action::ToggleMute:
+          row->toggleMute();
+          announcer.say(userStrip->getUsername() + " Mute toggled", true);
+          break;
+        case Shortcuts::Action::ToggleSolo:
+          row->toggleSolo();
+          announcer.say(userStrip->getUsername() + " Solo toggled", true);
+          break;
+        case Shortcuts::Action::NudgeVolumeUp:
+          row->nudgeVolume(1.0f);
+          announcer.say(userStrip->getUsername() + " Volume up", true);
+          break;
+        case Shortcuts::Action::NudgeVolumeDown:
+          row->nudgeVolume(-1.0f);
+          announcer.say(userStrip->getUsername() + " Volume down", true);
+          break;
+        case Shortcuts::Action::NudgePanLeft:
+          row->nudgePan(-0.1f);
+          announcer.say(userStrip->getUsername() + " Pan left", true);
+          break;
+        case Shortcuts::Action::NudgePanRight:
+          row->nudgePan(0.1f);
+          announcer.say(userStrip->getUsername() + " Pan right", true);
+          break;
+        default:
+          break;
+        }
+        return true;
+      }
+    }
   }
 
   return false;
@@ -1548,6 +1803,7 @@ void AntiphonEditor::relayoutChannelArea() {
     rx += sw + 8;
   }
   remoteUsersContainer.setSize(container_w, rh);
+  updateSelectionHighlights();
 }
 
 bool AntiphonEditor::updateStatusReadout() {

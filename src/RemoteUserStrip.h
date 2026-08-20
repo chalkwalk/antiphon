@@ -28,7 +28,17 @@ public:
   void updateEchoTaps(const std::vector<NinjamClient::EchoTap> &taps,
                       int maxDelay);
 
+  bool isSelected() const { return selected; }
+  void setSelected(bool sel);
+  juce::String getUsername() const { return username; }
+  int getNumChannels() const { return channelRows.size(); }
+  RemoteChannelRow *getChannelRow(int index = 0) const {
+    return (index >= 0 && index < channelRows.size()) ? channelRows[index]
+                                                      : nullptr;
+  }
+
 private:
+  bool selected = false;
   AntiphonAudioProcessor &audioProcessor;
   juce::String username;
 
