@@ -7,9 +7,10 @@
 # X11/ALSA, which would stop this running on a headless box, which is exactly
 # where you would want to batch-convert an archive.
 #
-# VorbisCodec.cpp is re-listed here rather than shared, matching the convention
-# explained at the top of test/CMakeLists.txt. It is the one source under src/
-# that includes no JUCE at all, so it compiles into any target.
+# The Ogg decoder is no longer re-listed here: it moved to chalkwalk-ninjam and
+# arrives as a library target, which is the whole point of the extraction. What
+# is still re-listed from src/ follows the convention explained at the top of
+# test/CMakeLists.txt.
 
 juce_add_console_app(AntiphonStems
     COMPANY_NAME "Chalkwalk"
@@ -145,7 +146,6 @@ target_sources(AntiphonPractice PRIVATE
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
-        ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
         ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
         ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp)

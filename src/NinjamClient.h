@@ -4,6 +4,7 @@
 #include "SessionWriter.h"
 #include "SpscRing.h"
 #include "VorbisCodec.h"
+#include <chalkwalk/ninjam/Bytes.h>
 #include <JuceHeader.h>
 #include <array>
 #include <memory>
@@ -471,7 +472,8 @@ private:
   void updateChannelParam(const juce::String &username, int channelIndex,
                           ApplyToChannel toChannel, ApplyToSlot toSlot);
 
-  bool handleMessage(juce::uint8 type, const juce::MemoryBlock &payload);
+  bool handleMessage(juce::uint8 type,
+                     const chalkwalk::ninjam::ByteBuffer &payload);
   void sendAuthRequest(const juce::uint8 challenge[8]);
   void sendChannelInfo();
   void sendUserMask();

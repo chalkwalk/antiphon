@@ -18,7 +18,6 @@ juce_generate_juce_header(NinjamTests)
 target_sources(NinjamTests
     PRIVATE
         TestMain.cpp
-        NinjamProtocolTests.cpp
         MetronomeVoiceTests.cpp
         GainUtilsTests.cpp
         SyncStateTests.cpp
@@ -58,7 +57,6 @@ target_sources(NinjamTests
         ReferenceFixtureTests.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
-        ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp

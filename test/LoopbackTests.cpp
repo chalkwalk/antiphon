@@ -84,16 +84,16 @@ public:
              "onConnected never fired");
 
       auto authPayload = s.server.lastPayloadOfType(0x80);
-      expect(authPayload.getSize() >= 20, "no CLIENT_AUTH_USER received");
+      expect(authPayload.size() >= 20, "no CLIENT_AUTH_USER received");
 
       juce::uint8 expected[20];
       NinjamProtocol::computeAuthHash("tester", "", s.server.challengeBytes(),
                                       expected);
-      expect(memcmp(authPayload.getData(), expected, 20) == 0,
+      expect(memcmp(authPayload.data(), expected, 20) == 0,
              "auth hash on the wire does not match");
 
       // The username follows the hash, NUL-terminated.
-      const auto *b = static_cast<const juce::uint8 *>(authPayload.getData());
+      const auto *b = static_cast<const juce::uint8 *>(authPayload.data());
       expect(memcmp(b + 20, "tester\0", 7) == 0, "username malformed");
 
       // CLIENT_SET_CHANNEL_INFO is sent immediately after the grant.
@@ -106,11 +106,11 @@ public:
       Session s;
       expect(s.connect(48000.0, 120, 8, "alice", "secret"));
       auto payload = s.server.lastPayloadOfType(0x80);
-      expect(payload.getSize() >= 20);
+      expect(payload.size() >= 20);
       juce::uint8 expected[20];
       NinjamProtocol::computeAuthHash("alice", "secret",
                                       s.server.challengeBytes(), expected);
-      expect(memcmp(payload.getData(), expected, 20) == 0);
+      expect(memcmp(payload.data(), expected, 20) == 0);
     }
 
     beginTest("auth denial disconnects cleanly");
@@ -157,8 +157,8 @@ public:
              "no CLIENT_SET_USERMASK after user info");
 
       auto mask = s.server.lastPayloadOfType(0x81);
-      expectEquals((int)mask.getSize(), 5 + 4); // "peer\0" + 4-byte mask
-      const auto *b = static_cast<const juce::uint8 *>(mask.getData());
+      expectEquals((int)mask.size(), 5 + 4); // "peer\0" + 4-byte mask
+      const auto *b = static_cast<const juce::uint8 *>(mask.data());
       expect(memcmp(b, "peer\0", 5) == 0);
       expectEquals((int)b[5], 1, "channel 0 bit should be set");
     }
@@ -207,7 +207,7 @@ public:
       expect(waitUntil([&] { return s.server.countReceived(0x81) > 0; }));
 
       auto mask = s.server.lastPayloadOfType(0x81);
-      const auto *b = static_cast<const juce::uint8 *>(mask.getData());
+      const auto *b = static_cast<const juce::uint8 *>(mask.data());
       // Channel 0 still on, channel 2 now off -> 0b0001.
       expectEquals((int)b[5], 1);
 
@@ -215,7 +215,7 @@ public:
       s.client.setRemoteUserRecv("peer", 2, true);
       expect(waitUntil([&] { return s.server.countReceived(0x81) > 0; }));
       auto mask2 = s.server.lastPayloadOfType(0x81);
-      const auto *b2 = static_cast<const juce::uint8 *>(mask2.getData());
+      const auto *b2 = static_cast<const juce::uint8 *>(mask2.data());
       expectEquals((int)b2[5], 5, "channels 0 and 2 -> 0b0101");
     }
 
@@ -264,17 +264,17 @@ public:
       NinjamProtocol::Chat parsed;
       expect(
           NinjamProtocol::parseChat(s.server.lastPayloadOfType(0xC0), parsed));
-      expectEquals(parsed.type, juce::String("MSG"));
-      expectEquals(parsed.p1, juce::String("hi from the client"));
+      expectEquals(juce::String(parsed.type), juce::String("MSG"));
+      expectEquals(juce::String(parsed.p1), juce::String("hi from the client"));
 
       s.server.clearReceived();
       s.client.sendPrivateMessage("bob", "secret");
       expect(waitUntil([&] { return s.server.countReceived(0xC0) > 0; }));
       expect(
           NinjamProtocol::parseChat(s.server.lastPayloadOfType(0xC0), parsed));
-      expectEquals(parsed.type, juce::String("PRIVMSG"));
-      expectEquals(parsed.p1, juce::String("bob"));
-      expectEquals(parsed.p2, juce::String("secret"));
+      expectEquals(juce::String(parsed.type), juce::String("PRIVMSG"));
+      expectEquals(juce::String(parsed.p1), juce::String("bob"));
+      expectEquals(juce::String(parsed.p2), juce::String("secret"));
     }
 
     beginTest("chat log is capped at 100 entries");
@@ -305,7 +305,7 @@ public:
                                   juce::String((int)elapsed) + " ms");
 
       for (const auto &m : s.server.messagesOfType(0xFD))
-        expectEquals((int)m.payload.getSize(), 0,
+        expectEquals((int)m.payload.size(), 0,
                      "keep-alive must have an empty payload");
     }
 
