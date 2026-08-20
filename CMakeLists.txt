@@ -80,7 +80,7 @@ add_subdirectory(modules/vorbis EXCLUDE_FROM_ALL)
 # ---------------------------------------------------------------------------
 # libebur128 (MIT) -- ITU-R BS.1770 loudness.
 #
-# Adopted rather than maintained, on the rule in ../ECOSYSTEM.md: take the
+# Adopted rather than maintained, on a standing rule: take the
 # dependency when the thing has a SPECIFICATION you could fail to meet. Our own
 # K-weighting and gating agreed with ffmpeg to inside 0.05 LU, so this is not a
 # bug fix -- it is refusing to own a standard whose next revision, or whose
@@ -113,7 +113,7 @@ endif()
 
 # Add the sources subdirectory
 # ---------------------------------------------------------------------------
-# chalkwalk-music -- shared, JUCE-free music theory (../ECOSYSTEM.md).
+# chalkwalk-music -- shared, JUCE-free music theory.
 # Submodule: https://github.com/chalkwalk/chalkwalk-music (MIT).
 #
 # It builds and tests standalone, with no JUCE and no parent, which is the test
@@ -124,7 +124,7 @@ set(CHALKWALK_MUSIC_TESTS ON CACHE BOOL "" FORCE)
 add_subdirectory(libs/music)
 
 # ---------------------------------------------------------------------------
-# chalkwalk-dsp -- shared, JUCE-free DSP primitives (../ECOSYSTEM.md).
+# chalkwalk-dsp -- shared, JUCE-free DSP primitives.
 # Submodule: https://github.com/chalkwalk/chalkwalk-dsp (MIT).
 #
 # Same arrangement and the same reasoning as chalkwalk-music above. The filter,
@@ -136,7 +136,7 @@ set(CHALKWALK_DSP_TESTS ON CACHE BOOL "" FORCE)
 add_subdirectory(libs/dsp)
 
 # ---------------------------------------------------------------------------
-# chalkwalk-ninjam -- the NINJAM wire protocol, JUCE-free (../ECOSYSTEM.md).
+# chalkwalk-ninjam -- the NINJAM wire protocol, JUCE-free.
 # Submodule: https://github.com/chalkwalk/chalkwalk-ninjam (MIT).
 #
 # Added after modules/ogg and modules/vorbis above, and not by accident: this

@@ -1,6 +1,6 @@
 #pragma once
 
-// Adopted from chalkwalk-ninjam (libs/ninjam, MIT). See ../ECOSYSTEM.md.
+// Adopted from chalkwalk-ninjam (libs/ninjam, MIT).
 
 #include <chalkwalk/ninjam/VorbisCodec.h>
 

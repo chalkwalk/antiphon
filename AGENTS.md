@@ -70,7 +70,6 @@ libs/music/                 # SUBMODULE: chalkwalk-music (MIT, JUCE-free).
                             #   github.com/chalkwalk/chalkwalk-music. Euclidean
                             #   lives there now, not in src/. Builds and tests
                             #   standalone; its Catch2 suite runs in our ctest.
-                            #   See ../ECOSYSTEM.md.
 patches/*.patch             # applied to the JUCE submodule at configure time
 assets/fonts/               # Inter (OFL-1.1), embedded as binary data
 src/

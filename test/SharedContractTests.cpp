@@ -4,9 +4,9 @@
 #include <vector>
 
 // SharedContractTests -- the properties that must survive extraction into the
-// shared Chalkwalk libraries (../../ECOSYSTEM.md).
+// shared Chalkwalk libraries.
 //
-// The counterpart of seq_play/tests/SharedContractTest.cpp. The Euclidean table
+// The counterpart of the same suite in Lockstep. The Euclidean table
 // below is byte-identical to the one there, deliberately: two repositories, one
 // table. If the implementations ever drift apart, one of the two suites goes
 // red. That is the closest thing to a shared test available before there is a

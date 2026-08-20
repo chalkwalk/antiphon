@@ -135,7 +135,7 @@ std::vector<int> leadLine(const Settings &s, int intervalIndex);
 // all of which are meaningfully diatonic -- chalkwalk-music's `KeySig` is a
 // pitch-class mask of any size, and `spellNote` and the numerals genuinely need
 // exactly seven degrees. The conversion runs the other way only, at the seam
-// where ranking happens. See `../ECOSYSTEM.md`.
+// where ranking happens.
 chalkwalk::music::KeySig toKeySig(const MusicalKey::Key &key);
 chalkwalk::music::SoundingChord toSoundingChord(const Harmony::Chord &chord);
 

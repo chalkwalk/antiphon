@@ -1,6 +1,6 @@
 #pragma once
 
-// Adopted from chalkwalk-ninjam (libs/ninjam, MIT). See ../ECOSYSTEM.md.
+// Adopted from chalkwalk-ninjam (libs/ninjam, MIT).
 //
 // Unlike the other five files that moved out to that library, this one changed
 // shape on the way: a JUCE-free library cannot have juce::MemoryBlock and

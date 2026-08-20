@@ -15,7 +15,7 @@
 // numerals -- all of which genuinely need exactly seven degrees, and one of
 // which (`spellNote`) refuses to run without them. The shared `KeySig` is a
 // pitch-class mask of any size. The conversion runs one way only, at the point
-// where a note is ranked. See `../ECOSYSTEM.md`.
+// where a note is ranked.
 
 class LeadLineTests : public juce::UnitTest {
 public:

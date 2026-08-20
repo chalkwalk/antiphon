@@ -13,10 +13,10 @@ For architecture see `DESIGN.md`. For the principles every piece of work must
 satisfy, see `PRINCIPLES.md`, and for the standing refusals `NON-GOALS.md`.
 **Before adding a work area here, confirm it clears both.**
 
-**Shared code across the four Chalkwalk plugins is planned in
-[`../ECOSYSTEM.md`](../ECOSYSTEM.md)** -- which libraries are extracted, which
-third-party dependencies are taken, the licence and JUCE-free rules, and the
-phase ordering. Do not restate that argument here; link to it.
+**Shared code across the Chalkwalk plugins is planned separately**, in a
+document kept outside this repository -- which libraries are extracted, which
+third-party dependencies are taken, and the licence and JUCE-free rules. That
+argument is not restated here, and nothing below depends on having read it.
 
 ---
 
@@ -57,7 +57,7 @@ not been re-derived since; item 1 in particular is now largely built --
 ordering as stale until it is refreshed.)*
 
 **What has landed since, 2026-08-18/19: the repository split, and it went the
-other way round.** `../ECOSYSTEM.md` is complete. This project consumes
+other way round.** That plan is complete. This project consumes
 [chalkwalk-music](https://github.com/chalkwalk/chalkwalk-music),
 [chalkwalk-dsp](https://github.com/chalkwalk/chalkwalk-dsp) and
 [chalkwalk-ninjam](https://github.com/chalkwalk/chalkwalk-ninjam) as submodules
@@ -1344,7 +1344,7 @@ bowed strings, reeds.
 
 ### Breaking the repository up
 
-> **Superseded by [`../ECOSYSTEM.md`](../ECOSYSTEM.md), 2026-08-18.** The
+> **Superseded by the ecosystem plan, 2026-08-18.** The
 > analysis below is where this thinking was done and it is kept for the
 > reasoning; the decisions it reached now live in the ecosystem document, which
 > covers all four projects rather than this one. Where the two differ, the
