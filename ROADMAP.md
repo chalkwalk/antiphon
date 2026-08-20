@@ -51,9 +51,34 @@ Next, in order:
    window, opened a device or joined a jam, and half of where the
    screen-reader work is reachable at all.
 
-Explicitly *not* next: **breaking the repository up**. The argument is recorded
-in that work area and is unchanged -- restructuring around a feature no user can
-reach yet is optimising the wrong axis while item 1 is unbuilt.
+*(This block predates the ecosystem work described immediately below and has
+not been re-derived since; item 1 in particular is now largely built --
+`BotChat` wires `BotLanguage` and `BotAnswer` into `PracticeBot`. Treat the
+ordering as stale until it is refreshed.)*
+
+**What has landed since, 2026-08-18/19: the repository split, and it went the
+other way round.** `../ECOSYSTEM.md` is complete. This project consumes
+[chalkwalk-music](https://github.com/chalkwalk/chalkwalk-music),
+[chalkwalk-dsp](https://github.com/chalkwalk/chalkwalk-dsp) and
+[chalkwalk-ninjam](https://github.com/chalkwalk/chalkwalk-ninjam) as submodules
+under `libs/`, all MIT, all JUCE-free, each building and testing standalone.
+
+The entry above argued against splitting *while the practice room is
+unreachable*, and that argument stands and was not overruled -- what changed is
+the unit. Nothing was restructured around the practice room: what left were
+four pieces of general-purpose code (music theory, DSP primitives, the wire
+protocol, the loudness meter) that this repository happened to hold, and the
+plugin's own shape is untouched. The **client** stayed here for exactly the
+reason this entry gives; only the **protocol** left. See *Split the client
+out*.
+
+Also adopted: **libebur128** for ITU-R BS.1770 loudness, replacing 107 correct
+lines of K-weighting and gating in `AudioMeasure.h`. Not a bug fix -- the two
+agree to under 0.001 LU on gated material, which is how the swap was checked.
+The finding was about the tests: the five ffmpeg goldens are steady sines,
+where every block holds equal energy and the gate never decides anything, so
+they could not tell the two implementations apart and the relative gate had no
+coverage at all. It has now.
 
 ---
 
@@ -1498,7 +1523,7 @@ Those are not dependencies, and taking one buys nothing but a version to track.
 
 | Thing | Verdict | Why |
 |---|---|---|
-| Loudness (BS.1770) | **Adopt `libebur128`** (MIT) | A spec we reimplemented and validated against ffmpeg. Correct today; one refactor from being subtly wrong forever |
+| Loudness (BS.1770) | **Adopted**, 2026-08-19 (MIT) | Done: `modules/libebur128`, behind `AudioMeasure::integratedLufs`. See below |
 | SoundFont 2/3 | **Adopt FluidLite** (LGPL) | Already decided above |
 | FFT, if ever needed | **Adopt** PFFFT or KISS | `brightnessHz` measures spectral slope precisely to avoid needing one; if that stops being enough, do not write one |
 | Gather resampling | **Adopt** soxr / zita / libsamplerate | Well served, and the quality differences are measurable rather than matters of taste |
