@@ -19,15 +19,14 @@ juce_generate_juce_header(AntiphonStems)
 
 target_sources(AntiphonStems PRIVATE
         StemsMain.cpp
-        ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
-        ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp)
+        ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp)
 
 target_compile_definitions(AntiphonStems PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonStems
-    PRIVATE chalkwalk::music chalkwalk::dsp
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events
@@ -147,12 +146,9 @@ target_sources(AntiphonPractice PRIVATE
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
-        ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
         ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
-        ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp
-        ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
-        ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp)
+        ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp)
 
 target_compile_definitions(AntiphonPractice PRIVATE
         JUCE_WEB_BROWSER=0
@@ -163,7 +159,7 @@ target_compile_definitions(AntiphonPractice PRIVATE
         JUCE_MODAL_LOOPS_PERMITTED=1)
 
 target_link_libraries(AntiphonPractice
-    PRIVATE chalkwalk::music chalkwalk::dsp
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events

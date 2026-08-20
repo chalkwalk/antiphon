@@ -63,7 +63,6 @@ target_sources(Antiphon
         PracticeServer.cpp
         PracticeBot.cpp
         PracticeRoom.cpp
-        IntervalClock.cpp
         MetronomeVoice.cpp
         RemoteUserStrip.cpp
         RemoteChannelRow.cpp
@@ -77,8 +76,6 @@ target_sources(Antiphon
         MusicalKey.cpp
         AccessibilityAudit.cpp
         ServerBrowserDialog.cpp
-        Sha1.cpp
-        VorbisCodec.cpp
 )
 
 clap_juce_extensions_plugin(TARGET Antiphon CLAP_ID "com.chalkwalk.antiphon" CLAP_FEATURES "audio-effect" "tool")
@@ -96,6 +93,7 @@ target_link_libraries(Antiphon
     PRIVATE
         chalkwalk::music
         chalkwalk::dsp
+        chalkwalk::ninjam
         antiphon_fonts
         juce::juce_audio_utils
         juce::juce_audio_plugin_client

@@ -1,14 +1,11 @@
 #pragma once
-#include <cstdint>
 
-class Sha1 {
-public:
-  Sha1();
-  void add(const void *data, int len);
-  void result(void *out); // writes 20 bytes; resets state
-private:
-  uint32_t h[5];
-  uint8_t buf[64];
-  uint64_t byteCount;
-  void processBlock(const uint8_t *block);
-};
+// Adopted from chalkwalk-ninjam (libs/ninjam, MIT). See ../ECOSYSTEM.md.
+//
+// This header exists only so that call sites keep saying `Sha1` rather than
+// `chalkwalk::ninjam::Sha1`. The implementation, its comments and its tests
+// all live in the library now.
+
+#include <chalkwalk/ninjam/Sha1.h>
+
+using chalkwalk::ninjam::Sha1;

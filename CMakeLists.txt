@@ -101,6 +101,24 @@ add_subdirectory(libs/music)
 set(CHALKWALK_DSP_TESTS ON CACHE BOOL "" FORCE)
 add_subdirectory(libs/dsp)
 
+# ---------------------------------------------------------------------------
+# chalkwalk-ninjam -- the NINJAM wire protocol, JUCE-free (../ECOSYSTEM.md).
+# Submodule: https://github.com/chalkwalk/chalkwalk-ninjam (MIT).
+#
+# Added after modules/ogg and modules/vorbis above, and not by accident: this
+# library vendors its own copies of both, guarded by `if(NOT TARGET ogg)`, so
+# whichever project adds them first wins and the second reuses them. Adding
+# them twice is not a version conflict -- it is a duplicate CMake target name,
+# which fails the configure outright.
+#
+# The protocol left this repository under MIT while antiphon stays GPLv3. The
+# provenance note in its README is the record of why that is defensible: the
+# GPLv2 reference sources were read, never vendored, and never entered any
+# published history. See PRINCIPLES.md section 6.
+# ---------------------------------------------------------------------------
+set(CHALKWALK_NINJAM_TESTS ON CACHE BOOL "" FORCE)
+add_subdirectory(libs/ninjam)
+
 add_subdirectory(src)
 
 # Offline tools. Kept out of src/ because nothing here is part of the plugin --
