@@ -74,7 +74,8 @@ public:
       const auto steady = sine(60.0, 0.3);
       auto decaying = steady;
       for (size_t i = 0; i < decaying.size(); ++i)
-        decaying[i] *= (float)std::exp(-6.9078 * (double)i / (double)decaying.size());
+        decaying[i] *=
+            (float)std::exp(-6.9078 * (double)i / (double)decaying.size());
 
       const float flat = AudioMeasure::crest(steady.data(), (int)steady.size());
       const float spiky =
@@ -120,9 +121,10 @@ public:
           AudioMeasure::brightnessHz(pure.data(), (int)pure.size(), kSr);
       const double bright =
           AudioMeasure::brightnessHz(rich.data(), (int)rich.size(), kSr);
-      expect(bright > dull * 2.0,
-             "a square at 110 Hz should read far brighter than a sine at 110: " +
-                 juce::String(bright) + " against " + juce::String(dull));
+      expect(
+          bright > dull * 2.0,
+          "a square at 110 Hz should read far brighter than a sine at 110: " +
+              juce::String(bright) + " against " + juce::String(dull));
     }
 
     beginTest("brightness ignores how loud the signal is");
@@ -142,10 +144,12 @@ public:
       for (auto &v : s)
         v += 0.5f;
       expectWithinAbsoluteError(
-          AudioMeasure::brightnessHz(s.data(), (int)s.size(), kSr), 440.0, 10.0);
+          AudioMeasure::brightnessHz(s.data(), (int)s.size(), kSr), 440.0,
+          10.0);
     }
 
-    beginTest("the two brightness instruments agree on a sine and may not elsewhere");
+    beginTest(
+        "the two brightness instruments agree on a sine and may not elsewhere");
     {
       // Crossing rate and brightness are independent methods, which is why both
       // are kept. On a clean sine they must agree; the value of the pair is
@@ -214,9 +218,10 @@ public:
       const auto low = sine(60.0, 5.0, 0.1f);
       const auto high = sine(8000.0, 5.0, 0.1f);
 
-      expectWithinAbsoluteError(AudioMeasure::rms(low.data(), (int)low.size()),
-                                AudioMeasure::rms(high.data(), (int)high.size()),
-                                0.001f, "the two tones are at the same rms");
+      expectWithinAbsoluteError(
+          AudioMeasure::rms(low.data(), (int)low.size()),
+          AudioMeasure::rms(high.data(), (int)high.size()), 0.001f,
+          "the two tones are at the same rms");
 
       const double lowLufs =
           AudioMeasure::integratedLufs(low.data(), (int)low.size(), kSr);
@@ -243,6 +248,40 @@ public:
           AudioMeasure::integratedLufs(padded.data(), (int)padded.size(), kSr);
       expectWithinAbsoluteError(sparse, dense, 1.0,
                                 "the gate did not discount the silence");
+    }
+
+    beginTest("the relative gate keeps the music and drops the murmur");
+    {
+      // The absolute gate is covered above; this is the other one, and until
+      // now nothing exercised it. BS.1770 throws away every block more than
+      // 10 LU below the ungated average, which is what stops a long quiet
+      // passage dragging a whole take down -- and it is the part of the
+      // standard most likely to be got subtly wrong, because unlike the
+      // K-weighting it cannot be checked with a steady tone.
+      const auto loud = sine(1000.0, 5.0, 0.1f);
+      const double loudOnly =
+          AudioMeasure::integratedLufs(loud.data(), (int)loud.size(), kSr);
+
+      auto withTail = [&](float amp) {
+        const auto tail = sine(1000.0, 5.0, amp);
+        std::vector<float> both = loud;
+        both.insert(both.end(), tail.begin(), tail.end());
+        return AudioMeasure::integratedLufs(both.data(), (int)both.size(), kSr);
+      };
+
+      // 14 dB down: below the gate, so it is not part of the programme and
+      // the answer is the loud half alone. The residual is the two blocks
+      // that straddle the join, which genuinely do contain both.
+      expectWithinAbsoluteError(withTail(0.02f), loudOnly, 0.3,
+                                "a passage below the gate still counted");
+
+      // 6 dB down: above the gate, so it IS the programme and must pull the
+      // measurement down. Measured at 2.0 LU; asserted at 1.0 so the test is
+      // about the gate rather than about the exact figure.
+      expect(withTail(0.05f) < loudOnly - 1.0,
+             "a passage above the gate was discarded: " +
+                 juce::String(withTail(0.05f), 2) + " against " +
+                 juce::String(loudOnly, 2));
     }
 
     beginTest("a gain is a gain");
@@ -319,8 +358,8 @@ public:
         const double measured =
             AudioMeasure::fundamentalHz(s.data(), (int)s.size(), kSr);
         expectWithinAbsoluteError(measured, hz, hz * 0.03,
-                                  "square at " + juce::String(hz) +
-                                      " read " + juce::String(measured));
+                                  "square at " + juce::String(hz) + " read " +
+                                      juce::String(measured));
       }
     }
 
@@ -338,8 +377,8 @@ public:
       }
       // The second harmonic is the loudest partial, so a peak-picking detector
       // would say 196. The period is still 1/98.
-      expectWithinAbsoluteError(
-          AudioMeasure::fundamentalHz(v.data(), n, kSr), f0, 3.0);
+      expectWithinAbsoluteError(AudioMeasure::fundamentalHz(v.data(), n, kSr),
+                                f0, 3.0);
     }
 
     beginTest("noise is refused rather than given a pitch");
@@ -373,7 +412,7 @@ public:
     beginTest("a frequency names a note");
     {
       expectWithinAbsoluteError(AudioMeasure::midiForHz(440.0), 69.0, 0.001);
-      expectEquals(AudioMeasure::pitchClassForHz(440.0), 9); // A
+      expectEquals(AudioMeasure::pitchClassForHz(440.0), 9);  // A
       expectEquals(AudioMeasure::pitchClassForHz(261.63), 0); // middle C
       expectEquals(AudioMeasure::pitchClassForHz(65.41), 0);  // C2
       expectEquals(AudioMeasure::pitchClassForHz(0.0), -1);
@@ -422,7 +461,8 @@ public:
     beginTest("a sample rate of zero is not divided by");
     {
       const auto s = sine(200.0, 0.1);
-      expectEquals(AudioMeasure::brightnessHz(s.data(), (int)s.size(), 0.0), 0.0);
+      expectEquals(AudioMeasure::brightnessHz(s.data(), (int)s.size(), 0.0),
+                   0.0);
       expectEquals(AudioMeasure::crossingRateHz(s.data(), (int)s.size(), 0.0),
                    0.0);
       expectEquals(AudioMeasure::fundamentalHz(s.data(), (int)s.size(), 0.0),
@@ -436,8 +476,8 @@ public:
       for (double sr : {44100.0, 48000.0, 96000.0}) {
         const auto s = sine(220.0, 0.4, 1.0f, sr);
         expectWithinAbsoluteError(
-            AudioMeasure::fundamentalHz(s.data(), (int)s.size(), sr), 220.0, 5.0,
-            "pitch at " + juce::String(sr));
+            AudioMeasure::fundamentalHz(s.data(), (int)s.size(), sr), 220.0,
+            5.0, "pitch at " + juce::String(sr));
         expectWithinAbsoluteError(
             AudioMeasure::brightnessHz(s.data(), (int)s.size(), sr), 220.0, 6.0,
             "brightness at " + juce::String(sr));

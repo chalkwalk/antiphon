@@ -92,6 +92,7 @@ target_link_libraries(NinjamTests
         chalkwalk::music
         chalkwalk::dsp
         chalkwalk::ninjam
+        ebur128
         juce::juce_audio_formats
         juce::juce_events
         ogg
