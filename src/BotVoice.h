@@ -11,7 +11,7 @@
 // lines as will still sound like instruments.
 //
 // Deliberately small. The reference for a drum voice here is
-// chalkwalk/seq_play src/machine/DrumMachine.cpp, which is 660 lines welded to
+// a sibling project, whose drum machine is 660 lines welded to
 // a machine interface, a parameter frame and a MIDI buffer. What Antiphon needs
 // from it is the voice design -- a pitch-swept sine is a kick, filtered noise
 // is a hat -- not the framework, so the design was read and the framework left
@@ -287,7 +287,7 @@ inline void renderSnare(float *out, int numSamples, double sampleRate,
 // noise alone -- what this used to be -- gives fizz with no pitch structure at
 // all, and the ear hears that as a noise gate rather than as a cymbal.
 //
-// The ratio table is lifted from chalkwalk/seq_play src/machine/DrumMachine.cpp,
+// The ratio table is lifted from that same drum machine,
 // whose Cymbal voice is the one part of that machine doing something a sine
 // could not.
 inline constexpr int kHatPartials = 6;

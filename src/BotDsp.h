@@ -48,10 +48,10 @@ using chalkwalk::dsp::flush;
 
 // A state-variable filter, adopted from chalkwalk-dsp.
 //
-// Lifted from Lockstep and then diverged: this copy grew a
+// Lifted from a sibling project and then diverged: this copy grew a
 // set(cutoffHz, q, sampleRate) with the Nyquist and zero-cutoff edges handled,
 // and denormal flushing on the state, neither of which went back. The shared
-// version has both, plus Lockstep's raw setCoeffs(g, k) for callers that
+// version has both, plus a raw setCoeffs(g, k) for callers that
 // smooth their own coefficients per sample.
 //
 // It replaced two hand-rolled one-poles in BotVoice -- the snare's lowpass
@@ -381,16 +381,16 @@ private:
 // The band-limiting correction that makes a digital saw or pulse sound like a
 // saw or a pulse rather than like aliasing.
 //
-// Ported from chalkwalk/seq_play src/machine/AnalogMachine.cpp. A naive saw
+// Ported from a sibling project. A naive saw
 // steps by 2 once per cycle, and that discontinuity has infinite bandwidth, so
 // everything above Nyquist folds back down as inharmonic tones -- the sound
 // people mean by "cheap digital synth". This subtracts a polynomial
 // approximation of the step's spectrum at the moment it happens.
 //
 // THE SIGN WAS THE BUG, and it has since been fixed at both ends. This file
-// once carried a note saying Lockstep ADDED the correction where it should
+// once carried a note saying the original ADDED the correction where it should
 // subtract: measured, its 5 kHz saw aliased 82% worse than no correction at
-// all. Lockstep fixed that independently, and both are now the same code in
+// all. That was fixed there independently, and both are now the same code in
 // chalkwalk-dsp -- whose tests assert that the inverted version is worse than
 // a naive oscillator, so it cannot come back quietly.
 //

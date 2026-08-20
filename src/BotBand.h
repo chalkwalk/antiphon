@@ -31,7 +31,7 @@ enum class Voice { Drums, Bass, Keys, Lead };
 inline constexpr int kNumVoices = 4;
 
 // The shape a melodic phrase traces across an interval. Ported from
-// chalkwalk/seq_play src/core/MelodyGen.h, whose spine is worth having: pitch
+// a sibling project, whose spine is worth having: pitch
 // follows a contour, and metric strength decides which notes may sit where.
 enum class Contour { Rise, Fall, Arch, Walk };
 
@@ -49,7 +49,7 @@ struct Settings {
   Harmony::Chart chart;
 
   // Rerolled by "shake". Salted per voice inside, so one seed does not give
-  // every instrument the same shape -- the mistake seq_play's MelodyGen
+  // every instrument the same shape -- the mistake the original
   // documents having made and fixed.
   std::uint32_t seed = 1;
 

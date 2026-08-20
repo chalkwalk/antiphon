@@ -105,7 +105,7 @@ int metricStrength(int step, int bpi) {
 
 std::uint32_t saltedSeed(Voice voice, std::uint32_t seed) {
   // Without this, one seed gives every instrument the same figure -- the bass
-  // playing the kick pattern note for note. seq_play's MelodyGen documents
+  // playing the kick pattern note for note. The generator this came from documents
   // hitting exactly this and fixing it the same way.
   return mix(seed ^ (0x9E3779B9U * (std::uint32_t)((int)voice + 1)));
 }
@@ -198,10 +198,10 @@ Figure figureFor(Voice voice, const Settings &s) {
 //
 // DIRECTION IS OFF HERE, and that is a decision rather than an oversight. All
 // four of antiphon's contours state a direction of their own -- even Walk,
-// which is a fixed sine wiggle rather than the true random walk seq_play has
+// which is a fixed sine wiggle rather than the true random walk the original has
 // -- so the term had almost nothing left to say: it moved the proportion of
 // continued runs from 57.6% to 61.5% and did not sound more musical for it,
-// while pushing repeats up and occasionally buying a leap. seq_play keeps it,
+// while pushing repeats up and occasionally buying a leap. The original keeps it,
 // because its Walk genuinely has no shape and it has a smoothing dial that
 // goes high enough for a line to zigzag without it.
 //
@@ -872,7 +872,7 @@ void renderKeys(const Settings &s, float *out, float *right, int numSamples) {
 // This gained an axis. Antiphon capped by TIER only -- a colour note passes
 // rather than sits -- and held everything else until the next onset, which is
 // legato by default and gives a downbeat no more room than an off-beat.
-// seq_play had the other half, scaling sustain by BEAT STRENGTH, and the merged
+// The other half, scaling sustain by BEAT STRENGTH, came from elsewhere, and the merged
 // model is the smaller of the two: strength says how much room the moment
 // deserves, tier says how long the note can bear to be heard.
 //

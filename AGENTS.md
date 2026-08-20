@@ -198,9 +198,9 @@ is the only thing that compiles it.
 AU's identity in the plugin registry. JUCE's defaults are the placeholder
 `'Manu'` and a `string(RANDOM)` plugin code regenerated on every configure, so
 dropping them would mint a new Audio Unit per build tree and break every saved
-Logic session. `Chlk` is shared with arps-euclidya, which uses plugin code
-`ArpE`; a new Chalkwalk plugin needs its own plugin code, not its own
-manufacturer code.
+Logic session. `Chlk` is the shared Chalkwalk manufacturer code; a plugin needs its own
+plugin code, not its own manufacturer code. Allocated codes are tracked in the
+ecosystem plan.
 
 Sanitiser builds -- keep them around, they are worth more than gdb here:
 
