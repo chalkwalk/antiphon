@@ -1801,10 +1801,32 @@ inside the form.
 
 ### Split the client out
 
-> **Superseded by [`../ECOSYSTEM.md`](../ECOSYSTEM.md), 2026-08-18,** which
-> schedules `chalkwalk-ninjam` last of the five libraries: one consumer, the
-> largest surface, and a licence provenance note (`PRINCIPLES §6`) to write
-> before it can go permissive.
+> **Done, 2026-08-19, as the protocol rather than the client.**
+> [`chalkwalk-ninjam`](https://github.com/chalkwalk/chalkwalk-ninjam) is a
+> submodule at `libs/ninjam` and carries `NinjamProtocol`, `VorbisCodec`,
+> `Sha1`, `IntervalClock`, `SpscRing` and `ChannelMix` under MIT, with the
+> provenance note `PRINCIPLES §6` required.
+>
+> The survey changed the unit. This entry proposed moving the *client*, but
+> `NinjamClient` carries `juce::File`, `juce::AudioBuffer` and forty-odd locks
+> -- host concerns a protocol library has no business owning. The protocol
+> underneath it was already JUCE-free in five files of six, and is the part
+> nothing else on the shelf provides. So the client stayed and the wire format
+> left.
+>
+> Five of the six moved as a using-declaration each: their APIs did not change,
+> so not one call site here did either. `NinjamProtocol` did change --
+> `juce::MemoryBlock` became `ByteBuffer` and `juce::String` became
+> `std::string` -- and cost about a hundred small conversions across
+> `NinjamClient`, `PracticeServer`, `FakeNinjamServer` and two test files.
+> `juce::String` constructs implicitly from `std::string`, so parsed fields
+> still flow into the UI untouched; the other direction is an explicit
+> `.toStdString()` at each site, which is where the boundary now shows.
+>
+> The extraction paid for itself immediately: linking against the library
+> aborted the handshake, and the cause was three `juce::jlimit(lo, hi, value)`
+> calls transcribed as `std::clamp(lo, hi, value)` during the port. Fixed and
+> covered in the library, where neither builder had had a test at all.
 
 
 `NinjamClient`, `NinjamProtocol`, `VorbisCodec`, `Harmony` and the bots have no

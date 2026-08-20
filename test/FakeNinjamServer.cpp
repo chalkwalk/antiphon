@@ -158,10 +158,10 @@ void FakeNinjamServer::run() {
     if (!NinjamProtocol::readFrameHeader(header, frame))
       break;
 
-    juce::MemoryBlock payload;
+    ByteBuffer payload;
     if (frame.length > 0) {
-      payload.setSize(frame.length, true);
-      if (!readExactly(payload.getData(), (int)frame.length))
+      payload.resize(frame.length);
+      if (!readExactly(payload.data(), (int)frame.length))
         break;
     }
 
@@ -174,14 +174,14 @@ void FakeNinjamServer::run() {
 }
 
 void FakeNinjamServer::handleClientMessage(juce::uint8 type,
-                                           const juce::MemoryBlock &payload) {
+                                           const ByteBuffer &payload) {
   if (type == 0x80) {
     // CLIENT_AUTH_USER -> grant or deny. The reply must carry the channel cap:
     // the reference client stores it as m_max_localch and silently refuses to
     // transmit on any channel index at or above it, so a reply of just the
     // flag byte gets no audio at all from a stock client.
     auto reply = NinjamProtocol::buildAuthReply(grantAccess.load(), {}, 32);
-    send(0x01, reply.getData(), (int)reply.getSize());
+    send(0x01, reply.data(), (int)reply.size());
     if (!grantAccess.load())
       return;
 
@@ -210,14 +210,14 @@ void FakeNinjamServer::handleClientMessage(juce::uint8 type,
     }
     auto echoed = NinjamProtocol::buildIntervalBegin(
         begin.guid, begin.estimatedSize, begin.fourcc, begin.channelIndex,
-        user);
-    send(0x04, echoed.getData(), (int)echoed.getSize());
+        user.toStdString());
+    send(0x04, echoed.data(), (int)echoed.size());
     return;
   }
 
   if (type == 0x84) {
     // UPLOAD_INTERVAL_WRITE and DOWNLOAD_INTERVAL_WRITE payloads are identical.
-    send(0x05, payload.getData(), (int)payload.getSize());
+    send(0x05, payload.data(), (int)payload.size());
     NinjamProtocol::IntervalWrite w;
     if (NinjamProtocol::parseIntervalWrite(payload, w) && w.isFinal)
       uploadsCompleted.fetch_add(1);
@@ -256,8 +256,9 @@ void FakeNinjamServer::sendUserInfo(const juce::String &user, int chIdx,
 void FakeNinjamServer::sendChat(const juce::String &type,
                                 const juce::String &p1,
                                 const juce::String &p2) {
-  auto b = NinjamProtocol::buildChat(type, p1, p2);
-  send(0xC0, b.getData(), (int)b.getSize());
+  auto b = NinjamProtocol::buildChat(type.toStdString(), p1.toStdString(),
+                                     p2.toStdString());
+  send(0xC0, b.data(), (int)b.size());
 }
 
 int FakeNinjamServer::countReceived(juce::uint8 type) const {
@@ -279,7 +280,7 @@ FakeNinjamServer::messagesOfType(juce::uint8 type) const {
   return out;
 }
 
-juce::MemoryBlock FakeNinjamServer::lastPayloadOfType(juce::uint8 type) const {
+ByteBuffer FakeNinjamServer::lastPayloadOfType(juce::uint8 type) const {
   juce::ScopedLock sl(stateMutex);
   for (int i = received.size() - 1; i >= 0; --i)
     if (received.getReference(i).type == type)

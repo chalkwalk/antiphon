@@ -3,6 +3,7 @@
 #include "NinjamProtocol.h"
 #include <JuceHeader.h>
 #include <map>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -64,13 +65,13 @@ private:
     // channel index. Absent from the map and present-but-zero both mean "send
     // me nothing", which is how a bot stays deaf and why the room does not cost
     // a NinjamClient's worth of interval buffers per bot.
-    std::map<juce::String, juce::uint32> usermask;
+    std::map<std::string, juce::uint32> usermask;
 
     // GUID -> channel index for this client's uploads in flight. Only
     // UPLOAD_INTERVAL_BEGIN carries the channel index; the writes that follow
     // identify themselves by GUID alone, so the relay has to remember which
     // channel each one belongs to in order to honour a subscription.
-    std::map<juce::String, int> uploadChannel;
+    std::map<std::string, int> uploadChannel;
 
     // Frames arrive split across reads and coalesced across writes, so bytes
     // accumulate here until a whole frame is present.
@@ -82,7 +83,7 @@ private:
   bool readFromClient(Client &c);
   void drainFrames(Client &c);
   void handleFrame(Client &c, juce::uint8 type,
-                   const juce::MemoryBlock &payload);
+                   const chalkwalk::ninjam::ByteBuffer &payload);
   void dropClient(int index);
 
   // Control frames are written blocking: they are small, they always fit, and

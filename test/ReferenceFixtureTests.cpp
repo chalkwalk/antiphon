@@ -40,12 +40,13 @@ juce::File fixtureDir() {
   return {};
 }
 
-juce::MemoryBlock loadFixture(const juce::String &name) {
+ByteBuffer loadFixture(const juce::String &name) {
   juce::MemoryBlock mb;
   const auto dir = fixtureDir();
   if (dir.isDirectory())
     dir.getChildFile(name).loadFileAsData(mb);
-  return mb;
+  const auto *p = static_cast<const std::uint8_t *>(mb.getData());
+  return ByteBuffer(p, p + mb.getSize());
 }
 
 class ReferenceFixtureTests : public juce::UnitTest {
@@ -75,7 +76,7 @@ public:
   void testAuthPacket() {
     beginTest("reference CLIENT_AUTH_USER parses and round-trips");
     auto raw = loadFixture("80_client_auth_user.bin");
-    if (raw.getSize() == 0) {
+    if (raw.size() == 0) {
       logMessage("fixture missing -- skipping");
       expect(true);
       return;
@@ -83,11 +84,11 @@ public:
 
     // Layout: 20-byte hash + NUL-terminated username + 4-byte caps + 4-byte
     // version, both little-endian.
-    expect(raw.getSize() > 29, "auth packet implausibly short");
+    expect(raw.size() > 29, "auth packet implausibly short");
 
-    NinjamProtocol::Reader r(raw.getData(), raw.getSize());
+    NinjamProtocol::Reader r(raw.data(), raw.size());
     juce::uint8 hash[20];
-    juce::String username;
+    std::string username;
     juce::uint32 caps = 0, version = 0;
     expect(r.bytes(hash, 20));
     expect(r.cstr(username));
@@ -96,17 +97,17 @@ public:
     expect(r.ok() && r.atEnd(),
            "auth packet had trailing bytes we do not account for");
 
-    logMessage("reference auth: user '" + username + "', caps " +
+    logMessage("reference auth: user '" + juce::String(username) + "', caps " +
                juce::String((int)caps) + ", version 0x" +
                juce::String::toHexString((int)version));
 
-    expect(username.isNotEmpty(), "no username in the reference auth packet");
+    expect(!username.empty(), "no username in the reference auth packet");
     expectEquals((int)version, 0x00020000,
                  "protocol version differs from the reference client");
 
     // Our builder must produce a byte-identical packet from the same inputs.
     auto ours = NinjamProtocol::buildAuthUser(hash, username, caps, version);
-    expectEquals((int)ours.getSize(), (int)raw.getSize());
+    expectEquals((int)ours.size(), (int)raw.size());
     expect(ours == raw,
            "our CLIENT_AUTH_USER differs byte-for-byte from the reference");
   }
@@ -118,34 +119,39 @@ public:
   void testChannelInfoPacket() {
     beginTest("reference CLIENT_SET_CHANNEL_INFO layout matches ours");
     auto raw = loadFixture("82_client_set_channel_info.bin");
-    if (raw.getSize() == 0) {
+    if (raw.size() == 0) {
       logMessage("fixture missing -- skipping");
       expect(true);
       return;
     }
 
-    const auto *b = static_cast<const juce::uint8 *>(raw.getData());
-    expect(raw.getSize() >= 2, "channel info too short");
+    const auto *b = static_cast<const juce::uint8 *>(raw.data());
+    expect(raw.size() >= 2, "channel info too short");
     const int mpisize = (int)b[0] | ((int)b[1] << 8);
     logMessage("reference mpisize = " + juce::String(mpisize));
     expectEquals(mpisize, 4,
                  "reference uses a different per-channel metadata size");
 
     // Read the channel names the reference declared.
-    NinjamProtocol::Reader r(raw.getData(), raw.getSize());
+    NinjamProtocol::Reader r(raw.data(), raw.size());
     juce::uint16 msz;
     expect(r.u16le(msz));
-    juce::StringArray names;
+    std::vector<std::string> names;
     while (!r.atEnd()) {
-      juce::String name;
+      std::string name;
       if (!r.cstr(name))
         break;
       if (!r.skip((size_t)msz))
         break;
-      names.add(name);
+      names.push_back(name);
     }
     expect(names.size() >= 1, "no channel names in the reference packet");
-    logMessage("reference channels: " + names.joinIntoString(", "));
+    {
+      juce::StringArray forLog;
+      for (const auto &n : names)
+        forLog.add(juce::String(n));
+      logMessage("reference channels: " + forLog.joinIntoString(", "));
+    }
 
     // Our builder must agree for the same channel list.
     auto ours = NinjamProtocol::buildChannelInfo(names);
@@ -160,19 +166,19 @@ public:
   void testUploadBeginPacket() {
     beginTest("reference UPLOAD_INTERVAL_BEGIN is 25 bytes of OGGv");
     auto raw = loadFixture("83_upload_interval_begin.bin");
-    if (raw.getSize() == 0) {
+    if (raw.size() == 0) {
       logMessage("fixture missing -- skipping");
       expect(true);
       return;
     }
 
-    expectEquals((int)raw.getSize(), 25,
+    expectEquals((int)raw.size(), 25,
                  "the reference client's 0x83 is not 25 bytes");
 
     NinjamProtocol::IntervalBegin begin;
     expect(NinjamProtocol::parseIntervalBegin(raw, begin));
     expect(begin.isOggAudio(), "reference fourCC is not OGGv");
-    expect(begin.username.isEmpty(), "0x83 must carry no username");
+    expect(begin.username.empty(), "0x83 must carry no username");
     logMessage("reference upload begin: channel " +
                juce::String(begin.channelIndex) + ", estsize " +
                juce::String((int)begin.estimatedSize));
@@ -186,16 +192,16 @@ public:
   void testUsermaskPacket() {
     beginTest("reference CLIENT_SET_USERMASK layout matches ours");
     auto raw = loadFixture("81_client_set_usermask.bin");
-    if (raw.getSize() == 0) {
+    if (raw.size() == 0) {
       logMessage("fixture missing -- skipping");
       expect(true);
       return;
     }
 
-    NinjamProtocol::Reader r(raw.getData(), raw.getSize());
-    std::vector<std::pair<juce::String, juce::uint32>> masks;
+    NinjamProtocol::Reader r(raw.data(), raw.size());
+    std::vector<std::pair<std::string, juce::uint32>> masks;
     while (!r.atEnd()) {
-      juce::String name;
+      std::string name;
       juce::uint32 mask = 0;
       if (!r.cstr(name) || !r.u32le(mask))
         break;
@@ -203,8 +209,8 @@ public:
     }
     expect(!masks.empty(), "no entries in the reference usermask");
     for (const auto &[name, mask] : masks)
-      logMessage("reference subscribes to '" + name + "' mask 0x" +
-                 juce::String::toHexString((int)mask));
+      logMessage("reference subscribes to '" + juce::String(name) +
+                 "' mask 0x" + juce::String::toHexString((int)mask));
 
     auto ours = NinjamProtocol::buildUsermask(masks);
     expect(ours == raw, "our CLIENT_SET_USERMASK differs from the reference");
@@ -216,7 +222,7 @@ public:
   void testReferenceOggDecodes() {
     beginTest("reference Ogg stream decodes to the expected audio");
     auto raw = loadFixture("reference_interval_48000.ogg");
-    if (raw.getSize() == 0) {
+    if (raw.size() == 0) {
       logMessage("fixture missing -- skipping");
       expect(true);
       return;
@@ -224,9 +230,9 @@ public:
 
     VorbisDecoder dec;
     std::vector<float> pcm;
-    const auto *bytes = static_cast<const juce::uint8 *>(raw.getData());
-    for (size_t pos = 0; pos < raw.getSize(); pos += 4096) {
-      const int n = (int)std::min((size_t)4096, raw.getSize() - pos);
+    const auto *bytes = static_cast<const juce::uint8 *>(raw.data());
+    for (size_t pos = 0; pos < raw.size(); pos += 4096) {
+      const int n = (int)std::min((size_t)4096, raw.size() - pos);
       dec.decode(bytes + pos, n);
       while (dec.available() > 0) {
         const int avail = dec.available();

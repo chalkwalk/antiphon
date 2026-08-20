@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chalkwalk/ninjam/Bytes.h>
+
 #include <JuceHeader.h>
 
 #include "NinjamProtocol.h"
@@ -42,13 +44,13 @@ public:
   // Observations, all guarded internally.
   struct Received {
     juce::uint8 type;
-    juce::MemoryBlock payload;
+    chalkwalk::ninjam::ByteBuffer payload;
   };
 
   bool hasClient() const;
   int countReceived(juce::uint8 type) const;
   juce::Array<Received> messagesOfType(juce::uint8 type) const;
-  juce::MemoryBlock lastPayloadOfType(juce::uint8 type) const;
+  chalkwalk::ninjam::ByteBuffer lastPayloadOfType(juce::uint8 type) const;
   int completedUploads() const { return uploadsCompleted.load(); }
   void clearReceived();
 
@@ -56,7 +58,8 @@ public:
 
 private:
   void run() override;
-  void handleClientMessage(juce::uint8 type, const juce::MemoryBlock &payload);
+  void handleClientMessage(juce::uint8 type,
+                           const chalkwalk::ninjam::ByteBuffer &payload);
   bool send(juce::uint8 type, const void *data, int size);
   bool readExactly(void *dest, int numBytes);
 

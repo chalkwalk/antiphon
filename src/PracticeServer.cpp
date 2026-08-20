@@ -56,7 +56,7 @@ void PracticeServer::setConfig(int bpmIn, int bpiIn) {
   serverBpi = bpiIn;
   auto p = NinjamProtocol::buildServerConfig(bpmIn, bpiIn);
   juce::ScopedLock sl(clientsMutex);
-  broadcastExceptLocked(nullptr, 0x02, p.getData(), (int)p.getSize());
+  broadcastExceptLocked(nullptr, 0x02, p.data(), (int)p.size());
 }
 
 void PracticeServer::setTopic(const juce::String &topic) {
@@ -64,16 +64,17 @@ void PracticeServer::setTopic(const juce::String &topic) {
     juce::ScopedLock sl(stateMutex);
     roomTopic = topic;
   }
-  auto p = NinjamProtocol::buildChat("TOPIC", {}, topic);
+  auto p = NinjamProtocol::buildChat("TOPIC", {}, topic.toStdString());
   juce::ScopedLock sl(clientsMutex);
-  broadcastExceptLocked(nullptr, 0xC0, p.getData(), (int)p.getSize());
+  broadcastExceptLocked(nullptr, 0xC0, p.data(), (int)p.size());
 }
 
 void PracticeServer::broadcastChat(const juce::String &from,
                                    const juce::String &text) {
-  auto p = NinjamProtocol::buildChat("MSG", from, text);
+  auto p =
+      NinjamProtocol::buildChat("MSG", from.toStdString(), text.toStdString());
   juce::ScopedLock sl(clientsMutex);
-  broadcastExceptLocked(nullptr, 0xC0, p.getData(), (int)p.getSize());
+  broadcastExceptLocked(nullptr, 0xC0, p.data(), (int)p.size());
 }
 
 int PracticeServer::clientCount() const {
@@ -124,7 +125,7 @@ bool PracticeServer::subscribed(const Client &to, const juce::String &user,
   // rather than shifting past the width of the mask.
   if (channelIndex < 0 || channelIndex >= 32)
     return false;
-  auto it = to.usermask.find(user);
+  auto it = to.usermask.find(user.toStdString());
   if (it == to.usermask.end())
     return false;
   return (it->second & (1u << channelIndex)) != 0;
@@ -191,8 +192,8 @@ void PracticeServer::sendRoster(Client &to) {
       NinjamProtocol::UserInfoEntry e;
       e.active = true;
       e.channelIndex = idx;
-      e.username = c->username;
-      e.channelName = name;
+      e.username = c->username.toStdString();
+      e.channelName = name.toStdString();
       entries.push_back(std::move(e));
     }
   }
@@ -200,21 +201,20 @@ void PracticeServer::sendRoster(Client &to) {
     return;
 
   auto p = NinjamProtocol::buildUserInfo(entries);
-  sendTo(to, 0x03, p.getData(), (int)p.getSize());
+  sendTo(to, 0x03, p.data(), (int)p.size());
 }
 
 void PracticeServer::broadcastChannels(
-    const juce::String &username,
-    const std::map<int, juce::String> &channels, bool active,
-    const Client *skip) {
+    const juce::String &username, const std::map<int, juce::String> &channels,
+    bool active, const Client *skip) {
   // Caller holds clientsMutex.
   std::vector<NinjamProtocol::UserInfoEntry> entries;
   for (const auto &[idx, name] : channels) {
     NinjamProtocol::UserInfoEntry e;
     e.active = active;
     e.channelIndex = idx;
-    e.username = username;
-    e.channelName = name;
+    e.username = username.toStdString();
+    e.channelName = name.toStdString();
     entries.push_back(std::move(e));
   }
   if (entries.empty())
@@ -224,7 +224,7 @@ void PracticeServer::broadcastChannels(
   for (auto &other : clients) {
     if (other.get() == skip || !other->authenticated)
       continue;
-    sendTo(*other, 0x03, p.getData(), (int)p.getSize());
+    sendTo(*other, 0x03, p.data(), (int)p.size());
   }
 }
 
@@ -280,7 +280,7 @@ void PracticeServer::acceptPendingConnections() {
 
   auto p = NinjamProtocol::buildAuthChallenge(client->challenge);
   // The server speaks first.
-  sendTo(*client, 0x00, p.getData(), (int)p.getSize());
+  sendTo(*client, 0x00, p.data(), (int)p.size());
 
   juce::ScopedLock sl(clientsMutex);
   clients.push_back(std::move(client));
@@ -295,11 +295,11 @@ void PracticeServer::dropClient(int index) {
     // PART, not a MSG saying so: NinjamClient only removes a name from
     // roomMembers on a real PART (NinjamClient.cpp:652), and a bot that leaves
     // when its owner does needs that to be accurate.
-    auto part = NinjamProtocol::buildChat("PART", c.username);
+    auto part = NinjamProtocol::buildChat("PART", c.username.toStdString());
     for (auto &other : clients) {
       if (other.get() == &c || !other->authenticated)
         continue;
-      sendTo(*other, 0xC0, part.getData(), (int)part.getSize());
+      sendTo(*other, 0xC0, part.data(), (int)part.size());
     }
   }
   clients.erase(clients.begin() + index);
@@ -334,9 +334,11 @@ void PracticeServer::drainFrames(Client &c) {
     if (avail < total)
       break;
 
-    juce::MemoryBlock payload;
-    if (frame.length > 0)
-      payload.append(base + offset + NinjamProtocol::kHeaderSize, frame.length);
+    ByteBuffer payload;
+    if (frame.length > 0) {
+      const auto *start = base + offset + NinjamProtocol::kHeaderSize;
+      payload.assign(start, start + frame.length);
+    }
 
     offset += total;
     handleFrame(c, frame.type, payload);
@@ -347,7 +349,7 @@ void PracticeServer::drainFrames(Client &c) {
 }
 
 void PracticeServer::handleFrame(Client &c, juce::uint8 type,
-                                 const juce::MemoryBlock &payload) {
+                                 const ByteBuffer &payload) {
   // Caller holds clientsMutex.
   switch (type) {
   case 0x80: { // CLIENT_AUTH_USER
@@ -359,18 +361,18 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
 
     // Any password is accepted: this room is on the loopback interface and
     // exists to be walked into. Rejecting one would only be theatre.
-    c.username = uniqueUsername(au.username);
+    c.username = uniqueUsername(juce::String(au.username));
     c.authenticated = true;
 
     // The cap matters: the reference client stores it as m_max_localch and
     // silently refuses to transmit on any channel index at or above it, so a
     // reply without it gets no audio at all (njclient.cpp:1096).
     auto reply = NinjamProtocol::buildAuthReply(true, {}, 32);
-    sendTo(c, 0x01, reply.getData(), (int)reply.getSize());
+    sendTo(c, 0x01, reply.data(), (int)reply.size());
 
     auto cfg =
         NinjamProtocol::buildServerConfig(serverBpm.load(), serverBpi.load());
-    sendTo(c, 0x02, cfg.getData(), (int)cfg.getSize());
+    sendTo(c, 0x02, cfg.data(), (int)cfg.size());
 
     juce::String topic;
     {
@@ -378,8 +380,8 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
       topic = roomTopic;
     }
     if (topic.isNotEmpty()) {
-      auto t = NinjamProtocol::buildChat("TOPIC", {}, topic);
-      sendTo(c, 0xC0, t.getData(), (int)t.getSize());
+      auto t = NinjamProtocol::buildChat("TOPIC", {}, topic.toStdString());
+      sendTo(c, 0xC0, t.data(), (int)t.size());
     }
 
     // Who is already here, then tell everyone else who just arrived. JOIN and
@@ -388,15 +390,15 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
     for (const auto &other : clients) {
       if (other.get() == &c || !other->authenticated)
         continue;
-      auto j = NinjamProtocol::buildChat("JOIN", other->username);
-      sendTo(c, 0xC0, j.getData(), (int)j.getSize());
+      auto j = NinjamProtocol::buildChat("JOIN", other->username.toStdString());
+      sendTo(c, 0xC0, j.data(), (int)j.size());
     }
 
-    auto joined = NinjamProtocol::buildChat("JOIN", c.username);
+    auto joined = NinjamProtocol::buildChat("JOIN", c.username.toStdString());
     for (auto &other : clients) {
       if (other.get() == &c || !other->authenticated)
         continue;
-      sendTo(*other, 0xC0, joined.getData(), (int)joined.getSize());
+      sendTo(*other, 0xC0, joined.data(), (int)joined.size());
     }
 
     sendRoster(c);
@@ -441,9 +443,8 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
     c.uploadChannel[begin.guidHex] = begin.channelIndex;
     auto out = NinjamProtocol::buildIntervalBegin(
         begin.guid, begin.estimatedSize, begin.fourcc, begin.channelIndex,
-        c.username);
-    relayAudioLocked(c, begin.channelIndex, 0x04, out.getData(),
-                     (int)out.getSize());
+        c.username.toStdString());
+    relayAudioLocked(c, begin.channelIndex, 0x04, out.data(), (int)out.size());
     return;
   }
 
@@ -462,8 +463,8 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
       c.uploadChannel.erase(it);
 
     // The 0x84 and 0x05 payloads are byte-identical, so this is a forward.
-    relayAudioLocked(c, channelIndex, 0x05, payload.getData(),
-                     (int)payload.getSize());
+    relayAudioLocked(c, channelIndex, 0x05, payload.data(),
+                     (int)payload.size());
     return;
   }
 
@@ -473,20 +474,22 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
       return;
 
     if (chat.type == "MSG") {
-      auto out = NinjamProtocol::buildChat("MSG", c.username, chat.p1);
+      auto out =
+          NinjamProtocol::buildChat("MSG", c.username.toStdString(), chat.p1);
       for (auto &other : clients) {
         if (!other->authenticated)
           continue;
-        sendTo(*other, 0xC0, out.getData(), (int)out.getSize());
+        sendTo(*other, 0xC0, out.data(), (int)out.size());
       }
       return;
     }
 
     if (chat.type == "PRIVMSG") {
-      auto out = NinjamProtocol::buildChat("PRIVMSG", c.username, chat.p2);
+      auto out = NinjamProtocol::buildChat("PRIVMSG", c.username.toStdString(),
+                                           chat.p2);
       for (auto &other : clients)
-        if (other->authenticated && other->username == chat.p1)
-          sendTo(*other, 0xC0, out.getData(), (int)out.getSize());
+        if (other->authenticated && other->username == juce::String(chat.p1))
+          sendTo(*other, 0xC0, out.data(), (int)out.size());
       return;
     }
 
@@ -495,10 +498,11 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
         juce::ScopedLock sl(stateMutex);
         roomTopic = chat.p2;
       }
-      auto out = NinjamProtocol::buildChat("TOPIC", c.username, chat.p2);
+      auto out =
+          NinjamProtocol::buildChat("TOPIC", c.username.toStdString(), chat.p2);
       for (auto &other : clients)
         if (other->authenticated)
-          sendTo(*other, 0xC0, out.getData(), (int)out.getSize());
+          sendTo(*other, 0xC0, out.data(), (int)out.size());
       return;
     }
     return;
