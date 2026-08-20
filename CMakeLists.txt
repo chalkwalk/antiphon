@@ -129,7 +129,7 @@ add_subdirectory(libs/music)
 #
 # Same arrangement and the same reasoning as chalkwalk-music above. The filter,
 # the polyBLEP oscillators, the soft clipper and the Hermite reader lived here
-# and in Lockstep, and the two copies had diverged; the shared versions take
+# and in a sibling project, and the two copies had diverged; the shared versions take
 # both halves.
 # ---------------------------------------------------------------------------
 set(CHALKWALK_DSP_TESTS ON CACHE BOOL "" FORCE)

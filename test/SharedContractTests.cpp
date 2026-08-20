@@ -6,7 +6,7 @@
 // SharedContractTests -- the properties that must survive extraction into the
 // shared Chalkwalk libraries.
 //
-// The counterpart of the same suite in Lockstep. The Euclidean table
+// The counterpart of the same suite in the other consumer. The Euclidean table
 // below is byte-identical to the one there, deliberately: two repositories, one
 // table. If the implementations ever drift apart, one of the two suites goes
 // red. That is the closest thing to a shared test available before there is a
@@ -30,8 +30,8 @@ public:
 private:
   // --------------------------------------------------------------------
   // polyBLEP: the sign, which is the whole reason this code was worth
-  // sharing. It was inverted in seq_play for the life of the project and
-  // found within hours of being retyped here; seq_play fixed it in 29db3d3.
+  // sharing. It was inverted at its origin for the life of that project and
+  // found within hours of being retyped here; it has since been fixed there.
   // Both are correct now, and this states the property that an inverted sign
   // breaks, in a form both repositories can assert identically.
   // --------------------------------------------------------------------
