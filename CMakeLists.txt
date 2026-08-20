@@ -7,6 +7,8 @@ project(Antiphon VERSION 0.1.0)
 # enable_testing() must be called at the top level for ctest to work
 enable_testing()
 
+include(cmake/JuceSource.cmake)
+
 # Submodule patches, applied at configure time.
 #
 # Each entry is "<submodule dir>|<patch file>". Each patch is idempotent:
@@ -28,7 +30,13 @@ if(GIT_FOUND)
         list(GET patch_parts 0 patch_submodule)
         list(GET patch_parts 1 patch_relative)
         set(patch_file "${CMAKE_CURRENT_SOURCE_DIR}/${patch_relative}")
-        set(patch_dir "${CMAKE_CURRENT_SOURCE_DIR}/${patch_submodule}")
+        # JUCE may be this repository's submodule or the shared checkout that
+        # CHALKWALK_JUCE_DIR names; everything else is always local.
+        if(patch_submodule STREQUAL "JUCE")
+            set(patch_dir "${CHALKWALK_JUCE_ROOT}")
+        else()
+            set(patch_dir "${CMAKE_CURRENT_SOURCE_DIR}/${patch_submodule}")
+        endif()
 
         if(NOT EXISTS "${patch_file}")
             continue()
@@ -58,8 +66,7 @@ if(GIT_FOUND)
     endforeach()
 endif()
 
-# Configure JUCE
-add_subdirectory(JUCE)
+add_subdirectory("${CHALKWALK_JUCE_ROOT}" "${CMAKE_BINARY_DIR}/juce-build")
 
 # Configure CLAP JUCE extension
 add_subdirectory(modules/clap-juce-extensions EXCLUDE_FROM_ALL)
