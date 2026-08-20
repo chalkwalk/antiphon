@@ -27,3 +27,6 @@
 [submodule "libs/ninjam"]
 	path = libs/ninjam
 	url = https://github.com/chalkwalk/chalkwalk-ninjam.git
+[submodule "modules/libebur128"]
+	path = modules/libebur128
+	url = https://github.com/jiixyj/libebur128.git

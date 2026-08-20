@@ -77,6 +77,40 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 add_subdirectory(modules/ogg EXCLUDE_FROM_ALL)
 add_subdirectory(modules/vorbis EXCLUDE_FROM_ALL)
 
+# ---------------------------------------------------------------------------
+# libebur128 (MIT) -- ITU-R BS.1770 loudness.
+#
+# Adopted rather than maintained, on the rule in ../ECOSYSTEM.md: take the
+# dependency when the thing has a SPECIFICATION you could fail to meet. Our own
+# K-weighting and gating agreed with ffmpeg to inside 0.05 LU, so this is not a
+# bug fix -- it is refusing to own a standard whose next revision, or whose
+# short-term and range measures, we would have to track by hand.
+#
+# The target is declared here rather than by add_subdirectory: the vendored
+# CMakeLists declares cmake_minimum_required(VERSION 2.8.12), which CMake 4
+# refuses outright, and it also builds a shared library, tests and pkg-config
+# files that a static consumer has no use for. The library itself is one C
+# file.
+#
+# The bundled queue/ is used on every platform rather than only where
+# sys/queue.h is missing, which is what upstream's try_compile decides. One
+# copy on all three platforms is one behaviour to reason about, and Windows
+# has no system sys/queue.h at all -- so the conditional could only ever
+# produce a difference nobody wanted.
+# ---------------------------------------------------------------------------
+add_library(ebur128 STATIC modules/libebur128/ebur128/ebur128.c)
+target_include_directories(ebur128
+    PUBLIC  modules/libebur128/ebur128
+    PRIVATE modules/libebur128/ebur128/queue)
+set_target_properties(ebur128 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+    target_compile_definitions(ebur128 PRIVATE _USE_MATH_DEFINES)
+endif()
+find_library(MATH_LIBRARY m)
+if(MATH_LIBRARY)
+    target_link_libraries(ebur128 PRIVATE ${MATH_LIBRARY})
+endif()
+
 # Add the sources subdirectory
 # ---------------------------------------------------------------------------
 # chalkwalk-music -- shared, JUCE-free music theory (../ECOSYSTEM.md).
