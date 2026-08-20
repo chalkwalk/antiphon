@@ -18,18 +18,13 @@ juce_generate_juce_header(NinjamTests)
 target_sources(NinjamTests
     PRIVATE
         TestMain.cpp
-        Sha1Tests.cpp
-        VorbisCodecTests.cpp
         NinjamProtocolTests.cpp
-        IntervalClockTests.cpp
         MetronomeVoiceTests.cpp
         GainUtilsTests.cpp
         SyncStateTests.cpp
         AudioDeviceStartupTests.cpp
         ShortcutsTests.cpp
-        ChannelMixTests.cpp
         AccessibilityAuditTests.cpp
-        SpscRingTests.cpp
         ChatFormatTests.cpp
         BotAnswerTests.cpp
         BandPlayStateTests.cpp
@@ -62,10 +57,7 @@ target_sources(NinjamTests
         RealServerTests.cpp
         ReferenceFixtureTests.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
-        ${CMAKE_SOURCE_DIR}/src/IntervalClock.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
-        ${CMAKE_SOURCE_DIR}/src/Sha1.cpp
-        ${CMAKE_SOURCE_DIR}/src/VorbisCodec.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamProtocol.cpp
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
@@ -101,6 +93,7 @@ target_link_libraries(NinjamTests
     PRIVATE
         chalkwalk::music
         chalkwalk::dsp
+        chalkwalk::ninjam
         juce::juce_audio_formats
         juce::juce_events
         ogg
@@ -167,7 +160,7 @@ target_compile_definitions(AntiphonAudit
         JUCE_MODAL_LOOPS_PERMITTED=1)
 
 target_link_libraries(AntiphonAudit
-    PRIVATE chalkwalk::music chalkwalk::dsp
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::ninjam
     PRIVATE
         Antiphon
         antiphon_fonts

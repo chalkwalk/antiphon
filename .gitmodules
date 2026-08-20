@@ -24,3 +24,6 @@
 [submodule "libs/dsp"]
 	path = libs/dsp
 	url = https://github.com/chalkwalk/chalkwalk-dsp.git
+[submodule "libs/ninjam"]
+	path = libs/ninjam
+	url = https://github.com/chalkwalk/chalkwalk-ninjam.git
