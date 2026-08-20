@@ -76,6 +76,24 @@ Testing/
 .claude/
 .gemini/
 
+# Operating-system detritus.
+#
+# .DS_Store is Finder's per-folder metadata -- icon positions, window size,
+# view mode -- written into any directory macOS opens. It is machine-local by
+# definition and means nothing on anybody else's disk. One reached the tree in
+# 3a1193b; the rest of these are its siblings, listed now rather than after
+# each one has had its own turn.
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
 # Editor and Python detritus
 *~
 .vimsupport/
