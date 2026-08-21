@@ -120,8 +120,8 @@ endif()
 # of the boundary. Its own Catch2 suite is turned on here so this project
 # verifies its dependency rather than assuming it.
 # ---------------------------------------------------------------------------
-set(CHALKWALK_MUSIC_TESTS ON CACHE BOOL "" FORCE)
-add_subdirectory(libs/music)
+include(cmake/ChalkwalkLibrary.cmake)
+chalkwalk_add_library(music libs/music)
 
 # ---------------------------------------------------------------------------
 # chalkwalk-dsp -- shared, JUCE-free DSP primitives.
@@ -132,8 +132,7 @@ add_subdirectory(libs/music)
 # and in a sibling project, and the two copies had diverged; the shared versions take
 # both halves.
 # ---------------------------------------------------------------------------
-set(CHALKWALK_DSP_TESTS ON CACHE BOOL "" FORCE)
-add_subdirectory(libs/dsp)
+chalkwalk_add_library(dsp libs/dsp)
 
 # ---------------------------------------------------------------------------
 # chalkwalk-ninjam -- the NINJAM wire protocol, JUCE-free.
@@ -150,8 +149,7 @@ add_subdirectory(libs/dsp)
 # GPLv2 reference sources were read, never vendored, and never entered any
 # published history. See PRINCIPLES.md section 6.
 # ---------------------------------------------------------------------------
-set(CHALKWALK_NINJAM_TESTS ON CACHE BOOL "" FORCE)
-add_subdirectory(libs/ninjam)
+chalkwalk_add_library(ninjam libs/ninjam)
 
 add_subdirectory(src)
 
