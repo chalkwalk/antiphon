@@ -65,7 +65,7 @@ target_compile_definitions(AntiphonVoiceLab PRIVATE
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonVoiceLab
-    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::ninjam ebur128
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::dsp::measure chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events
@@ -101,7 +101,7 @@ target_compile_definitions(AntiphonBandLab PRIVATE
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonBandLab
-    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::ninjam ebur128
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::dsp::measure chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_utils
     PUBLIC

@@ -70,6 +70,19 @@ libs/music/                 # SUBMODULE: chalkwalk-music (MIT, JUCE-free).
                             #   github.com/chalkwalk/chalkwalk-music. Euclidean
                             #   lives there now, not in src/. Builds and tests
                             #   standalone; its Catch2 suite runs in our ctest.
+libs/dsp/                   # SUBMODULE: chalkwalk-dsp (MIT, JUCE-free). Two
+                            #   targets: `chalkwalk::dsp` is header-only
+                            #   primitives (Svf, PolyBlep, SoftClip, Hermite,
+                            #   Denormal) and the plugin links it;
+                            #   `chalkwalk::dsp::measure` is the instruments --
+                            #   what `AudioMeasure` used to be -- and carries
+                            #   libebur128, so only test and tool targets link
+                            #   it.
+libs/ninjam/                # SUBMODULE: chalkwalk-ninjam (MIT, JUCE-free). The
+                            #   wire protocol, and the room conventions in
+                            #   RoomConventions.h. Vendors its own ogg/vorbis,
+                            #   guarded, so whichever project adds them first
+                            #   wins.
 patches/*.patch             # applied to the JUCE submodule at configure time
 assets/fonts/               # Inter (OFL-1.1), embedded as binary data
 src/
@@ -98,7 +111,12 @@ src/
   StemRender.h              # one clip into one interval, resampled and aligned
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
   IntervalProbe.h           # shared test signal: plugin Test Tone and the tests
-  AudioMeasure.h            # peak, rms, crest, pitch, brightness, LUFS: one instrument
+  AudioMeasure.h            # one line: an alias to chalkwalk::dsp::measure.
+                            #   The instruments moved -- `peak` and `rms` had
+                            #   three copies across the ecosystem and
+                            #   `fundamentalHz` two, and an uncalibrated
+                            #   detector is how measurement error passes for a
+                            #   bug. libebur128 went with them.
   ChatFormat.{h,cpp}        # chat rendering: vote lines, chord progressions
   RoomHarmony.h             # WHICH of the two a chat line is, and nothing else.
                             #   What each MEANS is Harmony::Session in
@@ -215,7 +233,7 @@ ctest --test-dir build --output-on-failure
 # Offline: turn a session archive into WAV stems.
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/
 # Tuning the band's synthesis: render one voice and measure it. The numbers it
-# prints come from src/AudioMeasure.h, which is what the unit tests assert
+# prints come from chalkwalk::dsp::measure, which is what the unit tests assert
 # against, so tuning by ear and setting a threshold use one instrument.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab kick --seconds 0.6
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab band --seed 12345

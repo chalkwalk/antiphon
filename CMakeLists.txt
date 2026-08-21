@@ -78,41 +78,6 @@ add_subdirectory(modules/ogg EXCLUDE_FROM_ALL)
 add_subdirectory(modules/vorbis EXCLUDE_FROM_ALL)
 
 # ---------------------------------------------------------------------------
-# libebur128 (MIT) -- ITU-R BS.1770 loudness.
-#
-# Adopted rather than maintained, on a standing rule: take the
-# dependency when the thing has a SPECIFICATION you could fail to meet. Our own
-# K-weighting and gating agreed with ffmpeg to inside 0.05 LU, so this is not a
-# bug fix -- it is refusing to own a standard whose next revision, or whose
-# short-term and range measures, we would have to track by hand.
-#
-# The target is declared here rather than by add_subdirectory: the vendored
-# CMakeLists declares cmake_minimum_required(VERSION 2.8.12), which CMake 4
-# refuses outright, and it also builds a shared library, tests and pkg-config
-# files that a static consumer has no use for. The library itself is one C
-# file.
-#
-# The bundled queue/ is used on every platform rather than only where
-# sys/queue.h is missing, which is what upstream's try_compile decides. One
-# copy on all three platforms is one behaviour to reason about, and Windows
-# has no system sys/queue.h at all -- so the conditional could only ever
-# produce a difference nobody wanted.
-# ---------------------------------------------------------------------------
-add_library(ebur128 STATIC modules/libebur128/ebur128/ebur128.c)
-target_include_directories(ebur128
-    PUBLIC  modules/libebur128/ebur128
-    PRIVATE modules/libebur128/ebur128/queue)
-set_target_properties(ebur128 PROPERTIES POSITION_INDEPENDENT_CODE ON)
-if(MSVC)
-    target_compile_definitions(ebur128 PRIVATE _USE_MATH_DEFINES)
-endif()
-find_library(MATH_LIBRARY m)
-if(MATH_LIBRARY)
-    target_link_libraries(ebur128 PRIVATE ${MATH_LIBRARY})
-endif()
-
-# Add the sources subdirectory
-# ---------------------------------------------------------------------------
 # chalkwalk-music -- shared, JUCE-free music theory.
 # Submodule: https://github.com/chalkwalk/chalkwalk-music (MIT).
 #
@@ -129,8 +94,17 @@ chalkwalk_add_library(music libs/music)
 #
 # Same arrangement and the same reasoning as chalkwalk-music above. The filter,
 # the polyBLEP oscillators, the soft clipper and the Hermite reader lived here
-# and in a sibling project, and the two copies had diverged; the shared versions take
-# both halves.
+# and in a sibling project, and the two copies had diverged; the shared
+# versions take both halves.
+#
+# It also owns MEASUREMENT now -- `chalkwalk::dsp::measure`, what `AudioMeasure`
+# used to be -- and with it the libebur128 dependency that used to be vendored
+# in this repository. That is a second target rather than part of the first, so
+# the plugin links the primitives without linking a loudness meter; only the
+# test and tool targets ask for `measure`. The move was for the usual reason:
+# `peak` and `rms` existed three times over across these repositories and
+# `fundamentalHz` twice, and a detector nobody has calibrated is how a
+# measurement error gets mistaken for a bug (`PRINCIPLES §5`).
 # ---------------------------------------------------------------------------
 chalkwalk_add_library(dsp libs/dsp)
 

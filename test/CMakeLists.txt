@@ -32,7 +32,6 @@ target_sources(NinjamTests
         KeyTagTests.cpp
         SharedContractTests.cpp
         LeadLineTests.cpp
-        AudioMeasureTests.cpp
         BotDspTests.cpp
         BandPatchTests.cpp
         BotBandTests.cpp
@@ -89,8 +88,8 @@ target_link_libraries(NinjamTests
     PRIVATE
         chalkwalk::music
         chalkwalk::dsp
+        chalkwalk::dsp::measure
         chalkwalk::ninjam
-        ebur128
         juce::juce_audio_formats
         juce::juce_events
         ogg
