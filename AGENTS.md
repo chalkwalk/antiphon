@@ -100,14 +100,13 @@ src/
   IntervalProbe.h           # shared test signal: plugin Test Tone and the tests
   AudioMeasure.h            # peak, rms, crest, pitch, brightness, LUFS: one instrument
   ChatFormat.{h,cpp}        # chat rendering: vote lines, chord progressions
-  RoomHarmony.h             # what a chat line does to the room's key and chart.
-                            #   ONE place: the band and the display both read it,
-                            #   and they drifted when they each had their own
+  RoomHarmony.h             # WHICH of the two a chat line is, and nothing else.
+                            #   What each MEANS is Harmony::Session in
+                            #   chalkwalk-music; how a key travels is
+                            #   chalkwalk::ninjam::conventions
   # --- the practice room's HOSTING, which stays here ---
   PracticeRoom.{h,cpp}      # the room: seeds, band settings, the bots in it
   PracticeServer.{h,cpp}    # a Ninjam server on loopback, so a room needs none
-  PracticeBot.{h,cpp}       # one bot: renders its part, answers what it is asked.
-                            #   Talks to `BotClient::Client`, not to NinjamClient
   NinjamBotClient.h         # that interface over Antiphon's client. The whole of
                             #   what ties the band to this plugin's transport
   # --- src/jambot/: STAGED FOR EXTRACTION to chalkwalk-jambot ---
@@ -119,11 +118,14 @@ src/
   # chalkwalk-ninjam, and scheduling is asked of the host rather than taken
   # from juce::Timer.
   #
-  # PracticeBot is JUCE-free and talks to `jambot/BotClient.h`, so what still
-  # holds it in src/ is one include: RoomHarmony.h, which sits on both shared
-  # libraries and which Antiphon's chat display needs with no band present.
-  jambot/BotClient.h        # the room as a bot needs it: 13 calls out, 6 back.
+  # PracticeBot is HERE now, and so is the interval loop. What stays in src/ is
+  # the hosting a practice room needs and a command-line bot does not: the
+  # loopback server, and the room that puts a server and a band together.
+  jambot/PracticeBot.{h,cpp}# one bot: renders its part, answers what it is asked
+  jambot/BotClient.h        # the room as a bot needs it: 14 calls out, 6 back.
                             #   JUCE-free, and the line the bots extract along
+  jambot/Conductor.h        # the interval grid, driven. One thread, free-running
+                            #   -- Ninjam's absolute phase is free (PRINCIPLES 9)
   jambot/BotBand.{h,cpp}    # the ensemble: which voice plays what, and the mix
   jambot/BotVoice.h         # the instruments; BotDsp.h the primitives under them
   jambot/BandPlayState.h    # Silent/Playing/Wrapping/Resolving: how a tune ends
