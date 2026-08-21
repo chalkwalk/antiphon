@@ -21,8 +21,26 @@
 // Guessing at prose is how you get a header that lies.
 //
 // JUCE-FREE, like the rest of the music-theory layer: this and `Harmony` are
-// used by the bots and by the plugin's chat UI alike, so they belong to neither
-// and their home is `chalkwalk-music`. Unit-testable in the headless
+// used by the bots and by the plugin's chat UI alike, so they belong to neither.
+//
+// THIS FILE IS THREE THINGS, and they have three different destinations. Worth
+// saying here, because "move it to chalkwalk-music" is the obvious reading and
+// it is wrong for two thirds of it:
+//
+//   - The SCALE. `Key{tonic, Mode}` is already duplicated by
+//     `chalkwalk::music::KeySig`, whose `brightness` axis IS the mode -- see
+//     `toKeySig` in BotBand.cpp, which maps the seven one for one. KeySig is
+//     strictly more expressive (any note count, named modifiers), so this half
+//     should COLLAPSE INTO IT rather than move: deleted, not relocated.
+//   - The NOTATION. Spelling a pitch class as Bb or A#, parsing "D minor",
+//     displaying it back, naming the scale's notes. `chalkwalk-music` has none
+//     of this -- it has `modeName(brightness)` and nothing that reads or spells
+//     -- so this half is a genuine ADDITION to that library.
+//   - The TAG. `[key: ...]` is how a key travels over Ninjam chat. That is
+//     wire protocol, not theory, and it belongs to Antiphon or to
+//     `chalkwalk-ninjam`. It must not go to the music library at all.
+//
+// Unit-testable in the headless
 // test target -- PluginEditor cannot be compiled there at all.
 
 namespace MusicalKey {

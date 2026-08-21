@@ -25,8 +25,19 @@
 //
 // JUCE-FREE, like `MusicalKey` beneath it. Both are used by the bots AND by the
 // plugin's chat UI -- announcing a key and reading a chart are room features
-// that work with no band present -- so they belong to neither and their home is
-// `chalkwalk-music`. Testable in the headless target.
+// that work with no band present -- so they belong to neither, and this one's
+// home is `chalkwalk-music`.
+//
+// It overlaps that library far less than it looks. The only shared idea is a
+// chord, and `NoteStrength.h`'s `SoundingChord` is a PROJECTION of this one
+// rather than a rival: its tones are a 12-bit pitch-class mask, which answers
+// "is this note in the chord" and cannot express either thing `Chord` carries
+// for notation -- an extension in its own register (a ninth is 14 semitones,
+// not 2, because a chord that names one wants it voiced above the seventh) or
+// a slash bass. Charts, bars, chord names, roman numerals, degree charts,
+// voice leading and key inference have no counterpart there at all.
+//
+// Testable in the headless target.
 
 namespace Harmony {
 
