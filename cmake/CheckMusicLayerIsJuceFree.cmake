@@ -1,10 +1,10 @@
-# The music-theory layer must not reach for JUCE.
+# What is still on its way out must not reach for JUCE.
 #
-# `MusicalKey` and `Harmony` are used by the bots AND by the plugin's chat UI --
-# announcing a key and reading a chord chart are room features that work with no
-# band in the room -- so they belong to neither, and their destination is
-# `chalkwalk-music`, which is strictly JUCE-free. `juce::String` was the only
-# thing keeping them here.
+# `Harmony` and the key itself have gone to `chalkwalk-music`, which is strictly
+# JUCE-free; what this guards now is the rest of the same journey. `MusicalKey`
+# is the `[key: ...]` tag and the `/key` advice line -- NINJAM protocol text,
+# headed for `chalkwalk-ninjam`, which is JUCE-free too. `RoomHarmony` is room
+# policy that the bots read.
 #
 # This is a test rather than a convention because the failure is silent and
 # late: one `juce::String` added in passing still builds, still passes, and is
@@ -14,9 +14,7 @@
 
 set(GUARDED
     MusicalKey.h MusicalKey.cpp
-    Harmony.h Harmony.cpp
-    RoomHarmony.h
-    TextUtil.h)
+    RoomHarmony.h)
 
 set(OFFENDERS "")
 foreach(name ${GUARDED})

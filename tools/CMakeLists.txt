@@ -59,7 +59,6 @@ juce_generate_juce_header(AntiphonVoiceLab)
 target_sources(AntiphonVoiceLab PRIVATE
         VoiceLabMain.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
-        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp)
 
 target_compile_definitions(AntiphonVoiceLab PRIVATE
@@ -97,7 +96,6 @@ target_sources(AntiphonBandLab PRIVATE
         BandLabMain.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
-        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp)
 
 target_compile_definitions(AntiphonBandLab PRIVATE
@@ -143,7 +141,6 @@ target_sources(AntiphonPractice PRIVATE
         ${CMAKE_SOURCE_DIR}/src/jambot/BotChat.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
-        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
