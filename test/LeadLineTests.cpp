@@ -36,7 +36,7 @@ public:
 private:
   static BotBand::Settings settingsFor(const juce::String &keyName,
                                        std::uint32_t seed) {
-    auto key = MusicalKey::parseName(keyName);
+    auto key = MusicalKey::parseName(keyName.toStdString());
     return BotBand::defaults(key, 120, 8, 48000.0, seed);
   }
 

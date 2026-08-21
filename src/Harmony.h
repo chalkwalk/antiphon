@@ -1,8 +1,10 @@
 #pragma once
 
 #include "MusicalKey.h"
+#include "TextUtil.h"
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 // The chords the band plays over.
@@ -21,8 +23,10 @@
 //
 // See `realise` for where a substitution pass would go.
 //
-// JUCE-light -- only MusicalKey's types -- so the whole thing is testable in the
-// headless target.
+// JUCE-FREE, like `MusicalKey` beneath it. Both are used by the bots AND by the
+// plugin's chat UI -- announcing a key and reading a chart are room features
+// that work with no band present -- so they belong to neither and their home is
+// `chalkwalk-music`. Testable in the headless target.
 
 namespace Harmony {
 
@@ -210,7 +214,7 @@ Chart defaultChart(const MusicalKey::Key &key);
 // its seventh but not every rung of the stack. Parsing more than we voice is
 // deliberate -- the chart is a document as well as an instruction, and a chord
 // we refuse to read is a chord the room cannot talk about.
-bool parseChordName(const juce::String &text, Chord &out);
+bool parseChordName(const std::string &text, Chord &out);
 
 // The name back again: "Dm7", "C#sus4", "Am7/G". Spelled sharp or flat as
 // asked, since the key signature decides that and a chord does not know it.
@@ -218,7 +222,7 @@ bool parseChordName(const juce::String &text, Chord &out);
 // Derived from the tones rather than from the quality label, so an altered or
 // borrowed chord names itself correctly without an enum entry existing for it.
 // Canonical: "CM7" and "Cmaj7" both come back as "Cmaj7".
-juce::String chordName(const Chord &chord, bool flat);
+std::string chordName(const Chord &chord, bool flat);
 
 // The same, spelled against a key rather than by one flag for everything.
 //
@@ -229,7 +233,7 @@ juce::String chordName(const Chord &chord, bool flat);
 // keeps its flat, the tritone takes the sharp everybody writes -- and an
 // invalid key falls back to `key.flat`, since inventing a spelling from
 // nothing would be worse than the flag.
-juce::String chordName(const Chord &chord, const MusicalKey::Key &key);
+std::string chordName(const Chord &chord, const MusicalKey::Key &key);
 
 // A pitch class spelled as this key would write it: "Eb" rather than "D#" in
 // D major, "B" rather than "Cb" in F minor.
@@ -237,10 +241,10 @@ juce::String chordName(const Chord &chord, const MusicalKey::Key &key);
 // Exported because a bass note, a chord root and a chip all ask the same
 // question, and answering it three ways is how a chart ends up disagreeing
 // with itself.
-juce::String spellNote(int pitchClass, const MusicalKey::Key &key);
+std::string spellNote(int pitchClass, const MusicalKey::Key &key);
 
 // A chart from a chat line, bars and all: "| Dm7 | C# Csus |".
-bool parseChart(const juce::String &text, Chart &out);
+bool parseChart(const std::string &text, Chart &out);
 
 // A chart written in scale degrees, against the key it is relative to:
 // "| I | vi IV |", "| i | VI | III VII |", "| 1 | 4 | b6 |".
@@ -254,7 +258,7 @@ bool parseChart(const juce::String &text, Chart &out);
 // session key and sends the absolute chart, so a bot, a Jamtaba user and
 // anything else in the room all see chords they already understand -- and
 // there is exactly one place the resolution can be wrong (`PRINCIPLES §10`).
-bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
+bool parseDegreeChart(const std::string &text, const MusicalKey::Key &key,
                       Chart &out);
 
 // The chord a loop resolves to: what an ending lands on.
@@ -273,11 +277,11 @@ bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
 Chord resolutionChord(const Chart &chart, const MusicalKey::Key &key);
 
 // "| Dm | Bb F |": a chart as a player would write it.
-juce::String chartText(const Chart &chart, bool flat);
+std::string chartText(const Chart &chart, bool flat);
 
 // The same, spelled per chord against the key. This is what a room should
 // see; the boolean form remains for callers that have no key at all.
-juce::String chartText(const Chart &chart, const MusicalKey::Key &key);
+std::string chartText(const Chart &chart, const MusicalKey::Key &key);
 
 // The same chart in roman numerals against a key: "| i | VI IV |".
 //
@@ -285,10 +289,10 @@ juce::String chartText(const Chart &chart, const MusicalKey::Key &key);
 // where it sits against it -- III7, bVI, #ivo -- rather than by guessing at
 // what it is doing. V7/vi is a claim about intent and two readings are often
 // defensible; where a root sits is not a matter of opinion.
-juce::String romanChartText(const Chart &chart, const MusicalKey::Key &key);
+std::string romanChartText(const Chart &chart, const MusicalKey::Key &key);
 
 // One chord as a roman numeral: "ii7", "V7", "bVI", "#ivo".
-juce::String romanName(const Chord &chord, const MusicalKey::Key &key);
+std::string romanName(const Chord &chord, const MusicalKey::Key &key);
 
 // A Jamtaba-style progression from a chat line: "| Am | F | C | G |".
 //
@@ -297,7 +301,7 @@ juce::String romanName(const Chord &chord, const MusicalKey::Key &key);
 // real case in their test suite, and MusicalKey.h refuses to guess at prose for
 // the same reason. Every measure must parse as a chord or the whole line is
 // not a progression.
-bool parseProgression(const juce::String &text, Progression &out);
+bool parseProgression(const std::string &text, Progression &out);
 
 // Whether a line is a chord chart at all, for anything that has to decide how
 // to show it before deciding what it means.
@@ -306,7 +310,7 @@ bool parseProgression(const juce::String &text, Progression &out);
 // chat pane and a line the band will play are the same set. They were two
 // parsers once and they disagreed in both directions: a line could be coloured
 // green and silently never reach the band (`PRINCIPLES §8`).
-bool looksLikeChart(const juce::String &text);
+bool looksLikeChart(const std::string &text);
 
 // Where in the progression a given beat of the interval falls.
 //

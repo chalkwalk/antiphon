@@ -242,7 +242,7 @@ bool PracticeBot::handleStructured(const juce::String &text,
   st.chart = settings.chart;
   st.chartFromChat = chartSource == BotAnswer::Source::Chat;
 
-  switch (RoomHarmony::apply(text, st)) {
+  switch (RoomHarmony::apply(text.toStdString(), st)) {
   case RoomHarmony::Change::Key:
     settings.key = st.key;
     settings.chart = st.chart;

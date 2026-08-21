@@ -1,4 +1,5 @@
 #include "../src/Harmony.h"
+#include "../src/TextUtil.h"
 #include <JuceHeader.h>
 
 // The chords are exact, so these are ordinary equality tests. Only the audio
@@ -6,17 +7,20 @@
 
 namespace {
 
-MusicalKey::Key keyOf(const juce::String &name) {
+MusicalKey::Key keyOf(const std::string &name) {
   auto k = MusicalKey::parseName(name);
   jassert(k.valid);
   return k;
 }
 
-juce::String toneList(const Harmony::Chord &c) {
-  juce::StringArray s;
-  for (int i = 0; i < c.toneCount; ++i)
-    s.add(juce::String((int)c.tones[(size_t)i]));
-  return s.joinIntoString(",");
+std::string toneList(const Harmony::Chord &c) {
+  std::string out;
+  for (int i = 0; i < c.toneCount; ++i) {
+    if (i != 0)
+      out += ",";
+    out += std::to_string((int)c.tones[(size_t)i]);
+  }
+  return out;
 }
 
 } // namespace
@@ -42,17 +46,17 @@ public:
     {
       auto maj = Harmony::chordOn(0, Harmony::Quality::Major);
       expectEquals(maj.root, 0);
-      expectEquals(toneList(maj), juce::String("0,4,7"));
+      expectEquals(toneList(maj), std::string("0,4,7"));
 
       auto min = Harmony::chordOn(2, Harmony::Quality::Minor);
       expectEquals(min.root, 2);
-      expectEquals(toneList(min), juce::String("0,3,7"));
+      expectEquals(toneList(min), std::string("0,3,7"));
 
       auto dom = Harmony::chordOn(7, Harmony::Quality::Dominant7);
-      expectEquals(toneList(dom), juce::String("0,4,7,10"));
+      expectEquals(toneList(dom), std::string("0,4,7,10"));
 
       auto halfDim = Harmony::chordOn(11, Harmony::Quality::HalfDiminished7);
-      expectEquals(toneList(halfDim), juce::String("0,3,6,10"));
+      expectEquals(toneList(halfDim), std::string("0,3,6,10"));
     }
 
     beginTest("roots wrap into a pitch class");
@@ -99,8 +103,8 @@ public:
       for (const auto &c : kFlatRoots) {
         Harmony::Chord chord;
         expect(Harmony::parseChordName(c.name, chord),
-               juce::String(c.name) + " was refused");
-        expectEquals(chord.root, c.root, juce::String(c.name) + " root");
+               std::string(c.name) + " was refused");
+        expectEquals(chord.root, c.root, std::string(c.name) + " root");
       }
 
       // The alteration this guard exists for still works, because a quality
@@ -189,12 +193,12 @@ public:
 
         Harmony::Chart original;
         expect(Harmony::parseChart(c.chart, original),
-               juce::String(c.chart) + " did not parse");
+               std::string(c.chart) + " did not parse");
 
         const auto moved = Harmony::resolve(Harmony::toRelative(original, from), to);
 
-        expectEquals(Harmony::chartText(moved, to), juce::String(c.expected),
-                     juce::String(c.chart) + " from " + c.from + " to " + c.to +
+        expectEquals(Harmony::chartText(moved, to), std::string(c.expected),
+                     std::string(c.chart) + " from " + c.from + " to " + c.to +
                          " -- " + c.why);
       }
     }
@@ -327,11 +331,11 @@ public:
       for (const auto &c : cases) {
         Harmony::Chord out;
         if (!Harmony::parseChordName(c.text, out)) {
-          expect(false, juce::String("failed to parse ") + c.text);
+          expect(false, std::string("failed to parse ") + c.text);
           continue;
         }
-        expectEquals(out.root, c.root, juce::String(c.text) + " root");
-        expect(out.quality == c.quality, juce::String(c.text) + " quality");
+        expectEquals(out.root, c.root, std::string(c.text) + " root");
+        expect(out.quality == c.quality, std::string(c.text) + " quality");
       }
     }
 
@@ -362,11 +366,11 @@ public:
       for (const auto &c : cases) {
         Harmony::Chord out;
         if (!Harmony::parseChordName(c.text, out)) {
-          expect(false, juce::String("failed to parse ") + c.text);
+          expect(false, std::string("failed to parse ") + c.text);
           continue;
         }
-        expectEquals(toneList(out), juce::String(c.tones),
-                     juce::String(c.text) + " tones");
+        expectEquals(toneList(out), std::string(c.tones),
+                     std::string(c.text) + " tones");
       }
     }
 
@@ -416,12 +420,12 @@ public:
       for (const auto &c : cases) {
         Harmony::Chord chord;
         if (!Harmony::parseChordName(c.in, chord)) {
-          expect(false, juce::String("failed to parse ") + c.in);
+          expect(false, std::string("failed to parse ") + c.in);
           continue;
         }
         const auto written = Harmony::chordName(chord, c.flat);
-        expectEquals(written, juce::String(c.out),
-                     juce::String(c.in) + " written back");
+        expectEquals(written, std::string(c.out),
+                     std::string(c.in) + " written back");
 
         // And the name it produces must parse to the same chord.
         Harmony::Chord again;
@@ -435,8 +439,8 @@ public:
     {
       Harmony::Chord bFlat;
       expect(Harmony::parseChordName("Bb", bFlat));
-      expectEquals(Harmony::chordName(bFlat, true), juce::String("Bb"));
-      expectEquals(Harmony::chordName(bFlat, false), juce::String("A#"));
+      expectEquals(Harmony::chordName(bFlat, true), std::string("Bb"));
+      expectEquals(Harmony::chordName(bFlat, false), std::string("A#"));
     }
 
     beginTest("nonsense is refused rather than guessed at");
@@ -445,7 +449,7 @@ public:
       for (const char *bad : {"", "H", "hello", "Cxyz", "7", "#", "Ammm",
                               "Cmaj7x", "Csus3", "C(", "Cb5b", "and"})
         expect(!Harmony::parseChordName(bad, out),
-               juce::String("accepted ") + bad);
+               std::string("accepted ") + bad);
     }
 
     beginTest("a Jamtaba-style progression parses");
@@ -476,7 +480,7 @@ public:
         Harmony::Progression p;
         expect(Harmony::looksLikeChart(line) ==
                    Harmony::parseProgression(line, p),
-               juce::String("the two disagree about: ") + line);
+               std::string("the two disagree about: ") + line);
       }
     }
 
@@ -668,10 +672,10 @@ public:
             x.add(juce::String(note));
           notes.add("[" + x.joinIntoString(" ") + "]");
         }
-        expectEquals(notes.joinIntoString(" "), juce::String(c.voicings),
-                     c.text);
+        expectEquals(notes.joinIntoString(" ").toStdString(),
+                     std::string(c.voicings), c.text);
         expectEquals(totalMovement(v), c.movement,
-                     juce::String(c.text) + " movement around the loop");
+                     std::string(c.text) + " movement around the loop");
       }
     }
 
@@ -807,8 +811,8 @@ public:
         Harmony::Chord chord;
         expect(Harmony::parseChordName(c.chord, chord), c.chord);
         expectEquals(Harmony::romanName(chord, keyOf(c.key)),
-                     juce::String(c.roman),
-                     juce::String(c.chord) + " in " + c.key);
+                     std::string(c.roman),
+                     std::string(c.chord) + " in " + c.key);
       }
     }
 
@@ -817,16 +821,16 @@ public:
       Harmony::Chart chart;
       expect(Harmony::parseChart("| Dm7 | C# Csus |", chart));
       expectEquals(Harmony::chartText(chart, false),
-                   juce::String("| Dm7 | C# Csus4 |"));
+                   std::string("| Dm7 | C# Csus4 |"));
 
       Harmony::Chart four;
       expect(Harmony::parseChart("| Am | F | C | G |", four));
       expectEquals(Harmony::chartText(four, false),
-                   juce::String("| Am | F | C | G |"));
+                   std::string("| Am | F | C | G |"));
       expectEquals(Harmony::romanChartText(four, keyOf("C major")),
-                   juce::String("| vi | IV | I | V |"));
+                   std::string("| vi | IV | I | V |"));
       expectEquals(Harmony::romanChartText(four, keyOf("A minor")),
-                   juce::String("| i | VI | III | VII |"));
+                   std::string("| i | VI | III | VII |"));
 
       // Bars survive the round trip, which is the whole point of having them.
       Harmony::Chart again;
@@ -834,9 +838,9 @@ public:
       expectEquals((int)again.size(), 2);
       expectEquals((int)again[1].chords.size(), 2);
 
-      expectEquals(Harmony::chartText({}, false), juce::String());
+      expectEquals(Harmony::chartText({}, false), std::string());
       MusicalKey::Key none;
-      expectEquals(Harmony::romanChartText(four, none), juce::String());
+      expectEquals(Harmony::romanChartText(four, none), std::string());
     }
 
     beginTest("the chord a loop resolves to is the tonic, as the chart spells it");
@@ -873,14 +877,14 @@ public:
         Harmony::Chart chart;
         expect(Harmony::parseChart(c.chart, chart), c.chart);
         const auto chord = Harmony::resolutionChord(chart, key);
-        expectEquals(Harmony::chordName(chord, key), juce::String(c.wanted),
-                     juce::String(c.chart) + " in " + c.key + " -- " + c.why);
+        expectEquals(Harmony::chordName(chord, key), std::string(c.wanted),
+                     std::string(c.chart) + " in " + c.key + " -- " + c.why);
       }
 
       // No chart at all: there is still a key, and still an answer.
       const auto bare = Harmony::resolutionChord({}, keyOf("E minor"));
       expectEquals(Harmony::chordName(bare, keyOf("E minor")),
-                   juce::String("Em"));
+                   std::string("Em"));
     }
 
     beginTest("a chord is spelled by where it sits in the key");
@@ -902,8 +906,8 @@ public:
       };
       for (const auto &c : inD) {
         Harmony::Chord chord;
-        expect(Harmony::parseChordName(c.written, chord), juce::String(c.written));
-        expectEquals(Harmony::chordName(chord, d), juce::String(c.spelled));
+        expect(Harmony::parseChordName(c.written, chord), std::string(c.written));
+        expectEquals(Harmony::chordName(chord, d), std::string(c.spelled));
       }
 
       // A flat key gets the mirror image: its raised fourth is a natural, and
@@ -912,8 +916,8 @@ public:
       const Case inEb[] = {{"A7", "A7"}, {"Db", "Db"}, {"Bbm7", "Bbm7"}};
       for (const auto &c : inEb) {
         Harmony::Chord chord;
-        expect(Harmony::parseChordName(c.written, chord), juce::String(c.written));
-        expectEquals(Harmony::chordName(chord, eb), juce::String(c.spelled));
+        expect(Harmony::parseChordName(c.written, chord), std::string(c.written));
+        expectEquals(Harmony::chordName(chord, eb), std::string(c.spelled));
       }
 
       // The worked example from DESIGN.md section 6.4, which came out as
@@ -922,7 +926,7 @@ public:
       expect(Harmony::parseChart("| C | Db7 | C |", chart));
       const auto moved =
           Harmony::resolve(Harmony::toRelative(chart, keyOf("C major")), d);
-      expectEquals(Harmony::chartText(moved, d), juce::String("| D | Eb7 | D |"));
+      expectEquals(Harmony::chartText(moved, d), std::string("| D | Eb7 | D |"));
 
       // No key, no better answer than the flag. It does NOT come back as it
       // was written: a Chord holds pitch classes and has never remembered how
@@ -930,7 +934,7 @@ public:
       // one thing this cannot recover.
       MusicalKey::Key unknown;
       expectEquals(Harmony::chartText(chart, unknown),
-                   juce::String("| C | C#7 | C |"));
+                   std::string("| C | C#7 | C |"));
     }
 
     beginTest("degrees resolve against the key");
@@ -960,14 +964,14 @@ public:
       for (const auto &c : cases) {
         Harmony::Chart chart;
         if (!Harmony::parseDegreeChart(c.degrees, keyOf(c.key), chart)) {
-          expect(false, juce::String("failed to read ") + c.degrees);
+          expect(false, std::string("failed to read ") + c.degrees);
           continue;
         }
-        const bool flat = juce::String(c.absolute).contains("b ") ||
-                          juce::String(c.absolute).contains("b |");
+        const bool flat = TextUtil::contains(c.absolute, "b ") ||
+                          TextUtil::contains(c.absolute, "b |");
         expectEquals(Harmony::chartText(chart, flat),
-                     juce::String(c.absolute),
-                     juce::String(c.degrees) + " in " + c.key);
+                     std::string(c.absolute),
+                     std::string(c.degrees) + " in " + c.key);
       }
     }
 
@@ -1037,7 +1041,7 @@ public:
 
       for (const auto &c : cases) {
         const auto guess = Harmony::inferKey(chordsOf(c.text));
-        expectEquals(MusicalKey::displayName(guess.key), juce::String(c.key),
+        expectEquals(MusicalKey::displayName(guess.key), std::string(c.key),
                      c.text);
         expect(guess.confident == c.confident,
                juce::String(c.text) + ": margin " +
@@ -1051,7 +1055,7 @@ public:
       const auto guess = Harmony::inferKey(chordsOf("| Bb | Eb | F | Bb |"));
       expect(guess.key.flat, "Bb major should not be spelled A#");
       expectEquals(MusicalKey::scaleNotes(guess.key),
-                   juce::String("Bb C D Eb F G A"));
+                   std::string("Bb C D Eb F G A"));
     }
 
     beginTest("inferring a key from nothing says nothing");

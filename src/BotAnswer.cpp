@@ -45,7 +45,7 @@ juce::String describeKey(const Room &room) {
     return "no key";
   if (room.keySource == Source::Defaulted)
     return MusicalKey::displayName(room.key) + ", which nobody chose";
-  return MusicalKey::displayName(room.key) +
+  return juce::String(MusicalKey::displayName(room.key)) +
          provenance(room.keySource, room.keySetBy);
 }
 

@@ -57,7 +57,7 @@ juce::String botPlaying(const PracticeRoom &room, const juce::String &instrument
   return {};
 }
 
-MusicalKey::Key keyOf(const juce::String &name) {
+MusicalKey::Key keyOf(const std::string &name) {
   auto k = MusicalKey::parseName(name);
   jassert(k.valid);
   return k;

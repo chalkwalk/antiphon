@@ -22,7 +22,7 @@ const ModeName kModeNames[] = {
 };
 
 // Semitones above C for the natural notes.
-int naturalSemitone(juce_wchar letter) {
+int naturalSemitone(char letter) {
   switch (letter) {
   case 'C':
     return 0;
@@ -100,7 +100,7 @@ bool usesFlats(int tonic, Mode mode) {
          relativeMajor == 8 || relativeMajor == 1;
 }
 
-juce::String noteName(int semitone, bool flat) {
+std::string noteName(int semitone, bool flat) {
   static const char *sharp[] = {"C",  "C#", "D",  "D#", "E",  "F",
                                 "F#", "G",  "G#", "A",  "A#", "B"};
   static const char *flatNames[] = {"C",  "Db", "D",  "Eb", "E",  "F",
@@ -109,7 +109,7 @@ juce::String noteName(int semitone, bool flat) {
   return flat ? flatNames[s] : sharp[s];
 }
 
-juce::String modeName(Mode mode) {
+std::string modeName(Mode mode) {
   switch (mode) {
   case Mode::Major:
     return "major";
@@ -133,14 +133,14 @@ juce::String modeName(Mode mode) {
   return "major";
 }
 
-Key parseName(const juce::String &text) {
+Key parseName(const std::string &text) {
   Key key;
-  const auto trimmed = text.trim();
-  if (trimmed.isEmpty())
+  const auto trimmed = TextUtil::trim(text);
+  if (trimmed.empty())
     return key;
 
   // Tonic letter, upper or lower case.
-  const auto letter = juce::CharacterFunctions::toUpperCase(trimmed[0]);
+  const auto letter = TextUtil::upperChar(trimmed[0]);
   const int natural = naturalSemitone(letter);
   if (natural < 0)
     return key;
@@ -172,9 +172,9 @@ Key parseName(const juce::String &text) {
                (!explicitSharp && usesFlats(((semitone % 12) + 12) % 12, mode));
   };
 
-  auto rest = trimmed.substring(pos).trim().toLowerCase();
+  auto rest = TextUtil::lower(TextUtil::trim(trimmed.substr((size_t)pos)));
   // An empty mode means major, so "D" is D major and "Bb" is B flat major.
-  if (rest.isEmpty()) {
+  if (rest.empty()) {
     key.valid = true;
     key.tonic = ((semitone % 12) + 12) % 12;
     key.mode = Mode::Major;
@@ -195,52 +195,52 @@ Key parseName(const juce::String &text) {
   return key; // a mode we do not recognise is not a key
 }
 
-Key parseTagged(const juce::String &text) {
-  const int open = text.indexOfIgnoreCase(tagPrefix());
+Key parseTagged(const std::string &text) {
+  const int open = TextUtil::indexOfIgnoreCase(text, tagPrefix());
   if (open < 0)
     return {};
 
-  const int contentStart = open + tagPrefix().length();
-  const int close = text.indexOfChar(contentStart, ']');
-  if (close < 0)
+  const size_t contentStart = (size_t)open + tagPrefix().size();
+  const auto close = text.find(']', contentStart);
+  if (close == std::string::npos)
     return {};
 
-  return parseName(text.substring(contentStart, close));
+  return parseName(text.substr(contentStart, close - contentStart));
 }
 
-Key parseAnnouncement(const juce::String &line) {
+Key parseAnnouncement(const std::string &line) {
   if (const auto tagged = parseTagged(line); tagged.valid)
     return tagged;
 
   // Line-leading only. Accepting `/key` anywhere would undo the whole point of
   // having a second form: a bot explaining it would trigger it again.
-  const auto trimmed = line.trim();
-  if (!trimmed.startsWithIgnoreCase("/key "))
+  const auto trimmed = TextUtil::trim(line);
+  if (!TextUtil::startsWithIgnoreCase(trimmed, "/key "))
     return {};
-  return parseName(trimmed.substring(5));
+  return parseName(trimmed.substr(5));
 }
 
-juce::String buildTagged(const Key &key) {
+std::string buildTagged(const Key &key) {
   if (!key.valid)
     return {};
   return "[key: " + displayName(key) + "]";
 }
 
-juce::String displayName(const Key &key) {
+std::string displayName(const Key &key) {
   if (!key.valid)
     return {};
   return noteName(key.tonic, key.flat) + " " + modeName(key.mode);
 }
 
-juce::String scaleNotes(const Key &key) {
+std::string scaleNotes(const Key &key) {
   if (!key.valid)
     return {};
 
   const int *steps = modeSteps(key.mode);
-  juce::StringArray notes;
+  std::vector<std::string> notes;
   for (int i = 0; i < 7; ++i)
-    notes.add(noteName(key.tonic + steps[i], key.flat));
-  return notes.joinIntoString(" ");
+    notes.push_back(noteName(key.tonic + steps[i], key.flat));
+  return TextUtil::join(notes, " ");
 }
 
 const int *scaleSteps(Mode mode) { return modeSteps(mode); }

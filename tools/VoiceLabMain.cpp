@@ -219,7 +219,7 @@ std::vector<float> renderOne(const Options &o) {
 // so hears the drum without the kit around it.
 void renderVoice(const Options &o, BotBand::Voice voice,
                  std::vector<float> &left, std::vector<float> &right) {
-  auto key = MusicalKey::parseName(o.keyName);
+  auto key = MusicalKey::parseName(o.keyName.toStdString());
   if (!key.valid)
     key = MusicalKey::parseName("C major");
 
@@ -242,7 +242,7 @@ void renderVoice(const Options &o, BotBand::Voice voice,
 
 void renderBandStereo(const Options &o, std::vector<float> &mixL,
                       std::vector<float> &mixR) {
-  auto key = MusicalKey::parseName(o.keyName);
+  auto key = MusicalKey::parseName(o.keyName.toStdString());
   if (!key.valid)
     key = MusicalKey::parseName("C major");
 
@@ -297,7 +297,7 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
 }
 
 std::vector<float> renderBand(const Options &o) {
-  auto key = MusicalKey::parseName(o.keyName);
+  auto key = MusicalKey::parseName(o.keyName.toStdString());
   if (!key.valid)
     key = MusicalKey::parseName("C major");
 
@@ -667,7 +667,7 @@ int main(int argc, char *argv[]) {
   // which turns a judgement about one bar into a number that moves when the
   // objective changes.
   if (o.voice == "leadstats") {
-    auto key = MusicalKey::parseName(o.keyName);
+    auto key = MusicalKey::parseName(o.keyName.toStdString());
     if (!key.valid)
       key = MusicalKey::parseName("C major");
 
@@ -836,7 +836,7 @@ int main(int argc, char *argv[]) {
     if (o.out == juce::File())
       o.out = juce::File::getCurrentWorkingDirectory().getChildFile("solo.wav");
 
-    auto key = MusicalKey::parseName(o.keyName);
+    auto key = MusicalKey::parseName(o.keyName.toStdString());
     if (!key.valid)
       key = MusicalKey::parseName("C major");
     auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
@@ -873,7 +873,7 @@ int main(int argc, char *argv[]) {
                                                                    ".wav");
 
     if (isKeys) {
-      auto key = MusicalKey::parseName(o.keyName);
+      auto key = MusicalKey::parseName(o.keyName.toStdString());
       if (!key.valid)
         key = MusicalKey::parseName("C major");
 

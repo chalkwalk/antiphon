@@ -368,7 +368,7 @@ private:
   void render(BandPatch::Band &band, BotBand::Voice voice, bool solo,
               const juce::String &keyName, int bpm, int bpi,
               std::uint32_t seed) {
-    auto key = MusicalKey::parseName(keyName);
+    auto key = MusicalKey::parseName(keyName.toStdString());
     if (!key.valid)
       key = MusicalKey::parseName("C major");
 

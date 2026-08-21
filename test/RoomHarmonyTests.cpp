@@ -33,7 +33,7 @@ public:
       expectEquals((int)RoomHarmony::apply("[key: D major]", st),
                    (int)RoomHarmony::Change::Key);
       expectEquals(Harmony::chartText(st.chart, st.key),
-                   juce::String("| Bm | G | D | A |"),
+                   std::string("| Bm | G | D | A |"),
                    "the chart did not travel with the key");
     }
 
@@ -60,7 +60,7 @@ public:
       expectEquals((int)RoomHarmony::apply("| ii | V | I |", st),
                    (int)RoomHarmony::Change::Chart);
       expectEquals(Harmony::chartText(st.chart, st.key),
-                   juce::String("| Dm | G | C |"));
+                   std::string("| Dm | G | C |"));
       expect(st.chartFromChat, "a degree chart is still a chart somebody wrote");
 
       // ...and they mean something else in another key, which is the point.

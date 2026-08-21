@@ -20,7 +20,7 @@ Line render(const juce::String &type, const juce::String &username,
   // A key announcement is recognised wherever it came from, so the same line
   // works whether it was typed as chat or left in the topic -- and in either of
   // the two forms, since `/key G minor` is what a bot can actually say.
-  if (MusicalKey::parseAnnouncement(text).valid) {
+  if (MusicalKey::parseAnnouncement(text.toStdString()).valid) {
     out.category = Category::Key;
     out.text = "~~ " + text;
     return out;
@@ -82,7 +82,7 @@ bool isChordProgression(const juce::String &text) {
   // first letter and shrugged at the rest -- so a line could be coloured as a
   // chart here and rejected by the band, or the other way round. One tokeniser
   // decides both (`PRINCIPLES §8`).
-  return Harmony::looksLikeChart(text);
+  return Harmony::looksLikeChart(text.toStdString());
 }
 
 VoteState parseVote(const juce::String &text) {
