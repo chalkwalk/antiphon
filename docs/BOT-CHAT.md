@@ -1045,8 +1045,8 @@ Step 2 is the one that cannot be faked, so the tutor checks. Not "is that any
 good" -- it has no business having an opinion -- but the far narrower question:
 **does this look like an instrument somebody could hear?**
 
-Every signal it needs is already in `src/AudioMeasure.h`, built for tuning the
-band, plus a duty cycle and a transient count:
+Every signal it needs is already in `chalkwalk::dsp::measure`, built for tuning
+the band, plus a duty cycle and a transient count:
 
 | Reading | Reads as | What it says |
 |---|---|---|
