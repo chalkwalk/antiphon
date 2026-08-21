@@ -4,7 +4,7 @@
 #include "jambot/BotAddress.h"
 #include "jambot/BotBand.h"
 #include "jambot/BotChat.h"
-#include "NinjamClient.h"
+#include "jambot/BotClient.h"
 #include "RoomHarmony.h"
 #include <JuceHeader.h>
 #include <functional>
@@ -32,7 +32,7 @@
 // LEAVING: a bot must be trivially easy to get rid of. See the rules on
 // `part()` below; they live here rather than in PracticeRoom so they hold
 // wherever the bot is pointed.
-class PracticeBot : private NinjamClientListener, private juce::Timer {
+class PracticeBot : private BotClient::Listener, private juce::Timer {
 public:
   // Fills one interval. Called on the conductor thread, never the audio thread,
   // so it may allocate -- though there is no reason for it to.
@@ -40,7 +40,11 @@ public:
                                     int numSamples, int intervalIndex,
                                     BotBand::Phase phase)>;
 
-  PracticeBot(juce::String botName, juce::StringArray channelNames);
+  // The client is supplied rather than owned outright, which is the whole of
+  // the inversion: a bot no longer knows what NinjamClient is. Antiphon passes
+  // a `NinjamBotClient`; a standalone jambot would pass something smaller.
+  PracticeBot(juce::String botName, juce::StringArray channelNames,
+              BotClient::ClientPtr client);
   ~PracticeBot() override;
 
   // Silence unless a render is set, which is deliberate: a bot that can join a
@@ -106,7 +110,7 @@ public:
 
   bool isActive() const { return active.load(); }
   const juce::String &name() const { return botName; }
-  NinjamClient &client() { return netClient; }
+  BotClient::Client &client() { return *netClient; }
 
   // Conductor thread. A no-op once parted.
   void renderInterval(int numSamples, int intervalIndex);
@@ -126,10 +130,10 @@ public:
 
 private:
   void onConnected() override;
-  void onDisconnected(const juce::String &reason) override;
+  void onDisconnected(const std::string &reason) override;
   void onServerConfig(int bpm, int bpi) override;
   void onUserInfoChange() override;
-  void onRoomMembershipChange(const juce::String &username,
+  void onRoomMembershipChange(const std::string &username,
                               bool joined) override;
 
   // The arrival window: five seconds after connecting, decide whether to
@@ -142,8 +146,8 @@ private:
   // Every bot in the room right now, ours or not, sorted so that every bot
   // computes the same list and therefore the same answer.
   juce::StringArray botsPresent() const;
-  void onChatMessage(const juce::String &type, const juce::String &username,
-                     const juce::String &text) override;
+  void onChatMessage(const std::string &type, const std::string &username,
+                     const std::string &text) override;
 
 
   // The subset that needs no address, because its SYNTAX is unmistakable: a
@@ -246,7 +250,7 @@ private:
   // states, and interval delivery is all-or-nothing.
   BandPlayState playState;
 
-  NinjamClient netClient;
+  BotClient::ClientPtr netClient;
   juce::AudioBuffer<float> renderBuffer;
 
   // The arrival choreography (docs/BOT-CHAT.md section 6).

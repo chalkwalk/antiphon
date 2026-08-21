@@ -862,10 +862,11 @@ restraint rather than conversation.
       runs over every provenance combination -- both `keySource` and
       `chartSource`, since varying only one leaves `describeChart` unable to
       return the bare chart text that is the actual hazard.
-- [ ] **`PracticeBot` still has no test file of its own.** Covered by
-      `BotChatTests` for what it says and `PracticeRoomTests` for what crosses
-      a socket, which is most of what mattered; what is left uncovered is the
-      class's own state transitions.
+- [x] **`PracticeBot` has a test file of its own**, which the client interface
+      is what made possible: a thirty-line fake client, no socket, no room, and
+      the answers arrive synchronously. It found a real gap immediately -- a
+      parted bot went on answering, because the guard had always been the
+      transport's rather than the bot's.
 
 ### A legal BPI can exhaust memory
 
