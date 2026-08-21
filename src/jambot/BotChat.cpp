@@ -1,15 +1,21 @@
 #include "Music.h"
 #include "BotChat.h"
+
+#include <chalkwalk/music/Text.h>
+#include <algorithm>
+#include <cstdlib>
 #include "BotLanguage.h"
 
 namespace BotChat {
+
+namespace cwtext = chalkwalk::music::text;
 
 namespace {
 
 // What to put inside quotes when telling somebody how to address this bot:
 // "Ravo", where the username is "Ravo[keys-bot]".
-juce::String typedAs(const Self &self) {
-  return self.handle.isNotEmpty() ? self.handle : self.name;
+std::string typedAs(const Self &self) {
+  return !self.handle.empty() ? self.handle : self.name;
 }
 
 // What this bot is playing, in its own terms. One line per voice because the
@@ -20,21 +26,21 @@ juce::String typedAs(const Self &self) {
 // already carries the sender's name, so "Ravo is playing the kit" arrives as
 // "Ravo[keys-bot] Ravo is playing the kit" -- the name twice, and a bot that
 // sounds like it is describing somebody else.
-juce::String describeSound(const Self &self) {
+std::string describeSound(const Self &self) {
   switch (self.voice) {
   case BotBand::Voice::Drums:
     return "i am playing the kit.";
   case BotBand::Voice::Bass:
-    return juce::String("i am playing ") +
+    return std::string("i am playing ") +
            BotVoice::bassTechniqueName(BotBand::bassTechnique(self.settings)) +
            " bass.";
   case BotBand::Voice::Keys:
-    return juce::String("i am playing a ") +
+    return std::string("i am playing a ") +
            BotVoice::padCharacterName(
                BotBand::keysPatch(self.settings).character) +
            " patch.";
   case BotBand::Voice::Lead:
-    return juce::String("i am playing ") +
+    return std::string("i am playing ") +
            BotVoice::leadInstrumentName(BotBand::leadInstrument(self.settings)) +
            ".";
   }
@@ -50,21 +56,21 @@ juce::String describeSound(const Self &self) {
 // figure, because `BotBand::figureFor` is the same thing the renderer reads;
 // the harmony voices state what they are following, because that is what their
 // part IS.
-juce::String describePart(const Self &self) {
-  const juce::String key = self.settings.key.valid
+std::string describePart(const Self &self) {
+  const std::string key = self.settings.key.valid
                                ? MusicalKey::displayName(self.settings.key)
-                               : juce::String("no key yet");
+                               : std::string("no key yet");
 
   switch (self.voice) {
   case BotBand::Voice::Drums: {
     const auto f = BotBand::figureFor(self.voice, self.settings);
-    return "i am on the kit -- " + juce::String(f.pulses) + " hits over " +
-           juce::String(f.steps) + ".";
+    return "i am on the kit -- " + std::to_string(f.pulses) + " hits over " +
+           std::to_string(f.steps) + ".";
   }
   case BotBand::Voice::Bass: {
     const auto f = BotBand::figureFor(self.voice, self.settings);
     return "i am on the bass, roots on the changes -- " +
-           juce::String(f.pulses) + " over " + juce::String(f.steps) + ".";
+           std::to_string(f.pulses) + " over " + std::to_string(f.steps) + ".";
   }
   case BotBand::Voice::Keys:
     return "i am on the keys, holding the chart in " + key + ".";
@@ -84,9 +90,9 @@ juce::String describePart(const Self &self) {
 // The one place the bot's own name belongs in what it says, and only inside the
 // quotes: that is not the bot referring to itself, it is text to TYPE, and
 // typing it needs the name.
-juce::String explainSelf(const Self &self) {
-  return juce::String("i am a bot playing the ") +
-         juce::String(BotBand::voiceName(self.voice)).toLowerCase() +
+std::string explainSelf(const Self &self) {
+  return std::string("i am a bot playing the ") +
+         std::string(BotBand::voiceName(self.voice)) +
          ". say \"" + typedAs(self) +
          " leave\" and i go. ask me about my part, my sound, the key, the "
          "chords or the tempo.";
@@ -107,13 +113,12 @@ juce::String explainSelf(const Self &self) {
 // category rather than a name. Anything else unreadable is reported as
 // unreadable, because a key put up wrongly is worse than one not put up at all
 // (BotAnswer::answerSetKey carries that reply).
-MusicalKey::Key keyAskedFor(const juce::String &text) {
-  const auto words = juce::StringArray::fromTokens(
-      text.removeCharacters(",.?!").toLowerCase(), " \t", "");
+MusicalKey::Key keyAskedFor(const std::string &text) {
+  const auto words = cwtext::split(cwtext::withoutChars(text, ",.?!"), " \t");
 
-  for (int i = 0; i + 1 < words.size(); ++i) {
+  for (size_t i = 0; i + 1 < words.size(); ++i) {
     const auto key =
-        MusicalKey::parseName((words[i] + " " + words[i + 1]).toStdString());
+        MusicalKey::parseName((words[i] + " " + words[i + 1]));
     if (!key.valid)
       continue;
 
@@ -141,21 +146,21 @@ MusicalKey::Key keyAskedFor(const juce::String &text) {
 // The last is not a guess about intent. It is the only reading under which the
 // request can be satisfied at all, and the alternative is answering "the tempo
 // vote only goes from 40 to 400 bpm" to somebody who asked for 16 bpi.
-void tempoAskedFor(const juce::String &text, int &bpm, int &bpi) {
+void tempoAskedFor(const std::string &text, int &bpm, int &bpi) {
   bpm = 0;
   bpi = 0;
 
-  const auto words = juce::StringArray::fromTokens(
-      text.removeCharacters(",.?!").toLowerCase(), " \t", "");
+  const auto words = cwtext::split(cwtext::withoutChars(text, ",.?!"), " \t");
 
-  for (int i = 0; i < words.size(); ++i) {
+  for (size_t i = 0; i < words.size(); ++i) {
     const auto &w = words[i];
-    if (!w.containsOnly("0123456789") || w.isEmpty())
+    if (w.empty() ||
+        w.find_first_not_of("0123456789") != std::string::npos)
       continue;
 
-    const int value = w.getIntValue();
-    const juce::String before = i > 0 ? words[i - 1] : juce::String();
-    const juce::String after = i + 1 < words.size() ? words[i + 1] : juce::String();
+    const int value = std::atoi(w.c_str());
+    const std::string before = i > 0 ? words[i - 1] : std::string();
+    const std::string after = i + 1 < words.size() ? words[i + 1] : std::string();
 
     if (after == "bpi" || before == "bpi") {
       bpi = value;
@@ -222,7 +227,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   out.privately = in.isPrivate;
 
   const auto who =
-      BotAddress::classify(ctx.room, ctx.self.name.toStdString(), in, attention);
+      BotAddress::classify(ctx.room, ctx.self.name, in, attention);
   if (who == BotAddress::Address::Ignore)
     return {};
 
@@ -237,8 +242,8 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   out.forBand = everyone;
 
   // Speaking for four players rather than as one of them.
-  const juce::String iAm = everyone ? "we're" : "i'm";
-  const juce::String me = everyone ? "us" : "me";
+  const std::string iAm = everyone ? "we're" : "i'm";
+  const std::string me = everyone ? "us" : "me";
 
   // Decided by the address rather than the sentence. Anyone may evict a bot --
   // a bot in somebody else's jam should be removable by the people it is
@@ -260,8 +265,8 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     return out;
   }
 
-  const juce::String body = juce::String(BotAddress::withoutAddress(
-      ctx.room, ctx.self.name.toStdString(), in.text));
+  const std::string body = std::string(BotAddress::withoutAddress(
+      ctx.room, ctx.self.name, in.text));
 
   // Asking for shorter or longer notes. Like an instrument name this is a
   // SETTING rather than a question, so it is matched before the sentence is
@@ -272,23 +277,21 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   // "than you are now", so each request steps and the band says where it
   // landed, which is how you would talk to people.
   {
-    const auto phrase = juce::String(BotAddress::withoutAddress(
-                            ctx.room, ctx.self.name.toStdString(), in.text))
-                            .trim()
-                            .toLowerCase();
+    const auto phrase = cwtext::trim(
+        BotAddress::withoutAddress(ctx.room, ctx.self.name, in.text));
     int step = 0;
-    if (phrase.contains("legato") || phrase.contains("smoother") ||
-        phrase.contains("longer notes") || phrase.contains("hold") ||
-        phrase.contains("sustain"))
+    if (cwtext::contains(phrase, "legato") || cwtext::contains(phrase, "smoother") ||
+        cwtext::contains(phrase, "longer notes") || cwtext::contains(phrase, "hold") ||
+        cwtext::contains(phrase, "sustain"))
       step = +25;
-    else if (phrase.contains("staccato") || phrase.contains("shorter") ||
-             phrase.contains("clipped") || phrase.contains("tighter") ||
-             phrase.contains("choppy"))
+    else if (cwtext::contains(phrase, "staccato") || cwtext::contains(phrase, "shorter") ||
+             cwtext::contains(phrase, "clipped") || cwtext::contains(phrase, "tighter") ||
+             cwtext::contains(phrase, "choppy"))
       step = -25;
 
     if (step != 0) {
       const int now = ctx.music.articulation;
-      const int wanted = juce::jlimit(0, 100, now + step);
+      const int wanted = std::max(0, std::min(100, now + step));
       out.speak = true;
       out.forBand = true;   // one voice answers for the band; all of them act
       out.act = Act::SetArticulation;
@@ -305,13 +308,13 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   // Naming an instrument, which is a setting rather than a question and so is
   // matched before the sentence is read. Only the soloist has one to change;
   // the rest say so rather than accept a value they will never read.
-  const auto wanted = body.trim().toLowerCase();
+  const auto wanted = cwtext::trim(body);
   if (wanted == "epiano" || wanted == "piano" || wanted == "rhodes" ||
       wanted == "guitar" || wanted == "synth") {
     out.speak = true;
     if (ctx.self.voice != BotBand::Voice::Lead) {
-      out.text = juce::String("i play the ") +
-                 juce::String(BotBand::voiceName(ctx.self.voice)).toLowerCase() +
+      out.text = std::string("i play the ") +
+                 std::string(BotBand::voiceName(ctx.self.voice)) +
                  ". ask the lead.";
       return out;
     }
@@ -325,11 +328,11 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     out.act = Act::SetLeadInstrument;
     out.forBand = false; // only the soloist changed anything
     out.value = (int)pick;
-    out.text = juce::String("now on ") + BotVoice::leadInstrumentName(pick) + ".";
+    out.text = std::string("now on ") + BotVoice::leadInstrumentName(pick) + ".";
     return out;
   }
 
-  const auto reading = BotLanguage::read(body.toStdString());
+  const auto reading = BotLanguage::read(body);
 
   // Torn between two readings, and ASKING rather than picking. This has to
   // come before the switch: `intent` still holds the winner when `ambiguous`
@@ -340,7 +343,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
   // it is nearly free: the recogniser knows exactly what they were.
   if (reading.ambiguous && reading.alternative != BotLanguage::Intent::None) {
     out.speak = true;
-    out.text = juce::String("not sure whether you want ") +
+    out.text = std::string("not sure whether you want ") +
                spokenIntent(reading.intent) + " or " +
                spokenIntent(reading.alternative) + " -- which?";
     return out;
@@ -432,8 +435,8 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     switch (ctx.self.phase) {
     case BandPlayState::State::Playing:
       out.act = Act::StopPlaying;
-      out.text = (everyone ? juce::String("we're wrapping it up")
-                           : juce::String("wrapping it up")) +
+      out.text = (everyone ? std::string("we're wrapping it up")
+                           : std::string("wrapping it up")) +
                  " -- ending on the downbeat after this one.";
       break;
     case BandPlayState::State::Wrapping:
@@ -442,7 +445,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
       break;
     case BandPlayState::State::Silent:
       out.text = "already stopped. say \"" +
-                 (everyone ? juce::String("band") : typedAs(ctx.self)) +
+                 (everyone ? std::string("band") : typedAs(ctx.self)) +
                  " play\" when you want " + me + " back in.";
       break;
     }
@@ -453,8 +456,8 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     switch (ctx.self.phase) {
     case BandPlayState::State::Silent:
       out.act = Act::StartPlaying;
-      out.text = (everyone ? juce::String("we're coming in")
-                           : juce::String("coming in")) +
+      out.text = (everyone ? std::string("we're coming in")
+                           : std::string("coming in")) +
                  " on the next interval.";
       break;
     case BandPlayState::State::Wrapping:
@@ -483,7 +486,7 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     out.act = Act::SetChatMuted;
     out.value = 1;
     out.text = "going quiet. say \"" +
-               (everyone ? juce::String("band") : typedAs(ctx.self)) +
+               (everyone ? std::string("band") : typedAs(ctx.self)) +
                " talk\" to bring " + me + " back. still playing.";
     return out;
 
@@ -518,8 +521,8 @@ Response decide(const Context &ctx, const BotAddress::Incoming &in,
     // yourself, it is the part newcomers are surprised by, and it cannot be
     // worked out from the bpm.
     out.speak = true;
-    out.text = "we are at " + juce::String(ctx.music.bpm) + " bpm, " +
-               juce::String(ctx.music.bpi) + " beats to the interval.";
+    out.text = "we are at " + std::to_string(ctx.music.bpm) + " bpm, " +
+               std::to_string(ctx.music.bpi) + " beats to the interval.";
     return out;
 
   default:

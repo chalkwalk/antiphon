@@ -87,7 +87,7 @@ bool startBand(Joiner &you, const PracticeRoom &room) {
 bool waitForRoster(const Joiner &you) {
   return waitUntil([&] {
     for (const auto &line : you.snapshot())
-      if (line.contains("say a name to talk to one of us"))
+      if (juce::String(line).contains("say a name to talk to one of us"))
         return true;
     return false;
   }, 12000);
@@ -212,7 +212,7 @@ public:
         // The handle is what a player types to address it, and two bots
         // sharing one would make both unaddressable.
         const auto handle = juce::String(BotNames::handleOf(n.toStdString()));
-        expect(handle.isNotEmpty(), "no handle in " + n);
+        expect(juce::String(handle).isNotEmpty(), "no handle in " + n);
         expect(!handles.contains(handle),
                "two bots answer to the same handle: " + handle);
         handles.add(handle);
@@ -251,8 +251,8 @@ public:
     beginTest("the help line says how to remove the bot");
     {
       const auto help = PracticeBot::helpLine("Mirn[kit-bot]");
-      expect(help.contains("Mirn[kit-bot]"));
-      expect(help.contains("leave"), "help does not name the command");
+      expect(juce::String(help).contains("Mirn[kit-bot]"));
+      expect(juce::String(help).contains("leave"), "help does not name the command");
     }
 
     beginTest("a private message parts a bot, from someone who does not own it");
@@ -293,7 +293,7 @@ public:
       you.client.sendPrivateMessage(botName, "help");
       expect(waitUntil([&] {
         for (const auto &line : you.snapshot())
-          if (line.startsWith("PRIVMSG|" + botName) && line.contains("leave"))
+          if (juce::String(line).startsWith("PRIVMSG|" + botName) && juce::String(line).contains("leave"))
             return true;
         return false;
       }, 5000), "the bot did not explain how to remove it");
@@ -363,7 +363,7 @@ public:
       // our own would say what the roster is about to say anyway.
       expect(waitUntil([&] {
         for (const auto &line : back.snapshot())
-          if (line.contains("-bot]") && line.containsIgnoreCase("play"))
+          if (juce::String(line).contains("-bot]") && juce::String(line).containsIgnoreCase("play"))
             return true;
         return false;
       }, 12000), "nothing told the returning player the band was still there");
@@ -528,20 +528,20 @@ public:
       // Five seconds of deliberate delay, plus room to be late.
       expect(waitUntil([&] {
         for (const auto &line : you.snapshot())
-          if (line.contains("The Understudies"))
+          if (juce::String(line).contains("The Understudies"))
             return true;
         return false;
       }, 9000), "no roster was ever posted");
 
       juce::StringArray roster, instructions, introductions;
       for (const auto &line : you.snapshot()) {
-        if (!line.startsWith("MSG|") || !line.contains("-bot]"))
+        if (!juce::String(line).startsWith("MSG|") || !juce::String(line).contains("-bot]"))
           continue;
-        if (line.contains("The Understudies"))
+        if (juce::String(line).contains("The Understudies"))
           roster.add(line);
-        else if (line.contains("say a name"))
+        else if (juce::String(line).contains("say a name"))
           instructions.add(line);
-        else if (line.contains("joining the others"))
+        else if (juce::String(line).contains("joining the others"))
           introductions.add(line);
       }
 
@@ -585,7 +585,7 @@ public:
       expect(you.join(room, "you"));
       expect(waitUntil([&] {
         for (const auto &line : you.snapshot())
-          if (line.contains("The Understudies"))
+          if (juce::String(line).contains("The Understudies"))
             return true;
         return false;
       }, 9000), "no first roster");
@@ -655,7 +655,7 @@ public:
 
       juce::StringArray fromBots;
       for (const auto &line : you.snapshot())
-        if (line.startsWith("MSG|") && line.contains("-bot]"))
+        if (juce::String(line).startsWith("MSG|") && juce::String(line).contains("-bot]"))
           fromBots.add(line);
       expect(fromBots.isEmpty(),
              "unaddressed chat was answered: " + fromBots.joinIntoString(" / "));
@@ -681,7 +681,7 @@ public:
 
       expect(waitUntil([&] {
         for (const auto &line : you.snapshot())
-          if (line.startsWith("MSG|" + keys + "|"))
+          if (juce::String(line).startsWith("MSG|" + keys + "|"))
             return true;
         return false;
       }, 4000), "the bot did not answer to its own name");
@@ -690,8 +690,8 @@ public:
       juce::MessageManager::getInstance()->runDispatchLoopUntil(800);
       juce::StringArray others;
       for (const auto &line : you.snapshot())
-        if (line.startsWith("MSG|") && line.contains("-bot]") &&
-            !line.startsWith("MSG|" + keys + "|"))
+        if (juce::String(line).startsWith("MSG|") && juce::String(line).contains("-bot]") &&
+            !juce::String(line).startsWith("MSG|" + keys + "|"))
           others.add(line);
       expect(others.isEmpty(),
              "another bot answered too: " + others.joinIntoString(" / "));
@@ -720,8 +720,8 @@ public:
 
       expect(waitUntil([&] {
         for (const auto &line : you.snapshot())
-          if (line.startsWith("MSG|" + keys + "|") &&
-              line.containsIgnoreCase("D minor"))
+          if (juce::String(line).startsWith("MSG|" + keys + "|") &&
+              juce::String(line).containsIgnoreCase("D minor"))
             return true;
         return false;
       }, 4000), "the bot did not say what key the room was in");
@@ -752,7 +752,7 @@ public:
       // reads has to carry the way in.
       bool taught = false;
       for (const auto &line : you.snapshot())
-        if (line.contains("-bot]") && line.containsIgnoreCase("play"))
+        if (juce::String(line).contains("-bot]") && juce::String(line).containsIgnoreCase("play"))
           taught = true;
       expect(taught, "nothing told the room how to start the band");
 
@@ -841,7 +841,7 @@ public:
       juce::String first;
       int best = std::numeric_limits<int>::max();
       for (const auto &n : room.botNames()) {
-        const int d = PracticeBot::speakDelayMs(n);
+        const int d = PracticeBot::speakDelayMs(n.toStdString());
         if (d < best) {
           best = d;
           first = n;
@@ -928,8 +928,9 @@ public:
       // Replaces the band's own render, which is the point: we care about the
       // phase it is handed, not the audio it would have made from it.
       std::vector<BotBand::Phase> seen;
-      bot.setRender([&seen](juce::AudioBuffer<float> &, int, int,
-                            BotBand::Phase phase) { seen.push_back(phase); });
+      bot.setRender([&seen](float *, float *, int, int, BotBand::Phase phase) {
+        seen.push_back(phase);
+      });
 
       bot.renderInterval(4800, 0);
       bot.stopPlaying();
@@ -1035,7 +1036,7 @@ public:
       auto linesFrom = [&](const juce::String &who) {
         int n = 0;
         for (const auto &line : you.snapshot())
-          if (line.startsWith("MSG|" + who + "|"))
+          if (juce::String(line).startsWith("MSG|" + who + "|"))
             ++n;
         return n;
       };
@@ -1089,8 +1090,8 @@ public:
 
       juce::StringArray replies;
       for (const auto &line : you.snapshot())
-        if (line.startsWith("MSG|") && line.contains("-bot]") &&
-            !line.contains("what are you playing"))
+        if (juce::String(line).startsWith("MSG|") && juce::String(line).contains("-bot]") &&
+            !juce::String(line).contains("what are you playing"))
           replies.add(line);
       expect(replies.isEmpty(),
              "a bot answered a bot: " + replies.joinIntoString(" / "));

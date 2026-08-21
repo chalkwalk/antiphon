@@ -63,9 +63,43 @@ foreach(header IN LISTS ALLOWED)
   endif()
 endforeach()
 
+# ---------------------------------------------------------------------------
+# ...and no JUCE, which is the other half of being extractable.
+#
+# `chalkwalk-jambot` is to be JUCE-free: the bots run in a plugin today and are
+# meant to run from a command line tomorrow, and a library that drags a GUI
+# framework in for its strings cannot do the second. Everything here is
+# std::string, std::mutex and a timer the host supplies -- see
+# jambot/BotClient.h for why scheduling is asked for rather than assumed.
+#
+# Checked rather than trusted for the reason the music layer is: one
+# `juce::String` added in passing still builds and still passes, and is only
+# discovered when somebody tries to move the file.
+
+set(JUCE_FOUND "")
+foreach(path ${JAMBOT_SOURCES})
+  get_filename_component(name "${path}" NAME)
+  file(STRINGS "${path}" lines)
+  set(lineNumber 0)
+  foreach(line ${lines})
+    math(EXPR lineNumber "${lineNumber} + 1")
+    string(REGEX REPLACE "//.*" "" code "${line}")
+    if(code MATCHES "juce::|JuceHeader|JUCE_")
+      list(APPEND JUCE_FOUND "${name}:${lineNumber}: ${line}")
+    endif()
+  endforeach()
+endforeach()
+
+if(JUCE_FOUND)
+  string(REPLACE ";" "\n  " report "${JUCE_FOUND}")
+  message(FATAL_ERROR
+      "src/jambot must stay JUCE-free:\n  ${report}\n"
+      "Use std::string, or ask the host -- BotClient supplies the timer.")
+endif()
+
 list(LENGTH ALLOWED n)
 if(n EQUAL 0)
-  message(STATUS "jambot boundary: clean -- nothing reaches back into Antiphon")
+  message(STATUS "jambot boundary: clean -- JUCE-free, and nothing reaches back into Antiphon")
 else()
   message(STATUS "jambot boundary: ${n} outward dependencies, all known")
 endif()

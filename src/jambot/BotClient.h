@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -83,6 +84,30 @@ public:
   }
 };
 
+// Something to do later, cancellable, one-shot.
+//
+// Three things a bot does are "wait, then check whether it is still worth
+// doing": the arrival roster, the delay before speaking for the band, and the
+// countdown after its owner leaves. All three are cancelled more often than
+// they fire.
+//
+// This is on the client rather than free-standing because of WHICH THREAD it
+// must run on. A timer that fires wherever it likes races the callbacks: the
+// band-reply delay reads a flag that `onChatMessage` writes, and today they
+// cannot overlap because both are the host's one callback thread. A host
+// knows how to get back to that thread and this interface does not, so it is
+// asked rather than assumed.
+class Timer {
+public:
+  // Cancels, so a bot dropping its timers is enough.
+  virtual ~Timer() = default;
+
+  // Restarts the countdown if one is already running.
+  virtual void start(int delayMs) = 0;
+  virtual void stop() = 0;
+  virtual bool isRunning() const = 0;
+};
+
 class Client {
 public:
   virtual ~Client() = default;
@@ -125,6 +150,10 @@ public:
   // because nothing is waiting on it.
   virtual void transmit(const float *left, const float *right,
                         int numSamples) = 0;
+
+  // `onFire` runs on the same thread the listener callbacks arrive on. Nothing
+  // in a bot is safe to call from anywhere else.
+  virtual std::unique_ptr<Timer> createTimer(std::function<void()> onFire) = 0;
 };
 
 using ClientPtr = std::unique_ptr<Client>;

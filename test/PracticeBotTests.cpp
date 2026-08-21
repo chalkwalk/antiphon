@@ -64,6 +64,56 @@ public:
   }
   void transmit(const float *, const float *, int) override { ++intervalsSent; }
 
+  // Timers a test drives by hand. Nothing here waits: `fire()` runs whatever
+  // is pending, which is what makes the delayed behaviour -- the roster, the
+  // band's one voice, the departure countdown -- testable in microseconds
+  // rather than in seconds of sleeping.
+  std::unique_ptr<BotClient::Timer> createTimer(
+      std::function<void()> onFire) override {
+    auto t = std::make_unique<ManualTimer>(std::move(onFire), this);
+    return t;
+  }
+
+  void fireDueTimers() {
+    const auto pending = armed;
+    for (auto *t : pending)
+      t->fireNow();
+  }
+
+  struct ManualTimer final : public BotClient::Timer {
+    ManualTimer(std::function<void()> fn, FakeClient *owner)
+        : onFire(std::move(fn)), client(owner) {}
+    ~ManualTimer() override { stop(); }
+
+    void start(int) override {
+      if (!running) {
+        running = true;
+        client->armed.push_back(this);
+      }
+    }
+    void stop() override {
+      running = false;
+      client->armed.erase(
+          std::remove(client->armed.begin(), client->armed.end(), this),
+          client->armed.end());
+    }
+    bool isRunning() const override { return running; }
+
+    void fireNow() {
+      if (!running)
+        return;
+      stop();
+      if (onFire)
+        onFire();
+    }
+
+    std::function<void()> onFire;
+    FakeClient *client;
+    bool running = false;
+  };
+
+  std::vector<ManualTimer *> armed;
+
 private:
   std::vector<BotClient::Listener *> listeners;
 };
@@ -72,10 +122,10 @@ struct Rig {
   FakeClient *fake;
   std::unique_ptr<PracticeBot> bot;
 
-  explicit Rig(const juce::String &name = "Ravo[keys-bot]") {
+  explicit Rig(const std::string &name = "Ravo[keys-bot]") {
     auto client = std::make_unique<FakeClient>();
     fake = client.get();
-    bot = std::make_unique<PracticeBot>(name, juce::StringArray{"keys"},
+    bot = std::make_unique<PracticeBot>(name, std::vector<std::string>{"keys"},
                                         std::move(client));
     bot->setOwner("you");
     bot->join("127.0.0.1", 1234, 48000.0);

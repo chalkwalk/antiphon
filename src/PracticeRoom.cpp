@@ -70,9 +70,10 @@ bool PracticeRoom::start(const Config &config) {
       // Antiphon's client, behind the interface the bots see. This is the one
       // place the plugin's transport meets the band.
       auto bot = std::make_unique<PracticeBot>(
-          botUsername, juce::StringArray{instrument},
+          botUsername.toStdString(),
+          std::vector<std::string>{instrument.toStdString()},
           std::make_unique<NinjamBotClient>());
-      bot->setOwner(cfg.ownerName);
+      bot->setOwner(cfg.ownerName.toStdString());
       bot->setGrace(cfg.ownerGraceMs, cfg.initialGraceMs);
       bot->playAs(voice, cfg.key, cfg.bpm, cfg.bpi, cfg.sampleRate, seed);
       bots.push_back(std::move(bot));
@@ -85,14 +86,14 @@ bool PracticeRoom::start(const Config &config) {
     // Who arrived together, so the roster can say whether these are a band or
     // merely a list. Told before joining, because the announcement happens five
     // seconds after connect and nobody should be racing it.
-    juce::StringArray names;
+    std::vector<std::string> names;
     for (const auto &b : bots)
-      names.add(b->name());
+      names.push_back(b->name());
     for (auto &b : bots)
-      b->setBandmates(names, cfg.bandName);
+      b->setBandmates(names, cfg.bandName.toStdString());
 
     for (auto &b : bots)
-      if (!b->join(host(), server.port(), cfg.sampleRate)) {
+      if (!b->join(std::string(host()), server.port(), cfg.sampleRate)) {
         bots.clear();
         server.stop();
         return false;

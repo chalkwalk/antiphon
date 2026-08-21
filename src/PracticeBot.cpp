@@ -1,6 +1,12 @@
 #include "PracticeBot.h"
 
+#include <algorithm>
+#include <chrono>
+#include <chalkwalk/music/Text.h>
+
 #include "jambot/BotNames.h"
+
+namespace cwtext = chalkwalk::music::text;
 
 namespace {
 // How much longer a bot with nothing to do waits before speaking for the band.
@@ -14,12 +20,12 @@ constexpr int kIdleSpeakerPenaltyMs = 700;
 const char *const kPartCommands[] = {"leave", "exit", "go away", "go home"};
 } // namespace
 
-PracticeBot::PracticeBot(juce::String name, juce::StringArray channelNames,
+PracticeBot::PracticeBot(std::string name, std::vector<std::string> channelNames,
                          BotClient::ClientPtr client)
     : botName(std::move(name)), channels(std::move(channelNames)),
       netClient(std::move(client)) {
-  if (channels.isEmpty())
-    channels.add("bot");
+  if (channels.empty())
+    channels.push_back("bot");
 
   // Deaf by default. A generative bot follows the grid rather than the room,
   // and an unsubscribed client never causes the server to send it an interval,
@@ -27,6 +33,10 @@ PracticeBot::PracticeBot(juce::String name, juce::StringArray channelNames,
   // client's worth of interval buffers instead of one per bot.
   netClient->setDefaultRecvEnabled(false);
   netClient->addListener(this);
+
+  arrivalTimer = netClient->createTimer([this] { onArrivalDue(); });
+  bandReplyTimer = netClient->createTimer([this] { onBandReplyDue(); });
+  graceTimer = netClient->createTimer([this] { onGraceExpired(); });
 }
 
 PracticeBot::~PracticeBot() {
@@ -35,12 +45,12 @@ PracticeBot::~PracticeBot() {
 }
 
 void PracticeBot::setRender(Render r) {
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   render = std::move(r);
 }
 
-void PracticeBot::setOwner(juce::String ownerUsername) {
-  juce::ScopedLock sl(stateMutex);
+void PracticeBot::setOwner(std::string ownerUsername) {
+  std::lock_guard<std::mutex> sl(stateMutex);
   owner = std::move(ownerUsername);
 }
 
@@ -52,14 +62,9 @@ void PracticeBot::setGrace(int afterDepartureMs, int beforeFirstArrivalMs) {
 int PracticeBot::humansPresent() const {
   int n = 0;
   for (const auto &m : netClient->members())
-    if (m.username != botName.toStdString() && !BotNames::looksLikeBot(m.username))
+    if (m.username != botName && !BotNames::looksLikeBot(m.username))
       ++n;
   return n;
-}
-
-void PracticeBot::OwnerGrace::timerCallback() {
-  stopTimer();
-  bot.part();
 }
 
 void PracticeBot::ownerAbsent(bool everArrived) {
@@ -72,22 +77,25 @@ void PracticeBot::ownerAbsent(bool everArrived) {
   // drop. Nothing leaks: anyone present can send them home
   // (docs/BOT-CHAT.md section 15).
   if (everArrived && humansPresent() > 0) {
-    ownerGrace.disarm();
+    graceTimer->stop();
     return;
   }
 
   // Nobody is listening, so playing on is waste -- and an ending is FOR
   // somebody, so this cuts rather than wrapping up.
   if (everArrived) {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     playState.silence();
   }
 
-  ownerGrace.arm(everArrived ? graceMs : initialGraceMs);
+  // `arm` used to refuse to restart a running countdown, which is what makes
+  // this safe to call on every user-info change.
+  if (!graceTimer->isRunning())
+    graceTimer->start(everArrived ? graceMs : initialGraceMs);
 }
 
 void PracticeBot::ownerBack() {
-  ownerGrace.disarm();
+  graceTimer->stop();
 
   // Deliberately says nothing of its own.
   //
@@ -101,23 +109,23 @@ void PracticeBot::ownerBack() {
   // is not to have the line.
 }
 
-void PracticeBot::setListensTo(juce::String username) {
+void PracticeBot::setListensTo(std::string username) {
   {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     listensTo = std::move(username);
   }
   // Subscribing to one player is still deaf to everyone else; the recv flags
   // are applied as channels appear, in onUserInfoChange.
 }
 
-bool PracticeBot::join(const juce::String &host, int port, double sampleRate) {
+bool PracticeBot::join(const std::string &host, int port, double sampleRate) {
   rate = sampleRate;
   netClient->setSampleRate(sampleRate);
   std::vector<std::string> names;
   for (const auto &c : channels)
-    names.push_back(c.toStdString());
+    names.push_back(c);
   netClient->setChannels(names);
-  netClient->connect(host.toStdString(), port, botName.toStdString(), "");
+  netClient->connect(host, port, botName, "");
   active = true;
   return true;
 }
@@ -126,9 +134,9 @@ void PracticeBot::part() {
   // Idempotent, and terminal: see onDisconnected for why there is no rejoin.
   if (!active.exchange(false))
     return;
-  stopTimer();
-  bandReply.cancel();
-  ownerGrace.disarm();
+  arrivalTimer->stop();
+  bandReplyTimer->stop();
+  graceTimer->stop();
   netClient->disconnect();
 }
 
@@ -136,7 +144,7 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
                          int bpm, int bpi, double sampleRate,
                          std::uint32_t seed) {
   {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     bandVoice = voice;
     settings = BotBand::defaults(key, bpm, bpi, sampleRate, seed);
   }
@@ -146,12 +154,12 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
   // rather than a special case (docs/BOT-CHAT.md section 15).
   inBand = true;
 
-  setRender([this](juce::AudioBuffer<float> &buffer, int numSamples,
+  setRender([this](float *left, float *right, int numSamples,
                    int intervalIndex, BotBand::Phase phase) {
     BotBand::Voice v;
     BotBand::Settings snapshot;
     {
-      juce::ScopedLock sl(stateMutex);
+      std::lock_guard<std::mutex> sl(stateMutex);
       v = bandVoice;
       snapshot = settings;
     }
@@ -166,18 +174,16 @@ void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
     // the copy is skipped. This costs no bandwidth: the encoder has always run
     // two channels here, so the stereo was already being paid for and simply
     // carried the same samples twice.
-    const bool stereo = BotBand::isStereo(v) && buffer.getNumChannels() > 1;
-    BotBand::renderInterval(v, snapshot, intervalIndex, phase,
-                            buffer.getWritePointer(0),
-                            stereo ? buffer.getWritePointer(1) : nullptr,
-                            numSamples);
-    if (!stereo && buffer.getNumChannels() > 1)
-      buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+    const bool stereo = BotBand::isStereo(v) && right != nullptr;
+    BotBand::renderInterval(v, snapshot, intervalIndex, phase, left,
+                            stereo ? right : nullptr, numSamples);
+    if (!stereo && right != nullptr)
+      std::copy(left, left + numSamples, right);
   });
 }
 
 void PracticeBot::shake() {
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   // A hash of the old seed rather than an increment, so the next figure is
   // unrelated to the last rather than adjacent to it.
   std::uint32_t s = settings.seed;
@@ -205,32 +211,32 @@ BotBand::Phase phaseFor(BandPlayState::State s) {
 } // namespace
 
 BandPlayState::State PracticeBot::playPhase() const {
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   return playState.current();
 }
 
 void PracticeBot::startPlaying() {
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   playState.start();
 }
 
 void PracticeBot::stopPlaying() {
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   playState.stop();
 }
 
 BotBand::Settings PracticeBot::currentSettings() const {
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   return settings;
 }
 
-bool PracticeBot::isShakeCommand(const juce::String &text) {
-  const auto t = text.trim().toLowerCase();
+bool PracticeBot::isShakeCommand(const std::string &text) {
+  const auto t = chalkwalk::music::text::lower(chalkwalk::music::text::trim(text));
   return t == "shake" || t == "new" || t == "again";
 }
 
-bool PracticeBot::handleStructured(const juce::String &text,
-                                   const juce::String &username) {
+bool PracticeBot::handleStructured(const std::string &text,
+                                   const std::string &username) {
   // Band membership, not audibility. A silent bot is still in the room and
   // still follows the key and the chart -- that is most of what somebody does
   // BETWEEN tunes, and a bot that stopped listening while stopped would have
@@ -238,7 +244,7 @@ bool PracticeBot::handleStructured(const juce::String &text,
   if (!inBand.load())
     return false;
 
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
 
   // The decision itself lives in RoomHarmony, because the editor has to make
   // exactly the same one and the two used to disagree (`PRINCIPLES` 8).
@@ -247,7 +253,7 @@ bool PracticeBot::handleStructured(const juce::String &text,
   st.chart = settings.chart;
   st.chartFromChat = chartSource == BotAnswer::Source::Chat;
 
-  switch (RoomHarmony::apply(text.toStdString(), st)) {
+  switch (RoomHarmony::apply(text, st)) {
   case RoomHarmony::Change::Key:
     settings.key = st.key;
     settings.chart = st.chart;
@@ -268,7 +274,7 @@ BotChat::Context PracticeBot::currentContext() const {
   BotChat::Context ctx;
   ctx.room = currentRoom();
 
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   ctx.music.key = settings.key;
   ctx.music.keySource = keySource;
   ctx.music.keySetBy = keySetBy;
@@ -279,7 +285,7 @@ BotChat::Context PracticeBot::currentContext() const {
   ctx.music.articulation = settings.articulation;
 
   ctx.self.name = botName;
-  ctx.self.handle = juce::String(BotNames::handleOf(botName.toStdString()));
+  ctx.self.handle = std::string(BotNames::handleOf(botName));
   ctx.self.voice = bandVoice;
   ctx.self.settings = settings;
   ctx.self.phase = playState.current();
@@ -287,39 +293,41 @@ BotChat::Context PracticeBot::currentContext() const {
   return ctx;
 }
 
-bool PracticeBot::isPartCommand(const juce::String &text) {
-  const auto t = text.trim().toLowerCase();
+bool PracticeBot::isPartCommand(const std::string &text) {
+  const auto t = chalkwalk::music::text::lower(chalkwalk::music::text::trim(text));
   for (const auto *cmd : kPartCommands)
     if (t == cmd)
       return true;
   return false;
 }
 
-juce::String PracticeBot::helpLine(const juce::String &name) {
+std::string PracticeBot::helpLine(const std::string &name) {
   return name + " is a bot. Send it a private message saying 'leave' and it "
                 "will go.";
 }
 
-void PracticeBot::setBandmates(juce::StringArray names, juce::String name) {
-  juce::ScopedLock sl(stateMutex);
+void PracticeBot::setBandmates(std::vector<std::string> names, std::string name) {
+  std::lock_guard<std::mutex> sl(stateMutex);
   bandmates = std::move(names);
   bandName = std::move(name);
 }
 
-juce::StringArray PracticeBot::botsPresent() const {
-  juce::StringArray out;
-  out.add(botName);
+std::vector<std::string> PracticeBot::botsPresent() const {
+  std::vector<std::string> out;
+  out.push_back(botName);
   for (const auto &m : netClient->members())
-    if (m.username != botName.toStdString() && BotNames::looksLikeBot(m.username))
-      out.add(juce::String(m.username));
+    if (m.username != botName && BotNames::looksLikeBot(m.username))
+      out.push_back(m.username);
   // Sorted so that every bot in the room computes the same list, and therefore
-  // agrees about who speaks without anybody having to ask.
-  out.sort(true);
+  // agrees about who speaks without anybody having to ask. Case-insensitive,
+  // as the sort it replaces was.
+  std::sort(out.begin(), out.end(), [](const auto &a, const auto &b) {
+    return chalkwalk::music::text::lower(a) < chalkwalk::music::text::lower(b);
+  });
   return out;
 }
 
-void PracticeBot::timerCallback() {
-  stopTimer();
+void PracticeBot::onArrivalDue() {
   if (!active.load() || arrivalDone.exchange(true))
     return;
 
@@ -346,34 +354,38 @@ void PracticeBot::timerCallback() {
   // The roster lists what is ACTUALLY HERE, not what we were told to expect: a
   // bot that failed to connect is not announced as present, and bots brought by
   // two different people still make one sensible list.
-  juce::StringArray entries;
+  std::vector<std::string> entries;
   bool allSiblings = true;
   {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     for (const auto &name : bots) {
-      if (!bandmates.isEmpty() && !bandmates.contains(name))
+      if (!bandmates.empty() &&
+          std::find(bandmates.begin(), bandmates.end(), name) == bandmates.end())
         allSiblings = false;
-      const auto open = name.indexOfChar('[');
-      const juce::String handle =
-          open > 0 ? name.substring(0, open) : name;
-      const juce::String instrument =
-          open > 0 ? name.substring(open + 1)
-                         .upToFirstOccurrenceOf("-bot]", false, false)
-                   : juce::String();
-      entries.add(instrument.isEmpty() ? handle
-                                       : handle + " (" + instrument + ")");
+
+      const auto open = name.find('[');
+      const std::string handle =
+          open == std::string::npos ? name : name.substr(0, open);
+      std::string instrument;
+      if (open != std::string::npos) {
+        const auto rest = name.substr(open + 1);
+        const auto end = rest.find("-bot]");
+        instrument = end == std::string::npos ? rest : rest.substr(0, end);
+      }
+      entries.push_back(instrument.empty() ? handle
+                                           : handle + " (" + instrument + ")");
     }
   }
 
-  juce::String roster;
+  std::string roster;
   {
-    juce::ScopedLock sl(stateMutex);
-    if (allSiblings && bandName.isNotEmpty())
+    std::lock_guard<std::mutex> sl(stateMutex);
+    if (allSiblings && !bandName.empty())
       roster = bandName + " -- ";
   }
-  roster += entries.joinIntoString(", ") + ".";
+  roster += chalkwalk::music::text::join(entries, ", ") + ".";
 
-  netClient->sendChat(juce::String(roster).toStdString());
+  netClient->sendChat(std::string(roster));
 
   // The interesting thing first, and the destructive one stated so plainly
   // that nobody types it idly. Leading with `part` would invite a curious
@@ -386,24 +398,25 @@ void PracticeBot::timerCallback() {
       "name to talk to one of us. say \"leave\" and we all go home.");
 }
 
-void PracticeBot::BandReply::timerCallback() {
-  stopTimer();
+void PracticeBot::onBandReplyDue() {
   // Somebody got there first, so the room already has its answer. Saying it
   // again is the chorus this exists to prevent.
-  if (heardOne || text.isEmpty())
+  if (heardAnotherBot || pendingBandReply.empty())
     return;
-  if (bot.chatMuted.load())
+  if (chatMuted.load())
     return;
-  bot.netClient->sendChat(juce::String(text).toStdString());
+  netClient->sendChat(pendingBandReply);
 }
 
-int PracticeBot::speakDelayMs(const juce::String &botName) {
+void PracticeBot::onGraceExpired() { part(); }
+
+int PracticeBot::speakDelayMs(const std::string &botName) {
   // Long enough that the winner's line has crossed the server and come back to
   // everyone else -- loopback is immediate, a real server is tens of
   // milliseconds -- and short enough to read as an answer rather than a pause.
   std::uint32_t h = 2166136261u;
   for (auto c : botName)
-    h = (h ^ (std::uint32_t)(juce::juce_wchar)c) * 16777619u;
+    h = (h ^ (std::uint32_t)(char)c) * 16777619u;
   return 220 + (int)(h % 380u);
 }
 
@@ -413,7 +426,7 @@ int PracticeBot::arrivalDelayMs() const {
   // all the spread has to do.
   std::uint32_t h = 2166136261u;
   for (auto c : botName)
-    h = (h ^ (std::uint32_t)(juce::juce_wchar)c) * 16777619u;
+    h = (h ^ (std::uint32_t)(char)c) * 16777619u;
   return 4000 + (int)(h % 2000u);
 }
 
@@ -421,30 +434,35 @@ int PracticeBot::arrivalDelayMs() const {
 // `anonymous:nick`, so comparing against the bare nickname never matched and
 // the eviction rules -- the ones that stop a bot outliving the player who
 // brought it -- silently never fired for the commonest way anybody connects.
-bool PracticeBot::isOwnerName(const juce::String &username,
-                              const juce::String &ownerName) {
-  if (ownerName.isEmpty())
+bool PracticeBot::isOwnerName(const std::string &username,
+                              const std::string &ownerName) {
+  if (ownerName.empty())
     return false;
+  // An anonymous NINJAM login arrives as `anonymous:nick`.
+  const auto lower = chalkwalk::music::text::lower(username);
+  const auto suffix = chalkwalk::music::text::lower(":" + ownerName);
   return username == ownerName ||
-         username.endsWithIgnoreCase(":" + ownerName);
+         (lower.size() >= suffix.size() &&
+          lower.compare(lower.size() - suffix.size(), suffix.size(), suffix) == 0);
 }
 
 void PracticeBot::onConnected() {
   // The long clock starts now: nobody has ever arrived, and this is what stops
   // a room being started and forgotten. Cancelled the moment the owner shows.
-  ownerGrace.arm(initialGraceMs);
+  if (!graceTimer->isRunning())
+    graceTimer->start(initialGraceMs);
 
   // The arrival window: four seconds plus up to two more.
   //
   // The wait lets the join notices finish scrolling before the one line anybody
   // is meant to read. The SPREAD is what keeps two bots from announcing at
   // once -- whoever wakes first names the others, and they find themselves
-  // already introduced. See timerCallback.
+  // already introduced. See onArrivalDue.
   //
   // Derived from the name rather than drawn randomly, so a room is reproducible
   // and a test can rely on it. Different names give different offsets, which is
   // all the spread has to do.
-  startTimer(arrivalDelayMs());
+  arrivalTimer->start(arrivalDelayMs());
 
   // Beyond that, nothing to do. The channel list was stored before connecting and
   // NinjamClient sends it itself the moment auth succeeds
@@ -465,7 +483,7 @@ void PracticeBot::onDisconnected(const std::string &) {
 
 void PracticeBot::onRoomMembershipChange(const std::string &rawUsername,
                                          bool joined) {
-  const juce::String username(rawUsername);
+  const std::string username(rawUsername);
   // The authoritative way to know whether the owner is here, and the only one
   // that is not a race.
   //
@@ -480,9 +498,9 @@ void PracticeBot::onRoomMembershipChange(const std::string &rawUsername,
   // An event does not go stale. A JOIN naming the owner means they arrived; a
   // PART naming them means they left, and it means they were here to leave,
   // which is why this path does not consult `sawOwner` at all.
-  juce::String ownerName;
+  std::string ownerName;
   {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     ownerName = owner;
   }
   // Introduce the band to the first person who turns up.
@@ -496,17 +514,17 @@ void PracticeBot::onRoomMembershipChange(const std::string &rawUsername,
   // Only for the first: with anybody else already present the band has been
   // seen, and a roster per arrival is the chattiness this design exists to
   // avoid.
-  if (joined && !BotNames::looksLikeBot(username.toStdString())) {
+  if (joined && !BotNames::looksLikeBot(username)) {
     int otherHumans = 0;
     for (const auto &m : netClient->members())
-      if (m.username != username.toStdString() &&
-          m.username != botName.toStdString() &&
+      if (m.username != username &&
+          m.username != botName &&
           !BotNames::looksLikeBot(m.username))
         ++otherHumans;
     if (otherHumans == 0) {
       arrivalDone = false;
       announcedMe = false;
-      startTimer(arrivalDelayMs());
+      arrivalTimer->start(arrivalDelayMs());
     }
   }
 
@@ -541,23 +559,23 @@ bool PracticeBot::checkOwnerStillHere() {
   // and then a PART; only the PART removes the name from roomMembers.
   // Checking on user-info alone therefore looks while the owner is still
   // listed, finds them present, and never looks again.
-  juce::String ownerName;
+  std::string ownerName;
   {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     ownerName = owner;
   }
-  if (ownerName.isEmpty())
+  if (ownerName.empty())
     return true;
 
   bool ownerPresent = false;
   for (const auto &m : netClient->members())
-    if (isOwnerName(juce::String(m.username), ownerName)) {
+    if (isOwnerName(m.username, ownerName)) {
       ownerPresent = true;
       break;
     }
 
   if (ownerPresent) {
-    const bool wasAway = !sawOwner.exchange(true) || ownerGrace.running();
+    const bool wasAway = !sawOwner.exchange(true) || graceTimer->isRunning();
     if (wasAway)
       ownerBack();
     return true;
@@ -574,18 +592,18 @@ void PracticeBot::onUserInfoChange() {
   if (!checkOwnerStillHere())
     return;
 
-  juce::String wanted;
+  std::string wanted;
   {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     wanted = listensTo;
   }
-  if (wanted.isEmpty())
+  if (wanted.empty())
     return;
 
   // Subscribe to exactly one player. Channels arrive over time, so this runs on
   // every change rather than once.
   for (const auto &peer : netClient->peers()) {
-    if (peer.username != wanted.toStdString())
+    if (peer.username != wanted)
       continue;
     for (const auto &ch : peer.channels)
       if (!ch.recvEnabled)
@@ -594,7 +612,7 @@ void PracticeBot::onUserInfoChange() {
 }
 
 void PracticeBot::onServerConfig(int bpm, int bpi) {
-  juce::ScopedLock sl(stateMutex);
+  std::lock_guard<std::mutex> sl(stateMutex);
   if (bpm > 0)
     settings.bpm = bpm;
   if (bpi > 0)
@@ -604,40 +622,40 @@ void PracticeBot::onServerConfig(int bpm, int bpi) {
 BotAddress::Room PracticeBot::currentRoom() const {
   BotAddress::Room room;
 
-  auto add = [&room](const juce::String &name, const juce::String &channel) {
+  auto add = [&room](const std::string &name, const std::string &channel) {
     BotAddress::Participant p;
-    p.username = name.toStdString();
+    p.username = name;
     p.handle = BotNames::handleOf(p.username);
-    p.channel = channel.toLowerCase().toStdString();
+    p.channel = channel;
     p.isBot = BotNames::looksLikeBot(p.username);
     if (p.isBot) {
       // The instrument is in the username between the bracket and the marker,
       // which is also what a player reads off the mixer.
-      const auto open = name.indexOfChar('[');
-      if (open > 0)
+      const auto open = name.find('[');
+      if (open != std::string::npos) {
+        const auto rest = name.substr(open + 1);
+        const auto end = rest.find("-bot]");
         p.instrument =
-            name.substring(open + 1)
-                .upToFirstOccurrenceOf("-bot]", false, false)
-                .toLowerCase()
-                .toStdString();
+            cwtext::lower(end == std::string::npos ? rest : rest.substr(0, end));
+      }
     }
     room.participants.push_back(p);
   };
 
   // Ourselves first, so the scan can find us even in an empty room.
-  add(botName, channels.isEmpty() ? juce::String() : channels[0]);
+  add(botName, channels.empty() ? std::string() : channels[0]);
 
   const auto peers = netClient->peers();
   for (const auto &m : netClient->members()) {
-    if (m.username == botName.toStdString())
+    if (m.username == botName)
       continue;
-    juce::String channel;
+    std::string channel;
     for (const auto &peer : peers)
       if (peer.username == m.username && !peer.channels.empty()) {
-        channel = juce::String(peer.channels.front().name);
+        channel = std::string(peer.channels.front().name);
         break;
       }
-    add(juce::String(m.username), channel);
+    add(m.username, channel);
   }
 
   room.resolveHandles();
@@ -657,7 +675,7 @@ void PracticeBot::onChatMessage(const std::string &rawType,
   if (!active.load())
     return;
 
-  const juce::String type(rawType), username(rawUsername), text(rawText);
+  const std::string type(rawType), username(rawUsername), text(rawText);
   // A PART is a chat message, and it is what actually removes a name from the
   // room. See checkOwnerStillHere.
   if (!checkOwnerStillHere())
@@ -677,15 +695,15 @@ void PracticeBot::onChatMessage(const std::string &rawType,
   // Any message from a bot naming me counts, which is safe because bots do not
   // speak unless spoken to: during the first few seconds of a room there is
   // nothing else a bot could be saying.
-  if (BotNames::looksLikeBot(username.toStdString()) &&
-      text.containsIgnoreCase(
-          juce::String(BotNames::handleOf(botName.toStdString()))))
+  if (BotNames::looksLikeBot(username) &&
+      cwtext::contains(cwtext::lower(text),
+                     cwtext::lower(BotNames::handleOf(botName))))
     announcedMe = true;
 
   // Another bot has spoken, so a band-wide line we were about to give has
   // already been given. This is the whole of the arbitration.
-  if (BotNames::looksLikeBot(username.toStdString()))
-    bandReply.somebodySpoke();
+  if (BotNames::looksLikeBot(username))
+    heardAnotherBot = true;
 
   const bool isPrivate = (type == "PRIVMSG");
 
@@ -701,10 +719,13 @@ void PracticeBot::onChatMessage(const std::string &rawType,
     return;
 
   BotAddress::Incoming in;
-  in.sender = username.toStdString();
-  in.text = text.toStdString();
+  in.sender = username;
+  in.text = text;
   in.isPrivate = isPrivate;
-  in.at = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+  // Seconds on a monotonic clock: the attention window measures elapsed time,
+  // and a wall clock that steps would open or close it wrongly.
+  using namespace std::chrono;
+  in.at = duration<double>(steady_clock::now().time_since_epoch()).count();
 
   // Everything from here is decided by `BotChat`, which is pure: who was
   // addressed, what they asked, and the words that answer it. This method used
@@ -722,7 +743,7 @@ void PracticeBot::onChatMessage(const std::string &rawType,
     // like no answer at all, and the public path is how anybody else in the
     // room discovers that the bots can be spoken to.
     if (answer.privately)
-      netClient->sendPrivate(username.toStdString(), answer.text.toStdString());
+      netClient->sendPrivate(username, answer.text);
     else if (answer.forBand)
       // Acting is collective and speaking is arbitrated: the action below
       // happens in every addressed bot, and only the LINE about it is rationed.
@@ -734,12 +755,15 @@ void PracticeBot::onChatMessage(const std::string &rawType,
       // wrong: the room would be told nothing was happening while three bots
       // ended the tune. If nobody acted, the deferred line is the right answer
       // and it still gets said.
-      bandReply.schedule(answer.text,
-                         answer.act != BotChat::Act::None
-                             ? speakDelayMs()
-                             : speakDelayMs() + kIdleSpeakerPenaltyMs);
+    {
+      pendingBandReply = answer.text;
+      heardAnotherBot = false;
+      bandReplyTimer->start(answer.act != BotChat::Act::None
+                                ? speakDelayMs()
+                                : speakDelayMs() + kIdleSpeakerPenaltyMs);
+    }
     else
-      netClient->sendChat(juce::String(answer.text).toStdString());
+      netClient->sendChat(std::string(answer.text));
   }
 
   switch (answer.act) {
@@ -750,12 +774,12 @@ void PracticeBot::onChatMessage(const std::string &rawType,
     shake();
     return;
   case BotChat::Act::SetArticulation: {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     settings.articulation = answer.value;
     return;
   }
   case BotChat::Act::SetLeadInstrument: {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     settings.leadOverride = answer.value;
     return;
   }
@@ -780,7 +804,7 @@ void PracticeBot::renderInterval(int numSamples, int intervalIndex) {
   Render r;
   BandPlayState::State phase;
   {
-    juce::ScopedLock sl(stateMutex);
+    std::lock_guard<std::mutex> sl(stateMutex);
     r = render;
     // Sampled ONCE, and the state advanced ONCE, for this interval. Reading it
     // again part-way through would tear an interval across two states, and
@@ -798,20 +822,21 @@ void PracticeBot::renderInterval(int numSamples, int intervalIndex) {
   if (phase == BandPlayState::State::Silent)
     return;
 
-  if (renderBuffer.getNumSamples() < numSamples)
-    renderBuffer.setSize(2, numSamples, false, true, true);
-  renderBuffer.clear(0, numSamples);
+  if ((int)renderLeft.size() < numSamples) {
+    renderLeft.resize((size_t)numSamples);
+    renderRight.resize((size_t)numSamples);
+  }
+  std::fill(renderLeft.begin(), renderLeft.begin() + numSamples, 0.0f);
+  std::fill(renderRight.begin(), renderRight.begin() + numSamples, 0.0f);
 
   // The phase sampled at the top of this interval, so what is rendered and what
   // the state machine thinks are the same thing by construction.
-  r(renderBuffer, numSamples, intervalIndex, phaseFor(phase));
+  r(renderLeft.data(), renderRight.data(), numSamples, intervalIndex,
+    phaseFor(phase));
 
   if (!active.load())
     return;
   // Through the interface: the bot hands over pointers and has no idea what
   // happens to them.
-  const bool stereo = renderBuffer.getNumChannels() > 1;
-  netClient->transmit(renderBuffer.getReadPointer(0),
-                      stereo ? renderBuffer.getReadPointer(1) : nullptr,
-                      numSamples);
+  netClient->transmit(renderLeft.data(), renderRight.data(), numSamples);
 }

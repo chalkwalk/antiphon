@@ -6,8 +6,11 @@
 #include "jambot/BotChat.h"
 #include "jambot/BotClient.h"
 #include "RoomHarmony.h"
-#include <JuceHeader.h>
+#include <atomic>
 #include <functional>
+#include <mutex>
+#include <string>
+#include <vector>
 
 // A bot is a Ninjam client.
 //
@@ -32,18 +35,17 @@
 // LEAVING: a bot must be trivially easy to get rid of. See the rules on
 // `part()` below; they live here rather than in PracticeRoom so they hold
 // wherever the bot is pointed.
-class PracticeBot : private BotClient::Listener, private juce::Timer {
+class PracticeBot : private BotClient::Listener {
 public:
   // Fills one interval. Called on the conductor thread, never the audio thread,
   // so it may allocate -- though there is no reason for it to.
-  using Render = std::function<void(juce::AudioBuffer<float> &buffer,
-                                    int numSamples, int intervalIndex,
-                                    BotBand::Phase phase)>;
+  using Render = std::function<void(float *left, float *right, int numSamples,
+                                    int intervalIndex, BotBand::Phase phase)>;
 
   // The client is supplied rather than owned outright, which is the whole of
   // the inversion: a bot no longer knows what NinjamClient is. Antiphon passes
   // a `NinjamBotClient`; a standalone jambot would pass something smaller.
-  PracticeBot(juce::String botName, juce::StringArray channelNames,
+  PracticeBot(std::string botName, std::vector<std::string> channelNames,
               BotClient::ClientPtr client);
   ~PracticeBot() override;
 
@@ -78,12 +80,12 @@ public:
   void stopPlaying();
 
   // The commands a bot answers to, beyond parting.
-  static bool isShakeCommand(const juce::String &text);
+  static bool isShakeCommand(const std::string &text);
 
   // When this player leaves the room, so does the bot -- but not at once. Empty
   // means nothing but the connection itself ends it. PracticeRoom always sets
   // it.
-  void setOwner(juce::String ownerUsername);
+  void setOwner(std::string ownerUsername);
 
   // How long to wait for the owner: after they leave, and before they have
   // ever arrived. See PracticeRoom::Config for why the second is longer.
@@ -95,29 +97,29 @@ public:
   // band's NAME: two strangers' bots in one room are a list, not a band, and
   // calling them one would be a small lie in the first line anybody reads.
   // A bot told nothing simply lists whoever it can see.
-  void setBandmates(juce::StringArray names, juce::String bandName);
+  void setBandmates(std::vector<std::string> names, std::string bandName);
 
   // Whose audio this bot wants. Empty subscribes to nobody, which is the
   // default and what a generative bot wants: it follows the grid, not the room,
   // and an unsubscribed client never causes an interval to be allocated.
-  void setListensTo(juce::String username);
+  void setListensTo(std::string username);
 
-  bool join(const juce::String &host, int port, double sampleRate);
+  bool join(const std::string &host, int port, double sampleRate);
 
   // Idempotent, and safe from any thread. Once parted a bot stays parted --
   // there is no rejoin.
   void part();
 
   bool isActive() const { return active.load(); }
-  const juce::String &name() const { return botName; }
+  const std::string &name() const { return botName; }
   BotClient::Client &client() { return *netClient; }
 
   // Conductor thread. A no-op once parted.
   void renderInterval(int numSamples, int intervalIndex);
 
   // The commands a bot answers to by private message, from anyone in the room.
-  static bool isPartCommand(const juce::String &text);
-  static juce::String helpLine(const juce::String &botName);
+  static bool isPartCommand(const std::string &text);
+  static std::string helpLine(const std::string &botName);
 
   // How long a bot waits before speaking for the band. Derived from the name,
   // like the arrival stagger, so a room is reproducible and no two bots wake
@@ -126,7 +128,7 @@ public:
   // Public because a test of the arbitration that cannot say WHICH bot would
   // win a race is not testing the arbitration: it passes or fails on which
   // names the seed happened to pick.
-  static int speakDelayMs(const juce::String &botName);
+  static int speakDelayMs(const std::string &botName);
 
 private:
   void onConnected() override;
@@ -138,14 +140,14 @@ private:
 
   // The arrival window: five seconds after connecting, decide whether to
   // announce the band, introduce ourselves, or stay quiet.
-  void timerCallback() override;
+  void onArrivalDue();
   int arrivalDelayMs() const;
-  static bool isOwnerName(const juce::String &username,
-                          const juce::String &ownerName);
+  static bool isOwnerName(const std::string &username,
+                          const std::string &ownerName);
 
   // Every bot in the room right now, ours or not, sorted so that every bot
   // computes the same list and therefore the same answer.
-  juce::StringArray botsPresent() const;
+  std::vector<std::string> botsPresent() const;
   void onChatMessage(const std::string &type, const std::string &username,
                      const std::string &text) override;
 
@@ -157,8 +159,8 @@ private:
   //
   // Deliberately excludes `shake`, which is an ordinary English word and needs
   // to be aimed at somebody.
-  bool handleStructured(const juce::String &text,
-                        const juce::String &username);
+  bool handleStructured(const std::string &text,
+                        const std::string &username);
 
   // The room as the addressing engine understands it: who is here, which of
   // them are bots, what each is called and what their channel is named. Built
@@ -179,45 +181,22 @@ private:
   // be quiet, and then the room gets silence where it asked a question. Nobody
   // coordinates and nothing is shared -- each bot waits its own interval and
   // drops the line if it hears one.
-  struct BandReply : private juce::Timer {
-    explicit BandReply(PracticeBot &b) : bot(b) {}
-    void schedule(juce::String line, int delayMs) {
-      text = std::move(line);
-      heardOne = false;
-      startTimer(delayMs);
-    }
-    void somebodySpoke() { heardOne = true; }
-    void cancel() { stopTimer(); }
-
-  private:
-    void timerCallback() override;
-    PracticeBot &bot;
-    juce::String text;
-    bool heardOne = false;
-  };
-  friend struct BandReply;
-  BandReply bandReply{*this};
+  void onBandReplyDue();
+  std::string pendingBandReply;
+  bool heardAnotherBot = false;
 
   // Counting down to leaving, because the owner is not here.
   //
   // A departure is not a decision: people's connections drop, and a band that
   // vanished on a thirty-second blip could not be got back at all, since there
   // is deliberately no reconnect.
-  struct OwnerGrace : private juce::Timer {
-    explicit OwnerGrace(PracticeBot &b) : bot(b) {}
-    void arm(int ms) {
-      if (!isTimerRunning())
-        startTimer(ms);
-    }
-    void disarm() { stopTimer(); }
-    bool running() const { return isTimerRunning(); }
+  void onGraceExpired();
 
-  private:
-    void timerCallback() override;
-    PracticeBot &bot;
-  };
-  friend struct OwnerGrace;
-  OwnerGrace ownerGrace{*this};
+  // All three fire on the thread the client delivers callbacks on, which is
+  // what lets them read and write the state above without a lock.
+  std::unique_ptr<BotClient::Timer> arrivalTimer;
+  std::unique_ptr<BotClient::Timer> bandReplyTimer;
+  std::unique_ptr<BotClient::Timer> graceTimer;
 
   int graceMs = 3 * 60 * 1000;
   int initialGraceMs = 6 * 60 * 1000;
@@ -232,10 +211,10 @@ private:
 
   int speakDelayMs() const { return speakDelayMs(botName); }
 
-  juce::String botName;
-  juce::StringArray channels;
-  juce::String owner;
-  juce::String listensTo;
+  std::string botName;
+  std::vector<std::string> channels;
+  std::string owner;
+  std::string listensTo;
   Render render;
 
   BotBand::Voice bandVoice = BotBand::Voice::Drums;
@@ -251,7 +230,9 @@ private:
   BandPlayState playState;
 
   BotClient::ClientPtr netClient;
-  juce::AudioBuffer<float> renderBuffer;
+  // Two channels, kept between intervals. A bot renders into these and hands
+  // the pointers to the client, which is the only place audio crosses out.
+  std::vector<float> renderLeft, renderRight;
 
   // The arrival choreography (docs/BOT-CHAT.md section 6).
   //
@@ -265,8 +246,8 @@ private:
   // band whose other members never connected.
   std::atomic<bool> announcedMe{false};
   std::atomic<bool> arrivalDone{false};
-  juce::StringArray bandmates;
-  juce::String bandName;
+  std::vector<std::string> bandmates;
+  std::string bandName;
 
   // One conversation, with one person. Belongs to whoever opened it, not to
   // the room -- two other people talking are not talking to the bot.
@@ -278,7 +259,7 @@ private:
   // room it agreed on something nobody chose. Tracked here because only this
   // class sees the message that changed them.
   BotAnswer::Source keySource = BotAnswer::Source::Defaulted;
-  juce::String keySetBy;
+  std::string keySetBy;
   BotAnswer::Source chartSource = BotAnswer::Source::Defaulted;
 
   // Told to stop talking. Per bot rather than per band, so one voice can be
@@ -293,7 +274,8 @@ private:
   std::atomic<bool> sawOwner{false};
   double rate = 48000.0;
 
-  mutable juce::CriticalSection stateMutex;
+  mutable std::mutex stateMutex;
 
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PracticeBot)
+  PracticeBot(const PracticeBot &) = delete;
+  PracticeBot &operator=(const PracticeBot &) = delete;
 };

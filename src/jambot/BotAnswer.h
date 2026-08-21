@@ -3,7 +3,7 @@
 #include "Music.h"
 
 #include <chalkwalk/music/Duration.h>
-#include <JuceHeader.h>
+#include <string>
 
 // What a bot SAYS when asked about the room, as pure functions over what the
 // room is. `BotLanguage` decides what was asked; this decides the words.
@@ -42,7 +42,7 @@ enum class Source {
 struct Room {
   MusicalKey::Key key;
   Source keySource = Source::Defaulted;
-  juce::String keySetBy; // who said it; empty unless keySource == Chat
+  std::string keySetBy; // who said it; empty unless keySource == Chat
 
   Harmony::Chart chart;
   Source chartSource = Source::Defaulted;
@@ -69,13 +69,13 @@ struct Room {
 //
 // They are noun phrases because returning sentences produced "we are in nobody
 // has named a key, so i defaulted to C major".
-juce::String describeKey(const Room &room);
-juce::String describeChart(const Room &room);
+std::string describeKey(const Room &room);
+std::string describeChart(const Room &room);
 
 // Asked to change the key. `wanted` invalid means we could not tell which key
 // was meant, which is answered rather than guessed: putting up the wrong key is
 // worse than putting up none.
-juce::String answerSetKey(const Room &room, const MusicalKey::Key &wanted);
+std::string answerSetKey(const Room &room, const MusicalKey::Key &wanted);
 
 // Asked to change the chart. Never acts: a chart must lead its line, so a
 // request for one essentially never carries a chart to echo, and the portable
@@ -84,7 +84,7 @@ juce::String answerSetKey(const Room &room, const MusicalKey::Key &wanted);
 // The example is the chart it is ACTUALLY PLAYING, which is both the honest
 // answer and the safe one -- a generic example pasted into a room in another
 // key would silently move the harmony.
-juce::String answerSetChart(const Room &room);
+std::string answerSetChart(const Room &room);
 
 // Asked for the chords the KEY implies -- "use the default chords for this
 // key". Askable because a key change no longer imposes them: a chart somebody
@@ -95,15 +95,15 @@ juce::String answerSetChart(const Room &room);
 // Offers rather than acts, for the same reason `answerSetChart` does: a chart
 // is the room's, and a bot that quietly reverted its own would be playing
 // something nobody else in the room could see.
-juce::String answerResetChart(const Room &room);
+std::string answerResetChart(const Room &room);
 
 // Asked to change the tempo. `wantBpm`/`wantBpi` are what was asked for; zero
 // means "not this one". Out-of-range values are refused here rather than by the
 // server, whose answer to one is a complaint about the command's parameters.
-juce::String answerSetTempo(const Room &room, int wantBpm, int wantBpi);
+std::string answerSetTempo(const Room &room, int wantBpm, int wantBpi);
 
 // Asked to cast a vote directly. A bot never starts one -- four bots voting on
 // one person's say-so is that person having four votes.
-juce::String answerVoteRequest(const Room &room);
+std::string answerVoteRequest(const Room &room);
 
 } // namespace BotAnswer
