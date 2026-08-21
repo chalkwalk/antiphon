@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chalkwalk/music/Notation.h>
+#include <chalkwalk/ninjam/RoomConventions.h>
 
 #include <string>
 
@@ -38,27 +39,40 @@ using chalkwalk::music::Notation::scaleSteps;
 using chalkwalk::music::Notation::usesFlats;
 
 // ---------------------------------------------------------------------------
-// The tag, which is Antiphon's and not the music library's.
+// The tag, which is a NINJAM room convention rather than music theory.
+//
+// The ENVELOPE -- the brackets, the line-leading slash, what a `!vote` will
+// take -- is `chalkwalk::ninjam::conventions`, because the bots need it too and
+// neither project is beneath the other. What is left here is the three-line
+// composition of envelope and notation, which is glue rather than knowledge:
+// the convention itself is single-sourced.
 
-inline std::string tagPrefix() { return "[key:"; }
+inline std::string tagPrefix() {
+  return chalkwalk::ninjam::conventions::keyTagPrefix();
+}
 
 // `[key: D minor]` anywhere in a line.
-Key parseTagged(const std::string &text);
+inline Key parseTagged(const std::string &text) {
+  return parseName(chalkwalk::ninjam::conventions::extractKeyTag(text));
+}
 
 // The line to send. Only this form sets the key.
-std::string buildTagged(const Key &key);
+inline std::string buildTagged(const Key &key) {
+  if (!key.valid)
+    return {};
+  return chalkwalk::ninjam::conventions::buildKeyTag(displayName(key));
+}
 
 // A key from a chat line: the tag anywhere, or a line-leading `/key`.
-//
-// Line-leading for the second form deliberately. Accepting `/key` anywhere
-// would undo the point of having it: a bot explaining the syntax would set the
-// key by explaining it.
-Key parseAnnouncement(const std::string &line);
+inline Key parseAnnouncement(const std::string &line) {
+  return parseName(
+      chalkwalk::ninjam::conventions::extractKeyAnnouncement(line));
+}
 
 // What a bot should tell somebody to type. Deliberately NOT the tag, because
 // saying the tag sets the key.
 inline std::string announcementAdvice(const Key &key) {
-  return "/key " + displayName(key);
+  return chalkwalk::ninjam::conventions::keyAdviceLine(displayName(key));
 }
 
 } // namespace MusicalKey

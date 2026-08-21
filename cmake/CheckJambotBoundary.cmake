@@ -10,17 +10,17 @@
 # demand zero -- three are expected and are the extraction's blockers -- but a
 # fourth is a decision, and it should be made deliberately.
 #
-#   ../MusicalKey.h   the `[key: ...]` tag, and the `/key` line a bot tells a
-#                     player to type. NINJAM, not theory -- the key itself went
-#                     to chalkwalk-music and the bots take it from there now.
-#   ../ChatFormat.h   `isVotableBpm`/`isVotableBpi`: the server's vote range.
+# EMPTY, which is the state this check was written to reach. Everything the
+# bots need now comes from a shared library: the theory from chalkwalk-music,
+# the room conventions from chalkwalk-ninjam. Nothing in src/jambot reaches
+# back into Antiphon.
 #
-# Both remaining blockers are the same kind of thing, which was not obvious
-# until Harmony left: they are NINJAM protocol text that the bots need in order
-# to tell a player what to type. Their home is chalkwalk-ninjam, and when they
-# land there this list goes empty and the extraction can happen.
+# The list stays here rather than the check being deleted, because the property
+# it guards is the one that matters from now on: this directory is extractable,
+# and it should stay that way while the remaining work -- the client interface,
+# and PracticeBot -- happens.
 
-set(ALLOWED "../MusicalKey.h" "../ChatFormat.h")
+set(ALLOWED "")
 
 file(GLOB JAMBOT_SOURCES "${SRC_DIR}/jambot/*.h" "${SRC_DIR}/jambot/*.cpp")
 if(NOT JAMBOT_SOURCES)
@@ -54,7 +54,7 @@ if(FOUND)
 endif()
 
 # A blocker that has been resolved should be struck off rather than left to rot.
-foreach(header ${ALLOWED})
+foreach(header IN LISTS ALLOWED)
   list(FIND SEEN "${header}" at)
   if(at EQUAL -1)
     message(FATAL_ERROR
@@ -64,4 +64,8 @@ foreach(header ${ALLOWED})
 endforeach()
 
 list(LENGTH ALLOWED n)
-message(STATUS "jambot boundary: ${n} outward dependencies, all known")
+if(n EQUAL 0)
+  message(STATUS "jambot boundary: clean -- nothing reaches back into Antiphon")
+else()
+  message(STATUS "jambot boundary: ${n} outward dependencies, all known")
+endif()

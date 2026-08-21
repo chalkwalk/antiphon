@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chalkwalk/ninjam/RoomConventions.h>
 #include <JuceHeader.h>
 
 // What a chat line is, and what the voting system is saying.
@@ -70,10 +71,13 @@ VoteState parseVote(const juce::String &text);
 // These bound what we SEND. They must never be used to filter what we receive:
 // an admin can set a BPI of 124 and every client, ours included, has to follow
 // it -- which is exactly what a server does when asked (see docs/PROTOCOL.md).
-inline bool isVotableBpm(int bpm) { return bpm >= 40 && bpm <= 400; }
-inline bool isVotableBpi(int bpi) { return bpi >= 2 && bpi <= 64; }
-inline bool isAdminSettableBpm(int bpm) { return bpm >= 20 && bpm <= 400; }
-inline bool isAdminSettableBpi(int bpi) { return bpi >= 2 && bpi <= 1024; }
+// The stock server's limits, now in `chalkwalk::ninjam::conventions` because a
+// bot refusing an impossible vote needs them as much as the UI does. Re-exported
+// under the names this project already uses.
+using chalkwalk::ninjam::conventions::isAdminSettableBpi;
+using chalkwalk::ninjam::conventions::isAdminSettableBpm;
+using chalkwalk::ninjam::conventions::isVotableBpi;
+using chalkwalk::ninjam::conventions::isVotableBpm;
 
 // Whether a line is a chord progression in the convention Jamtaba established:
 // measures separated by bars, as in "| Dm7 | G7 | Bb | Am7".

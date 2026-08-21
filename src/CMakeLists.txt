@@ -71,7 +71,6 @@ target_sources(Antiphon
         jambot/BotChat.cpp
         ClipsortLog.cpp
         SessionWriter.cpp
-        MusicalKey.cpp
         AccessibilityAudit.cpp
         ServerBrowserDialog.cpp
         ShortcutsDialog.cpp

@@ -1,10 +1,14 @@
 # What is still on its way out must not reach for JUCE.
 #
-# `Harmony` and the key itself have gone to `chalkwalk-music`, which is strictly
-# JUCE-free; what this guards now is the rest of the same journey. `MusicalKey`
-# is the `[key: ...]` tag and the `/key` advice line -- NINJAM protocol text,
-# headed for `chalkwalk-ninjam`, which is JUCE-free too. `RoomHarmony` is room
-# policy that the bots read.
+# Almost everything this guarded has arrived: `Harmony` and the key are in
+# `chalkwalk-music`, the room conventions in `chalkwalk-ninjam`, both strictly
+# JUCE-free. What is left is the glue and the policy that have not moved yet.
+#
+# `MusicalKey.h` composes the envelope with the notation -- three inline
+# functions -- and `RoomHarmony.h` is what a chat line does to a room. The
+# second travels with `PracticeBot` when the bots leave, so it has to stay
+# JUCE-free until it does; the first is small enough that the cost of checking
+# is nil and the cost of noticing late is a build that will not extract.
 #
 # This is a test rather than a convention because the failure is silent and
 # late: one `juce::String` added in passing still builds, still passes, and is
@@ -13,7 +17,7 @@
 # CheckNoStandaloneMacro.cmake, and for the same reason.
 
 set(GUARDED
-    MusicalKey.h MusicalKey.cpp
+    MusicalKey.h
     RoomHarmony.h)
 
 set(OFFENDERS "")

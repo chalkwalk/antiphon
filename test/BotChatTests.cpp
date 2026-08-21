@@ -1,3 +1,4 @@
+#include "../src/MusicalKey.h"
 #include "../src/jambot/BotChat.h"
 #include <JuceHeader.h>
 
