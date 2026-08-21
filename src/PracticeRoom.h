@@ -1,7 +1,8 @@
 #pragma once
 
 #include "jambot/BandPlayState.h"
-#include "PracticeBot.h"
+#include "jambot/Conductor.h"
+#include "jambot/PracticeBot.h"
 #include "PracticeServer.h"
 #include <JuceHeader.h>
 #include <functional>
@@ -98,15 +99,9 @@ public:
   PracticeServer &practiceServer() { return server; }
 
 private:
-  // Drives every bot's interval render in step.
-  class Conductor : public juce::Thread {
-  public:
-    explicit Conductor(PracticeRoom &r) : juce::Thread("PracticeBand"), room(r) {}
-    void run() override;
-
-  private:
-    PracticeRoom &room;
-  };
+  // Drives every bot's interval render in step. The loop itself is
+  // `jambot::Conductor`, which is JUCE-free because a band on a command line
+  // needs exactly the same counting.
 
   void renderOneInterval(int intervalIndex,
                          const std::function<bool()> &shouldStop);
@@ -116,7 +111,7 @@ private:
   std::vector<std::unique_ptr<PracticeBot>> bots;
   mutable juce::CriticalSection botsMutex;
 
-  Conductor conductor{*this};
+  jambot::Conductor conductor;
   Config cfg;
   std::atomic<bool> running{false};
   int intervalSamples = 0;

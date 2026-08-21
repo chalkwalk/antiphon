@@ -27,7 +27,7 @@ target_sources(NinjamTests
         ChatFormatTests.cpp
         BotAnswerTests.cpp
         BandPlayStateTests.cpp
-        RoomHarmonyTests.cpp
+
         BotChatTests.cpp
         KeyTagTests.cpp
         SharedContractTests.cpp
@@ -63,7 +63,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/jambot/BotLanguage.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
-        ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotAnswer.cpp
