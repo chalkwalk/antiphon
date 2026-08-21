@@ -14,8 +14,10 @@ constexpr int kIdleSpeakerPenaltyMs = 700;
 const char *const kPartCommands[] = {"leave", "exit", "go away", "go home"};
 } // namespace
 
-PracticeBot::PracticeBot(juce::String name, juce::StringArray channelNames)
-    : botName(std::move(name)), channels(std::move(channelNames)) {
+PracticeBot::PracticeBot(juce::String name, juce::StringArray channelNames,
+                         BotClient::ClientPtr client)
+    : botName(std::move(name)), channels(std::move(channelNames)),
+      netClient(std::move(client)) {
   if (channels.isEmpty())
     channels.add("bot");
 
@@ -23,13 +25,13 @@ PracticeBot::PracticeBot(juce::String name, juce::StringArray channelNames)
   // and an unsubscribed client never causes the server to send it an interval,
   // so it never allocates one. That is what keeps a room of bots costing one
   // client's worth of interval buffers instead of one per bot.
-  netClient.setDefaultRecvEnabled(false);
-  netClient.addListener(this);
+  netClient->setDefaultRecvEnabled(false);
+  netClient->addListener(this);
 }
 
 PracticeBot::~PracticeBot() {
-  netClient.removeListener(this);
-  netClient.disconnectFromServer();
+  netClient->removeListener(this);
+  netClient->disconnect();
 }
 
 void PracticeBot::setRender(Render r) {
@@ -49,8 +51,8 @@ void PracticeBot::setGrace(int afterDepartureMs, int beforeFirstArrivalMs) {
 
 int PracticeBot::humansPresent() const {
   int n = 0;
-  for (const auto &m : netClient.getRoomMembers())
-    if (m.username != botName && !BotNames::looksLikeBot(m.username.toStdString()))
+  for (const auto &m : netClient->members())
+    if (m.username != botName.toStdString() && !BotNames::looksLikeBot(m.username))
       ++n;
   return n;
 }
@@ -110,9 +112,12 @@ void PracticeBot::setListensTo(juce::String username) {
 
 bool PracticeBot::join(const juce::String &host, int port, double sampleRate) {
   rate = sampleRate;
-  netClient.setSampleRate(sampleRate);
-  netClient.updateChannelInfo(channels);
-  netClient.connectToServer(host, port, botName, "");
+  netClient->setSampleRate(sampleRate);
+  std::vector<std::string> names;
+  for (const auto &c : channels)
+    names.push_back(c.toStdString());
+  netClient->setChannels(names);
+  netClient->connect(host.toStdString(), port, botName.toStdString(), "");
   active = true;
   return true;
 }
@@ -124,7 +129,7 @@ void PracticeBot::part() {
   stopTimer();
   bandReply.cancel();
   ownerGrace.disarm();
-  netClient.disconnectFromServer();
+  netClient->disconnect();
 }
 
 void PracticeBot::playAs(BotBand::Voice voice, const MusicalKey::Key &key,
@@ -304,9 +309,9 @@ void PracticeBot::setBandmates(juce::StringArray names, juce::String name) {
 juce::StringArray PracticeBot::botsPresent() const {
   juce::StringArray out;
   out.add(botName);
-  for (const auto &m : netClient.getRoomMembers())
-    if (m.username != botName && BotNames::looksLikeBot(m.username.toStdString()))
-      out.add(m.username);
+  for (const auto &m : netClient->members())
+    if (m.username != botName.toStdString() && BotNames::looksLikeBot(m.username))
+      out.add(juce::String(m.username));
   // Sorted so that every bot in the room computes the same list, and therefore
   // agrees about who speaks without anybody having to ask.
   out.sort(true);
@@ -368,7 +373,7 @@ void PracticeBot::timerCallback() {
   }
   roster += entries.joinIntoString(", ") + ".";
 
-  netClient.sendChatMessage(roster);
+  netClient->sendChat(juce::String(roster).toStdString());
 
   // The interesting thing first, and the destructive one stated so plainly
   // that nobody types it idly. Leading with `part` would invite a curious
@@ -376,7 +381,7 @@ void PracticeBot::timerCallback() {
   // The way IN first, because the band is silent and a room where nothing
   // happens looks broken; then how to talk to one of us; and the destructive
   // one last and stated plainly enough that nobody types it idly.
-  netClient.sendChatMessage(
+  netClient->sendChat(
       "say \"band play\" to start us and \"band stop\" to end the tune. say a "
       "name to talk to one of us. say \"leave\" and we all go home.");
 }
@@ -389,7 +394,7 @@ void PracticeBot::BandReply::timerCallback() {
     return;
   if (bot.chatMuted.load())
     return;
-  bot.netClient.sendChatMessage(text);
+  bot.netClient->sendChat(juce::String(text).toStdString());
 }
 
 int PracticeBot::speakDelayMs(const juce::String &botName) {
@@ -448,7 +453,7 @@ void PracticeBot::onConnected() {
   // be tearing the socket down, which is how the fd race above was found.
 }
 
-void PracticeBot::onDisconnected(const juce::String &) {
+void PracticeBot::onDisconnected(const std::string &) {
   // Terminal, always. The server exited, the network went, an admin kicked it:
   // all the same, and all final.
   //
@@ -458,8 +463,9 @@ void PracticeBot::onDisconnected(const juce::String &) {
   active = false;
 }
 
-void PracticeBot::onRoomMembershipChange(const juce::String &username,
+void PracticeBot::onRoomMembershipChange(const std::string &rawUsername,
                                          bool joined) {
+  const juce::String username(rawUsername);
   // The authoritative way to know whether the owner is here, and the only one
   // that is not a race.
   //
@@ -492,9 +498,10 @@ void PracticeBot::onRoomMembershipChange(const juce::String &username,
   // avoid.
   if (joined && !BotNames::looksLikeBot(username.toStdString())) {
     int otherHumans = 0;
-    for (const auto &m : netClient.getRoomMembers())
-      if (m.username != username && m.username != botName &&
-          !BotNames::looksLikeBot(m.username.toStdString()))
+    for (const auto &m : netClient->members())
+      if (m.username != username.toStdString() &&
+          m.username != botName.toStdString() &&
+          !BotNames::looksLikeBot(m.username))
         ++otherHumans;
     if (otherHumans == 0) {
       arrivalDone = false;
@@ -543,8 +550,8 @@ bool PracticeBot::checkOwnerStillHere() {
     return true;
 
   bool ownerPresent = false;
-  for (const auto &m : netClient.getRoomMembers())
-    if (isOwnerName(m.username, ownerName)) {
+  for (const auto &m : netClient->members())
+    if (isOwnerName(juce::String(m.username), ownerName)) {
       ownerPresent = true;
       break;
     }
@@ -577,13 +584,13 @@ void PracticeBot::onUserInfoChange() {
 
   // Subscribe to exactly one player. Channels arrive over time, so this runs on
   // every change rather than once.
-  const auto users = netClient.getRemoteUsers();
-  auto it = users.find(wanted);
-  if (it == users.end())
-    return;
-  for (const auto &[idx, ch] : it->second.channels)
-    if (!ch.recvEnabled)
-      netClient.setRemoteUserRecv(wanted, idx, true);
+  for (const auto &peer : netClient->peers()) {
+    if (peer.username != wanted.toStdString())
+      continue;
+    for (const auto &ch : peer.channels)
+      if (!ch.recvEnabled)
+        netClient->setRecv(peer.username, ch.index, true);
+  }
 }
 
 void PracticeBot::onServerConfig(int bpm, int bpi) {
@@ -620,24 +627,37 @@ BotAddress::Room PracticeBot::currentRoom() const {
   // Ourselves first, so the scan can find us even in an empty room.
   add(botName, channels.isEmpty() ? juce::String() : channels[0]);
 
-  const auto users = netClient.getRemoteUsers();
-  for (const auto &m : netClient.getRoomMembers()) {
-    if (m.username == botName)
+  const auto peers = netClient->peers();
+  for (const auto &m : netClient->members()) {
+    if (m.username == botName.toStdString())
       continue;
     juce::String channel;
-    const auto it = users.find(m.username);
-    if (it != users.end() && !it->second.channels.empty())
-      channel = it->second.channels.begin()->second.channelName;
-    add(m.username, channel);
+    for (const auto &peer : peers)
+      if (peer.username == m.username && !peer.channels.empty()) {
+        channel = juce::String(peer.channels.front().name);
+        break;
+      }
+    add(juce::String(m.username), channel);
   }
 
   room.resolveHandles();
   return room;
 }
 
-void PracticeBot::onChatMessage(const juce::String &type,
-                                const juce::String &username,
-                                const juce::String &text) {
+void PracticeBot::onChatMessage(const std::string &rawType,
+                                const std::string &rawUsername,
+                                const std::string &rawText) {
+  // A bot that has parted answers nothing, whatever it is still handed.
+  //
+  // This used to be the transport's job: `disconnectFromServer` stopped the
+  // messages, so the question never arose. The interface makes no such promise
+  // -- a minimal client may well deliver what is already in flight -- and
+  // relying on a guarantee nobody stated is what breaks when the thing
+  // underneath is swapped, which is the entire point of having an interface.
+  if (!active.load())
+    return;
+
+  const juce::String type(rawType), username(rawUsername), text(rawText);
   // A PART is a chat message, and it is what actually removes a name from the
   // room. See checkOwnerStillHere.
   if (!checkOwnerStillHere())
@@ -702,7 +722,7 @@ void PracticeBot::onChatMessage(const juce::String &type,
     // like no answer at all, and the public path is how anybody else in the
     // room discovers that the bots can be spoken to.
     if (answer.privately)
-      netClient.sendPrivateMessage(username, answer.text);
+      netClient->sendPrivate(username.toStdString(), answer.text.toStdString());
     else if (answer.forBand)
       // Acting is collective and speaking is arbitrated: the action below
       // happens in every addressed bot, and only the LINE about it is rationed.
@@ -719,7 +739,7 @@ void PracticeBot::onChatMessage(const juce::String &type,
                              ? speakDelayMs()
                              : speakDelayMs() + kIdleSpeakerPenaltyMs);
     else
-      netClient.sendChatMessage(answer.text);
+      netClient->sendChat(juce::String(answer.text).toStdString());
   }
 
   switch (answer.act) {
@@ -788,5 +808,10 @@ void PracticeBot::renderInterval(int numSamples, int intervalIndex) {
 
   if (!active.load())
     return;
-  netClient.processCapturedAudio(renderBuffer, numSamples, 0, false);
+  // Through the interface: the bot hands over pointers and has no idea what
+  // happens to them.
+  const bool stereo = renderBuffer.getNumChannels() > 1;
+  netClient->transmit(renderBuffer.getReadPointer(0),
+                      stereo ? renderBuffer.getReadPointer(1) : nullptr,
+                      numSamples);
 }

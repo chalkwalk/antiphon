@@ -106,7 +106,10 @@ src/
   # --- the practice room's HOSTING, which stays here ---
   PracticeRoom.{h,cpp}      # the room: seeds, band settings, the bots in it
   PracticeServer.{h,cpp}    # a Ninjam server on loopback, so a room needs none
-  PracticeBot.{h,cpp}       # one bot: renders its part, answers what it is asked
+  PracticeBot.{h,cpp}       # one bot: renders its part, answers what it is asked.
+                            #   Talks to `BotClient::Client`, not to NinjamClient
+  NinjamBotClient.h         # that interface over Antiphon's client. The whole of
+                            #   what ties the band to this plugin's transport
   # --- src/jambot/: STAGED FOR EXTRACTION to chalkwalk-jambot ---
   #
   # Separated here first so the move is proven by the tests that already exist
@@ -114,8 +117,11 @@ src/
   # here reaches back into Antiphon, and it is CLEAN: the theory comes from
   # chalkwalk-music and the room conventions from chalkwalk-ninjam.
   #
-  # PracticeBot does not move yet: it owns a NinjamClient, and inverting that
-  # into an interface the bots declare is its own step.
+  # PracticeBot does not move yet, but it no longer owns a NinjamClient: it
+  # talks to `jambot/BotClient.h`, which Antiphon implements. What still holds
+  # it here is JUCE -- juce::Timer, CriticalSection, String, AudioBuffer.
+  jambot/BotClient.h        # the room as a bot needs it: 13 calls out, 6 back.
+                            #   JUCE-free, and the line the bots extract along
   jambot/BotBand.{h,cpp}    # the ensemble: which voice plays what, and the mix
   jambot/BotVoice.h         # the instruments; BotDsp.h the primitives under them
   jambot/BandPlayState.h    # Silent/Playing/Wrapping/Resolving: how a tune ends

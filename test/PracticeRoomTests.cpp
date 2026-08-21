@@ -1,4 +1,6 @@
 #include "../src/jambot/BotNames.h"
+#include "../src/NinjamBotClient.h"
+#include "../src/NinjamClient.h"
 #include "../src/PracticeBot.h"
 #include "../src/PracticeRoom.h"
 #include "FakeNinjamServer.h" // for waitUntil
@@ -486,7 +488,8 @@ public:
 
     beginTest("shake changes the figures");
     {
-      PracticeBot bot("Mirn[kit-bot]", {"kit"});
+      PracticeBot bot("Mirn[kit-bot]", {"kit"},
+                    std::make_unique<NinjamBotClient>());
       bot.playAs(BotBand::Voice::Drums, MusicalKey::parseName("C major"), 120,
                  8, 48000.0, 7);
       const auto before = bot.currentSettings().seed;
@@ -590,7 +593,8 @@ public:
       const int before = you.snapshot().size();
 
       // A latecomer, arriving well after the roster it was not part of.
-      PracticeBot late("Vurn[horn-bot]", {"horn"});
+      PracticeBot late("Vurn[horn-bot]", {"horn"},
+                    std::make_unique<NinjamBotClient>());
       late.playAs(BotBand::Voice::Lead, MusicalKey::parseName("C major"), 120, 8,
                   48000.0, 77u);
       expect(late.join(PracticeRoom::host(), room.port(), 48000.0));
@@ -915,7 +919,8 @@ public:
       PracticeRoom room;
       expect(room.start(testConfig("you")));
 
-      PracticeBot bot("Probe[kit-bot]", {"kit"});
+      PracticeBot bot("Probe[kit-bot]", {"kit"},
+                      std::make_unique<NinjamBotClient>());
       expect(bot.join(PracticeRoom::host(), room.port(), 48000.0));
       bot.playAs(BotBand::Voice::Drums, keyOf("C major"), 120, 8, 48000.0, 7u);
       bot.startPlaying(); // it joins silent, like every bot now does
@@ -1270,7 +1275,8 @@ public:
       PracticeServer server;
       expect(server.start(120, 8));
 
-      PracticeBot bot("Mirn[kit-bot]", {"kit"});
+      PracticeBot bot("Mirn[kit-bot]", {"kit"},
+                    std::make_unique<NinjamBotClient>());
       expect(bot.join(PracticeRoom::host(), server.port(), 48000.0));
       expect(waitUntil([&] { return bot.client().isConnected(); }, 5000));
       expect(bot.isActive());
@@ -1291,7 +1297,8 @@ public:
       PracticeServer server;
       expect(server.start(120, 8));
 
-      PracticeBot bot("Mirn[kit-bot]", {"kit"});
+      PracticeBot bot("Mirn[kit-bot]", {"kit"},
+                    std::make_unique<NinjamBotClient>());
       expect(bot.join(PracticeRoom::host(), server.port(), 48000.0));
       expect(waitUntil([&] { return bot.client().isConnected(); }, 5000));
 

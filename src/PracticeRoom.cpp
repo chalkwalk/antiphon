@@ -1,5 +1,7 @@
 #include "PracticeRoom.h"
 
+#include "NinjamBotClient.h"
+
 #include "jambot/BotNames.h"
 
 #include "IntervalClock.h"
@@ -65,8 +67,11 @@ bool PracticeRoom::start(const Config &config) {
       const juce::String botUsername = BotNames::usernameFor(
           chosen[(size_t)index++], instrument.toStdString());
 
-      auto bot = std::make_unique<PracticeBot>(botUsername,
-                                               juce::StringArray{instrument});
+      // Antiphon's client, behind the interface the bots see. This is the one
+      // place the plugin's transport meets the band.
+      auto bot = std::make_unique<PracticeBot>(
+          botUsername, juce::StringArray{instrument},
+          std::make_unique<NinjamBotClient>());
       bot->setOwner(cfg.ownerName);
       bot->setGrace(cfg.ownerGraceMs, cfg.initialGraceMs);
       bot->playAs(voice, cfg.key, cfg.bpm, cfg.bpi, cfg.sampleRate, seed);

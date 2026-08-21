@@ -50,6 +50,7 @@ target_sources(NinjamTests
         FakeNinjamServer.cpp
         LoopbackTests.cpp
         PracticeServerTests.cpp
+        PracticeBotTests.cpp
         PracticeRoomTests.cpp
         AudioLoopbackTests.cpp
         RealServerTests.cpp
