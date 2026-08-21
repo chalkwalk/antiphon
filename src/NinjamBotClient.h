@@ -86,6 +86,11 @@ public:
     client.sendPrivateMessage(juce::String(to), juce::String(text));
   }
 
+  std::unique_ptr<BotClient::Timer> createTimer(
+      std::function<void()> onFire) override {
+    return std::make_unique<MessageThreadTimer>(std::move(onFire));
+  }
+
   void transmit(const float *left, const float *right,
                 int numSamples) override {
     if (left == nullptr || numSamples <= 0)
@@ -102,6 +107,31 @@ public:
   }
 
 private:
+  // A juce::Timer is the message thread's own, which is where NinjamClient
+  // delivers every callback -- so a bot's timers and its messages stay on one
+  // thread, exactly as they were before the interface existed.
+  class MessageThreadTimer final : public BotClient::Timer,
+                                   private juce::Timer {
+  public:
+    explicit MessageThreadTimer(std::function<void()> fn)
+        : onFire(std::move(fn)) {}
+    ~MessageThreadTimer() override { stopTimer(); }
+
+    void start(int delayMs) override { startTimer(delayMs); }
+    void stop() override { stopTimer(); }
+    bool isRunning() const override { return isTimerRunning(); }
+
+  private:
+    void timerCallback() override {
+      // One-shot: stop before firing, so a callback that starts it again wins
+      // rather than being cancelled by its own return.
+      stopTimer();
+      if (onFire)
+        onFire();
+    }
+    std::function<void()> onFire;
+  };
+
   // NinjamClient calls these; the bots hear the versions above.
   void onConnected() override { each([](auto *l) { l->onConnected(); }); }
 

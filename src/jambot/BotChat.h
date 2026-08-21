@@ -4,7 +4,7 @@
 #include "BotAddress.h"
 #include "BotAnswer.h"
 #include "BotBand.h"
-#include <JuceHeader.h>
+#include <string>
 
 // What a bot SAYS and DOES about one message, as a pure function.
 //
@@ -30,14 +30,14 @@ namespace BotChat {
 // This bot, as far as answering is concerned. A snapshot -- `PracticeBot` holds
 // the live copy under its lock and passes a copy in.
 struct Self {
-  juce::String name;
+  std::string name;
 
   // What a player TYPES to address this bot: "Ravo", where `name` is
   // "Ravo[keys-bot]". Every reply that quotes a command back has to use this
   // one -- `say "Ravo[keys-bot] play"` is not something anybody would type,
   // and a bot whose instructions cannot be followed is worse than one that
   // gives none. Falls back to `name` when it is empty.
-  juce::String handle;
+  std::string handle;
   BotBand::Voice voice = BotBand::Voice::Drums;
   BotBand::Settings settings;
 
@@ -77,7 +77,7 @@ enum class Act {
 
 struct Response {
   bool speak = false;
-  juce::String text;
+  std::string text;
 
   // Answer where you were asked. A public question answered privately looks
   // like no answer at all, and the public path is how anybody else in the room

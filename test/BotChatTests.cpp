@@ -1,26 +1,27 @@
 #include "../src/MusicalKey.h"
 #include "../src/jambot/BotChat.h"
+#include <chalkwalk/music/Text.h>
 #include <JuceHeader.h>
 
 namespace {
 
 // A room with one bot and one person in it, which is the shape almost every
 // question arrives in.
-BotChat::Context contextWith(BotBand::Voice voice, const juce::String &botName,
-                             const juce::String &human) {
+BotChat::Context contextWith(BotBand::Voice voice, const std::string &botName,
+                             const std::string &human) {
   BotChat::Context ctx;
 
   BotAddress::Participant bot;
-  bot.username = (botName + "[" +
-                  juce::String(BotBand::voiceName(voice)).toLowerCase() +
-                  "-bot]").toStdString();
-  bot.handle = botName.toLowerCase().toStdString();
+  bot.username = botName + "[" +
+                 chalkwalk::music::text::lower(BotBand::voiceName(voice)) +
+                 "-bot]";
+  bot.handle = chalkwalk::music::text::lower(botName);
   bot.instrument = BotBand::voiceName(voice);
   bot.isBot = true;
 
   BotAddress::Participant person;
-  person.username = human.toStdString();
-  person.handle = human.toLowerCase().toStdString();
+  person.username = human;
+  person.handle = chalkwalk::music::text::lower(human);
 
   ctx.room.participants = {bot, person};
   ctx.room.resolveHandles();
@@ -30,7 +31,7 @@ BotChat::Context contextWith(BotBand::Voice voice, const juce::String &botName,
   ctx.music.keySetBy = human;
   ctx.music.chart = Harmony::defaultChart(ctx.music.key);
 
-  ctx.self.name = botName + "[" + juce::String(BotBand::voiceName(voice)).toLowerCase() + "-bot]";
+  ctx.self.name = bot.username;
   // The real shape of a bot's identity: the username carries the instrument
   // suffix and the HANDLE is what a player types. Building them apart is what
   // catches a reply quoting `say "Ravo[keys-bot] play"` at somebody.
@@ -44,10 +45,10 @@ BotChat::Context contextWith(BotBand::Voice voice, const juce::String &botName,
   return ctx;
 }
 
-BotAddress::Incoming from(const juce::String &who, const juce::String &text) {
+BotAddress::Incoming from(const std::string &who, const std::string &text) {
   BotAddress::Incoming in;
-  in.sender = who.toStdString();
-  in.text = text.toStdString();
+  in.sender = who;
+  in.text = text;
   in.at = 100.0;
   return in;
 }
@@ -89,12 +90,12 @@ public:
 
       const juce::String patch =
           BotVoice::padCharacterName(BotBand::keysPatch(ctx.self.settings).character);
-      expect(r.text.containsIgnoreCase(patch),
+      expect(juce::String(r.text).containsIgnoreCase(patch),
              "the reply does not say what it is playing (wanted '" + patch +
-                 "'), it said: " + r.text);
+                 "'), it said: " + juce::String(r.text));
 
-      expect(!r.text.containsIgnoreCase("i can tell you"),
-             "the reply is the catch-all menu rather than an answer: " + r.text);
+      expect(!juce::String(r.text).containsIgnoreCase("i can tell you"),
+             "the reply is the catch-all menu rather than an answer: " + juce::String(r.text));
     }
 
     beginTest("the part and the sound are different questions");
@@ -115,12 +116,12 @@ public:
 
       expect(part.speak, "a question about the part got no answer at all");
       expect(part.text != sound.text,
-             "the part and the sound got the same answer: " + part.text);
+             "the part and the sound got the same answer: " + juce::String(part.text));
 
       // The keys bot's part IS the chart -- it holds the changes. Naming the
       // patch here would be answering the other question.
-      expect(part.text.containsIgnoreCase("chart"),
-             "the part reply does not say what it is playing: " + part.text);
+      expect(juce::String(part.text).containsIgnoreCase("chart"),
+             "the part reply does not say what it is playing: " + juce::String(part.text));
     }
 
     beginTest("the key is reported with where it came from");
@@ -137,10 +138,10 @@ public:
           BotChat::respond(said, from("tester", "Ravo: what key are we in"), att);
 
       expect(chosen.speak, "a question about the key got no answer at all");
-      expect(chosen.text.containsIgnoreCase("D minor"),
-             "the reply does not name the key: " + chosen.text);
-      expect(chosen.text.containsIgnoreCase("tester"),
-             "the reply drops who chose the key: " + chosen.text);
+      expect(juce::String(chosen.text).containsIgnoreCase("D minor"),
+             "the reply does not name the key: " + juce::String(chosen.text));
+      expect(juce::String(chosen.text).containsIgnoreCase("tester"),
+             "the reply drops who chose the key: " + juce::String(chosen.text));
 
       // Nobody chose this one, and saying so is the whole point.
       auto defaulted = contextWith(BotBand::Voice::Keys, "Ravo", "tester");
@@ -151,7 +152,7 @@ public:
           defaulted, from("tester", "Ravo: whats the key"), att2);
 
       expect(guessed.speak, "a question about a defaulted key got no answer");
-      expect(guessed.text.containsIgnoreCase("nobody chose"),
+      expect(juce::String(guessed.text).containsIgnoreCase("nobody chose"),
              "a key nobody chose is reported as though somebody did: " +
                  guessed.text);
     }
@@ -171,14 +172,14 @@ public:
           BotChat::respond(ctx, from("tester", "Ravo: what are the chords"), att);
 
       expect(r.speak, "a question about the chords got no answer at all");
-      expect(!r.text.trim().startsWithChar('|'),
-             "the reply leads with a bar line and is itself a chart: " + r.text);
+      expect(!juce::String(r.text).trim().startsWithChar('|'),
+             "the reply leads with a bar line and is itself a chart: " + juce::String(r.text));
 
       const juce::String bars = Harmony::chartText(
           ctx.music.chart, MusicalKey::usesFlats(ctx.music.key.tonic,
                                                  ctx.music.key.mode));
-      expect(r.text.contains(bars),
-             "the reply does not contain the chart (" + bars + "): " + r.text);
+      expect(juce::String(r.text).contains(bars),
+             "the reply does not contain the chart (" + bars + "): " + juce::String(r.text));
 
       // A chart nobody put up is the default for the key, and saying so is the
       // same honesty rule the key answer follows.
@@ -187,7 +188,7 @@ public:
       const auto d = BotChat::respond(
           fallback, from("tester", "Ravo: whats the progression"), att2);
       expect(d.speak, "a question about a defaulted chart got no answer");
-      expect(d.text.containsIgnoreCase("default"),
+      expect(juce::String(d.text).containsIgnoreCase("default"),
              "a chart nobody chose is reported as though somebody put it up: " +
                  d.text);
     }
@@ -206,10 +207,10 @@ public:
           BotChat::respond(ctx, from("tester", "Quado: how fast are we going"), att);
 
       expect(r.speak, "a question about the tempo got no answer at all");
-      expect(r.text.contains("132"),
-             "the reply does not give the tempo: " + r.text);
-      expect(r.text.contains("16"),
-             "the reply gives the bpm but not the bpi: " + r.text);
+      expect(juce::String(r.text).contains("132"),
+             "the reply does not give the tempo: " + juce::String(r.text));
+      expect(juce::String(r.text).contains("16"),
+             "the reply gives the bpm but not the bpi: " + juce::String(r.text));
     }
 
     beginTest("asked to change the key, a bot says whose decision it is");
@@ -225,12 +226,12 @@ public:
           ctx, from("tester", "Ravo: can you play in g minor"), att);
 
       expect(r.speak, "a request to change the key got no answer at all");
-      expect(r.text.containsIgnoreCase("G minor"),
-             "the reply does not name the key that was asked for: " + r.text);
-      expect(r.text.containsIgnoreCase("not mine"),
-             "the reply does not say whose decision the key is: " + r.text);
-      expect(r.text.containsIgnoreCase("/key"),
-             "the reply does not say how to actually change it: " + r.text);
+      expect(juce::String(r.text).containsIgnoreCase("G minor"),
+             "the reply does not name the key that was asked for: " + juce::String(r.text));
+      expect(juce::String(r.text).containsIgnoreCase("not mine"),
+             "the reply does not say whose decision the key is: " + juce::String(r.text));
+      expect(juce::String(r.text).containsIgnoreCase("/key"),
+             "the reply does not say how to actually change it: " + juce::String(r.text));
     }
 
     beginTest("a key is read out of the sentence, or admitted to be unreadable");
@@ -264,13 +265,13 @@ public:
         expect(r.speak, juce::String(c.said) + " got no answer at all");
 
         if (*c.wanted != 0) {
-          expect(r.text.containsIgnoreCase(c.wanted),
+          expect(juce::String(r.text).containsIgnoreCase(c.wanted),
                  juce::String(c.said) + " did not read the key (wanted " +
-                     c.wanted + "): " + r.text);
+                     c.wanted + "): " + juce::String(r.text));
         } else {
-          expect(r.text.containsIgnoreCase("could not tell"),
+          expect(juce::String(r.text).containsIgnoreCase("could not tell"),
                  juce::String(c.said) +
-                     " claimed to read a key nobody named: " + r.text);
+                     " claimed to read a key nobody named: " + juce::String(r.text));
         }
       }
     }
@@ -287,10 +288,10 @@ public:
           ctx, from("tester", "Quado: can you vote for 132 bpm"), att);
 
       expect(r.speak, "a request to change the tempo got no answer at all");
-      expect(r.text.containsIgnoreCase("not mine"),
-             "the reply does not say whose decision the tempo is: " + r.text);
-      expect(r.text.contains("!vote bpm 132"),
-             "the reply does not carry the vote that was asked for: " + r.text);
+      expect(juce::String(r.text).containsIgnoreCase("not mine"),
+             "the reply does not say whose decision the tempo is: " + juce::String(r.text));
+      expect(juce::String(r.text).contains("!vote bpm 132"),
+             "the reply does not carry the vote that was asked for: " + juce::String(r.text));
 
       // No number named: still answerable, with the command and a blank to
       // fill in rather than a number nobody asked for.
@@ -298,10 +299,10 @@ public:
       const auto vague =
           BotChat::respond(ctx, from("tester", "Quado: can we go faster"), att2);
       expect(vague.speak, "'can we go faster' got no answer at all");
-      expect(vague.text.contains("!vote bpm"),
-             "the reply does not say how to change the tempo: " + vague.text);
-      expect(!vague.text.contains("!vote bpm 0"),
-             "the reply invented a tempo nobody named: " + vague.text);
+      expect(juce::String(vague.text).contains("!vote bpm"),
+             "the reply does not say how to change the tempo: " + juce::String(vague.text));
+      expect(!juce::String(vague.text).contains("!vote bpm 0"),
+             "the reply invented a tempo nobody named: " + juce::String(vague.text));
     }
 
     beginTest("a tempo number goes to the unit it was given with");
@@ -331,7 +332,7 @@ public:
         const auto r = BotChat::respond(ctx, from("tester", c.said), att);
 
         expect(r.speak, juce::String(c.said) + " got no answer at all");
-        expect(r.text.contains(c.wanted),
+        expect(juce::String(r.text).contains(c.wanted),
                juce::String(c.said) + " did not offer " + c.wanted + ": " +
                    r.text);
       }
@@ -350,10 +351,10 @@ public:
           ctx, from("tester", "Ravo: can we change the chords"), att);
 
       expect(r.speak, "a request to change the chart got no answer at all");
-      expect(!r.text.trim().startsWithChar('|'),
-             "the reply leads with a bar line and is itself a chart: " + r.text);
-      expect(r.text.containsIgnoreCase("room"),
-             "the reply does not say whose decision the chart is: " + r.text);
+      expect(!juce::String(r.text).trim().startsWithChar('|'),
+             "the reply leads with a bar line and is itself a chart: " + juce::String(r.text));
+      expect(juce::String(r.text).containsIgnoreCase("room"),
+             "the reply does not say whose decision the chart is: " + juce::String(r.text));
 
       // The example it gives is the chart it is ACTUALLY on, which is both the
       // honest answer and the safe one -- a generic example pasted into a room
@@ -361,8 +362,8 @@ public:
       const juce::String bars = Harmony::chartText(
           ctx.music.chart,
           MusicalKey::usesFlats(ctx.music.key.tonic, ctx.music.key.mode));
-      expect(r.text.contains(bars),
-             "the reply does not say what it is on (" + bars + "): " + r.text);
+      expect(juce::String(r.text).contains(bars),
+             "the reply does not say what it is on (" + bars + "): " + juce::String(r.text));
     }
 
     beginTest("a command produces an action, not just a sentence");
@@ -409,10 +410,10 @@ public:
       const auto shorter =
           BotChat::respond(ctx, from("tester", "Pemo: shorter notes"), att);
       expect(shorter.act == BotChat::Act::SetArticulation,
-             "asking for shorter notes did nothing: " + shorter.text);
+             "asking for shorter notes did nothing: " + juce::String(shorter.text));
       expect(shorter.value < m::kArticulationNatural,
              "shorter should be below the natural setting");
-      expect(shorter.speak && shorter.text.isNotEmpty(),
+      expect(shorter.speak && juce::String(shorter.text).isNotEmpty(),
              "the band said nothing about it");
 
       // Unlike an instrument this is not the soloist's alone -- a band asked to
@@ -423,7 +424,7 @@ public:
       const auto drumsToo =
           BotChat::respond(drums, from("tester", "Ravo: more legato"), att);
       expect(drumsToo.act == BotChat::Act::SetArticulation,
-             "a non-soloist refused the setting: " + drumsToo.text);
+             "a non-soloist refused the setting: " + juce::String(drumsToo.text));
 
       // Stepping from where the band IS, rather than from the default.
       ctx.music.articulation = 0;
@@ -437,15 +438,15 @@ public:
       const auto atTop =
           BotChat::respond(ctx, from("tester", "Pemo: smoother"), att);
       expect(atTop.value == m::kArticulationLegato, "it moved past the top");
-      expect(atTop.text.containsIgnoreCase("already"),
-             "at the limit it should say so: " + atTop.text);
+      expect(juce::String(atTop.text).containsIgnoreCase("already"),
+             "at the limit it should say so: " + juce::String(atTop.text));
 
       ctx.music.articulation = m::kArticulationShortest;
       const auto atBottom =
           BotChat::respond(ctx, from("tester", "Pemo: shorter"), att);
       expect(atBottom.value == m::kArticulationShortest, "it moved past the bottom");
-      expect(atBottom.text.containsIgnoreCase("already"),
-             "at the limit it should say so: " + atBottom.text);
+      expect(juce::String(atBottom.text).containsIgnoreCase("already"),
+             "at the limit it should say so: " + juce::String(atBottom.text));
     }
 
     beginTest("only the soloist answers to an instrument, and says so if not");
@@ -458,11 +459,11 @@ public:
       const auto r = BotChat::respond(lead, from("tester", "Pemo: guitar"), att);
 
       expect(r.act == BotChat::Act::SetLeadInstrument,
-             "the lead did not take the instrument: " + r.text);
+             "the lead did not take the instrument: " + juce::String(r.text));
       expect(r.value == (int)BotVoice::LeadInstrument::Guitar,
              "the lead took the wrong instrument");
-      expect(r.speak && r.text.containsIgnoreCase("guitar"),
-             "the lead did not say what it picked up: " + r.text);
+      expect(r.speak && juce::String(r.text).containsIgnoreCase("guitar"),
+             "the lead did not say what it picked up: " + juce::String(r.text));
 
       // A drummer asked to play the guitar should say so rather than silently
       // accepting a setting it will never read.
@@ -473,8 +474,8 @@ public:
 
       expect(no.act == BotChat::Act::None,
              "a drummer accepted a guitar setting it will never read");
-      expect(no.speak && no.text.containsIgnoreCase("lead"),
-             "the drummer did not point at the bot that can: " + no.text);
+      expect(no.speak && juce::String(no.text).containsIgnoreCase("lead"),
+             "the drummer did not point at the bot that can: " + juce::String(no.text));
     }
 
     beginTest("asked what it is, a bot says so and offers a way out");
@@ -489,15 +490,15 @@ public:
       const auto r = BotChat::respond(ctx, from("tester", "Pemo: what are you"), att);
 
       expect(r.speak, "'what are you' got no answer at all");
-      expect(r.text.containsIgnoreCase("bot"),
-             "the reply does not say it is a bot: " + r.text);
-      expect(r.text.containsIgnoreCase("leave"),
-             "the reply does not say how to be rid of it: " + r.text);
+      expect(juce::String(r.text).containsIgnoreCase("bot"),
+             "the reply does not say it is a bot: " + juce::String(r.text));
+      expect(juce::String(r.text).containsIgnoreCase("leave"),
+             "the reply does not say how to be rid of it: " + juce::String(r.text));
       // "part" may appear as the ordinary noun it now is -- "ask it about its
       // part" -- but never offered as the command it no longer is.
-      expect(!r.text.containsIgnoreCase("\"" + ctx.self.name + " part\"") &&
-                 !r.text.containsIgnoreCase("say \"part\""),
-             "the reply offers a command that was withdrawn: " + r.text);
+      expect(!juce::String(r.text).containsIgnoreCase("\"" + ctx.self.name + " part\"") &&
+                 !juce::String(r.text).containsIgnoreCase("say \"part\""),
+             "the reply offers a command that was withdrawn: " + juce::String(r.text));
     }
 
     beginTest("nothing a bot composes can set the key by saying it");
@@ -535,12 +536,12 @@ public:
           if (!r.speak)
             continue;
 
-          expect(!MusicalKey::parseAnnouncement(r.text.toStdString()).valid,
-                 "this reply sets the key by saying it: " + r.text);
-          expect(!MusicalKey::parseTagged(r.text.toStdString()).valid,
-                 "this reply carries a key tag: " + r.text);
-          expect(!Harmony::looksLikeChart(r.text.toStdString()),
-                 "this reply is itself a chart: " + r.text);
+          expect(!MusicalKey::parseAnnouncement(r.text).valid,
+                 "this reply sets the key by saying it: " + juce::String(r.text));
+          expect(!MusicalKey::parseTagged(r.text).valid,
+                 "this reply carries a key tag: " + juce::String(r.text));
+          expect(!Harmony::looksLikeChart(r.text),
+                 "this reply is itself a chart: " + juce::String(r.text));
         }
       }
     }
@@ -574,10 +575,10 @@ public:
         BotAddress::Attention att;
 
         const auto sound = BotChat::respond(
-            ctx, from("tester", juce::String(c.name) + ": whats your sound"),
+            ctx, from("tester", std::string(c.name) + ": whats your sound"),
             att);
         const auto part = BotChat::respond(
-            ctx, from("tester", juce::String(c.name) + ": whats your part"),
+            ctx, from("tester", std::string(c.name) + ": whats your part"),
             att);
 
         expect(sound.speak && part.speak,
@@ -585,32 +586,32 @@ public:
         // Which bot is speaking is the transport's job -- see "a bot answers
         // in the first person". What matters here is that the two questions
         // get two answers.
-        expect(!sound.text.contains(c.name) && !part.text.contains(c.name),
-               juce::String(c.name) + " named itself: " + sound.text + " / " +
+        expect(!juce::String(sound.text).contains(c.name) && !juce::String(part.text).contains(c.name),
+               juce::String(c.name) + " named itself: " + juce::String(sound.text) + " / " +
                    part.text);
         expect(sound.text != part.text,
                juce::String(c.name) + " gave one answer to two questions: " +
                    sound.text);
 
         if (c.wantedInSound.isNotEmpty())
-          expect(sound.text.containsIgnoreCase(c.wantedInSound),
+          expect(juce::String(sound.text).containsIgnoreCase(c.wantedInSound),
                  juce::String(c.name) + " sound reply missing '" +
-                     c.wantedInSound + "': " + sound.text);
+                     c.wantedInSound + "': " + juce::String(sound.text));
 
-        expect(part.text.containsIgnoreCase(c.wantedInPart),
+        expect(juce::String(part.text).containsIgnoreCase(c.wantedInPart),
                juce::String(c.name) + " part reply missing '" + c.wantedInPart +
-                   "': " + part.text);
+                   "': " + juce::String(part.text));
 
         // The rhythm voices state a real figure. Read it from the same place
         // the renderer does, so a wrong number cannot pass by agreeing with a
         // hardcoded expectation.
         if (c.voice == BotBand::Voice::Drums || c.voice == BotBand::Voice::Bass) {
           const auto f = BotBand::figureFor(c.voice, ctx.self.settings);
-          expect(part.text.contains(juce::String(f.pulses)) &&
-                     part.text.contains(juce::String(f.steps)),
+          expect(juce::String(part.text).contains(juce::String(f.pulses)) &&
+                     juce::String(part.text).contains(juce::String(f.steps)),
                  juce::String(c.name) + " did not quote its figure (" +
                      juce::String(f.pulses) + " over " +
-                     juce::String(f.steps) + "): " + part.text);
+                     juce::String(f.steps) + "): " + juce::String(part.text));
         }
       }
     }
@@ -628,13 +629,13 @@ public:
           ctx, from("tester", "Quado: tell me about your kick"), att);
 
       expect(r.speak, "an ambiguous question got no answer at all");
-      expect(r.text.containsIgnoreCase("not sure whether"),
+      expect(juce::String(r.text).containsIgnoreCase("not sure whether"),
              "this is no longer the clarify path, so the test proves nothing: " +
                  r.text);
-      expect(!r.text.contains("_") && r.text == r.text.toLowerCase(),
-             "the reply reads out a tag name: " + r.text);
-      expect(r.text.contains("part") && r.text.contains("sound"),
-             "the reply does not name the two it was torn between: " + r.text);
+      expect(!juce::String(r.text).contains("_") && r.text == juce::String(r.text).toLowerCase(),
+             "the reply reads out a tag name: " + juce::String(r.text));
+      expect(juce::String(r.text).contains("part") && juce::String(r.text).contains("sound"),
+             "the reply does not name the two it was torn between: " + juce::String(r.text));
     }
 
     beginTest("a bot answers in the first person, because the line already says who");
@@ -666,15 +667,15 @@ public:
         for (const auto *m : messages) {
           BotAddress::Attention att;
           const auto r =
-              BotChat::respond(ctx, from("tester", "Ravo: " + juce::String(m)), att);
+              BotChat::respond(ctx, from("tester", std::string("Ravo: ") + m), att);
           expect(r.speak, juce::String(m) + " went unanswered");
           expect(!outsideQuotes(r.text).contains("Ravo"),
-                 "a bot named itself: \"" + r.text + "\" (asked: " + m + ")");
+                 "a bot named itself: \"" + juce::String(r.text) + "\" (asked: " + m + ")");
           // Nor the username with its instrument suffix, even inside quotes:
           // `say "Ravo[keys-bot] play"` is not something anybody would type,
           // and instructions that cannot be followed are worse than none.
-          expect(!r.text.containsChar('['),
-                 "a reply quotes the suffixed username: " + r.text);
+          expect(!juce::String(r.text).containsChar('['),
+                 "a reply quotes the suffixed username: " + juce::String(r.text));
         }
       }
 
@@ -685,17 +686,17 @@ public:
       for (const auto *m : {"whats your part", "whats your sound", "what are you"}) {
         BotAddress::Attention att;
         const auto r =
-            BotChat::respond(ctx, from("tester", "Ravo: " + juce::String(m)), att);
-        expect(r.text.containsWholeWord("i"),
-               juce::String(m) + " was not answered in the first person: " + r.text);
+            BotChat::respond(ctx, from("tester", std::string("Ravo: ") + m), att);
+        expect(juce::String(r.text).containsWholeWord("i"),
+               juce::String(m) + " was not answered in the first person: " + juce::String(r.text));
       }
 
       // The group is still "we": a key belongs to the room, not to the bot.
       BotAddress::Attention att;
       const auto key =
           BotChat::respond(ctx, from("tester", "Ravo: what key are we in"), att);
-      expect(key.text.containsWholeWord("we"),
-             "the room's key was answered as if it were the bot's: " + key.text);
+      expect(juce::String(key.text).containsWholeWord("we"),
+             "the room's key was answered as if it were the bot's: " + juce::String(key.text));
     }
 
     beginTest("a reply the whole band would give is marked as the band's");
@@ -723,10 +724,10 @@ public:
         ctx.self.phase = BandPlayState::State::Playing;
         BotAddress::Attention att;
         const auto r = BotChat::respond(
-            ctx, from("tester", juce::String("band ") + c.said), att);
+            ctx, from("tester", std::string("band ") + c.said), att);
         expect(r.speak, juce::String(c.said) + " went unanswered");
         expect(r.forBand == c.forBand,
-               juce::String("band ") + c.said + " -- " + c.why + ": " + r.text);
+               juce::String("band ") + c.said + " -- " + c.why + ": " + juce::String(r.text));
       }
 
       // Addressed to ONE bot, the same words are that bot's own reply and
@@ -751,9 +752,9 @@ public:
           BotChat::respond(ctx, from("tester", "Ravo: stop"), att2);
 
       expect(band.text != mine.text,
-             "the band's ending reads exactly like one bot's: " + band.text);
-      expect(band.text.containsWholeWord("we"),
-             "speaking for the band without saying we: " + band.text);
+             "the band's ending reads exactly like one bot's: " + juce::String(band.text));
+      expect(juce::String(band.text).containsWholeWord("we"),
+             "speaking for the band without saying we: " + juce::String(band.text));
     }
 
     beginTest("stopping ends the tune, and says what is about to happen");
@@ -771,12 +772,12 @@ public:
         const auto r = BotChat::respond(ctx, from("tester", said), att);
         expect(r.speak, juce::String(said) + " went unanswered");
         expect(r.act == BotChat::Act::StopPlaying,
-               juce::String(said) + " did not stop the playing: " + r.text);
+               juce::String(said) + " did not stop the playing: " + juce::String(r.text));
         expect(r.act != BotChat::Act::Part,
-               juce::String(said) + " sent the band home: " + r.text);
+               juce::String(said) + " sent the band home: " + juce::String(r.text));
         // Present or future, never past: it has not stopped yet.
-        expect(!r.text.containsIgnoreCase("stopped"),
-               juce::String(said) + " claims to have stopped already: " + r.text);
+        expect(!juce::String(r.text).containsIgnoreCase("stopped"),
+               juce::String(said) + " claims to have stopped already: " + juce::String(r.text));
       }
 
       // Leaving still works, and still takes a word that can only mean it.
@@ -784,7 +785,7 @@ public:
         BotAddress::Attention att;
         const auto r = BotChat::respond(ctx, from("tester", said), att);
         expect(r.act == BotChat::Act::Part,
-               juce::String(said) + " no longer sends the bot home: " + r.text);
+               juce::String(said) + " no longer sends the bot home: " + juce::String(r.text));
       }
     }
 
@@ -818,13 +819,13 @@ public:
         ctx.self.phase = c.phase;
         BotAddress::Attention att;
         const auto r = BotChat::respond(
-            ctx, from("tester", juce::String("Vessa: ") + c.said), att);
+            ctx, from("tester", std::string("Vessa: ") + c.said), att);
         const juce::String what = juce::String(c.said) + " while " +
                                   juce::String((int)c.phase);
         expect(r.speak, what + " went unanswered");
-        expect(r.act == c.act, what + " gave the wrong action: " + r.text);
-        expect(r.text.containsIgnoreCase(c.wanted),
-               what + " should mention '" + c.wanted + "': " + r.text);
+        expect(r.act == c.act, what + " gave the wrong action: " + juce::String(r.text));
+        expect(juce::String(r.text).containsIgnoreCase(c.wanted),
+               what + " should mention '" + c.wanted + "': " + juce::String(r.text));
       }
     }
 
@@ -845,9 +846,9 @@ public:
         BotAddress::Attention att;
         const auto r = BotChat::respond(ctx, from("tester", said), att);
         expect(r.act != BotChat::Act::Part,
-               juce::String(said) + " sent the band home: " + r.text);
-        expect(!r.text.containsIgnoreCase("i can tell you my part"),
-               juce::String(said) + " fell through to the catch-all: " + r.text);
+               juce::String(said) + " sent the band home: " + juce::String(r.text));
+        expect(!juce::String(r.text).containsIgnoreCase("i can tell you my part"),
+               juce::String(said) + " fell through to the catch-all: " + juce::String(r.text));
       }
     }
 
@@ -864,14 +865,14 @@ public:
       expect(r.speak, "the request was not answered at all");
       expect(r.act == BotChat::Act::None,
              "a bot changed the room's chart by itself");
-      expect(r.text.contains(
+      expect(juce::String(r.text).contains(
                  Harmony::chartText(Harmony::defaultChart(ctx.music.key),
                                     ctx.music.key)),
-             "the default was not named: " + r.text);
+             "the default was not named: " + juce::String(r.text));
 
       // It must not be mistaken for a bot ANNOUNCING that chart, which is the
       // hazard every chart-shaped reply in this module carries.
-      expect(!Harmony::looksLikeChart(r.text.toStdString()), r.text);
+      expect(!Harmony::looksLikeChart(r.text), r.text);
     }
 
     beginTest("a bot told to be quiet says how to bring it back, then stops");
@@ -886,17 +887,17 @@ public:
       // The acknowledgement is the ONLY place the way back is offered: after
       // it, by construction, the bot says nothing. A silent mute is a bot that
       // looks broken and cannot be fixed.
-      expect(hush.text.containsIgnoreCase("talk"),
-             "no way back was offered: " + hush.text);
+      expect(juce::String(hush.text).containsIgnoreCase("talk"),
+             "no way back was offered: " + juce::String(hush.text));
 
       ctx.self.chatMuted = true;
-      const juce::String questions[] = {"Ravo: what key are we in",
-                                        "Ravo: whats your part", "Ravo",
-                                        "Ravo: flurble"};
+      const std::string questions[] = {"Ravo: what key are we in",
+                                       "Ravo: whats your part", "Ravo",
+                                       "Ravo: flurble"};
       for (const auto &q : questions) {
         BotAddress::Attention quiet;
         const auto r = BotChat::respond(ctx, from("tester", q), quiet);
-        expect(!r.speak, "a quiet bot answered '" + q + "': " + r.text);
+        expect(!r.speak, juce::String("a quiet bot answered '" + q + "': " + r.text));
       }
     }
 
@@ -923,7 +924,7 @@ public:
       BotAddress::Attention att3;
       const auto shake = BotChat::respond(ctx, from("tester", "Ravo: shake"), att3);
       expect(shake.act == BotChat::Act::Reshuffle, shake.text);
-      expect(!shake.speak, "a quiet bot narrated a shake: " + shake.text);
+      expect(!shake.speak, "a quiet bot narrated a shake: " + juce::String(shake.text));
     }
   }
 };

@@ -61,7 +61,7 @@ public:
         // begins with a bar line, which is exactly why the header forbids
         // sending one on its own.
         for (const auto &fragment : {describeKey(r), describeChart(r)})
-          expect(!MusicalKey::parseAnnouncement(fragment.toStdString()).valid,
+          expect(!MusicalKey::parseAnnouncement(fragment).valid,
                  "this fragment sets the key: " + fragment);
       }
     }
@@ -69,17 +69,17 @@ public:
     beginTest("a default is never reported as a decision");
     {
       const auto fresh = roomIn("C major", Source::Defaulted, Source::Defaulted);
-      expect(describeKey(fresh).contains("which nobody chose"),
+      expect(juce::String(describeKey(fresh)).contains("which nobody chose"),
              describeKey(fresh));
-      expect(describeChart(fresh).contains("the default for the key"),
+      expect(juce::String(describeChart(fresh)).contains("the default for the key"),
              describeChart(fresh));
-      expect(answerSetChart(fresh).contains("nobody has put a chart up"),
+      expect(juce::String(answerSetChart(fresh)).contains("nobody has put a chart up"),
              answerSetChart(fresh));
 
       // Both describe* results are NOUN PHRASES, so they compose. This is the
       // assertion that would have caught "we are in nobody has named a key,
       // so i defaulted to C major".
-      expect(answerSetKey(fresh, MusicalKey::parseName("A major"))
+      expect(juce::String(answerSetKey(fresh, MusicalKey::parseName("A major")))
                  .contains("we are in C major, which nobody chose"),
              answerSetKey(fresh, MusicalKey::parseName("A major")));
 
@@ -87,11 +87,11 @@ public:
       // both the honest answer and the safe example: pasting it back is a
       // no-op, where a generic one would move the harmony.
       const auto text = Harmony::chartText(fresh.chart, false);
-      expect(describeChart(fresh).contains(text),
+      expect(juce::String(describeChart(fresh)).contains(text),
              "the example is not what it is playing: " + describeChart(fresh));
 
       const auto told = roomIn("D minor", Source::Chat, Source::Chat);
-      expect(describeKey(told).contains("said in the room"), describeKey(told));
+      expect(juce::String(describeKey(told)).contains("said in the room"), describeKey(told));
     }
 
     beginTest("the default chords for a key are offered, never imposed");
@@ -105,17 +105,17 @@ public:
       const auto reply = answerResetChart(r);
       const auto wanted =
           Harmony::chartText(Harmony::defaultChart(r.key), r.key);
-      expect(reply.contains(wanted),
+      expect(juce::String(reply).contains(wanted),
              "the default was not named: " + reply + " (wanted " + wanted + ")");
       // Naming it must not BE announcing it: a client reads a leading bar as
       // somebody putting a chart up, and the chart being offered is not the
       // one the room is on.
-      expect(!Harmony::looksLikeChart(reply.toStdString()), reply);
+      expect(!Harmony::looksLikeChart(reply), reply);
 
       // A room already on the default has nothing to change, and saying so is
       // more useful than handing back a line that would do nothing.
       const auto already = roomIn("D minor", Source::Chat, Source::Defaulted);
-      expect(answerResetChart(already).containsIgnoreCase("already"),
+      expect(juce::String(answerResetChart(already)).containsIgnoreCase("already"),
              answerResetChart(already));
     }
 
@@ -126,31 +126,31 @@ public:
       // second is still Eb, which one flag for a whole chart cannot say.
       Room r = roomIn("D major", Source::Chat, Source::Chat);
       expect(Harmony::parseChart("| D | Eb7 | D | A |", r.chart));
-      expect(describeChart(r).contains("Eb7"), describeChart(r));
-      expect(!describeChart(r).contains("D#"), describeChart(r));
+      expect(juce::String(describeChart(r)).contains("Eb7"), describeChart(r));
+      expect(!juce::String(describeChart(r)).contains("D#"), describeChart(r));
     }
 
     beginTest("a topic key says it came from the topic");
     {
       auto r = roomIn("G minor", Source::Topic, Source::Defaulted);
-      expect(describeKey(r).contains("topic"), describeKey(r));
+      expect(juce::String(describeKey(r)).contains("topic"), describeKey(r));
       // The age is unknowable -- the topic reaches only a joining client -- so
       // the claim is bounded to what we can actually stand behind.
-      expect(describeKey(r).contains("since i joined"), describeKey(r));
+      expect(juce::String(describeKey(r)).contains("since i joined"), describeKey(r));
 
       auto named = roomIn("G minor", Source::Chat, Source::Chat);
       named.keySetBy = "Dave";
-      expect(describeKey(named).contains("dave said so"), describeKey(named));
+      expect(juce::String(describeKey(named)).contains("dave said so"), describeKey(named));
     }
 
     beginTest("an unreadable key is answered, not guessed");
     {
       const auto r = roomIn("D minor", Source::Chat, Source::Chat);
       const auto reply = answerSetKey(r, {});
-      expect(reply.contains("could not tell"), reply);
+      expect(juce::String(reply).contains("could not tell"), reply);
       // Putting up the wrong key is worse than putting up none, so the reply
       // must not name one as though it had understood.
-      expect(!reply.contains("A major"), reply);
+      expect(!juce::String(reply).contains("A major"), reply);
     }
 
     beginTest("the tempo reply refuses what the server would refuse");
@@ -158,11 +158,11 @@ public:
       const auto r = roomIn("D minor", Source::Chat, Source::Chat);
       // An out-of-range vote is answered by the server with a complaint about
       // the command's parameters, which tells a player nothing. Refuse first.
-      expect(answerSetTempo(r, 500, 0).contains("40 to 400"),
+      expect(juce::String(answerSetTempo(r, 500, 0)).contains("40 to 400"),
              answerSetTempo(r, 500, 0));
-      expect(answerSetTempo(r, 0, 125).contains("2 to 64"),
+      expect(juce::String(answerSetTempo(r, 0, 125)).contains("2 to 64"),
              answerSetTempo(r, 0, 125));
-      expect(answerSetTempo(r, 130, 0).contains("!vote bpm 130"),
+      expect(juce::String(answerSetTempo(r, 130, 0)).contains("!vote bpm 130"),
              answerSetTempo(r, 130, 0));
 
       // Both numbers always, because either alone says almost nothing: 120 at
@@ -170,7 +170,7 @@ public:
       for (const auto &reply : {answerSetTempo(r, 130, 0),
                                 answerSetTempo(r, 0, 16),
                                 answerSetTempo(r, 0, 0)}) {
-        expect(reply.contains("120 bpm") && reply.contains("8 bpi"), reply);
+        expect(juce::String(reply).contains("120 bpm") && juce::String(reply).contains("8 bpi"), reply);
       }
     }
 
@@ -213,8 +213,8 @@ public:
     {
       const auto r = roomIn("D minor", Source::Chat, Source::Chat);
       const auto reply = answerVoteRequest(r);
-      expect(reply.contains("do not start votes"), reply);
-      expect(reply.contains("back you"), reply);
+      expect(juce::String(reply).contains("do not start votes"), reply);
+      expect(juce::String(reply).contains("back you"), reply);
     }
   }
 };

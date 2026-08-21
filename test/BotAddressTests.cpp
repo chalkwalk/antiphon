@@ -259,10 +259,10 @@ public:
 
     for (const auto &raw : lines) {
       auto line = raw.upToFirstOccurrenceOf("#", false, false).trim();
-      if (line.isEmpty())
+      if (juce::String(line).isEmpty())
         continue;
 
-      if (line.startsWithChar('[') && line.endsWithChar(']')) {
+      if (juce::String(line).startsWithChar('[') && juce::String(line).endsWithChar(']')) {
         context = line.substring(1, line.length() - 1).trim();
         continue;
       }
@@ -272,7 +272,7 @@ public:
         continue;
       const auto expected = line.substring(0, split).trim();
       const auto message = line.substring(split).trim();
-      if (message.isEmpty())
+      if (juce::String(message).isEmpty())
         continue;
 
       ++checked;
