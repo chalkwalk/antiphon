@@ -110,10 +110,9 @@ src/
   # --- src/jambot/: STAGED FOR EXTRACTION to chalkwalk-jambot ---
   #
   # Separated here first so the move is proven by the tests that already exist
-  # rather than by a migration. The `jambot-boundary` ctest fails when the set
-  # of outward `#include "../..."` changes -- three today, and they ARE the
-  # extraction's blockers: Harmony.h and MusicalKey.h go to chalkwalk-music,
-  # and ChatFormat splits (its vote ranges are protocol, the rest is UI).
+  # rather than by a migration. The `jambot-boundary` ctest fails if anything
+  # here reaches back into Antiphon, and it is CLEAN: the theory comes from
+  # chalkwalk-music and the room conventions from chalkwalk-ninjam.
   #
   # PracticeBot does not move yet: it owns a NinjamClient, and inverting that
   # into an interface the bots declare is its own step.
