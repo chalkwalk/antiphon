@@ -1,4 +1,4 @@
-#include "../src/BotChat.h"
+#include "../src/jambot/BotChat.h"
 #include <JuceHeader.h>
 
 namespace {

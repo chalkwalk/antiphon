@@ -1,4 +1,4 @@
-#include "../src/BotNames.h"
+#include "../src/jambot/BotNames.h"
 #include "../src/PracticeBot.h"
 #include "../src/PracticeRoom.h"
 #include "FakeNinjamServer.h" // for waitUntil

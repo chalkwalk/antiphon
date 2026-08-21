@@ -1,4 +1,4 @@
-#include "../src/BotAnswer.h"
+#include "../src/jambot/BotAnswer.h"
 #include <JuceHeader.h>
 
 namespace {

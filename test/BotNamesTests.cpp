@@ -1,4 +1,4 @@
-#include "../src/BotNames.h"
+#include "../src/jambot/BotNames.h"
 #include <JuceHeader.h>
 
 // The names are an addressing mechanism before they are anything else, so these

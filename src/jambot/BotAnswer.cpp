@@ -1,6 +1,6 @@
 #include "BotAnswer.h"
 
-#include "ChatFormat.h"
+#include "../ChatFormat.h"
 
 namespace BotAnswer {
 

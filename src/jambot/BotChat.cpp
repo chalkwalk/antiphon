@@ -1,6 +1,6 @@
 #include "BotChat.h"
 #include "BotLanguage.h"
-#include "ChatFormat.h"
+#include "../ChatFormat.h"
 
 namespace BotChat {
 

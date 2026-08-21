@@ -26,7 +26,7 @@
 
 #include "AudioMeasure.h"
 #include "BandPatch.h"
-#include "BotBand.h"
+#include "jambot/BotBand.h"
 #include "MusicalKey.h"
 
 namespace {

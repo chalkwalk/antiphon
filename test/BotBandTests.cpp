@@ -1,7 +1,7 @@
 #include "../src/BandPatch.h"
-#include "../src/BotBand.h"
+#include "../src/jambot/BotBand.h"
 #include "../src/AudioMeasure.h"
-#include "../src/BotVoice.h"
+#include "../src/jambot/BotVoice.h"
 #include <chalkwalk/music/Euclidean.h>
 #include "TestSignal.h"
 #include <map>
