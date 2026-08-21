@@ -114,12 +114,14 @@ src/
   #
   # Separated here first so the move is proven by the tests that already exist
   # rather than by a migration. The `jambot-boundary` ctest fails if anything
-  # here reaches back into Antiphon, and it is CLEAN: the theory comes from
-  # chalkwalk-music and the room conventions from chalkwalk-ninjam.
+  # here reaches back into Antiphon OR reaches for JUCE, and it is CLEAN on
+  # both: the theory comes from chalkwalk-music, the room conventions from
+  # chalkwalk-ninjam, and scheduling is asked of the host rather than taken
+  # from juce::Timer.
   #
-  # PracticeBot does not move yet, but it no longer owns a NinjamClient: it
-  # talks to `jambot/BotClient.h`, which Antiphon implements. What still holds
-  # it here is JUCE -- juce::Timer, CriticalSection, String, AudioBuffer.
+  # PracticeBot is JUCE-free and talks to `jambot/BotClient.h`, so what still
+  # holds it in src/ is one include: RoomHarmony.h, which sits on both shared
+  # libraries and which Antiphon's chat display needs with no band present.
   jambot/BotClient.h        # the room as a bot needs it: 13 calls out, 6 back.
                             #   JUCE-free, and the line the bots extract along
   jambot/BotBand.{h,cpp}    # the ensemble: which voice plays what, and the mix
