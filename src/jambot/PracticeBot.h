@@ -5,7 +5,6 @@
 #include "jambot/BotBand.h"
 #include "jambot/BotChat.h"
 #include "jambot/BotClient.h"
-#include "RoomHarmony.h"
 #include <atomic>
 #include <functional>
 #include <mutex>

@@ -101,27 +101,26 @@ bool PracticeRoom::start(const Config &config) {
   }
 
   running = true;
-  conductor.startThread();
+  conductor.start((double)intervalSamples / cfg.sampleRate,
+                  [this](int intervalIndex) {
+                    reapPartedBots();
+                    renderOneInterval(intervalIndex,
+                                      [this] { return !running.load(); });
+                  });
   return true;
 }
 
 void PracticeRoom::stop() {
   running = false;
 
-  // The return is checked, and the budget is generous, because a conductor
-  // that misses the deadline is one whose bots are about to be destroyed
-  // underneath it -- and rendering a whole interval for four bots means four
-  // Vorbis encodes, which under a sanitiser is not fast. run() checks for the
-  // exit between bots so it can leave in the middle of that, but the last one
-  // still has to finish.
+  // Joins, and waits as long as it takes rather than to a deadline.
   //
-  // FakeNinjamServer carries the same check for the same reason: ignoring it
-  // once cost this project a day of CI.
-  if (!conductor.stopThread(5000)) {
-    std::fprintf(stderr, "PracticeRoom: conductor did not exit within 5000ms; "
-                         "tearing down the band now is unsafe\n");
-    std::fflush(stderr);
-  }
+  // The deadline it replaces was there because a conductor still running is
+  // one whose bots are about to be destroyed underneath it, and rendering a
+  // whole interval for four bots means four Vorbis encodes -- not fast under a
+  // sanitiser. Waiting is the safe half of that trade: `renderOneInterval`
+  // checks between bots, so the longest this can block is one bot's encode.
+  conductor.stop();
 
   {
     juce::ScopedLock sl(botsMutex);
@@ -189,39 +188,3 @@ void PracticeRoom::renderOneInterval(int intervalIndex,
   }
 }
 
-void PracticeRoom::Conductor::run() {
-  // Free-running, and deliberately not synchronised to the joining player's
-  // grid. Ninjam's absolute interval phase is free -- every client plays each
-  // received interval starting at its own downbeat, so phase offsets between
-  // clients cancel out per listener (PRINCIPLES 9). Chasing the player's phase
-  // here would add a dependency for no audible difference.
-  const double intervalMs =
-      1000.0 * (double)room.intervalSamples / room.cfg.sampleRate;
-
-  double nextDue = juce::Time::getMillisecondCounterHiRes();
-  int intervalIndex = 0;
-
-  while (!threadShouldExit() && room.running.load()) {
-    const double now = juce::Time::getMillisecondCounterHiRes();
-    if (now < nextDue) {
-      // Wake early enough to be punctual without spinning.
-      const int sleepMs = (int)std::min(50.0, nextDue - now);
-      wait(juce::jmax(1, sleepMs));
-      continue;
-    }
-
-    room.reapPartedBots();
-    room.renderOneInterval(intervalIndex++, [this] {
-      return threadShouldExit() || !room.running.load();
-    });
-
-    nextDue += intervalMs;
-
-    // If the whole band overran -- a debugger breakpoint, a stalled machine --
-    // skip forward rather than sprinting to catch up, which would burst several
-    // intervals onto the wire at once.
-    const double after = juce::Time::getMillisecondCounterHiRes();
-    if (nextDue < after)
-      nextDue = after + intervalMs;
-  }
-}

@@ -130,7 +130,7 @@ target_sources(AntiphonPractice PRIVATE
         PracticeRoomMain.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
-        ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotAddress.cpp

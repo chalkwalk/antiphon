@@ -1,7 +1,7 @@
 #include "../src/jambot/BotNames.h"
 #include "../src/NinjamBotClient.h"
 #include "../src/NinjamClient.h"
-#include "../src/PracticeBot.h"
+#include "../src/jambot/PracticeBot.h"
 #include "../src/PracticeRoom.h"
 #include "FakeNinjamServer.h" // for waitUntil
 #include <limits>

@@ -1,4 +1,4 @@
-#include "../src/PracticeBot.h"
+#include "../src/jambot/PracticeBot.h"
 #include <JuceHeader.h>
 
 // PracticeBot, with no socket and no room.

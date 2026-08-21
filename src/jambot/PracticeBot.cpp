@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <chalkwalk/music/Text.h>
+#include <chalkwalk/ninjam/RoomConventions.h>
 
 #include "jambot/BotNames.h"
 
@@ -246,26 +247,33 @@ bool PracticeBot::handleStructured(const std::string &text,
 
   std::lock_guard<std::mutex> sl(stateMutex);
 
-  // The decision itself lives in RoomHarmony, because the editor has to make
-  // exactly the same one and the two used to disagree (`PRINCIPLES` 8).
-  RoomHarmony::State st;
-  st.key = settings.key;
-  st.chart = settings.chart;
-  st.chartFromChat = chartSource == BotAnswer::Source::Chat;
+  // Which of the two this line is. The RULE -- preserve what was written,
+  // re-derive what was delegated -- is `Harmony::Session` in chalkwalk-music,
+  // and how a key travels is a NINJAM room convention. Both are single-sourced;
+  // this is the dispatch, and Antiphon's chat display has the same seven lines
+  // for the same reason (see src/RoomHarmony.h).
+  Harmony::Session session;
+  session.key = settings.key;
+  session.chart = settings.chart;
+  session.chartFromChat = chartSource == BotAnswer::Source::Chat;
 
-  switch (RoomHarmony::apply(text, st)) {
-  case RoomHarmony::Change::Key:
-    settings.key = st.key;
-    settings.chart = st.chart;
+  const auto keyName =
+      chalkwalk::ninjam::conventions::extractKeyAnnouncement(text);
+
+  if (!keyName.empty()) {
+    if (Harmony::applyKey(keyName, session) != Harmony::Applied::Key)
+      return false;
+    settings.key = session.key;
+    settings.chart = session.chart;
     keySource = BotAnswer::Source::Chat;
     keySetBy = username;
     return true;
-  case RoomHarmony::Change::Chart:
-    settings.chart = st.chart;
+  }
+
+  if (Harmony::applyChart(text, session) == Harmony::Applied::Chart) {
+    settings.chart = session.chart;
     chartSource = BotAnswer::Source::Chat;
     return true;
-  case RoomHarmony::Change::None:
-    break;
   }
   return false;
 }

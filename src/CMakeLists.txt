@@ -59,7 +59,7 @@ target_sources(Antiphon
         jambot/BotLanguage.cpp
         jambot/BotNames.cpp
         PracticeServer.cpp
-        PracticeBot.cpp
+        jambot/PracticeBot.cpp
         PracticeRoom.cpp
         MetronomeVoice.cpp
         RemoteUserStrip.cpp

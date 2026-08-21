@@ -1,69 +1,41 @@
 #pragma once
 
-#include "Harmony.h"
 #include "MusicalKey.h"
+
+#include "Harmony.h"
+#include <chalkwalk/ninjam/RoomConventions.h>
+
 #include <string>
 
-// What a chat line does to the room's key and chart.
+// Which of the two a chat line is, and nothing else.
 //
-// One place, because there are two readers -- the band and the display -- and
-// they must agree. They did not: `PracticeBot` learned to read degree charts
-// and to move a chart through a key change, the editor did neither, and the
-// result was the band following `| ii | V | I |` while the chord row above the
-// phase bar went on showing the chart before it. Nothing announced the
-// divergence; you had to hear it (`PRINCIPLES` 8).
-//
-// Pure and JUCE-FREE, like the `Harmony` and `MusicalKey` it sits on, so it can
-// be tested directly. `PluginEditor` cannot be
-// compiled into the test target at all, which is exactly why the decision does
-// not belong there.
-
-namespace RoomHarmony {
-
-struct State {
-  MusicalKey::Key key;
-  Harmony::Chart chart;
-
-  // Whether the chart is one somebody wrote, or one the key implied.
-  //
-  // This is what a key change turns on: preserve what was written, re-derive
-  // what was delegated (`DESIGN.md` section 6.4). A chart nobody chose has
-  // nothing worth transposing, and moving it would carry the old key's default
-  // into a key with a perfectly good default of its own.
-  bool chartFromChat = false;
-};
-
-enum class Change { None, Key, Chart };
-
 // The subset of chat that needs no address, because its SYNTAX is unmistakable:
 // a `[key: Dm]` tag, a `| Am | F |` chart, or a degree chart against the key
 // the room is already in. Nobody writes any of them by accident.
-inline Change apply(const std::string &text, State &state) {
-  if (const auto key = MusicalKey::parseAnnouncement(text); key.valid) {
-    // Re-announcing the key the room is already in is not a change, and acting
-    // on it would transpose a chart that has not moved.
-    if (key == state.key)
-      return Change::None;
+//
+// What each MEANS is `Harmony::Session` in chalkwalk-music -- preserve what was
+// written, re-derive what was delegated -- and how a key TRAVELS is
+// `chalkwalk::ninjam::conventions`. This is the seven lines that put the two
+// together, and it is deliberately nothing more: the band has the same seven
+// lines inside `PracticeBot`, because duplicating a dispatch is cheaper than
+// giving glue a home of its own, and because what must not be duplicated --
+// the rule and the convention -- is not.
+namespace RoomHarmony {
 
-    if (state.chartFromChat && state.key.valid)
-      state.chart =
-          Harmony::resolve(Harmony::toRelative(state.chart, state.key), key);
-    else
-      state.chart = Harmony::defaultChart(key);
+using State = Harmony::Session;
+enum class Change { None, Key, Chart };
 
-    state.key = key;
-    return Change::Key;
-  }
+inline Change apply(const std::string &line, State &state) {
+  if (const auto keyName =
+          chalkwalk::ninjam::conventions::extractKeyAnnouncement(line);
+      !keyName.empty())
+    return Harmony::applyKey(keyName, state) == Harmony::Applied::Key
+               ? Change::Key
+               : Change::None;
 
-  Harmony::Chart chart;
-  if (Harmony::parseChart(text, chart) ||
-      (state.key.valid && Harmony::parseDegreeChart(text, state.key, chart))) {
-    state.chart = std::move(chart);
-    state.chartFromChat = true;
-    return Change::Chart;
-  }
-
-  return Change::None;
+  return Harmony::applyChart(line, state) == Harmony::Applied::Chart
+             ? Change::Chart
+             : Change::None;
 }
 
 } // namespace RoomHarmony
