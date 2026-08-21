@@ -29,10 +29,9 @@ target_sources(NinjamTests
         BandPlayStateTests.cpp
         RoomHarmonyTests.cpp
         BotChatTests.cpp
-        MusicalKeyTests.cpp
+        KeyTagTests.cpp
         SharedContractTests.cpp
         LeadLineTests.cpp
-        HarmonyTests.cpp
         AudioMeasureTests.cpp
         BotDspTests.cpp
         BandPatchTests.cpp
@@ -57,7 +56,6 @@ target_sources(NinjamTests
         ReferenceFixtureTests.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
-        ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotAddress.cpp

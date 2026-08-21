@@ -53,7 +53,6 @@ target_sources(Antiphon
         StandaloneApp.cpp
         PluginEditor.cpp
         NinjamClient.cpp
-        Harmony.cpp
         jambot/BotBand.cpp
         BandPatch.cpp
         jambot/BotAddress.cpp

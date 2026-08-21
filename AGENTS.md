@@ -89,10 +89,11 @@ src/
   Shortcuts.h               # Ctrl+Alt shortcut mapping; matches key code, not text
   AudioDeviceStartup.h      # 4-state standalone device-open policy, with a budget
   ChannelMix.h              # mono/pan/gain: one home for three rules that drifted
-  TextUtil.h                # the six string operations the music layer needs,
-                            #   without JUCE. Travels with it to chalkwalk-music
-  MusicalKey.{h,cpp}        # key and mode: parse, display, scale notes. JUCE-FREE
-  Harmony.{h,cpp}           # chords, charts, degrees, voice leading. JUCE-FREE
+  MusicalKey.{h,cpp}        # the `[key: ...]` tag and the `/key` advice line --
+                            #   NINJAM, not theory, so it did NOT go to
+                            #   chalkwalk-music. Re-exports the key itself from
+                            #   chalkwalk::music::Notation under the old name.
+  Harmony.h                 # one line: an alias to chalkwalk::music::Harmony
   ClipsortLog.{h,cpp}       # session archive manifest: read and write
   StemRender.h              # one clip into one interval, resampled and aligned
   GainUtils.h               # dB<->linear, fader and meter scales, formatting
