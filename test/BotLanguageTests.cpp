@@ -1,4 +1,4 @@
-#include "../src/BotLanguage.h"
+#include "../src/jambot/BotLanguage.h"
 #include <JuceHeader.h>
 
 // `test/fixtures/bot-phrases.txt` is the specification, and the number this

@@ -1,12 +1,12 @@
 #pragma once
 
 #include "BotVoice.h"
-#include "Harmony.h"
+#include "../Harmony.h"
 
 #include <chalkwalk/music/Duration.h>
 #include <chalkwalk/music/Melody.h>
 #include <chalkwalk/music/NoteStrength.h>
-#include "MusicalKey.h"
+#include "../MusicalKey.h"
 #include <cstdint>
 #include <vector>
 

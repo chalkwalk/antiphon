@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Harmony.h"
-#include "MusicalKey.h"
+#include "../Harmony.h"
+#include "../MusicalKey.h"
 #include <chalkwalk/music/Duration.h>
 #include <JuceHeader.h>
 

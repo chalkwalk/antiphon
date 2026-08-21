@@ -102,20 +102,32 @@ src/
   RoomHarmony.h             # what a chat line does to the room's key and chart.
                             #   ONE place: the band and the display both read it,
                             #   and they drifted when they each had their own
-  # --- the practice room's bots ---
+  # --- the practice room's HOSTING, which stays here ---
   PracticeRoom.{h,cpp}      # the room: seeds, band settings, the bots in it
+  PracticeServer.{h,cpp}    # a Ninjam server on loopback, so a room needs none
   PracticeBot.{h,cpp}       # one bot: renders its part, answers what it is asked
-  BotBand.{h,cpp}           # the ensemble: which voice plays what, and the mix
-  BotVoice.h                # the instruments; BotDsp.h the primitives under them
-  BotNames.{h,cpp}          # the name pool, and picking a band that reads apart
-  BotAddress.{h,cpp}        # WHO a message is for. Corpus: bot-addressing.txt
-  BotLanguage.{h,cpp}       # WHAT it asks. Corpus: bot-phrases.txt, quarter held out
-  BotAnswer.{h,cpp}         # what it SAYS back: pure functions over room state.
+  # --- src/jambot/: STAGED FOR EXTRACTION to chalkwalk-jambot ---
+  #
+  # Separated here first so the move is proven by the tests that already exist
+  # rather than by a migration. The `jambot-boundary` ctest fails when the set
+  # of outward `#include "../..."` changes -- three today, and they ARE the
+  # extraction's blockers: Harmony.h and MusicalKey.h go to chalkwalk-music,
+  # and ChatFormat splits (its vote ranges are protocol, the rest is UI).
+  #
+  # PracticeBot does not move yet: it owns a NinjamClient, and inverting that
+  # into an interface the bots declare is its own step.
+  jambot/BotBand.{h,cpp}    # the ensemble: which voice plays what, and the mix
+  jambot/BotVoice.h         # the instruments; BotDsp.h the primitives under them
+  jambot/BandPlayState.h    # Silent/Playing/Wrapping/Resolving: how a tune ends
+  jambot/BotNames.{h,cpp}   # the name pool, and picking a band that reads apart
+  jambot/BotAddress.{h,cpp} # WHO a message is for. Corpus: bot-addressing.txt
+  jambot/BotLanguage.{h,cpp}# WHAT it asks. Corpus: bot-phrases.txt, quarter held out
+  jambot/BotAnswer.{h,cpp}  # what it SAYS back: pure functions over room state.
                             #   No reply may contain `[key:` -- saying it sets it.
-  BotChat.{h,cpp}           # the JOIN of the three, pure: context + message ->
+  jambot/BotChat.{h,cpp}    # the JOIN of the three, pure: context + message ->
                             #   what to say and what to do. PracticeBot is a
                             #   snapshot in and an intention out.
-  BotDictionary.h           # GENERATED (scripts/make_wordlist.py): a real word
+  jambot/BotDictionary.h    # GENERATED (scripts/make_wordlist.py): a real word
                             #   is not a mistyped one. Do not hand-edit.
   # --- UI ---
   LocalChannelStrip.{h,cpp} # 90px vertical strip per local input channel
@@ -313,7 +325,8 @@ reading past a buffer. Assume your change has the same failure mode.
   (`test/TestSignal.h`). Vorbis is lossy and has codec delay; sample-by-sample
   comparison against the input will never hold.
 - **A new `src/*.cpp` must be added to BOTH `src/CMakeLists.txt` and
-  `test/CMakeLists.txt`.** The test target deliberately re-lists production
+  `test/CMakeLists.txt`** -- and to `tools/CMakeLists.txt` if a tool uses it,
+  which is a third list and the one most often forgotten.** The test target deliberately re-lists production
   sources rather than sharing them -- `juce_generate_juce_header` only works on
   `juce_add_*` targets, and each target needs its own `JuceHeader.h`. See the
   comment at the top of `test/CMakeLists.txt`.

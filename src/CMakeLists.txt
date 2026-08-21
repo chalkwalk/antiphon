@@ -54,11 +54,11 @@ target_sources(Antiphon
         PluginEditor.cpp
         NinjamClient.cpp
         Harmony.cpp
-        BotBand.cpp
+        jambot/BotBand.cpp
         BandPatch.cpp
-        BotAddress.cpp
-        BotLanguage.cpp
-        BotNames.cpp
+        jambot/BotAddress.cpp
+        jambot/BotLanguage.cpp
+        jambot/BotNames.cpp
         PracticeServer.cpp
         PracticeBot.cpp
         PracticeRoom.cpp
@@ -68,8 +68,8 @@ target_sources(Antiphon
         LocalChannelStrip.cpp
         AntiphonLookAndFeel.cpp
         ChatFormat.cpp
-        BotAnswer.cpp
-        BotChat.cpp
+        jambot/BotAnswer.cpp
+        jambot/BotChat.cpp
         ClipsortLog.cpp
         SessionWriter.cpp
         MusicalKey.cpp

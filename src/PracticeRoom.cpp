@@ -1,6 +1,6 @@
 #include "PracticeRoom.h"
 
-#include "BotNames.h"
+#include "jambot/BotNames.h"
 
 #include "IntervalClock.h"
 

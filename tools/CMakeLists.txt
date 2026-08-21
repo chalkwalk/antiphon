@@ -58,7 +58,7 @@ juce_generate_juce_header(AntiphonVoiceLab)
 
 target_sources(AntiphonVoiceLab PRIVATE
         VoiceLabMain.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp)
 
@@ -96,7 +96,7 @@ juce_generate_juce_header(AntiphonBandLab)
 target_sources(AntiphonBandLab PRIVATE
         BandLabMain.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp)
 
@@ -135,13 +135,13 @@ target_sources(AntiphonPractice PRIVATE
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeBot.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotBand.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
         ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotAddress.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotLanguage.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotAnswer.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotChat.cpp
-        ${CMAKE_SOURCE_DIR}/src/BotNames.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotAddress.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotLanguage.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotAnswer.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotChat.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
         ${CMAKE_SOURCE_DIR}/src/Harmony.cpp
         ${CMAKE_SOURCE_DIR}/src/MusicalKey.cpp

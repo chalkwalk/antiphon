@@ -1,4 +1,4 @@
-#include "../src/BandPlayState.h"
+#include "../src/jambot/BandPlayState.h"
 #include <JuceHeader.h>
 
 // The four states a bot's playing goes through, and nothing else. Pure, so the

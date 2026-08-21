@@ -1,6 +1,6 @@
 #include "PracticeBot.h"
 
-#include "BotNames.h"
+#include "jambot/BotNames.h"
 
 namespace {
 // How much longer a bot with nothing to do waits before speaking for the band.

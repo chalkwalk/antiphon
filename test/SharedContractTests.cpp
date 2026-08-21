@@ -1,4 +1,4 @@
-#include "../src/BotDsp.h"
+#include "../src/jambot/BotDsp.h"
 #include <JuceHeader.h>
 
 #include <vector>

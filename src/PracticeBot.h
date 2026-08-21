@@ -1,9 +1,9 @@
 #pragma once
 
-#include "BandPlayState.h"
-#include "BotAddress.h"
-#include "BotBand.h"
-#include "BotChat.h"
+#include "jambot/BandPlayState.h"
+#include "jambot/BotAddress.h"
+#include "jambot/BotBand.h"
+#include "jambot/BotChat.h"
 #include "NinjamClient.h"
 #include "RoomHarmony.h"
 #include <JuceHeader.h>

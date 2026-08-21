@@ -1,4 +1,4 @@
-#include "../src/BotAddress.h"
+#include "../src/jambot/BotAddress.h"
 #include <JuceHeader.h>
 
 // The addressing corpus IS the specification, so this file is mostly a reader

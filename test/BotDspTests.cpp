@@ -1,5 +1,5 @@
 #include "../src/AudioMeasure.h"
-#include "../src/BotDsp.h"
+#include "../src/jambot/BotDsp.h"
 #include <JuceHeader.h>
 
 // The primitives are arithmetic, so these are exact tests wherever the answer

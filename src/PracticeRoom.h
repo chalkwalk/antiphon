@@ -1,6 +1,6 @@
 #pragma once
 
-#include "BandPlayState.h"
+#include "jambot/BandPlayState.h"
 #include "PracticeBot.h"
 #include "PracticeServer.h"
 #include <JuceHeader.h>
