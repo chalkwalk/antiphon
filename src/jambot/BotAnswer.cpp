@@ -1,6 +1,6 @@
+#include "Music.h"
 #include "BotAnswer.h"
 
-#include "../ChatFormat.h"
 
 namespace BotAnswer {
 
@@ -17,7 +17,13 @@ juce::String chart(const Room &room) {
 // Quoted, so it reads as something to type rather than running into the
 // sentence. Still inert: the line does not START with `/key`.
 juce::String advice(const MusicalKey::Key &key) {
-  return "\"" + MusicalKey::announcementAdvice(key) + "\"";
+  // Straight to the convention rather than through a helper of Antiphon's:
+  // what a bot tells a player to type is a NINJAM room convention, and the
+  // bots reach it directly so they need nothing from the plugin.
+  return "\"" +
+         chalkwalk::ninjam::conventions::keyAdviceLine(
+             MusicalKey::displayName(key)) +
+         "\"";
 }
 
 juce::String provenance(Source source, const juce::String &setBy) {

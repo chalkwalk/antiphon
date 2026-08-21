@@ -89,10 +89,10 @@ src/
   Shortcuts.h               # Ctrl+Alt shortcut mapping; matches key code, not text
   AudioDeviceStartup.h      # 4-state standalone device-open policy, with a budget
   ChannelMix.h              # mono/pan/gain: one home for three rules that drifted
-  MusicalKey.{h,cpp}        # the `[key: ...]` tag and the `/key` advice line --
-                            #   NINJAM, not theory, so it did NOT go to
-                            #   chalkwalk-music. Re-exports the key itself from
-                            #   chalkwalk::music::Notation under the old name.
+  MusicalKey.h              # three inline functions composing the envelope
+                            #   (chalkwalk::ninjam::conventions) with the key
+                            #   (chalkwalk::music::Notation), under the name
+                            #   every call site here already uses
   Harmony.h                 # one line: an alias to chalkwalk::music::Harmony
   ClipsortLog.{h,cpp}       # session archive manifest: read and write
   StemRender.h              # one clip into one interval, resampled and aligned

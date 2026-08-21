@@ -1,3 +1,4 @@
+#include "Music.h"
 #include "BotBand.h"
 
 #include "BotDsp.h"

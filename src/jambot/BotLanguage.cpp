@@ -1,3 +1,4 @@
+#include "Music.h"
 #include "BotLanguage.h"
 
 #include "BotDictionary.h"

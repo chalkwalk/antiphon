@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../MusicalKey.h"
 #include "Music.h"
 
 #include <chalkwalk/music/Duration.h>
