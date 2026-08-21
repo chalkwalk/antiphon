@@ -25,7 +25,7 @@
 #include <JuceHeader.h>
 
 #include "AudioMeasure.h"
-#include "BandPatch.h"
+#include "jambot/BandPatch.h"
 #include "jambot/BotBand.h"
 #include "MusicalKey.h"
 

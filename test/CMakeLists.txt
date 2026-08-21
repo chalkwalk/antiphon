@@ -57,7 +57,7 @@ target_sources(NinjamTests
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
-        ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotAddress.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotLanguage.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotNames.cpp
@@ -131,6 +131,7 @@ add_test(NAME no-build-standalone-macro
 add_test(NAME jambot-boundary
          COMMAND ${CMAKE_COMMAND}
                  -DSRC_DIR=${CMAKE_SOURCE_DIR}/src
+                 -DTEST_DIR=${CMAKE_SOURCE_DIR}/test
                  -P ${CMAKE_SOURCE_DIR}/cmake/CheckJambotBoundary.cmake)
 
 add_test(NAME music-layer-is-juce-free

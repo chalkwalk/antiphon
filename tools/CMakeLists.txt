@@ -93,7 +93,7 @@ juce_generate_juce_header(AntiphonBandLab)
 
 target_sources(AntiphonBandLab PRIVATE
         BandLabMain.cpp
-        ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp)
 
 target_compile_definitions(AntiphonBandLab PRIVATE
@@ -132,7 +132,7 @@ target_sources(AntiphonPractice PRIVATE
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
-        ${CMAKE_SOURCE_DIR}/src/BandPatch.cpp
+        ${CMAKE_SOURCE_DIR}/src/jambot/BandPatch.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotAddress.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotLanguage.cpp
         ${CMAKE_SOURCE_DIR}/src/jambot/BotAnswer.cpp

@@ -1,6 +1,13 @@
-#include "../src/AudioMeasure.h"
 #include "../src/jambot/BotDsp.h"
 #include <JuceHeader.h>
+
+#include <chalkwalk/dsp/Measure.h>
+
+// The instruments live in chalkwalk-dsp, and this is the name the
+// assertions below already use for them. Reached for directly rather
+// than through Antiphon's alias header, so this file moves to
+// chalkwalk-jambot without an edit.
+namespace AudioMeasure = chalkwalk::dsp::measure;
 
 // The primitives are arithmetic, so these are exact tests wherever the answer
 // is knowable in advance -- a filter's gain at DC, a delay line's contents, an

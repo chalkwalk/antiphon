@@ -1,7 +1,7 @@
 #pragma once
 
-#include "jambot/BotBand.h"
-#include "jambot/BotVoice.h"
+#include "BotBand.h"
+#include "BotVoice.h"
 
 #include <string>
 #include <vector>

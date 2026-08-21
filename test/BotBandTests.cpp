@@ -1,11 +1,18 @@
-#include "../src/BandPatch.h"
+#include "../src/jambot/BandPatch.h"
 #include "../src/jambot/BotBand.h"
-#include "../src/AudioMeasure.h"
 #include "../src/jambot/BotVoice.h"
 #include <chalkwalk/music/Euclidean.h>
 #include "TestSignal.h"
 #include <map>
 #include <JuceHeader.h>
+
+#include <chalkwalk/dsp/Measure.h>
+
+// The instruments live in chalkwalk-dsp, and this is the name the
+// assertions below already use for them. Reached for directly rather
+// than through Antiphon's alias header, so this file moves to
+// chalkwalk-jambot without an edit.
+namespace AudioMeasure = chalkwalk::dsp::measure;
 
 namespace {
 

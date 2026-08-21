@@ -1,4 +1,4 @@
-#include "../src/BandPatch.h"
+#include "../src/jambot/BandPatch.h"
 #include <JuceHeader.h>
 
 // The parameter layer, which is what the band lab edits and what a tuning
