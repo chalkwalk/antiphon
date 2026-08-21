@@ -1412,7 +1412,7 @@ Two JUCE-light modules, split where the seam naturally is: understanding what
 was said has nothing to do with deciding whether to speak, and each is much
 easier to test alone.
 
-**`src/BotLanguage.{h,cpp}`** -- text in, intent out, and nothing else. No
+**`src/jambot/BotLanguage.{h,cpp}`** -- text in, intent out, and nothing else. No
 knowledge of bots, rooms or music beyond the slot parsers it borrows.
 
 ```cpp

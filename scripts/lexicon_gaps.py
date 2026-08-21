@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "src", "BotLanguage.cpp")
+SRC = os.path.join(ROOT, "src", "jambot", "BotLanguage.cpp")
 CORPUS = os.path.join(ROOT, "test", "fixtures", "bot-phrases.txt")
 
 # Words the engine deliberately drops. A gap report full of "the" is a gap
@@ -97,11 +97,20 @@ def _stems():
     if not os.path.exists(prog) or os.path.getmtime(SRC) > os.path.getmtime(prog):
         os.makedirs(os.path.dirname(prog), exist_ok=True)
         open(source, "w").write(
-            '#include "../src/BotLanguage.h"\n#include <iostream>\n'
+            '#include "../src/jambot/BotLanguage.h"\n#include <iostream>\n'
             "int main(){std::string w;while(std::getline(std::cin,w))"
             "std::cout<<BotLanguage::stem(w)<<\"\\n\";}\n")
-        subprocess.check_call(["g++", "-std=c++17", "-O1", "-o", prog, source, SRC],
-                              cwd=ROOT)
+        # The shared libraries are on the include path because BotLanguage
+        # reaches them through jambot/Music.h. An override is honoured for the
+        # same reason the CMake build honours one -- so a library change can be
+        # tried without a commit -- but the submodule is the default.
+        includes = []
+        for sub in ("music", "ninjam", "dsp"):
+            root = (os.environ.get("CHALKWALK_%s_DIR" % sub.upper())
+                    or os.path.join(ROOT, "libs", sub))
+            includes += ["-I", os.path.join(root, "include")]
+        subprocess.check_call(["g++", "-std=c++17", "-O1", "-o", prog, source, SRC]
+                              + includes, cwd=ROOT)
     out = subprocess.run([prog], input="\n".join(words), capture_output=True,
                          text=True, check=True).stdout.split("\n")
     _cache = dict(zip(words, out))

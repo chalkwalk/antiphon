@@ -54,7 +54,7 @@ target_sources(Antiphon
         PluginEditor.cpp
         NinjamClient.cpp
         jambot/BotBand.cpp
-        BandPatch.cpp
+        jambot/BandPatch.cpp
         jambot/BotAddress.cpp
         jambot/BotLanguage.cpp
         jambot/BotNames.cpp

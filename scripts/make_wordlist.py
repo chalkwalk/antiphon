@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate src/BotDictionary.h -- the real-word gate for typo repair.
+"""Generate src/jambot/BotDictionary.h -- the real-word gate for typo repair.
 
 BotLanguage repairs a word it does not recognise by looking for the nearest
 lexicon entry within a small edit budget. That is only safe if we can tell a
@@ -27,7 +27,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = "/usr/share/dict/british-english"
-OUT = os.path.join(ROOT, "src", "BotDictionary.h")
+OUT = os.path.join(ROOT, "src", "jambot", "BotDictionary.h")
 
 # Must match BotLanguage.cpp: plain Damerau-Levenshtein, one edit up to five
 # characters and two beyond. One extra edit of slack, so that adding or
@@ -54,7 +54,7 @@ def cost(a, b, ceiling):
 
 
 def lexicon():
-    src = open(os.path.join(ROOT, "src", "BotLanguage.cpp"), encoding="ascii").read()
+    src = open(os.path.join(ROOT, "src", "jambot", "BotLanguage.cpp"), encoding="ascii").read()
     words = set()
     for table in ("kLexicon", "kClassed"):
         m = re.search(r"const \w+ %s\[\] = \{(.*?)\n\};" % table, src, re.S)

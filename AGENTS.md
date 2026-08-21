@@ -157,6 +157,9 @@ src/
                             #   snapshot in and an intention out.
   jambot/BotDictionary.h    # GENERATED (scripts/make_wordlist.py): a real word
                             #   is not a mistyped one. Do not hand-edit.
+  jambot/BandPatch.{h,cpp}  # the band's tunable knobs, and the patch file the
+                            #   lab reads and writes. Band code, so it lives
+                            #   with the band rather than beside the plugin.
   # --- UI ---
   LocalChannelStrip.{h,cpp} # 90px vertical strip per local input channel
   RemoteUserStrip.{h,cpp}   # card per remote player, channels arranged horizontally
@@ -185,7 +188,7 @@ tools/
 scripts/
   testserver.sh             # fetches, builds and runs a local ninjamsrv out of tree
   analyze_archive.py        # measures a server session archive
-  make_wordlist.py          # SCOWL -> src/BotDictionary.h; rerun after a lexicon change
+  make_wordlist.py          # SCOWL -> src/jambot/BotDictionary.h; rerun after a lexicon change
   lexicon_gaps.py           # proposes BotLanguage lexicon entries from the corpus
   trim_soundfont.py         # cuts an SF2/SF3 down to the presets we would use
 docs/references/            # what was read to write this, and at which revision
@@ -354,7 +357,7 @@ reading past a buffer. Assume your change has the same failure mode.
 | Mixing, routing, playback delay | `test/AudioLoopbackTests.cpp` | Drives the real path end to end. |
 | Accessibility naming rules | `test/AccessibilityAuditTests.cpp` | Synthetic node tree; the real UI cannot be compiled into the test target. |
 | A new control, or a new UI state | `test/AuditMain.cpp` | The `AntiphonAudit` target links the plugin's own library and audits the **real** editor across five states. Add a state when you add a surface -- an unaudited state is how the connect dialog stayed unchecked for its whole life. |
-| What a bot understands | `test/fixtures/bot-phrases.txt` | **The corpus is the specification; add the phrasing first and watch it go red.** Every fourth line of each section is held out from tuning, and the holdout rate is the only figure that says anything about phrasing nobody has thought of. Append to the END of a section so new lines keep feeding it. Regenerate `src/BotDictionary.h` after any lexicon change. |
+| What a bot understands | `test/fixtures/bot-phrases.txt` | **The corpus is the specification; add the phrasing first and watch it go red.** Every fourth line of each section is held out from tuning, and the holdout rate is the only figure that says anything about phrasing nobody has thought of. Append to the END of a section so new lines keep feeding it. Regenerate `src/jambot/BotDictionary.h` after any lexicon change. |
 | Who a bot answers | `test/fixtures/bot-addressing.txt` | Same shape. The commonest correct answer is nobody. |
 | Server-visible behaviour | `test/RealServerTests.cpp` | Opt-in via `NINJAM_TEST_SERVER`; keep the default suite hermetic. |
 
