@@ -89,7 +89,10 @@ src/
   Shortcuts.h               # Ctrl+Alt shortcut mapping; matches key code, not text
   AudioDeviceStartup.h      # 4-state standalone device-open policy, with a budget
   ChannelMix.h              # mono/pan/gain: one home for three rules that drifted
-  MusicalKey.h              # key and mode: parse, display, scale notes
+  TextUtil.h                # the six string operations the music layer needs,
+                            #   without JUCE. Travels with it to chalkwalk-music
+  MusicalKey.{h,cpp}        # key and mode: parse, display, scale notes. JUCE-FREE
+  Harmony.{h,cpp}           # chords, charts, degrees, voice leading. JUCE-FREE
   ClipsortLog.{h,cpp}       # session archive manifest: read and write
   StemRender.h              # one clip into one interval, resampled and aligned
   GainUtils.h               # dB<->linear, fader and meter scales, formatting

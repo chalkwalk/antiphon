@@ -112,7 +112,8 @@ MusicalKey::Key keyAskedFor(const juce::String &text) {
       text.removeCharacters(",.?!").toLowerCase(), " \t", "");
 
   for (int i = 0; i + 1 < words.size(); ++i) {
-    const auto key = MusicalKey::parseName(words[i] + " " + words[i + 1]);
+    const auto key =
+        MusicalKey::parseName((words[i] + " " + words[i + 1]).toStdString());
     if (!key.valid)
       continue;
 

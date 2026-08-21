@@ -126,6 +126,14 @@ add_test(NAME no-build-standalone-macro
                  -DSRC_DIR=${CMAKE_SOURCE_DIR}/src
                  -P ${CMAKE_SOURCE_DIR}/cmake/CheckNoStandaloneMacro.cmake)
 
+# The same shape, guarding the boundary the music layer is being moved across.
+# A `juce::String` added in passing still builds and still passes; it is only
+# discovered when somebody tries to move the file.
+add_test(NAME music-layer-is-juce-free
+         COMMAND ${CMAKE_COMMAND}
+                 -DSRC_DIR=${CMAKE_SOURCE_DIR}/src
+                 -P ${CMAKE_SOURCE_DIR}/cmake/CheckMusicLayerIsJuceFree.cmake)
+
 # ---------------------------------------------------------------------------
 # Accessibility audit over the real component tree.
 #

@@ -46,13 +46,13 @@ public:
                                         answerSetTempo(r, 500, 0),
                                         answerVoteRequest(r)};
         for (const auto &line : replies) {
-          expect(!MusicalKey::parseAnnouncement(line).valid,
+          expect(!MusicalKey::parseAnnouncement(line.toStdString()).valid,
                  "this reply sets the key by saying it: " + line);
           // A reply beginning with a bar line would be read as somebody
           // announcing a chart. This nearly happened: dropping a provenance
           // suffix left describeChart returning bare chart text, and the only
           // thing that had been preventing it was the suffix.
-          expect(!Harmony::looksLikeChart(line),
+          expect(!Harmony::looksLikeChart(line.toStdString()),
                  "this reply is itself a chart: " + line);
         }
 
@@ -60,7 +60,7 @@ public:
         // begins with a bar line, which is exactly why the header forbids
         // sending one on its own.
         for (const auto &fragment : {describeKey(r), describeChart(r)})
-          expect(!MusicalKey::parseAnnouncement(fragment).valid,
+          expect(!MusicalKey::parseAnnouncement(fragment.toStdString()).valid,
                  "this fragment sets the key: " + fragment);
       }
     }
@@ -109,7 +109,7 @@ public:
       // Naming it must not BE announcing it: a client reads a leading bar as
       // somebody putting a chart up, and the chart being offered is not the
       // one the room is on.
-      expect(!Harmony::looksLikeChart(reply), reply);
+      expect(!Harmony::looksLikeChart(reply.toStdString()), reply);
 
       // A room already on the default has nothing to change, and saying so is
       // more useful than handing back a line that would do nothing.

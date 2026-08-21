@@ -61,13 +61,13 @@ int noteTier(int midiNote, const Harmony::Chord &chord) {
 
 namespace {
 
-MusicalKey::Key keyOf(const juce::String &name) {
+MusicalKey::Key keyOf(const std::string &name) {
   auto k = MusicalKey::parseName(name);
   jassert(k.valid);
   return k;
 }
 
-BotBand::Settings settingsFor(const juce::String &keyName, int bpm = 120,
+BotBand::Settings settingsFor(const std::string &keyName, int bpm = 120,
                               int bpi = 8, std::uint32_t seed = 12345) {
   return BotBand::defaults(keyOf(keyName), bpm, bpi, 48000.0, seed);
 }
@@ -138,7 +138,7 @@ public:
     const int seed = juce::SystemStats::getEnvironmentVariable(
         "ANTIPHON_BAND_SEED", "20260811").getIntValue();
 
-    auto key = MusicalKey::parseName(keyName);
+    auto key = MusicalKey::parseName(keyName.toStdString());
     if (!key.valid)
       key = MusicalKey::parseName("C major");
 

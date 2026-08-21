@@ -534,11 +534,11 @@ public:
           if (!r.speak)
             continue;
 
-          expect(!MusicalKey::parseAnnouncement(r.text).valid,
+          expect(!MusicalKey::parseAnnouncement(r.text.toStdString()).valid,
                  "this reply sets the key by saying it: " + r.text);
-          expect(!MusicalKey::parseTagged(r.text).valid,
+          expect(!MusicalKey::parseTagged(r.text.toStdString()).valid,
                  "this reply carries a key tag: " + r.text);
-          expect(!Harmony::looksLikeChart(r.text),
+          expect(!Harmony::looksLikeChart(r.text.toStdString()),
                  "this reply is itself a chart: " + r.text);
         }
       }
@@ -870,7 +870,7 @@ public:
 
       // It must not be mistaken for a bot ANNOUNCING that chart, which is the
       // hazard every chart-shaped reply in this module carries.
-      expect(!Harmony::looksLikeChart(r.text), r.text);
+      expect(!Harmony::looksLikeChart(r.text.toStdString()), r.text);
     }
 
     beginTest("a bot told to be quiet says how to bring it back, then stops");

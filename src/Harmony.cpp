@@ -100,7 +100,7 @@ Chord stackThirds(const MusicalKey::Key &key, int degree, int numNotes) {
 
   Chord c;
   c.root = wrapPitchClass(key.tonic + rootSemi);
-  c.toneCount = juce::jlimit(1, kMaxChordTones, numNotes);
+  c.toneCount = std::max(1, std::min(kMaxChordTones, numNotes));
   for (int i = 0; i < c.toneCount; ++i)
     c.tones[(size_t)i] =
         (std::int8_t)(degreeSemitone(degree + 2 * i) - rootSemi);
@@ -194,24 +194,22 @@ namespace {
 
 // A note letter and its accidentals: "C", "F#", "Bb". Advances `pos` past what
 // it read and returns the pitch class, or -1.
-int parseNote(const juce::String &s, int &pos) {
+int parseNote(const std::string &s, int &pos) {
   static const char *letters = "CDEFGAB";
   static const int letterSemis[7] = {0, 2, 4, 5, 7, 9, 11};
 
-  if (pos >= s.length())
+  if (pos >= (int)s.size())
     return -1;
 
-  const juce::juce_wchar raw = s[pos];
-  const juce::juce_wchar upper =
-      (raw >= 'a' && raw <= 'z') ? (juce::juce_wchar)(raw - 32) : raw;
-  const int idx = juce::String(letters).indexOfChar(upper);
+  const char upper = TextUtil::upperChar(s[(size_t)pos]);
+  const int idx = TextUtil::indexOf(letters, upper);
   if (idx < 0)
     return -1;
 
   int pc = letterSemis[idx];
   ++pos;
   bool first = true;
-  while (pos < s.length() && (s[pos] == '#' || s[pos] == 'b')) {
+  while (pos < (int)s.size() && (s[(size_t)pos] == '#' || s[(size_t)pos] == 'b')) {
     // A 'b' can be an accidental or the start of "b5", so only take it as a
     // flat while it sits directly against the letter.
     //
@@ -221,10 +219,10 @@ int parseNote(const juce::String &s, int &pos) {
     // always has a quality between it and the letter -- "C7b5", "F#m7b5" --
     // so the position immediately after the letter can only ever be an
     // accidental.
-    if (!first && s[pos] == 'b' && pos + 1 < s.length() &&
-        juce::CharacterFunctions::isDigit(s[pos + 1]))
+    if (!first && s[(size_t)pos] == 'b' && pos + 1 < (int)s.size() &&
+        TextUtil::isAsciiDigit(s[(size_t)pos + 1]))
       break;
-    pc += (s[pos] == '#') ? 1 : -1;
+    pc += (s[(size_t)pos] == '#') ? 1 : -1;
     ++pos;
     first = false;
   }
@@ -246,17 +244,17 @@ struct Shape {
 // A cursor over the suffix. Case-sensitive, because "M7" and "m7" are different
 // chords and lowercasing early is how that gets lost.
 struct Cursor {
-  juce::String text;
+  std::string text;
   int pos = 0;
 
   bool take(const char *literal) {
-    const juce::String want(literal);
-    if (text.substring(pos, pos + want.length()) != want)
+    const std::string want(literal);
+    if (text.compare((size_t)pos, want.size(), want) != 0)
       return false;
-    pos += want.length();
+    pos += (int)want.size();
     return true;
   }
-  bool done() const { return pos >= text.length(); }
+  bool done() const { return pos >= (int)text.size(); }
 };
 
 void addSeventh(Shape &shape, bool major) {
@@ -386,7 +384,7 @@ Chord chordFrom(int root, const Shape &shape) {
   for (int e : shape.extras)
     tones.push_back(e);
 
-  c.toneCount = juce::jmin((int)tones.size(), kMaxChordTones);
+  c.toneCount = std::min((int)tones.size(), kMaxChordTones);
   for (int i = 0; i < c.toneCount; ++i)
     c.tones[(size_t)i] = (std::int8_t)tones[(size_t)i];
   return c;
@@ -394,35 +392,35 @@ Chord chordFrom(int root, const Shape &shape) {
 
 } // namespace
 
-bool parseChordName(const juce::String &text, Chord &out) {
-  juce::String s = text.trim();
-  if (s.isEmpty())
+bool parseChordName(const std::string &text, Chord &out) {
+  std::string s = TextUtil::trim(text);
+  if (s.empty())
     return false;
 
   // Parentheses are decoration around an alteration -- "F#m7(b5)" is
   // "F#m7b5" -- so they come out before the suffix is read rather than being
   // handled at every alteration. Unbalanced ones are a typo, not a chord:
   // dropping them silently would make "C(" a C major triad.
-  if (s.indexOfChar('(') >= 0 || s.indexOfChar(')') >= 0) {
+  if (TextUtil::indexOf(s, '(') >= 0 || TextUtil::indexOf(s, ')') >= 0) {
     int opens = 0, closes = 0;
-    for (int i = 0; i < s.length(); ++i) {
-      opens += (s[i] == '(') ? 1 : 0;
-      closes += (s[i] == ')') ? 1 : 0;
+    for (char c : s) {
+      opens += (c == '(') ? 1 : 0;
+      closes += (c == ')') ? 1 : 0;
     }
     if (opens != closes)
       return false;
-    s = s.removeCharacters("()");
+    s = TextUtil::withoutChars(s, "()");
   }
 
   int bass = -1;
-  const int slash = s.lastIndexOfChar('/');
+  const int slash = TextUtil::lastIndexOf(s, '/');
   if (slash >= 0) {
-    juce::String bassText = s.substring(slash + 1).trim();
+    std::string bassText = TextUtil::trim(s.substr((size_t)slash + 1));
     int bassPos = 0;
     bass = parseNote(bassText, bassPos);
-    if (bass < 0 || bassPos != bassText.length())
+    if (bass < 0 || bassPos != (int)bassText.size())
       return false;
-    s = s.substring(0, slash).trim();
+    s = TextUtil::trim(s.substr(0, (size_t)slash));
   }
 
   int pos = 0;
@@ -430,7 +428,7 @@ bool parseChordName(const juce::String &text, Chord &out) {
   if (root < 0)
     return false;
 
-  Cursor cursor{s.substring(pos), 0};
+  Cursor cursor{s.substr((size_t)pos), 0};
   Shape shape;
   if (!parseSuffix(cursor, shape))
     return false;
@@ -443,7 +441,7 @@ bool parseChordName(const juce::String &text, Chord &out) {
 namespace {
 
 // The part of a chord symbol after the root: "m7", "sus4", "maj9", "dim7".
-juce::String chordSuffix(const Chord &chord) {
+std::string chordSuffix(const Chord &chord) {
   auto has = [&](int semitone) {
     for (int i = 0; i < chord.toneCount; ++i)
       if (chord.tones[(size_t)i] == semitone)
@@ -475,7 +473,7 @@ juce::String chordSuffix(const Chord &chord) {
       top = 9;
   }
 
-  juce::String suffix;
+  std::string suffix;
   if (minor && flatFive && seventh == 10) {
     suffix = "m7b5";
   } else if (dimSeventh) {
@@ -491,7 +489,7 @@ juce::String chordSuffix(const Chord &chord) {
     if (sixth)
       suffix += "6";
     else if (top >= 7)
-      suffix += (seventh == 11 ? "maj" : "") + juce::String(top);
+      suffix += (seventh == 11 ? "maj" : "") + std::to_string(top);
     else if (has(14))
       suffix += "add9"; // a ninth with no seventh under it is an added note
 
@@ -519,21 +517,20 @@ juce::String chordSuffix(const Chord &chord) {
 
 } // namespace
 
-juce::String chordName(const Chord &chord, bool flat) {
-  juce::String name =
+std::string chordName(const Chord &chord, bool flat) {
+  std::string name =
       MusicalKey::noteName(chord.root, flat) + chordSuffix(chord);
   if (chord.bass >= 0 && chord.bass != chord.root)
     name += "/" + MusicalKey::noteName(chord.bass, flat);
   return name;
 }
 
-juce::String spellNote(int pitchClass, const MusicalKey::Key &key) {
+std::string spellNote(int pitchClass, const MusicalKey::Key &key) {
   if (!key.valid)
     return MusicalKey::noteName(pitchClass, key.flat);
 
   const int *steps = MusicalKey::scaleSteps(key.mode);
-  const auto scale =
-      juce::StringArray::fromTokens(MusicalKey::scaleNotes(key), " ", "");
+  const auto scale = TextUtil::split(MusicalKey::scaleNotes(key), " ");
   if (scale.size() != MusicalKey::kScaleDegrees)
     return MusicalKey::noteName(pitchClass, key.flat);
 
@@ -561,10 +558,10 @@ juce::String spellNote(int pitchClass, const MusicalKey::Key &key) {
 
   // Applying an accidental CANCELS the opposite one rather than stacking on
   // it: the seventh of D major is C#, and lowering it gives C, not Cb.
-  auto alter = [](juce::String note, bool down) {
-    const juce::juce_wchar opposite = down ? '#' : 'b';
-    if (note.endsWithChar(opposite))
-      return note.dropLastCharacters(1);
+  auto alter = [](std::string note, bool down) {
+    const char opposite = down ? '#' : 'b';
+    if (!note.empty() && note.back() == opposite)
+      return note.substr(0, note.size() - 1);
     return note + (down ? "b" : "#");
   };
 
@@ -577,17 +574,17 @@ juce::String spellNote(int pitchClass, const MusicalKey::Key &key) {
   return MusicalKey::noteName(pitchClass, key.flat);
 }
 
-juce::String chordName(const Chord &chord, const MusicalKey::Key &key) {
+std::string chordName(const Chord &chord, const MusicalKey::Key &key) {
   if (!key.valid)
     return chordName(chord, key.flat);
 
-  juce::String name = spellNote(chord.root, key) + chordSuffix(chord);
+  std::string name = spellNote(chord.root, key) + chordSuffix(chord);
   if (chord.bass >= 0 && chord.bass != chord.root)
     name += "/" + spellNote(chord.bass, key);
   return name;
 }
 
-juce::String romanName(const Chord &chord, const MusicalKey::Key &key) {
+std::string romanName(const Chord &chord, const MusicalKey::Key &key) {
   if (!key.valid)
     return {};
 
@@ -602,7 +599,7 @@ juce::String romanName(const Chord &chord, const MusicalKey::Key &key) {
     return -1;
   };
 
-  juce::String accidental;
+  std::string accidental;
   int degree = degreeAt(interval);
   if (degree < 0) {
     // Not in the scale. Name it as a lowered degree above -- bIII, bVI, bVII --
@@ -624,27 +621,28 @@ juce::String romanName(const Chord &chord, const MusicalKey::Key &key) {
     }
   }
 
-  juce::String numeral(numerals[degree]);
+  std::string numeral(numerals[degree]);
   const bool minorThird =
       chord.toneCount > 1 &&
       (chord.tones[1] == 3 || (chord.tones[1] != 4 && chord.toneCount > 2 &&
                                chord.tones[2] == 6));
   if (minorThird)
-    numeral = numeral.toLowerCase();
+    numeral = TextUtil::lower(numeral);
 
   // The case already says minor, so the symbol must not say it twice: Dm7 in C
   // is ii7, not iim7. "m7b5" stays whole, because it names a fifth as well as a
   // third, and "dim" reads better as the "o" a chart would use.
-  juce::String suffix = chordSuffix(chord);
+  std::string suffix = chordSuffix(chord);
   if (suffix == "m")
     suffix = "";
-  else if (suffix.startsWith("m") && !suffix.startsWith("maj") &&
-           !suffix.startsWith("m7b5"))
-    suffix = suffix.substring(1);
-  else if (suffix.startsWith("dim"))
-    suffix = "o" + suffix.substring(3);
+  else if (TextUtil::startsWith(suffix, "m") &&
+           !TextUtil::startsWith(suffix, "maj") &&
+           !TextUtil::startsWith(suffix, "m7b5"))
+    suffix = suffix.substr(1);
+  else if (TextUtil::startsWith(suffix, "dim"))
+    suffix = "o" + suffix.substr(3);
 
-  juce::String out = accidental + numeral + suffix;
+  std::string out = accidental + numeral + suffix;
   if (chord.bass >= 0 && chord.bass != chord.root)
     out += "/" + MusicalKey::noteName(chord.bass, key.flat);
   return out;
@@ -673,11 +671,11 @@ Chord resolutionChord(const Chart &chart, const MusicalKey::Key &key) {
   return tonicTriad;
 }
 
-juce::String chartText(const Chart &chart, bool flat) {
+std::string chartText(const Chart &chart, bool flat) {
   if (chart.empty())
     return {};
 
-  juce::String out = "|";
+  std::string out = "|";
   for (const auto &bar : chart) {
     for (const auto &c : bar.chords)
       out += " " + chordName(c, flat);
@@ -686,11 +684,11 @@ juce::String chartText(const Chart &chart, bool flat) {
   return out;
 }
 
-juce::String chartText(const Chart &chart, const MusicalKey::Key &key) {
+std::string chartText(const Chart &chart, const MusicalKey::Key &key) {
   if (chart.empty())
     return {};
 
-  juce::String out = "|";
+  std::string out = "|";
   for (const auto &bar : chart) {
     for (const auto &c : bar.chords)
       out += " " + chordName(c, key);
@@ -699,15 +697,15 @@ juce::String chartText(const Chart &chart, const MusicalKey::Key &key) {
   return out;
 }
 
-juce::String romanChartText(const Chart &chart, const MusicalKey::Key &key) {
+std::string romanChartText(const Chart &chart, const MusicalKey::Key &key) {
   if (chart.empty() || !key.valid)
     return {};
 
-  juce::String out = "|";
+  std::string out = "|";
   for (const auto &bar : chart) {
     for (const auto &c : bar.chords) {
       const auto name = romanName(c, key);
-      out += " " + (name.isEmpty() ? chordName(c, key.flat) : name);
+      out += " " + (name.empty() ? chordName(c, key.flat) : name);
     }
     out += " |";
   }
@@ -718,27 +716,27 @@ namespace {
 
 // The one tokeniser. `chords` is filled when it is asked for; `looksLikeChart`
 // passes nullptr and only wants the verdict.
-bool readChart(const juce::String &text, std::vector<std::vector<Chord>> *bars) {
-  const auto trimmed = text.trim();
+bool readChart(const std::string &text, std::vector<std::vector<Chord>> *bars) {
+  const auto trimmed = TextUtil::trim(text);
 
   // A chart opens with a bar line. Requiring it is what keeps prose out:
   // Jamtaba's parser treats "I" and "l" as separators and so reads "I AM TIRED"
   // as a progression, which is exactly the guess this refuses to make.
-  if (!trimmed.startsWithChar('|'))
+  if (trimmed.empty() || trimmed.front() != '|')
     return false;
 
   int measures = 0;
   int chords = 0;
-  for (const auto &part : juce::StringArray::fromTokens(trimmed, "|", "")) {
-    const auto measure = part.trim();
-    if (measure.isEmpty())
+  for (const auto &part : TextUtil::split(trimmed, "|")) {
+    const auto measure = TextUtil::trim(part);
+    if (measure.empty())
       continue; // the empty pieces either side of the outer bars
 
     ++measures;
     std::vector<Chord> bar;
-    for (const auto &token : juce::StringArray::fromTokens(measure, " \t", "")) {
-      const auto name = token.trim();
-      if (name.isEmpty())
+    for (const auto &token : TextUtil::split(measure, " \t")) {
+      const auto name = TextUtil::trim(token);
+      if (name.empty())
         continue;
       Chord c;
       if (!parseChordName(name, c))
@@ -756,7 +754,7 @@ bool readChart(const juce::String &text, std::vector<std::vector<Chord>> *bars) 
 
 } // namespace
 
-bool looksLikeChart(const juce::String &text) {
+bool looksLikeChart(const std::string &text) {
   return readChart(text, nullptr);
 }
 
@@ -764,21 +762,21 @@ namespace {
 
 // "I", "iv", "bVI", "#ivo", "1", "b6", "5sus4". The key decides what an
 // unqualified degree means.
-bool parseDegreeName(const juce::String &text, const MusicalKey::Key &key,
+bool parseDegreeName(const std::string &text, const MusicalKey::Key &key,
                      Chord &out) {
-  juce::String s = text.trim().removeCharacters("()");
-  if (s.isEmpty())
+  std::string s = TextUtil::withoutChars(TextUtil::trim(text), "()");
+  if (s.empty())
     return false;
 
   int alter = 0;
-  if (s.startsWithChar('b')) {
+  if (s.front() == 'b') {
     alter = -1;
-    s = s.substring(1);
-  } else if (s.startsWithChar('#')) {
+    s = s.substr(1);
+  } else if (s.front() == '#') {
     alter = 1;
-    s = s.substring(1);
+    s = s.substr(1);
   }
-  if (s.isEmpty())
+  if (s.empty())
     return false;
 
   // Roman first, longest first so "vii" is not read as "v".
@@ -790,31 +788,31 @@ bool parseDegreeName(const juce::String &text, const MusicalKey::Key &key,
   bool fromRoman = false;
 
   for (size_t i = 0; i < 7; ++i) {
-    const juce::String lower(romans[i]);
-    const juce::String upper = lower.toUpperCase();
-    if (s.startsWith(lower)) {
+    const std::string lower(romans[i]);
+    const std::string upper = TextUtil::upper(lower);
+    if (TextUtil::startsWith(s, lower)) {
       degree = romanDegree[i];
       minorCase = true;
       fromRoman = true;
-      s = s.substring(lower.length());
+      s = s.substr(lower.size());
       break;
     }
-    if (s.startsWith(upper)) {
+    if (TextUtil::startsWith(s, upper)) {
       degree = romanDegree[i];
       fromRoman = true;
-      s = s.substring(upper.length());
+      s = s.substr(upper.size());
       break;
     }
   }
 
   if (degree < 0) {
-    if (!juce::CharacterFunctions::isDigit(s[0]))
+    if (s.empty() || !TextUtil::isAsciiDigit(s[0]))
       return false;
     const int number = s[0] - '0';
     if (number < 1 || number > 7)
       return false;
     degree = number - 1;
-    s = s.substring(1);
+    s = s.substr(1);
   }
 
   if (!key.valid)
@@ -846,26 +844,26 @@ bool parseDegreeName(const juce::String &text, const MusicalKey::Key &key,
 
 } // namespace
 
-bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
+bool parseDegreeChart(const std::string &text, const MusicalKey::Key &key,
                       Chart &out) {
   if (!key.valid)
     return false;
 
-  const auto trimmed = text.trim();
-  if (!trimmed.startsWithChar('|'))
+  const auto trimmed = TextUtil::trim(text);
+  if (trimmed.empty() || trimmed.front() != '|')
     return false;
 
   Chart chart;
   int chords = 0;
-  for (const auto &part : juce::StringArray::fromTokens(trimmed, "|", "")) {
-    const auto measure = part.trim();
-    if (measure.isEmpty())
+  for (const auto &part : TextUtil::split(trimmed, "|")) {
+    const auto measure = TextUtil::trim(part);
+    if (measure.empty())
       continue;
 
     Bar bar;
-    for (const auto &token : juce::StringArray::fromTokens(measure, " \t", "")) {
-      const auto name = token.trim();
-      if (name.isEmpty())
+    for (const auto &token : TextUtil::split(measure, " \t")) {
+      const auto name = TextUtil::trim(token);
+      if (name.empty())
         continue;
       Chord c;
       if (!parseDegreeName(name, key, c))
@@ -884,7 +882,7 @@ bool parseDegreeChart(const juce::String &text, const MusicalKey::Key &key,
   return true;
 }
 
-bool parseChart(const juce::String &text, Chart &out) {
+bool parseChart(const std::string &text, Chart &out) {
   std::vector<std::vector<Chord>> bars;
   if (!readChart(text, &bars))
     return false;
@@ -902,7 +900,7 @@ bool parseChart(const juce::String &text, Chart &out) {
   return true;
 }
 
-bool parseProgression(const juce::String &text, Progression &out) {
+bool parseProgression(const std::string &text, Progression &out) {
   Chart chart;
   if (!parseChart(text, chart))
     return false;
@@ -972,12 +970,12 @@ Layout layoutChart(const Chart &chart, int bpi) {
     }
 
     const int barSteps = (lastBeat - firstBeat + 1) * kStepsPerBeat;
-    const int fit = juce::jmin((int)chords.size(), barSteps);
+    const int fit = std::min((int)chords.size(), barSteps);
 
     for (int s = 0; s < barSteps; ++s) {
       const int within = chordIndexForBeat(s, barSteps, fit);
       layout.stepToChord[(size_t)(firstBeat * kStepsPerBeat + s)] =
-          firstIndexInBar + juce::jlimit(0, fit - 1, within);
+          firstIndexInBar + std::max(0, std::min(fit - 1, within));
     }
     firstIndexInBar += (int)chords.size();
   }
@@ -1128,7 +1126,7 @@ int voicingDistance(const Voicing &a, const Voicing &b) {
   if (a.empty() || b.empty())
     return 0;
 
-  const int shared = juce::jmin((int)a.size(), (int)b.size());
+  const int shared = std::min((int)a.size(), (int)b.size());
   int cost = 0;
   for (int i = 0; i < shared; ++i)
     cost += std::abs(a[(size_t)i] - b[(size_t)i]);
@@ -1141,7 +1139,7 @@ int voicingDistance(const Voicing &a, const Voicing &b) {
   for (size_t i = (size_t)shared; i < longer.size(); ++i) {
     int nearest = std::abs(longer[i] - shorter[0]);
     for (int n : shorter)
-      nearest = juce::jmin(nearest, std::abs(longer[i] - n));
+      nearest = std::min(nearest, std::abs(longer[i] - n));
     cost += nearest;
   }
   return cost;

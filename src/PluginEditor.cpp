@@ -383,7 +383,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         // and which we parse back on the way in. Nothing is set locally here --
         // the message we receive is what updates the header, so what we display
         // is exactly what the room was told.
-        const auto key = MusicalKey::parseName(text.substring(5));
+        const auto key = MusicalKey::parseName(text.substring(5).toStdString());
         if (key.valid) {
           audioProcessor.ninjamClient.sendChatMessage(
               MusicalKey::buildTagged(key));
@@ -400,13 +400,13 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
           chart = "| " + chart.replace(" ", " | ") + " |";
 
         Harmony::Chart parsed;
-        if (Harmony::parseChart(chart, parsed)) {
+        if (Harmony::parseChart(chart.toStdString(), parsed)) {
           audioProcessor.ninjamClient.sendChatMessage(
               Harmony::chartText(parsed, sessionKey));
         } else if (!sessionKey.valid) {
           chatDisplay.insertTextAtCaret(
               "Local: set a key first, and then degrees will work: /key Dm.\n");
-        } else if (Harmony::parseDegreeChart(chart, sessionKey, parsed)) {
+        } else if (Harmony::parseDegreeChart(chart.toStdString(), sessionKey, parsed)) {
           audioProcessor.ninjamClient.sendChatMessage(
               Harmony::chartText(parsed, sessionKey));
         } else {
@@ -612,7 +612,7 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   room.chart = sessionChart;
   room.chartFromChat = chartFromChat;
 
-  switch (RoomHarmony::apply(text, room)) {
+  switch (RoomHarmony::apply(text.toStdString(), room)) {
   case RoomHarmony::Change::Key: {
     sessionKey = room.key;
     sessionChart = room.chart;
@@ -705,7 +705,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   // timeline below, where their position carries the timing; here it is the
   // shape of the progression, which is what a numeral is for.
   if (connected && showsChartRow() && sessionKey.valid) {
-    const auto roman = Harmony::romanChartText(sessionChart, sessionKey);
+    const juce::String roman = Harmony::romanChartText(sessionChart, sessionKey);
     if (roman.isNotEmpty()) {
       g.setColour(juce::Colours::white.withAlpha(0.55f));
       g.drawFittedText(roman, row2.removeFromRight(320),
@@ -728,7 +728,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       tempoText += "   (-> " + juce::String(wantBpm) + " / " +
                    juce::String(wantBpi) + " next interval)";
     if (sessionKey.valid)
-      tempoText += "   Key " + MusicalKey::displayName(sessionKey);
+      tempoText += "   Key " + juce::String(MusicalKey::displayName(sessionKey));
     g.drawFittedText(tempoText, row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
@@ -787,7 +787,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
                                               juce::jmax(24, room - 4),
                                               chartRow.getHeight()),
                          juce::Justification::centredLeft, 1);
-        previousRight = x + juce::jmin(room, 6 + name.length() * 7);
+        previousRight = x + juce::jmin(room, 6 + (int)name.length() * 7);
       }
     }
     header.removeFromTop(2);

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <JuceHeader.h>
+#include "TextUtil.h"
+#include <string>
 
 // The key a jam is in: a tonic and a mode.
 //
@@ -19,7 +20,9 @@
 // tests/auto/chords/TestChatChordsProgressionParser.cpp).
 // Guessing at prose is how you get a header that lies.
 //
-// JUCE-light and free of juce_gui_basics, so it is unit-testable in the headless
+// JUCE-FREE, like the rest of the music-theory layer: this and `Harmony` are
+// used by the bots and by the plugin's chat UI alike, so they belong to neither
+// and their home is `chalkwalk-music`. Unit-testable in the headless
 // test target -- PluginEditor cannot be compiled there at all.
 
 namespace MusicalKey {
@@ -53,18 +56,18 @@ struct Key {
 
 // The tag a key travels in. Chosen to be unmistakable in a chat log and still
 // readable to someone whose client knows nothing about it.
-inline juce::String tagPrefix() { return "[key:"; }
+inline std::string tagPrefix() { return "[key:"; }
 
 // "D minor", "F# Dorian", "Bb major". Returns an invalid Key for anything else.
-Key parseName(const juce::String &text);
+Key parseName(const std::string &text);
 
 // Pulls a key out of a chat line or a topic, i.e. finds `[key: ...]` anywhere in
 // the string and parses what is inside. Returns an invalid Key when the tag is
 // absent -- deliberately, so ordinary chat can never set the key.
-Key parseTagged(const juce::String &text);
+Key parseTagged(const std::string &text);
 
 // The message `/key Dm` sends: "[key: D minor]".
-juce::String buildTagged(const Key &key);
+std::string buildTagged(const Key &key);
 
 // A key announcement in EITHER of the two forms the room understands.
 //
@@ -85,30 +88,30 @@ juce::String buildTagged(const Key &key);
 //
 // Use THIS on anything arriving from the wire. `parseTagged` remains for the
 // places that specifically mean the tag.
-Key parseAnnouncement(const juce::String &line);
+Key parseAnnouncement(const std::string &line);
 
 // "D minor". Empty for an invalid key.
-juce::String displayName(const Key &key);
+std::string displayName(const Key &key);
 
 // What a bot should tell somebody to type. Deliberately NOT the tag, because
 // saying the tag sets the key.
-inline juce::String announcementAdvice(const Key &key) {
+inline std::string announcementAdvice(const Key &key) {
   return "/key " + displayName(key);
 }
 
 // The notes of the scale, spelled to match the tonic: "D E F G A Bb C".
 // Empty for an invalid key. Useful spoken as well as shown -- a player who
 // cannot see the header still gets the one fact they need.
-juce::String scaleNotes(const Key &key);
+std::string scaleNotes(const Key &key);
 
-juce::String modeName(Mode mode);
+std::string modeName(Mode mode);
 
 // A pitch class as a note name, spelled sharp or flat as asked: "C#" or "Db".
 //
 // Exported because spelling a chord root is the same problem as spelling a
 // scale note, and a second accidental table in Harmony.cpp would be a second
 // place to be wrong (`PRINCIPLES §8`).
-juce::String noteName(int semitone, bool flat);
+std::string noteName(int semitone, bool flat);
 
 // Whether a key is conventionally written with flats, derived from its relative
 // major. What `scaleNotes` uses, and what a chord name should use, so a chord in

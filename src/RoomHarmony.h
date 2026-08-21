@@ -2,7 +2,7 @@
 
 #include "Harmony.h"
 #include "MusicalKey.h"
-#include <JuceHeader.h>
+#include <string>
 
 // What a chat line does to the room's key and chart.
 //
@@ -13,7 +13,8 @@
 // phase bar went on showing the chart before it. Nothing announced the
 // divergence; you had to hear it (`PRINCIPLES` 8).
 //
-// Pure and JUCE-light, so it can be tested directly. `PluginEditor` cannot be
+// Pure and JUCE-FREE, like the `Harmony` and `MusicalKey` it sits on, so it can
+// be tested directly. `PluginEditor` cannot be
 // compiled into the test target at all, which is exactly why the decision does
 // not belong there.
 
@@ -37,7 +38,7 @@ enum class Change { None, Key, Chart };
 // The subset of chat that needs no address, because its SYNTAX is unmistakable:
 // a `[key: Dm]` tag, a `| Am | F |` chart, or a degree chart against the key
 // the room is already in. Nobody writes any of them by accident.
-inline Change apply(const juce::String &text, State &state) {
+inline Change apply(const std::string &text, State &state) {
   if (const auto key = MusicalKey::parseAnnouncement(text); key.valid) {
     // Re-announcing the key the room is already in is not a change, and acting
     // on it would transpose a chart that has not moved.

@@ -16,16 +16,16 @@ public:
       // What gets typed in a jam is "Dm", not "D minor".
       const auto dm = parseName("Dm");
       expect(dm.valid);
-      expectEquals(displayName(dm), juce::String("D minor"));
+      expectEquals(displayName(dm), std::string("D minor"));
 
       const auto d = parseName("D");
       expect(d.valid);
-      expectEquals(displayName(d), juce::String("D major"),
+      expectEquals(displayName(d), std::string("D major"),
                    "a bare tonic means major");
 
-      expectEquals(displayName(parseName("Bb")), juce::String("Bb major"));
-      expectEquals(displayName(parseName("Bbm")), juce::String("Bb minor"));
-      expectEquals(displayName(parseName("F#")), juce::String("F# major"));
+      expectEquals(displayName(parseName("Bb")), std::string("Bb major"));
+      expectEquals(displayName(parseName("Bbm")), std::string("Bb minor"));
+      expectEquals(displayName(parseName("F#")), std::string("F# major"));
     }
 
     beginTest("a flat in second position is never a mode");
@@ -36,8 +36,8 @@ public:
       const auto bFlat = parseName("Bb");
       const auto bMinor = parseName("Bm");
       expect(bFlat.valid && bMinor.valid);
-      expectEquals(displayName(bFlat), juce::String("Bb major"));
-      expectEquals(displayName(bMinor), juce::String("B minor"));
+      expectEquals(displayName(bFlat), std::string("Bb major"));
+      expectEquals(displayName(bMinor), std::string("B minor"));
       expect(bFlat.tonic != bMinor.tonic, "Bb and B are different tonics");
     }
 
@@ -45,10 +45,10 @@ public:
     {
       for (const auto *name : {"major", "minor", "Ionian", "Dorian", "Phrygian",
                                "Lydian", "Mixolydian", "Aeolian", "Locrian"}) {
-        const juce::String spelled = juce::String("D ") + name;
-        const auto key = parseName(spelled);
+        const juce::String spelled = std::string("D ") + name;
+        const auto key = parseName(spelled.toStdString());
         expect(key.valid, "did not parse: " + spelled);
-        expectEquals(displayName(key), spelled,
+        expectEquals(displayName(key), spelled.toStdString(),
                      "did not round-trip: " + spelled);
       }
     }
@@ -58,9 +58,9 @@ public:
     {
       // Someone who typed "D minor" should be told "D minor" back. The scales
       // are identical; the words are not.
-      expectEquals(displayName(parseName("D minor")), juce::String("D minor"));
+      expectEquals(displayName(parseName("D minor")), std::string("D minor"));
       expectEquals(displayName(parseName("D Aeolian")),
-                   juce::String("D Aeolian"));
+                   std::string("D Aeolian"));
       expectEquals(scaleNotes(parseName("D minor")),
                    scaleNotes(parseName("D Aeolian")),
                    "the notes must be the same even if the names are not");
@@ -69,19 +69,19 @@ public:
     beginTest("case and spacing do not matter");
     {
       for (const auto *s : {"dm", "DM", "D m", " Dm ", "d minor", "D MINOR"})
-        expectEquals(displayName(parseName(s)), juce::String("D minor"),
-                     juce::String("failed on: ") + s);
+        expectEquals(displayName(parseName(s)), std::string("D minor"),
+                     std::string("failed on: ") + s);
     }
 
     beginTest("the scale is spelled to match the tonic");
     {
       expectEquals(scaleNotes(parseName("D minor")),
-                   juce::String("D E F G A Bb C"));
+                   std::string("D E F G A Bb C"));
       expectEquals(scaleNotes(parseName("C major")),
-                   juce::String("C D E F G A B"));
+                   std::string("C D E F G A B"));
       // A mode is not just a relabelled major scale: F Dorian has four flats.
       expectEquals(scaleNotes(parseName("F Dorian")),
-                   juce::String("F G Ab Bb C D Eb"));
+                   std::string("F G Ab Bb C D Eb"));
     }
 
     beginTest("prose is never a key");
@@ -93,7 +93,7 @@ public:
       for (const auto *s : {"I AM TIRED ...", "LETS TAKE A BREAK", "hello", "",
                             "   ", "H minor", "D quantum", "8", "Dmm"})
         expect(!parseName(s).valid,
-               juce::String("wrongly read as a key: ") + s);
+               std::string("wrongly read as a key: ") + s);
     }
 
     beginTest("only the tagged form is picked up from a chat line");
@@ -104,7 +104,7 @@ public:
 
       const auto tagged = parseTagged("[key: D minor]");
       expect(tagged.valid);
-      expectEquals(displayName(tagged), juce::String("D minor"));
+      expectEquals(displayName(tagged), std::string("D minor"));
     }
 
     beginTest("a tag is found wherever it sits in the line");
@@ -113,8 +113,8 @@ public:
       for (const auto *s :
            {"[key: Dm]", "jam night -- [key: Dm] -- all welcome",
             "trailing [key: Dm]", "[KEY: Dm]"})
-        expectEquals(displayName(parseTagged(s)), juce::String("D minor"),
-                     juce::String("failed on: ") + s);
+        expectEquals(displayName(parseTagged(s)), std::string("D minor"),
+                     std::string("failed on: ") + s);
     }
 
     beginTest("a malformed tag yields no key rather than a wrong one");
@@ -122,7 +122,7 @@ public:
       for (const auto *s : {"[key:", "[key: ]", "[key: bananas]", "[key Dm]",
                             "[key: Dm", "]key: Dm["})
         expect(!parseTagged(s).valid,
-               juce::String("wrongly read as a key: ") + s);
+               std::string("wrongly read as a key: ") + s);
     }
 
     beginTest("what we send is what we parse");
@@ -132,19 +132,19 @@ public:
         const auto original = parseName(s);
         expect(original.valid);
         const auto message = buildTagged(original);
-        expect(message.startsWith("[key:"));
+        expect(TextUtil::startsWith(message, "[key:"));
         const auto received = parseTagged(message);
-        expect(received.valid, "did not survive the round trip: " + message);
-        expect(received == original, "changed in the round trip: " + message);
+        expect(received.valid, "did not survive the round trip: " + juce::String(message));
+        expect(received == original, "changed in the round trip: " + juce::String(message));
       }
     }
 
     beginTest("an invalid key builds and displays as nothing");
     {
       Key none;
-      expect(buildTagged(none).isEmpty());
-      expect(displayName(none).isEmpty());
-      expect(scaleNotes(none).isEmpty());
+      expect(buildTagged(none).empty());
+      expect(displayName(none).empty());
+      expect(scaleNotes(none).empty());
     }
 
     beginTest("a key announcement has two forms, and only one is sayable");
@@ -153,13 +153,13 @@ public:
       expect(parseAnnouncement("[key: D minor]").valid);
       expect(parseAnnouncement("blues jam [key: D minor] all welcome").valid);
       expectEquals(displayName(parseAnnouncement("nice [key: G minor] one")),
-                   juce::String("G minor"));
+                   std::string("G minor"));
 
       // The command form, line-leading only.
       expectEquals(displayName(parseAnnouncement("/key G minor")),
-                   juce::String("G minor"));
+                   std::string("G minor"));
       expectEquals(displayName(parseAnnouncement("  /key Dm  ")),
-                   juce::String("D minor"));
+                   std::string("D minor"));
       expect(parseAnnouncement("/KEY Am").valid, "case is not the point");
 
       // ...and THAT is the whole reason the second form exists. A bot must be
