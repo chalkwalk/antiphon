@@ -171,6 +171,21 @@ The single source of truth for how this repo is built and tested.
 
 First-time clone: `git submodule update --init --recursive`
 
+**Testing a change to a shared library without pushing it.** Point at a working
+checkout instead of the submodule; the library's own suite and Antiphon's both
+run against it:
+
+```bash
+cmake -B build -DCHALKWALK_MUSIC_DIR=$HOME/Programming/chalkwalk-music
+```
+
+`CHALKWALK_DSP_DIR` and `CHALKWALK_NINJAM_DIR` likewise, as cache variables or
+environment variables. Configure prints `OVERRIDE` when one is in use, because
+**the submodule SHA no longer describes what you built** -- so CI must not use
+them, and neither should anything meant to be attributable, `docs/PARITY.md`
+above all. Iterate with an override; bump the submodule and re-verify before
+calling anything done. Same shape as Anvil's `CHALKWALK_PHYSICAL_DIR`.
+
 ```bash
 # Configure (once, or after CMakeLists changes). No generator flag -- use
 # whatever CMake picks.
