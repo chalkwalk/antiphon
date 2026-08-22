@@ -37,9 +37,9 @@ bool PracticeRoom::start(const Config &config) {
     juce::ScopedLock sl(botsMutex);
     bots.clear();
 
-    const BotBand::Voice voices[] = {
-        BotBand::Voice::Drums, BotBand::Voice::Bass, BotBand::Voice::Keys,
-        BotBand::Voice::Lead};
+    const BotBand::Voice voices[] = {BotBand::Voice::Drums,
+                                     BotBand::Voice::Bass, BotBand::Voice::Keys,
+                                     BotBand::Voice::Lead};
 
     // Names before players, because a name has to be checked against the room.
     //
@@ -101,12 +101,11 @@ bool PracticeRoom::start(const Config &config) {
   }
 
   running = true;
-  conductor.start((double)intervalSamples / cfg.sampleRate,
-                  [this](int intervalIndex) {
-                    reapPartedBots();
-                    renderOneInterval(intervalIndex,
-                                      [this] { return !running.load(); });
-                  });
+  conductor.start(
+      (double)intervalSamples / cfg.sampleRate, [this](int intervalIndex) {
+        reapPartedBots();
+        renderOneInterval(intervalIndex, [this] { return !running.load(); });
+      });
   return true;
 }
 
@@ -187,4 +186,3 @@ void PracticeRoom::renderOneInterval(int intervalIndex,
     b->renderInterval(intervalSamples, intervalIndex);
   }
 }
-

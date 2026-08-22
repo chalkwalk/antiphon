@@ -26,8 +26,8 @@ namespace MusicalKey {
 // namespace alias, because this namespace also holds the tag below -- and
 // because the list is then an honest statement of what Antiphon takes.
 using chalkwalk::music::Notation::Key;
-using chalkwalk::music::Notation::Mode;
 using chalkwalk::music::Notation::kScaleDegrees;
+using chalkwalk::music::Notation::Mode;
 
 using chalkwalk::music::Notation::degreeToMidi;
 using chalkwalk::music::Notation::displayName;

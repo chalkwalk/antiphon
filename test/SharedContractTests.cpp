@@ -81,8 +81,8 @@ private:
           float worst = 0.0f;
           for (int i = 0; i < 4096; ++i) {
             const float in = (i % 2 == 0) ? 1.0f : -1.0f; // Nyquist
-            worst = std::max(
-                worst, std::abs(f.process(in, (BotDsp::Svf::Mode)mode)));
+            worst = std::max(worst,
+                             std::abs(f.process(in, (BotDsp::Svf::Mode)mode)));
           }
           expect(std::isfinite(worst) && worst < 100.0f,
                  "Svf bounded at cutoff " + juce::String(cutoff) + " q " +

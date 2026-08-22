@@ -52,7 +52,8 @@ struct Joiner : public NinjamClientListener {
 // The bot playing a given instrument, whatever it happens to be called this
 // session. Names come from the seed now, so a test that wants "the keys bot"
 // has to ask rather than assume.
-juce::String botPlaying(const PracticeRoom &room, const juce::String &instrument) {
+juce::String botPlaying(const PracticeRoom &room,
+                        const juce::String &instrument) {
   for (const auto &n : room.botNames())
     if (n.contains("[" + instrument + "-bot]"))
       return n;
@@ -73,24 +74,28 @@ MusicalKey::Key keyOf(const std::string &name) {
 // The band arrives silent now, so anything about playing has to start it.
 bool startBand(Joiner &you, const PracticeRoom &room) {
   you.client.sendChatMessage("band play");
-  return waitUntil([&] {
-    const auto phases = room.bandPhases();
-    if (phases.empty())
-      return false;
-    for (auto p : phases)
-      if (p != BandPlayState::State::Playing)
-        return false;
-    return true;
-  }, 6000);
+  return waitUntil(
+      [&] {
+        const auto phases = room.bandPhases();
+        if (phases.empty())
+          return false;
+        for (auto p : phases)
+          if (p != BandPlayState::State::Playing)
+            return false;
+        return true;
+      },
+      6000);
 }
 
 bool waitForRoster(const Joiner &you) {
-  return waitUntil([&] {
-    for (const auto &line : you.snapshot())
-      if (juce::String(line).contains("say a name to talk to one of us"))
-        return true;
-    return false;
-  }, 12000);
+  return waitUntil(
+      [&] {
+        for (const auto &line : you.snapshot())
+          if (juce::String(line).contains("say a name to talk to one of us"))
+            return true;
+        return false;
+      },
+      12000);
 }
 
 PracticeRoom::Config testConfig(const juce::String &owner = "you") {
@@ -129,7 +134,8 @@ public:
       expect(room.start(testConfig()));
       expect(room.isRunning());
       expect(room.port() > 0);
-      expectEquals(juce::String(PracticeRoom::host()), juce::String("127.0.0.1"));
+      expectEquals(juce::String(PracticeRoom::host()),
+                   juce::String("127.0.0.1"));
       expect(room.botCount() > 0, "the room brought no bots");
     }
 
@@ -179,13 +185,16 @@ public:
       const auto expected = room.botNames();
       expect(expected.size() > 0);
 
-      expect(waitUntil([&] {
-        auto users = you.client.getRemoteUsers();
-        for (const auto &n : expected)
-          if (users.count(n) == 0)
-            return false;
-        return true;
-      }, 5000), "the band never appeared in the mixer");
+      expect(waitUntil(
+                 [&] {
+                   auto users = you.client.getRemoteUsers();
+                   for (const auto &n : expected)
+                     if (users.count(n) == 0)
+                       return false;
+                   return true;
+                 },
+                 5000),
+             "the band never appeared in the mixer");
 
       auto users = you.client.getRemoteUsers();
       expect(users[expected[0]].channels.size() > 0,
@@ -204,8 +213,7 @@ public:
 
       juce::StringArray handles;
       for (const auto &n : room.botNames()) {
-        expect(n.endsWith("-bot]"),
-               "bot name does not identify itself: " + n);
+        expect(n.endsWith("-bot]"), "bot name does not identify itself: " + n);
         expect(!n.containsChar(' '),
                "a name with a space cannot be sent a private message: " + n);
 
@@ -252,10 +260,12 @@ public:
     {
       const auto help = PracticeBot::helpLine("Mirn[kit-bot]");
       expect(juce::String(help).contains("Mirn[kit-bot]"));
-      expect(juce::String(help).contains("leave"), "help does not name the command");
+      expect(juce::String(help).contains("leave"),
+             "help does not name the command");
     }
 
-    beginTest("a private message parts a bot, from someone who does not own it");
+    beginTest(
+        "a private message parts a bot, from someone who does not own it");
     {
       // Anyone in the room may evict a bot. Needing to find its owner first is
       // exactly the annoyance being avoided.
@@ -267,15 +277,21 @@ public:
       expect(stranger.join(room, "someone-else"));
 
       const auto botName = room.botNames()[0];
-      expect(waitUntil([&] {
-        return stranger.client.getRemoteUsers().count(botName) > 0;
-      }, 5000), "the bot never appeared");
+      expect(waitUntil(
+                 [&] {
+                   return stranger.client.getRemoteUsers().count(botName) > 0;
+                 },
+                 5000),
+             "the bot never appeared");
 
       stranger.client.sendPrivateMessage(botName, "leave");
 
-      expect(waitUntil([&] {
-        return stranger.client.getRemoteUsers().count(botName) == 0;
-      }, 5000), "the bot ignored a part request from a non-owner");
+      expect(waitUntil(
+                 [&] {
+                   return stranger.client.getRemoteUsers().count(botName) == 0;
+                 },
+                 5000),
+             "the bot ignored a part request from a non-owner");
     }
 
     beginTest("a bot answers help privately");
@@ -286,17 +302,21 @@ public:
       expect(you.join(room, "you"));
 
       const auto botName = room.botNames()[0];
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botName) > 0;
-      }, 5000));
+      expect(waitUntil(
+          [&] { return you.client.getRemoteUsers().count(botName) > 0; },
+          5000));
 
       you.client.sendPrivateMessage(botName, "help");
-      expect(waitUntil([&] {
-        for (const auto &line : you.snapshot())
-          if (juce::String(line).startsWith("PRIVMSG|" + botName) && juce::String(line).contains("leave"))
-            return true;
-        return false;
-      }, 5000), "the bot did not explain how to remove it");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &line : you.snapshot())
+                     if (juce::String(line).startsWith("PRIVMSG|" + botName) &&
+                         juce::String(line).contains("leave"))
+                       return true;
+                   return false;
+                 },
+                 5000),
+             "the bot did not explain how to remove it");
     }
   }
 
@@ -316,9 +336,13 @@ public:
       {
         Joiner you;
         expect(you.join(room, "you"));
-        expect(waitUntil([&] {
-          return you.client.getRemoteUsers().count(room.botNames()[0]) > 0;
-        }, 5000), "the bot never appeared");
+        expect(waitUntil(
+                   [&] {
+                     return you.client.getRemoteUsers().count(
+                                room.botNames()[0]) > 0;
+                   },
+                   5000),
+               "the bot never appeared");
         // `you` disconnects here, leaving nobody at all.
       }
 
@@ -343,9 +367,13 @@ public:
       {
         Joiner you;
         expect(you.join(room, "you"));
-        expect(waitUntil([&] {
-          return you.client.getRemoteUsers().count(room.botNames()[0]) > 0;
-        }, 5000), "the bot never appeared");
+        expect(waitUntil(
+                   [&] {
+                     return you.client.getRemoteUsers().count(
+                                room.botNames()[0]) > 0;
+                   },
+                   5000),
+               "the bot never appeared");
       }
 
       juce::MessageManager::getInstance()->runDispatchLoopUntil(800);
@@ -353,20 +381,28 @@ public:
 
       Joiner back;
       expect(back.join(room, "you"));
-      expect(waitUntil([&] {
-        return back.client.getRemoteUsers().count(room.botNames()[0]) > 0;
-      }, 5000), "the band was gone when the player came back");
+      expect(waitUntil(
+                 [&] {
+                   return back.client.getRemoteUsers().count(
+                              room.botNames()[0]) > 0;
+                 },
+                 5000),
+             "the band was gone when the player came back");
 
       // The room says the band is still there and how to start it. Not a
       // separate "welcome back" line: the arrival roster already re-arms for
       // the first human in a room, which on a reconnect is you -- so a line of
       // our own would say what the roster is about to say anyway.
-      expect(waitUntil([&] {
-        for (const auto &line : back.snapshot())
-          if (juce::String(line).contains("-bot]") && juce::String(line).containsIgnoreCase("play"))
-            return true;
-        return false;
-      }, 12000), "nothing told the returning player the band was still there");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &line : back.snapshot())
+                     if (juce::String(line).contains("-bot]") &&
+                         juce::String(line).containsIgnoreCase("play"))
+                       return true;
+                   return false;
+                 },
+                 12000),
+             "nothing told the returning player the band was still there");
 
       // ...and the countdown really was cancelled, rather than merely
       // outrun: past the original expiry, they are still here.
@@ -391,9 +427,12 @@ public:
       {
         Joiner you;
         expect(you.join(room, "you"));
-        expect(waitUntil([&] {
-          return watcher.client.getRemoteUsers().count(botName) > 0;
-        }, 5000), "the bot never appeared");
+        expect(waitUntil(
+                   [&] {
+                     return watcher.client.getRemoteUsers().count(botName) > 0;
+                   },
+                   5000),
+               "the bot never appeared");
       }
 
       // Well past the grace, and still playing for the room.
@@ -439,7 +478,7 @@ public:
         NinjamClient you;
         you.setSampleRate(48000.0);
         you.connectToServer(PracticeRoom::host(), room.port(), "you", "");
-        juce::Thread::sleep(700);  // on the wire, off the message loop
+        juce::Thread::sleep(700); // on the wire, off the message loop
         you.disconnectFromServer();
         juce::Thread::sleep(300);
       }
@@ -480,16 +519,16 @@ public:
         for (const auto &n : names)
           if (n.contains(juce::String("[") + instrument + "-bot]"))
             ++found;
-        expectEquals(found, 1, juce::String("no single bot plays ") +
-                                   instrument + ": " +
-                                   names.joinIntoString(", "));
+        expectEquals(found, 1,
+                     juce::String("no single bot plays ") + instrument + ": " +
+                         names.joinIntoString(", "));
       }
     }
 
     beginTest("shake changes the figures");
     {
       PracticeBot bot("Mirn[kit-bot]", {"kit"},
-                    std::make_unique<NinjamBotClient>());
+                      std::make_unique<NinjamBotClient>());
       bot.playAs(BotBand::Voice::Drums, MusicalKey::parseName("C major"), 120,
                  8, 48000.0, 7);
       const auto before = bot.currentSettings().seed;
@@ -521,21 +560,29 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000), "the band never arrived");
+      expect(waitUntil(
+                 [&] {
+                   return you.client.getRemoteUsers().count(
+                              botPlaying(room, "keys")) > 0;
+                 },
+                 5000),
+             "the band never arrived");
 
       // Five seconds of deliberate delay, plus room to be late.
-      expect(waitUntil([&] {
-        for (const auto &line : you.snapshot())
-          if (juce::String(line).contains("The Understudies"))
-            return true;
-        return false;
-      }, 9000), "no roster was ever posted");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &line : you.snapshot())
+                     if (juce::String(line).contains("The Understudies"))
+                       return true;
+                   return false;
+                 },
+                 9000),
+             "no roster was ever posted");
 
       juce::StringArray roster, instructions, introductions;
       for (const auto &line : you.snapshot()) {
-        if (!juce::String(line).startsWith("MSG|") || !juce::String(line).contains("-bot]"))
+        if (!juce::String(line).startsWith("MSG|") ||
+            !juce::String(line).contains("-bot]"))
           continue;
         if (juce::String(line).contains("The Understudies"))
           roster.add(line);
@@ -548,7 +595,8 @@ public:
       expectEquals(roster.size(), 1,
                    "the roster was posted " + juce::String(roster.size()) +
                        " times: " + roster.joinIntoString(" / "));
-      expectEquals(instructions.size(), 1, "instructions posted more than once");
+      expectEquals(instructions.size(), 1,
+                   "instructions posted more than once");
       expect(introductions.isEmpty(),
              "a bot introduced itself as well as being on the roster: " +
                  introductions.joinIntoString(" / "));
@@ -583,35 +631,42 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        for (const auto &line : you.snapshot())
-          if (juce::String(line).contains("The Understudies"))
-            return true;
-        return false;
-      }, 9000), "no first roster");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &line : you.snapshot())
+                     if (juce::String(line).contains("The Understudies"))
+                       return true;
+                   return false;
+                 },
+                 9000),
+             "no first roster");
 
       const int before = you.snapshot().size();
 
       // A latecomer, arriving well after the roster it was not part of.
       PracticeBot late("Vurn[horn-bot]", {"horn"},
-                    std::make_unique<NinjamBotClient>());
-      late.playAs(BotBand::Voice::Lead, MusicalKey::parseName("C major"), 120, 8,
-                  48000.0, 77u);
+                       std::make_unique<NinjamBotClient>());
+      late.playAs(BotBand::Voice::Lead, MusicalKey::parseName("C major"), 120,
+                  8, 48000.0, 77u);
       expect(late.join(PracticeRoom::host(), room.port(), 48000.0));
 
       juce::String second;
-      expect(waitUntil([&] {
-        const auto lines = you.snapshot();
-        for (int i = before; i < lines.size(); ++i)
-          if (lines[i].startsWith("MSG|Vurn[horn-bot]|")) {
-            second = lines[i];
-            return true;
-          }
-        return false;
-      }, 9000), "the latecomer never introduced itself");
+      expect(waitUntil(
+                 [&] {
+                   const auto lines = you.snapshot();
+                   for (int i = before; i < lines.size(); ++i)
+                     if (lines[i].startsWith("MSG|Vurn[horn-bot]|")) {
+                       second = lines[i];
+                       return true;
+                     }
+                   return false;
+                 },
+                 9000),
+             "the latecomer never introduced itself");
 
       // And it named the WHOLE room, not just itself.
-      expect(second.containsIgnoreCase("vurn"), "it left itself out: " + second);
+      expect(second.containsIgnoreCase("vurn"),
+             "it left itself out: " + second);
       int named = 0;
       for (const auto &n : room.botNames())
         if (second.containsIgnoreCase(
@@ -626,8 +681,8 @@ public:
         if (lines[i].startsWith("MSG|") && lines[i].contains("-bot]") &&
             !lines[i].startsWith("MSG|Vurn[horn-bot]|"))
           extra.add(lines[i]);
-      expect(extra.isEmpty(),
-             "an already-announced bot spoke again: " + extra.joinIntoString(" / "));
+      expect(extra.isEmpty(), "an already-announced bot spoke again: " +
+                                  extra.joinIntoString(" / "));
 
       late.part();
     }
@@ -641,9 +696,13 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000), "the band never arrived");
+      expect(waitUntil(
+                 [&] {
+                   return you.client.getRemoteUsers().count(
+                              botPlaying(room, "keys")) > 0;
+                 },
+                 5000),
+             "the band never arrived");
 
       const int before = you.snapshot().size();
       you.client.sendChatMessage("what are you playing");
@@ -655,10 +714,11 @@ public:
 
       juce::StringArray fromBots;
       for (const auto &line : you.snapshot())
-        if (juce::String(line).startsWith("MSG|") && juce::String(line).contains("-bot]"))
+        if (juce::String(line).startsWith("MSG|") &&
+            juce::String(line).contains("-bot]"))
           fromBots.add(line);
-      expect(fromBots.isEmpty(),
-             "unaddressed chat was answered: " + fromBots.joinIntoString(" / "));
+      expect(fromBots.isEmpty(), "unaddressed chat was answered: " +
+                                     fromBots.joinIntoString(" / "));
       expect(you.snapshot().size() >= before);
     }
 
@@ -670,27 +730,31 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       const auto keys = botPlaying(room, "keys");
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(keys) > 0;
-      }, 5000), "the band never arrived");
+      expect(
+          waitUntil([&] { return you.client.getRemoteUsers().count(keys) > 0; },
+                    5000),
+          "the band never arrived");
 
       // Its name alone, which is the opener: it should say what it is playing.
-      const auto handle =
-          juce::String(BotNames::handleOf(keys.toStdString()));
+      const auto handle = juce::String(BotNames::handleOf(keys.toStdString()));
       you.client.sendChatMessage(handle);
 
-      expect(waitUntil([&] {
-        for (const auto &line : you.snapshot())
-          if (juce::String(line).startsWith("MSG|" + keys + "|"))
-            return true;
-        return false;
-      }, 4000), "the bot did not answer to its own name");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &line : you.snapshot())
+                     if (juce::String(line).startsWith("MSG|" + keys + "|"))
+                       return true;
+                   return false;
+                 },
+                 4000),
+             "the bot did not answer to its own name");
 
       // And nobody else did.
       juce::MessageManager::getInstance()->runDispatchLoopUntil(800);
       juce::StringArray others;
       for (const auto &line : you.snapshot())
-        if (juce::String(line).startsWith("MSG|") && juce::String(line).contains("-bot]") &&
+        if (juce::String(line).startsWith("MSG|") &&
+            juce::String(line).contains("-bot]") &&
             !juce::String(line).startsWith("MSG|" + keys + "|"))
           others.add(line);
       expect(others.isEmpty(),
@@ -711,20 +775,24 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       const auto keys = botPlaying(room, "keys");
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(keys) > 0;
-      }, 5000), "the band never arrived");
+      expect(
+          waitUntil([&] { return you.client.getRemoteUsers().count(keys) > 0; },
+                    5000),
+          "the band never arrived");
 
       const auto handle = juce::String(BotNames::handleOf(keys.toStdString()));
       you.client.sendChatMessage(handle + ": what key are we in");
 
-      expect(waitUntil([&] {
-        for (const auto &line : you.snapshot())
-          if (juce::String(line).startsWith("MSG|" + keys + "|") &&
-              juce::String(line).containsIgnoreCase("D minor"))
-            return true;
-        return false;
-      }, 4000), "the bot did not say what key the room was in");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &line : you.snapshot())
+                     if (juce::String(line).startsWith("MSG|" + keys + "|") &&
+                         juce::String(line).containsIgnoreCase("D minor"))
+                       return true;
+                   return false;
+                 },
+                 4000),
+             "the bot did not say what key the room was in");
     }
 
     beginTest("the band arrives silent, and the roster says how to start it");
@@ -739,9 +807,13 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000), "the band never arrived");
+      expect(waitUntil(
+                 [&] {
+                   return you.client.getRemoteUsers().count(
+                              botPlaying(room, "keys")) > 0;
+                 },
+                 5000),
+             "the band never arrived");
       expect(waitForRoster(you), "the band never introduced itself");
 
       for (auto p : room.bandPhases())
@@ -752,17 +824,21 @@ public:
       // reads has to carry the way in.
       bool taught = false;
       for (const auto &line : you.snapshot())
-        if (juce::String(line).contains("-bot]") && juce::String(line).containsIgnoreCase("play"))
+        if (juce::String(line).contains("-bot]") &&
+            juce::String(line).containsIgnoreCase("play"))
           taught = true;
       expect(taught, "nothing told the room how to start the band");
 
       you.client.sendChatMessage("band play");
-      expect(waitUntil([&] {
-        for (auto p : room.bandPhases())
-          if (p != BandPlayState::State::Playing)
-            return false;
-        return !room.bandPhases().empty();
-      }, 5000), "the band would not start");
+      expect(waitUntil(
+                 [&] {
+                   for (auto p : room.bandPhases())
+                     if (p != BandPlayState::State::Playing)
+                       return false;
+                   return !room.bandPhases().empty();
+                 },
+                 5000),
+             "the band would not start");
     }
 
     beginTest("one bot speaks for the band, and all four still act");
@@ -775,9 +851,13 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000), "the band never arrived");
+      expect(waitUntil(
+                 [&] {
+                   return you.client.getRemoteUsers().count(
+                              botPlaying(room, "keys")) > 0;
+                 },
+                 5000),
+             "the band never arrived");
 
       auto botLinesSince = [&](int from) {
         juce::StringArray out;
@@ -804,12 +884,15 @@ public:
                "the one reply does not speak for the band: " + replies[0]);
 
       // ...and every bot acted, not just the one that spoke.
-      expect(waitUntil([&] {
-        for (auto p : room.bandPhases())
-          if (p == BandPlayState::State::Playing)
-            return false;
-        return !room.bandPhases().empty();
-      }, 8000), "only the bot that spoke actually stopped");
+      expect(waitUntil(
+                 [&] {
+                   for (auto p : room.bandPhases())
+                     if (p == BandPlayState::State::Playing)
+                       return false;
+                   return !room.bandPhases().empty();
+                 },
+                 8000),
+             "only the bot that spoke actually stopped");
     }
 
     beginTest("with the band half stopped, the one that acts speaks");
@@ -828,9 +911,10 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       const auto keys = botPlaying(room, "keys");
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(keys) > 0;
-      }, 5000), "the band never arrived");
+      expect(
+          waitUntil([&] { return you.client.getRemoteUsers().count(keys) > 0; },
+                    5000),
+          "the band never arrived");
 
       expect(waitForRoster(you), "the band never introduced itself");
       expect(startBand(you, room), "the band would not start");
@@ -838,10 +922,14 @@ public:
       // Stop the bot that would WIN a flat race, so that a race is exactly
       // what this catches. Picking any other one makes the test pass or fail
       // on which names the seed happened to draw, which is no test at all.
+      std::vector<std::string> band;
+      for (const auto &n : room.botNames())
+        band.push_back(n.toStdString());
+
       juce::String first;
       int best = std::numeric_limits<int>::max();
       for (const auto &n : room.botNames()) {
-        const int d = PracticeBot::speakDelayMs(n.toStdString());
+        const int d = PracticeBot::speakDelayMs(n.toStdString(), band);
         if (d < best) {
           best = d;
           first = n;
@@ -851,14 +939,19 @@ public:
 
       const auto handle = juce::String(BotNames::handleOf(first.toStdString()));
       you.client.sendChatMessage(handle + ": stop");
-      expect(waitUntil([&] {
-        int silent = 0, playing = 0;
-        for (auto p : room.bandPhases()) {
-          if (p == BandPlayState::State::Silent) ++silent;
-          if (p == BandPlayState::State::Playing) ++playing;
-        }
-        return silent >= 1 && playing >= 1;
-      }, 10000), "never reached a half-stopped band");
+      expect(waitUntil(
+                 [&] {
+                   int silent = 0, playing = 0;
+                   for (auto p : room.bandPhases()) {
+                     if (p == BandPlayState::State::Silent)
+                       ++silent;
+                     if (p == BandPlayState::State::Playing)
+                       ++playing;
+                   }
+                   return silent >= 1 && playing >= 1;
+                 },
+                 10000),
+             "never reached a half-stopped band");
 
       const int before = you.snapshot().size();
       you.client.sendChatMessage("band stop");
@@ -888,9 +981,13 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000), "the band never arrived");
+      expect(waitUntil(
+                 [&] {
+                   return you.client.getRemoteUsers().count(
+                              botPlaying(room, "keys")) > 0;
+                 },
+                 5000),
+             "the band never arrived");
 
       expect(waitForRoster(you), "the band never introduced itself");
 
@@ -942,7 +1039,8 @@ public:
       // transmit an interval of zeroes.
       expectEquals((int)seen.size(), 3, "a silent bot still rendered");
       if (seen.size() == 3) {
-        expect(seen[0] == BotBand::Phase::Groove, "the tune was not the groove");
+        expect(seen[0] == BotBand::Phase::Groove,
+               "the tune was not the groove");
         expect(seen[1] == BotBand::Phase::Wrapping, "no wrap-up interval");
         expect(seen[2] == BotBand::Phase::Resolving, "no resolving interval");
       }
@@ -964,9 +1062,10 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       const auto keys = botPlaying(room, "keys");
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(keys) > 0;
-      }, 5000), "the band never arrived");
+      expect(
+          waitUntil([&] { return you.client.getRemoteUsers().count(keys) > 0; },
+                    5000),
+          "the band never arrived");
 
       expect(startBand(you, room), "the band would not start");
 
@@ -1012,15 +1111,19 @@ public:
              "the bot left the room instead of stopping");
 
       you.client.sendChatMessage(handle + ": play");
-      expect(waitUntil([&] {
-        for (auto p : room.bandPhases())
-          if (p == BandPlayState::State::Playing)
-            return true;
-        return false;
-      }, 5000), "the bot could not be brought back in");
+      expect(waitUntil(
+                 [&] {
+                   for (auto p : room.bandPhases())
+                     if (p == BandPlayState::State::Playing)
+                       return true;
+                   return false;
+                 },
+                 5000),
+             "the bot could not be brought back in");
     }
 
-    beginTest("a bot told to be quiet stops answering, and can be brought back");
+    beginTest(
+        "a bot told to be quiet stops answering, and can be brought back");
     {
       PracticeRoom room;
       expect(room.start(testConfig("you")));
@@ -1028,9 +1131,10 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       const auto keys = botPlaying(room, "keys");
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(keys) > 0;
-      }, 5000), "the band never arrived");
+      expect(
+          waitUntil([&] { return you.client.getRemoteUsers().count(keys) > 0; },
+                    5000),
+          "the band never arrived");
 
       const auto handle = juce::String(BotNames::handleOf(keys.toStdString()));
       auto linesFrom = [&](const juce::String &who) {
@@ -1060,7 +1164,8 @@ public:
 
       // Only that bot went quiet: hushing one voice is not hushing the band.
       const auto kit = botPlaying(room, "kit");
-      const auto kitHandle = juce::String(BotNames::handleOf(kit.toStdString()));
+      const auto kitHandle =
+          juce::String(BotNames::handleOf(kit.toStdString()));
       you.client.sendChatMessage(kitHandle + ": what key are we in");
       expect(waitUntil([&] { return linesFrom(kit) > 0; }, 4000),
              "hushing one bot silenced another");
@@ -1077,9 +1182,10 @@ public:
       Joiner you;
       expect(you.join(room, "you"));
       const auto keys = botPlaying(room, "keys");
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(keys) > 0;
-      }, 5000), "the band never arrived");
+      expect(
+          waitUntil([&] { return you.client.getRemoteUsers().count(keys) > 0; },
+                    5000),
+          "the band never arrived");
 
       // Speak as a bot, naming another bot as plainly as possible.
       const auto kit = botPlaying(room, "kit");
@@ -1090,7 +1196,8 @@ public:
 
       juce::StringArray replies;
       for (const auto &line : you.snapshot())
-        if (juce::String(line).startsWith("MSG|") && juce::String(line).contains("-bot]") &&
+        if (juce::String(line).startsWith("MSG|") &&
+            juce::String(line).contains("-bot]") &&
             !juce::String(line).contains("what are you playing"))
           replies.add(line);
       expect(replies.isEmpty(),
@@ -1106,20 +1213,26 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000));
+      expect(waitUntil(
+          [&] {
+            return you.client.getRemoteUsers().count(botPlaying(room, "keys")) >
+                   0;
+          },
+          5000));
 
       you.client.sendChatMessage("[key: D minor]");
 
       // Observable through the room rather than by reaching into a bot: the
       // chords the band is playing are what changed.
-      expect(waitUntil([&] {
-        for (const auto &s : room.bandSettings())
-          if (s.key.tonic == 2 && Harmony::isMinorish(s.key.mode))
-            return true;
-        return false;
-      }, 5000), "the band ignored the announced key");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &s : room.bandSettings())
+                     if (s.key.tonic == 2 && Harmony::isMinorish(s.key.mode))
+                       return true;
+                   return false;
+                 },
+                 5000),
+             "the band ignored the announced key");
 
       for (const auto &s : room.bandSettings())
         expectEquals(Harmony::flatten(s.chart)[0].root, 2,
@@ -1133,23 +1246,30 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000));
+      expect(waitUntil(
+          [&] {
+            return you.client.getRemoteUsers().count(botPlaying(room, "keys")) >
+                   0;
+          },
+          5000));
 
       you.client.sendChatMessage("| Am | F | C | G |");
 
-      expect(waitUntil([&] {
-        for (const auto &s : room.bandSettings()) {
-          const auto chords = Harmony::flatten(s.chart);
-          if (chords.size() == 4 && chords[0].root == 9)
-            return true;
-        }
-        return false;
-      }, 5000), "the band ignored the announced chords");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &s : room.bandSettings()) {
+                     const auto chords = Harmony::flatten(s.chart);
+                     if (chords.size() == 4 && chords[0].root == 9)
+                       return true;
+                   }
+                   return false;
+                 },
+                 5000),
+             "the band ignored the announced chords");
     }
 
-    beginTest("a key change moves a chart the room wrote rather than binning it");
+    beginTest(
+        "a key change moves a chart the room wrote rather than binning it");
     {
       // The bug DESIGN.md section 6.4 exists to fix: announcing a key called
       // `defaultChart` and threw away a progression somebody had typed. A
@@ -1162,29 +1282,38 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000));
+      expect(waitUntil(
+          [&] {
+            return you.client.getRemoteUsers().count(botPlaying(room, "keys")) >
+                   0;
+          },
+          5000));
 
       you.client.sendChatMessage("| Am | F | C | G |");
-      expect(waitUntil([&] {
-        for (const auto &s : room.bandSettings()) {
-          const auto chords = Harmony::flatten(s.chart);
-          if (chords.size() == 4 && chords[0].root == 9)
-            return true;
-        }
-        return false;
-      }, 5000), "the band ignored the announced chords");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &s : room.bandSettings()) {
+                     const auto chords = Harmony::flatten(s.chart);
+                     if (chords.size() == 4 && chords[0].root == 9)
+                       return true;
+                   }
+                   return false;
+                 },
+                 5000),
+             "the band ignored the announced chords");
 
       // A tonic move with the mode unchanged is pure transposition: vi IV I V
       // in C is vi IV I V in D, two semitones up.
       you.client.sendChatMessage("[key: D major]");
-      expect(waitUntil([&] {
-        for (const auto &s : room.bandSettings())
-          if (s.key.tonic == 2 && !Harmony::isMinorish(s.key.mode))
-            return true;
-        return false;
-      }, 5000), "the band ignored the announced key");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &s : room.bandSettings())
+                     if (s.key.tonic == 2 && !Harmony::isMinorish(s.key.mode))
+                       return true;
+                   return false;
+                 },
+                 5000),
+             "the band ignored the announced key");
       juce::MessageManager::getInstance()->runDispatchLoopUntil(500);
 
       for (const auto &s : room.bandSettings()) {
@@ -1208,20 +1337,26 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000));
+      expect(waitUntil(
+          [&] {
+            return you.client.getRemoteUsers().count(botPlaying(room, "keys")) >
+                   0;
+          },
+          5000));
 
       you.client.sendChatMessage("| ii | V | I |");
-      expect(waitUntil([&] {
-        for (const auto &s : room.bandSettings()) {
-          const auto chords = Harmony::flatten(s.chart);
-          if (chords.size() == 3 && chords[0].root == 2 &&
-              chords[1].root == 7 && chords[2].root == 0)
-            return true;
-        }
-        return false;
-      }, 5000), "degrees did not reach the band");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &s : room.bandSettings()) {
+                     const auto chords = Harmony::flatten(s.chart);
+                     if (chords.size() == 3 && chords[0].root == 2 &&
+                         chords[1].root == 7 && chords[2].root == 0)
+                       return true;
+                   }
+                   return false;
+                 },
+                 5000),
+             "degrees did not reach the band");
     }
 
     beginTest("prose in chat does not become a progression");
@@ -1231,9 +1366,12 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botPlaying(room, "keys")) > 0;
-      }, 5000));
+      expect(waitUntil(
+          [&] {
+            return you.client.getRemoteUsers().count(botPlaying(room, "keys")) >
+                   0;
+          },
+          5000));
 
       const auto before = room.bandSettings();
       you.client.sendChatMessage("I AM TIRED OF THIS");
@@ -1259,12 +1397,15 @@ public:
 
       room.practiceServer().setConfig(96, 12);
 
-      expect(waitUntil([&] {
-        for (const auto &s : room.bandSettings())
-          if (s.bpm != 96 || s.bpi != 12)
-            return false;
-        return !room.bandSettings().empty();
-      }, 5000), "the band did not follow the tempo");
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &s : room.bandSettings())
+                     if (s.bpm != 96 || s.bpi != 12)
+                       return false;
+                   return !room.bandSettings().empty();
+                 },
+                 5000),
+             "the band did not follow the tempo");
     }
   }
 
@@ -1277,7 +1418,7 @@ public:
       expect(server.start(120, 8));
 
       PracticeBot bot("Mirn[kit-bot]", {"kit"},
-                    std::make_unique<NinjamBotClient>());
+                      std::make_unique<NinjamBotClient>());
       expect(bot.join(PracticeRoom::host(), server.port(), 48000.0));
       expect(waitUntil([&] { return bot.client().isConnected(); }, 5000));
       expect(bot.isActive());
@@ -1299,7 +1440,7 @@ public:
       expect(server.start(120, 8));
 
       PracticeBot bot("Mirn[kit-bot]", {"kit"},
-                    std::make_unique<NinjamBotClient>());
+                      std::make_unique<NinjamBotClient>());
       expect(bot.join(PracticeRoom::host(), server.port(), 48000.0));
       expect(waitUntil([&] { return bot.client().isConnected(); }, 5000));
 
@@ -1320,9 +1461,9 @@ public:
       expect(you.join(room, "you"));
 
       const auto botName = room.botNames()[0];
-      expect(waitUntil([&] {
-        return you.client.getRemoteUsers().count(botName) > 0;
-      }, 5000));
+      expect(waitUntil(
+          [&] { return you.client.getRemoteUsers().count(botName) > 0; },
+          5000));
 
       room.stop();
       expectEquals(room.botCount(), 0);

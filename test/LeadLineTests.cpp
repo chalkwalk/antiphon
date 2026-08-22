@@ -47,11 +47,14 @@ private:
   void runKeyConversion() {
     beginTest("every mode converts to the right brightness");
     namespace m = chalkwalk::music;
-    const struct { const char *name; int brightness; } cases[] = {
-        {"C major", m::kIonian},      {"C Ionian", m::kIonian},
-        {"C minor", m::kAeolian},     {"C Aeolian", m::kAeolian},
-        {"C Dorian", m::kDorian},     {"C Phrygian", m::kPhrygian},
-        {"C Lydian", m::kLydian},     {"C Mixolydian", m::kMixolydian},
+    const struct {
+      const char *name;
+      int brightness;
+    } cases[] = {
+        {"C major", m::kIonian},    {"C Ionian", m::kIonian},
+        {"C minor", m::kAeolian},   {"C Aeolian", m::kAeolian},
+        {"C Dorian", m::kDorian},   {"C Phrygian", m::kPhrygian},
+        {"C Lydian", m::kLydian},   {"C Mixolydian", m::kMixolydian},
         {"C Locrian", m::kLocrian},
     };
     for (const auto &c : cases) {
@@ -64,7 +67,8 @@ private:
     }
 
     beginTest("the converted scale has the notes the mode has");
-    for (const char *name : {"D minor", "F# Dorian", "Bb Lydian", "E Phrygian"}) {
+    for (const char *name :
+         {"D minor", "F# Dorian", "Bb Lydian", "E Phrygian"}) {
       const auto key = MusicalKey::parseName(name);
       const auto sig = BotBand::toKeySig(key);
       const auto mask = m::pcMask(sig);
@@ -86,8 +90,8 @@ private:
   void runChordConversion() {
     beginTest("chord tones fold into pitch classes");
     Harmony::Chord c;
-    c.root = 2;                     // D
-    c.tones = {{0, 3, 7, 14, 0}};   // minor triad plus a ninth, unreduced
+    c.root = 2;                   // D
+    c.tones = {{0, 3, 7, 14, 0}}; // minor triad plus a ninth, unreduced
     c.toneCount = 4;
 
     const auto sounding = BotBand::toSoundingChord(c);
@@ -117,10 +121,11 @@ private:
           const auto line = BotBand::leadLine(s, interval);
           for (size_t i = 0; i < line.size(); ++i)
             if (line[i] >= 0)
-              expect(chalkwalk::music::hit((int)i, f.steps, f.pulses, f.rotation),
-                     juce::String(name) + " seed " + juce::String((int)seed) +
-                         ": note at step " + juce::String((int)i) +
-                         ", which the figure does not strike");
+              expect(
+                  chalkwalk::music::hit((int)i, f.steps, f.pulses, f.rotation),
+                  juce::String(name) + " seed " + juce::String((int)seed) +
+                      ": note at step " + juce::String((int)i) +
+                      ", which the figure does not strike");
         }
       }
   }
@@ -182,7 +187,8 @@ private:
     const double rate = notes ? (double)hits / notes : 0.0;
     logMessage("  chord-tone rate: " + juce::String(rate, 3));
     expect(rate > 0.5, "over half the notes are chord tones");
-    expect(rate < 0.95, "not EVERY note is a chord tone -- that is an arpeggio");
+    expect(rate < 0.95,
+           "not EVERY note is a chord tone -- that is an arpeggio");
   }
 
   // What the interval objective bought, asserted rather than described.
@@ -205,8 +211,10 @@ private:
   // that seam took it to zero.
   void runMelodicShape() {
     beginTest("the line moves mostly by step, and leaps idiomatically");
-    for (const char *name : {"C major", "D minor", "Bb Lydian", "G Mixolydian"}) {
-      int moves = 0, stepwise = 0, wideAwkward = 0, repeats = 0, staticRepeats = 0;
+    for (const char *name :
+         {"C major", "D minor", "Bb Lydian", "G Mixolydian"}) {
+      int moves = 0, stepwise = 0, wideAwkward = 0, repeats = 0,
+          staticRepeats = 0;
       long long motion = 0;
 
       for (std::uint32_t seed = 1; seed <= 40; ++seed) {
@@ -278,9 +286,9 @@ private:
       expect(repeatRate < 0.15, juce::String(name) + ": " +
                                     juce::String(100.0 * repeatRate, 1) +
                                     "% of moves repeat the note");
-      expect(staticRate < 0.01, juce::String(name) + ": " +
-                                    juce::String(100.0 * staticRate, 2) +
-                                    "% of moves repeat under an unchanged chord");
+      expect(staticRate < 0.01,
+             juce::String(name) + ": " + juce::String(100.0 * staticRate, 2) +
+                 "% of moves repeat under an unchanged chord");
     }
   }
   // The seam between two intervals is a real melodic move and must be priced

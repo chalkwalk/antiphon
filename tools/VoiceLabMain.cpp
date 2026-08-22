@@ -43,7 +43,6 @@ struct Options {
   juce::String keyName = "C major";
   int bpm = 120, bpi = 8, bars = 4;
 
-
   // Bass articulation.
   BotVoice::BassTechnique technique = BotVoice::BassTechnique::Fingered;
 
@@ -77,7 +76,8 @@ void usage() {
       "  file <paths...>  measure WAVs that already exist, and with --lufs\n"
       "                   write matched copies -- for comparing renders from\n"
       "                   builds you can no longer reproduce\n"
-      "  kit, keys and band go through the real path -- with the kit's room and\n"
+      "  kit, keys and band go through the real path -- with the kit's room "
+      "and\n"
       "  the keyboard's chorus -- in stereo\n"
       "\n"
       "  -o <path>          output file, or directory when sweeping\n"
@@ -89,7 +89,8 @@ void usage() {
       "  --open             open hat\n"
       "  --technique <name> bass articulation: fingered, picked or muted\n"
       "  --patch <name>     polysynth patch: strings, brass or poly\n"
-      "  --instrument <n>   what the soloist is holding: epiano, guitar, synth\n"
+      "  --instrument <n>   what the soloist is holding: epiano, guitar, "
+      "synth\n"
       "  --repeats <n>      render n hits (default 1)\n"
       "  --spacing <s>      seconds between repeats (default 0.5)\n"
       "  --sweep p=lo:hi:n  one file per value of p; p is velocity or note\n"
@@ -107,7 +108,8 @@ void usage() {
       "                     (--repeats seeds, --bars intervals each)\n"
       "\n"
       "Prints peak, rms, crest, fundamental and brightness for what it wrote.\n"
-      "Those are the quantities the unit tests assert, measured the same way.\n");
+      "Those are the quantities the unit tests assert, measured the same "
+      "way.\n");
 }
 
 // "E1", "A#2", "Bb3", or a plain MIDI number.
@@ -155,8 +157,10 @@ BotVoice::PadPatch patchFor(const Options &o, std::uint32_t seed) {
   if (!o.patchNamed)
     return patch;
 
-  for (int tries = 0; tries < 64 && patch.character != o.patchCharacter; ++tries)
-    patch = BotVoice::padPatchFor(seed + 2654435761u * (std::uint32_t)(tries + 1));
+  for (int tries = 0; tries < 64 && patch.character != o.patchCharacter;
+       ++tries)
+    patch =
+        BotVoice::padPatchFor(seed + 2654435761u * (std::uint32_t)(tries + 1));
   return patch;
 }
 
@@ -185,16 +189,15 @@ std::vector<float> renderOne(const Options &o) {
       BotVoice::renderHat(out, room, o.sampleRate, o.velocity, seed, o.open);
     else if (o.voice == "bass")
       BotVoice::renderBassString(out, juce::jmin(room, hit), o.sampleRate, hz,
-                                 o.velocity, BotVoice::bassPatchFor(o.technique),
-                                 seed);
+                                 o.velocity,
+                                 BotVoice::bassPatchFor(o.technique), seed);
     else if (o.voice == "lead") {
       const int span = juce::jmin(room, hit);
       BotVoice::LeadPatch patch;
       patch.instrument = o.instrument;
       BotVoice::renderLead(out, span, (int)(0.6 * span), o.sampleRate, hz,
                            o.velocity, patch, seed);
-    }
-    else if (o.voice == "pad") {
+    } else if (o.voice == "pad") {
       const auto patch = patchFor(o, seed);
       if (r == 0)
         std::printf("  patch %s: detune %.1f cents, cutoff %.1f partials, "
@@ -274,8 +277,8 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
         // As the pair that goes out: a mono voice is duplicated by the bot, so
         // measuring one channel would report it 3 LU under the kit for no
         // reason but arithmetic.
-        const double lufs = AudioMeasure::integratedLufs(l.data(), r.data(), n,
-                                                         o.sampleRate);
+        const double lufs =
+            AudioMeasure::integratedLufs(l.data(), r.data(), n, o.sampleRate);
         std::printf("  %-6s peak %.3f  rms %6.1f dBFS  %6.1f LUFS  "
                     "brightness %7.1f Hz%s\n",
                     BotBand::voiceName(voice), AudioMeasure::peak(l.data(), n),
@@ -390,11 +393,10 @@ void matchLoudness(const Options &o, std::vector<float> &left,
 
   const int n = (int)left.size();
   const double measured =
-      right != nullptr
-          ? AudioMeasure::integratedLufs(left.data(), right->data(), n,
-                                         o.sampleRate)
-          : AudioMeasure::integratedLufs(left.data(), left.data(), n,
-                                         o.sampleRate);
+      right != nullptr ? AudioMeasure::integratedLufs(
+                             left.data(), right->data(), n, o.sampleRate)
+                       : AudioMeasure::integratedLufs(left.data(), left.data(),
+                                                      n, o.sampleRate);
   if (measured <= AudioMeasure::kSilenceLufs) {
     std::printf("  (too short or too quiet to match loudness)\n");
     return;
@@ -425,7 +427,8 @@ void matchLoudness(const Options &o, std::vector<float> &left,
 }
 
 bool writeWav(const juce::File &file, const std::vector<float> &buf,
-              double sampleRate, const std::vector<float> *rightChannel = nullptr) {
+              double sampleRate,
+              const std::vector<float> *rightChannel = nullptr) {
   file.deleteFile();
   file.getParentDirectory().createDirectory();
 
@@ -435,9 +438,8 @@ bool writeWav(const juce::File &file, const std::vector<float> &buf,
     return false;
 
   const int channels = rightChannel != nullptr ? 2 : 1;
-  std::unique_ptr<juce::AudioFormatWriter> writer(
-      wav.createWriterFor(stream.release(), sampleRate, (unsigned)channels, 24,
-                          {}, 0));
+  std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(
+      stream.release(), sampleRate, (unsigned)channels, 24, {}, 0));
   if (writer == nullptr)
     return false;
 
@@ -489,8 +491,8 @@ int measureFile(const Options &o, const juce::File &input) {
   const double before =
       AudioMeasure::integratedLufs(left.data(), right.data(), n, rate);
   std::printf("%-34s %2d ch  %5.0f Hz  %6.2f s  peak %.3f  %6.1f LUFS\n",
-              input.getFileName().toRawUTF8(), channels, rate,
-              (double)n / rate, AudioMeasure::peak(left.data(), n), before);
+              input.getFileName().toRawUTF8(), channels, rate, (double)n / rate,
+              AudioMeasure::peak(left.data(), n), before);
 
   if (!o.matchLufs)
     return 0;
@@ -570,7 +572,8 @@ int main(int argc, char *argv[]) {
       else if (name == "fingered")
         o.technique = BotVoice::BassTechnique::Fingered;
       else {
-        std::fprintf(stderr, "voicelab: technique is fingered, picked or muted\n");
+        std::fprintf(stderr,
+                     "voicelab: technique is fingered, picked or muted\n");
         return 1;
       }
     } else if (arg == "--instrument") {
@@ -583,7 +586,8 @@ int main(int argc, char *argv[]) {
       else if (name == "synth")
         o.instrument = BotVoice::LeadInstrument::Synth;
       else {
-        std::fprintf(stderr, "voicelab: instrument is epiano, guitar or synth\n");
+        std::fprintf(stderr,
+                     "voicelab: instrument is epiano, guitar or synth\n");
         return 1;
       }
     } else if (arg == "--patch") {
@@ -602,8 +606,7 @@ int main(int argc, char *argv[]) {
     } else if (arg == "--lufs") {
       o.matchLufs = true;
       o.targetLufs = next().getDoubleValue();
-    }
-    else if (arg == "--note") {
+    } else if (arg == "--note") {
       if (!parseNote(next(), o.midiNote)) {
         std::fprintf(stderr, "voicelab: not a note\n");
         return 1;
@@ -647,9 +650,9 @@ int main(int argc, char *argv[]) {
     return failures;
   }
 
-  const juce::StringArray known{"kick", "snare", "hat",  "bass", "lead",
-                                "pad",  "kit",   "keys", "solo", "band",
-                                "leadstats"};
+  const juce::StringArray known{"kick", "snare", "hat",      "bass",
+                                "lead", "pad",   "kit",      "keys",
+                                "solo", "band",  "leadstats"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -717,7 +720,8 @@ int main(int argc, char *argv[]) {
           {
             const auto lineNow = BotBand::leadLine(s, interval);
             size_t nx = (size_t)step + 1;
-            while (nx < lineNow.size() && lineNow[nx] < 0) ++nx;
+            while (nx < lineNow.size() && lineNow[nx] < 0)
+              ++nx;
             const int beatSamples = (int)(o.sampleRate * 60.0 / o.bpm);
             const int eighth = beatSamples / 2;
             const int gap = (int)(nx - (size_t)step) * eighth;
@@ -725,11 +729,16 @@ int main(int argc, char *argv[]) {
             const auto tr = chalkwalk::music::tierOf(BotBand::toKeySig(s.key),
                                                      ((n % 12) + 12) % 12, sd);
             const int want = chalkwalk::music::holdIn(
-                chalkwalk::music::holdTicks(BotBand::metricStrength(step, s.bpi), tr),
+                chalkwalk::music::holdTicks(
+                    BotBand::metricStrength(step, s.bpi), tr),
                 beatSamples);
-            const int held = chalkwalk::music::articulate(want, gap, s.articulation);
-            fillGap += gap; fillHeld += held; ++sounded;
-            if (held < gap) ++shortened;
+            const int held =
+                chalkwalk::music::articulate(want, gap, s.articulation);
+            fillGap += gap;
+            fillHeld += held;
+            ++sounded;
+            if (held < gap)
+              ++shortened;
           }
           lastChordRoot = ch.root;
           lastChordTones = tonesKey;
@@ -750,9 +759,15 @@ int main(int argc, char *argv[]) {
             if (d != 0)
               lastMove = d;
             if (d == 0) {
-              if (chordChanged) ++repeatNewChord; else ++repeatSameChord;
+              if (chordChanged)
+                ++repeatNewChord;
+              else
+                ++repeatSameChord;
             } else {
-              if (chordChanged) ++stepNewChord; else ++stepSameChord;
+              if (chordChanged)
+                ++stepNewChord;
+              else
+                ++stepSameChord;
             }
           }
           last = n;
@@ -760,9 +775,10 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    std::printf("leadstats  %s  %d bpm  %d bpi  seeds %u..%u  %d intervals each\n",
-                o.keyName.toRawUTF8(), o.bpm, o.bpi, (unsigned)o.seed,
-                (unsigned)(o.seed + (std::uint32_t)seeds - 1), o.bars);
+    std::printf(
+        "leadstats  %s  %d bpm  %d bpi  seeds %u..%u  %d intervals each\n",
+        o.keyName.toRawUTF8(), o.bpm, o.bpi, (unsigned)o.seed,
+        (unsigned)(o.seed + (std::uint32_t)seeds - 1), o.bars);
     std::printf("  notes %d   rests %d   moves %d\n", notes, rests, moves);
     if (moves > 0) {
       std::printf("  mean |interval|   %.2f semitones\n",
@@ -788,11 +804,13 @@ int main(int argc, char *argv[]) {
                   "chord (%.1f%%) and %d over the same (%.1f%%)\n",
                   repeats, 100.0 * repeats / moves, repeatNewChord,
                   repeats ? 100.0 * repeatNewChord / repeats : 0.0,
-                  repeatSameChord, repeats ? 100.0 * repeatSameChord / repeats : 0.0);
+                  repeatSameChord,
+                  repeats ? 100.0 * repeatSameChord / repeats : 0.0);
       if (sounded > 0)
-        std::printf("  note fills        %5.1f%% of the space to the next onset;"
-                    " %d of %d shortened\n",
-                    100.0 * (double)fillHeld / (double)fillGap, shortened, sounded);
+        std::printf(
+            "  note fills        %5.1f%% of the space to the next onset;"
+            " %d of %d shortened\n",
+            100.0 * (double)fillHeld / (double)fillGap, shortened, sounded);
       const int chordChanges = repeatNewChord + stepNewChord;
       std::printf("  chord changed under %5.1f%% of moves\n",
                   100.0 * chordChanges / moves);
@@ -844,8 +862,9 @@ int main(int argc, char *argv[]) {
     if (o.instrumentNamed)
       settings.leadOverride = (int)o.instrument;
 
-    std::printf("solo  seed %u  %s\n", (unsigned)o.seed,
-                BotVoice::leadInstrumentName(BotBand::leadInstrument(settings)));
+    std::printf(
+        "solo  seed %u  %s\n", (unsigned)o.seed,
+        BotVoice::leadInstrumentName(BotBand::leadInstrument(settings)));
 
     const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
     std::vector<float> mix;
@@ -870,7 +889,7 @@ int main(int argc, char *argv[]) {
     const bool isKeys = o.voice == "keys";
     if (o.out == juce::File())
       o.out = juce::File::getCurrentWorkingDirectory().getChildFile(o.voice +
-                                                                   ".wav");
+                                                                    ".wav");
 
     if (isKeys) {
       auto key = MusicalKey::parseName(o.keyName.toStdString());
@@ -890,16 +909,16 @@ int main(int argc, char *argv[]) {
           o.seed += 1u;
         }
 
-      auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
+      auto settings =
+          BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, o.seed);
 
       settings.articulation = o.articulation;
       const auto patch = BotBand::keysPatch(settings);
       std::printf("keys  seed %u  patch %s: detune %.1f cents, cutoff %.1f "
                   "partials, res %.2f, env x%.1f, attack %.0f ms, drive %.2f\n",
-                  (unsigned)o.seed,
-                  BotVoice::padCharacterName(patch.character), patch.detuneCents,
-                  patch.cutoffPartials, patch.resonance, patch.envAmount,
-                  1000.0 * patch.attackSeconds, patch.drive);
+                  (unsigned)o.seed, BotVoice::padCharacterName(patch.character),
+                  patch.detuneCents, patch.cutoffPartials, patch.resonance,
+                  patch.envAmount, 1000.0 * patch.attackSeconds, patch.drive);
     }
 
     std::vector<float> l, r;
@@ -943,8 +962,8 @@ int main(int argc, char *argv[]) {
       }
 
       const auto buf = renderOne(step);
-      const auto name = o.voice + "-" + o.sweepParam + "-" +
-                        juce::String(value, 3) + ".wav";
+      const auto name =
+          o.voice + "-" + o.sweepParam + "-" + juce::String(value, 3) + ".wav";
       const auto file = o.out.getChildFile(name);
       if (!writeWav(file, buf, o.sampleRate)) {
         std::fprintf(stderr, "voicelab: could not write %s\n",
@@ -952,13 +971,12 @@ int main(int argc, char *argv[]) {
         return 1;
       }
       report(name, buf, o.sampleRate);
-      manifest.add(name + "  " + o.sweepParam + "=" + juce::String(value, 3) +
-                   "  peak " +
-                   juce::String(AudioMeasure::peak(buf.data(), (int)buf.size()),
-                                3) +
-                   "  rms " +
-                   juce::String(AudioMeasure::rms(buf.data(), (int)buf.size()),
-                                4));
+      manifest.add(
+          name + "  " + o.sweepParam + "=" + juce::String(value, 3) +
+          "  peak " +
+          juce::String(AudioMeasure::peak(buf.data(), (int)buf.size()), 3) +
+          "  rms " +
+          juce::String(AudioMeasure::rms(buf.data(), (int)buf.size()), 4));
     }
 
     const auto index = o.out.getChildFile("index.txt");

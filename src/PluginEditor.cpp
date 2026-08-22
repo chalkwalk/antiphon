@@ -367,9 +367,9 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   chatInput.setName("chatInput");
   chatInput.setMultiLine(false);
   chatInput.setReturnKeyStartsNewLine(false);
-  chatInput.setTextToShowWhenEmpty(
-      "Message, or a command: /key Dm, /chords Am F C G, /bpm 120, /msg user text",
-      juce::Colours::grey);
+  chatInput.setTextToShowWhenEmpty("Message, or a command: /key Dm, /chords Am "
+                                   "F C G, /bpm 120, /msg user text",
+                                   juce::Colours::grey);
   chatInput.onReturnKey = [this]() {
     juce::String text = chatInput.getText().trim();
     if (text.isNotEmpty()) {
@@ -406,7 +406,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
         } else if (!sessionKey.valid) {
           chatDisplay.insertTextAtCaret(
               "Local: set a key first, and then degrees will work: /key Dm.\n");
-        } else if (Harmony::parseDegreeChart(chart.toStdString(), sessionKey, parsed)) {
+        } else if (Harmony::parseDegreeChart(chart.toStdString(), sessionKey,
+                                             parsed)) {
           audioProcessor.ninjamClient.sendChatMessage(
               Harmony::chartText(parsed, sessionKey));
         } else {
@@ -705,7 +706,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   // timeline below, where their position carries the timing; here it is the
   // shape of the progression, which is what a numeral is for.
   if (connected && showsChartRow() && sessionKey.valid) {
-    const juce::String roman = Harmony::romanChartText(sessionChart, sessionKey);
+    const juce::String roman =
+        Harmony::romanChartText(sessionChart, sessionKey);
     if (roman.isNotEmpty()) {
       g.setColour(juce::Colours::white.withAlpha(0.55f));
       g.drawFittedText(roman, row2.removeFromRight(320),
@@ -728,7 +730,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       tempoText += "   (-> " + juce::String(wantBpm) + " / " +
                    juce::String(wantBpi) + " next interval)";
     if (sessionKey.valid)
-      tempoText += "   Key " + juce::String(MusicalKey::displayName(sessionKey));
+      tempoText +=
+          "   Key " + juce::String(MusicalKey::displayName(sessionKey));
     g.drawFittedText(tempoText, row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
@@ -748,8 +751,8 @@ void AntiphonEditor::paint(juce::Graphics &g) {
     const auto layout = Harmony::layoutChart(sessionChart, bpi);
     if (!layout.empty()) {
       const float phase = audioProcessor.publishedPhaseBeats.load();
-      const int nowStep = juce::jlimit(
-          0, layout.steps() - 1, (int)(phase * Harmony::kStepsPerBeat));
+      const int nowStep = juce::jlimit(0, layout.steps() - 1,
+                                       (int)(phase * Harmony::kStepsPerBeat));
       const int nowChord = layout.stepToChord[(size_t)nowStep];
 
       g.setFont(juce::FontOptions{}.withHeight(12.0f));
@@ -759,9 +762,9 @@ void AntiphonEditor::paint(juce::Graphics &g) {
           continue;
 
         const int idx = layout.stepToChord[(size_t)step];
-        const int x = chartRow.getX() +
-                      (int)((float)step / (float)layout.steps() *
-                            (float)chartRow.getWidth());
+        const int x =
+            chartRow.getX() + (int)((float)step / (float)layout.steps() *
+                                    (float)chartRow.getWidth());
 
         // Where the next change is, so a label never runs into its neighbour.
         int nextStep = layout.steps();
@@ -770,8 +773,9 @@ void AntiphonEditor::paint(juce::Graphics &g) {
             nextStep = s;
             break;
           }
-        const int room = (int)((float)(nextStep - step) / (float)layout.steps() *
-                               (float)chartRow.getWidth());
+        const int room =
+            (int)((float)(nextStep - step) / (float)layout.steps() *
+                  (float)chartRow.getWidth());
 
         const bool isNow = idx == nowChord;
         // A label that will not fit is dropped rather than overlapped -- except
@@ -1577,8 +1581,8 @@ void AntiphonEditor::updateTempoChip() {
   if (keyFromChords.confident && keyFromChords.key != sessionKey &&
       keyFromChords.key != dismissedKeyGuess) {
     chipDawBpm = 0;
-    const juce::String t = "These chords look like " +
-                           MusicalKey::displayName(keyFromChords.key);
+    const juce::String t =
+        "These chords look like " + MusicalKey::displayName(keyFromChords.key);
     chipLabel.setText(t, juce::dontSendNotification);
     chipLabel.setTitle(t);
     chipActionButton.setButtonText("Set key");
@@ -1645,9 +1649,9 @@ void AntiphonEditor::setChatConnectedState(bool connected) {
   chatInput.setColour(juce::TextEditor::outlineColourId,
                       juce::Colour(AntiphonTheme::kDisabledEdge));
   chatInput.setTextToShowWhenEmpty(
-      connected
-          ? "Message, or a command: /key Dm, /chords Am F C G, /bpm 120, /msg user text"
-          : "Not connected -- join a server to chat",
+      connected ? "Message, or a command: /key Dm, /chords Am F C G, /bpm 120, "
+                  "/msg user text"
+                : "Not connected -- join a server to chat",
       juce::Colour(connected ? 0xff8a8a8a : AntiphonTheme::kDisabledText));
   chatInput.repaint();
 }
@@ -1831,8 +1835,7 @@ bool AntiphonEditor::updateStatusReadout() {
     if (sessionKey.valid)
       s << "Key " << MusicalKey::displayName(sessionKey) << ". ";
     if (showsChartRow()) {
-      s << "Chords " << Harmony::chartText(sessionChart, sessionKey)
-        << ". ";
+      s << "Chords " << Harmony::chartText(sessionChart, sessionKey) << ". ";
     }
 
     s << (audioProcessor.isStandaloneApp()

@@ -68,7 +68,8 @@ int main(int argc, char **argv) {
   cfg.seed = (std::uint32_t)flag(args, "--seed", "20260811").getLargeIntValue();
 
   const auto keyName = flag(args, "--key", "C major");
-  if (const auto key = MusicalKey::parseName(keyName.toStdString()); key.valid) {
+  if (const auto key = MusicalKey::parseName(keyName.toStdString());
+      key.valid) {
     cfg.key = key;
   } else {
     std::cerr << "not a key: " << keyName << "\n";

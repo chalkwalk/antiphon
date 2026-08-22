@@ -149,10 +149,11 @@ public:
       expect(b.join(server.port(), "bob"));
 
       expect(waitUntil([&] {
-        auto users = b.client.getRemoteUsers();
-        auto it = users.find("alice");
-        return it != users.end() && it->second.channels.count(0) > 0;
-      }), "bob never saw alice's channel");
+               auto users = b.client.getRemoteUsers();
+               auto it = users.find("alice");
+               return it != users.end() && it->second.channels.count(0) > 0;
+             }),
+             "bob never saw alice's channel");
 
       auto users = b.client.getRemoteUsers();
       expectEquals(users["alice"].channels[0].channelName, juce::String("gtr"));
@@ -170,10 +171,11 @@ public:
       a.client.updateChannelInfo({"gtr", "vox"});
 
       expect(waitUntil([&] {
-        auto users = b.client.getRemoteUsers();
-        auto it = users.find("alice");
-        return it != users.end() && it->second.channels.size() == 2;
-      }), "bob never saw alice's two channels");
+               auto users = b.client.getRemoteUsers();
+               auto it = users.find("alice");
+               return it != users.end() && it->second.channels.size() == 2;
+             }),
+             "bob never saw alice's two channels");
 
       auto users = b.client.getRemoteUsers();
       expectEquals(users["alice"].channels[1].channelName, juce::String("vox"));
@@ -191,13 +193,14 @@ public:
         expect(a.join(server.port(), "alice"));
         a.client.updateChannelInfo({"gtr"});
         expect(waitUntil([&] {
-          return b.client.getRemoteUsers().count("alice") > 0;
-        }), "bob never saw alice arrive");
+                 return b.client.getRemoteUsers().count("alice") > 0;
+               }),
+               "bob never saw alice arrive");
       }
 
-      expect(waitUntil([&] {
-        return b.client.getRemoteUsers().count("alice") == 0;
-      }), "alice's channels outlived her connection");
+      expect(waitUntil(
+                 [&] { return b.client.getRemoteUsers().count("alice") == 0; }),
+             "alice's channels outlived her connection");
     }
   }
 
@@ -217,9 +220,10 @@ public:
       sender.client.updateChannelInfo({"gtr"});
 
       expect(waitUntil([&] {
-        return listenerA.client.getRemoteUsers().count("sender") > 0 &&
-               deaf.client.getRemoteUsers().count("sender") > 0;
-      }), "the room never converged");
+               return listenerA.client.getRemoteUsers().count("sender") > 0 &&
+                      deaf.client.getRemoteUsers().count("sender") > 0;
+             }),
+             "the room never converged");
 
       // NinjamClient subscribes to everyone it learns about; turning recv off
       // is how a bot goes deaf, and it is the same public call a user makes
@@ -234,9 +238,12 @@ public:
       // Wait for the interval to be fully decoded before swapping. Swapping
       // repeatedly would discard the very interval being waited for, which is
       // what diagSamplesDroppedOnSwap counts.
-      expect(waitUntil([&] {
-        return listenerA.client.diagLastIntervalSamples.load() > 0;
-      }, 5000), "the subscriber never decoded an interval");
+      expect(waitUntil(
+                 [&] {
+                   return listenerA.client.diagLastIntervalSamples.load() > 0;
+                 },
+                 5000),
+             "the subscriber never decoded an interval");
       expect(renderPeak(listenerA.client) > 0.0f,
              "the subscriber decoded an interval but heard nothing");
 
@@ -277,20 +284,22 @@ public:
       a.client.sendChatMessage("hello room");
 
       expect(waitUntil([&] {
-        for (const auto &line : b.listener.snapshot())
-          if (line == "MSG|alice|hello room")
-            return true;
-        return false;
-      }), "bob never received alice's message");
+               for (const auto &line : b.listener.snapshot())
+                 if (line == "MSG|alice|hello room")
+                   return true;
+               return false;
+             }),
+             "bob never received alice's message");
 
       // The sender sees their own message too, which is how the reference
       // server behaves and what the chat pane expects.
       expect(waitUntil([&] {
-        for (const auto &line : a.listener.snapshot())
-          if (line == "MSG|alice|hello room")
-            return true;
-        return false;
-      }), "alice never saw her own message");
+               for (const auto &line : a.listener.snapshot())
+                 if (line == "MSG|alice|hello room")
+                   return true;
+               return false;
+             }),
+             "alice never saw her own message");
     }
 
     beginTest("the server can speak into the room");
@@ -302,11 +311,12 @@ public:
 
       server.broadcastChat("Mirn[kit-bot]", "counting you in");
       expect(waitUntil([&] {
-        for (const auto &line : a.listener.snapshot())
-          if (line == "MSG|Mirn[kit-bot]|counting you in")
-            return true;
-        return false;
-      }), "a server-originated line never arrived");
+               for (const auto &line : a.listener.snapshot())
+                 if (line == "MSG|Mirn[kit-bot]|counting you in")
+                   return true;
+               return false;
+             }),
+             "a server-originated line never arrived");
     }
 
     beginTest("a topic set before joining is delivered on arrival");
@@ -318,11 +328,13 @@ public:
       Member a;
       expect(a.join(server.port(), "alice"));
       expect(waitUntil([&] {
-        for (const auto &line : a.listener.snapshot())
-          if (line.startsWith("TOPIC|") && line.endsWith("practice room"))
-            return true;
-        return false;
-      }), "the topic was not sent to a joining player");
+               for (const auto &line : a.listener.snapshot())
+                 if (line.startsWith("TOPIC|") &&
+                     line.endsWith("practice room"))
+                   return true;
+               return false;
+             }),
+             "the topic was not sent to a joining player");
     }
   }
 
@@ -349,8 +361,9 @@ public:
 
       server.setConfig(140, 16);
       expect(waitUntil([&] {
-        return a.listener.bpm == 140 && b.listener.bpm == 140;
-      }), "the tempo change did not reach both players");
+               return a.listener.bpm == 140 && b.listener.bpm == 140;
+             }),
+             "the tempo change did not reach both players");
       expectEquals(a.listener.bpi, 16);
       expectEquals(b.listener.bpi, 16);
       expectEquals(server.bpm(), 140);
