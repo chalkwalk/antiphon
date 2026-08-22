@@ -440,7 +440,9 @@ namespace {
 
 struct Word {
   const char *word;
-  Concept concept;
+  // `meaning` rather than `concept`, which became a keyword in C++20 and
+  // cannot be an identifier. The TYPE is still Concept.
+  Concept meaning;
 };
 
 const Word kLexicon[] = {
@@ -801,10 +803,10 @@ Reading read(const std::string &text) {
     const auto first = stem(p.toks[0].word);
     for (const auto &w : kLexicon)
       if ((first == w.word || p.toks[0].word == w.word) &&
-          (w.concept == Concept::Speak || w.concept == Concept::Change ||
-           w.concept == Concept::Quiet || w.concept == Concept::Loud ||
-           w.concept == Concept::Cease || w.concept == Concept::Chat ||
-           w.concept == Concept::Leave))
+          (w.meaning == Concept::Speak || w.meaning == Concept::Change ||
+           w.meaning == Concept::Quiet || w.meaning == Concept::Loud ||
+           w.meaning == Concept::Cease || w.meaning == Concept::Chat ||
+           w.meaning == Concept::Leave))
         r.imperative = true;
   }
 
@@ -866,7 +868,7 @@ Reading read(const std::string &text) {
       bool change = false;
       for (const auto &w : kLexicon)
         if ((stem(tok.word) == w.word || tok.word == w.word) &&
-            w.concept == Concept::Change)
+            w.meaning == Concept::Change)
           change = true;
       if (change)
         continue;
@@ -923,7 +925,7 @@ Reading read(const std::string &text) {
 
     for (const auto &w : kLexicon)
       if (s == w.word || tok.word == w.word) {
-        note(w.concept);
+        note(w.meaning);
         matched = true;
       }
     if (matched)
@@ -954,11 +956,11 @@ Reading read(const std::string &text) {
       if (d > budget)
         continue;
       if (d < bestCost) {
-        if (best != w.concept)
+        if (best != w.meaning)
           runnerUp = bestCost;
         bestCost = d;
-        best = w.concept;
-      } else if (w.concept != best) {
+        best = w.meaning;
+      } else if (w.meaning != best) {
         runnerUp = std::min(runnerUp, d);
       }
     }
