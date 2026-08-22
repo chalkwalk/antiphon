@@ -27,3 +27,6 @@
 [submodule "libs/ninjam"]
 	path = libs/ninjam
 	url = https://github.com/chalkwalk/chalkwalk-ninjam.git
+[submodule "libs/jambot"]
+	path = libs/jambot
+	url = https://github.com/chalkwalk/chalkwalk-jambot.git

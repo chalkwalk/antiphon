@@ -53,13 +53,7 @@ target_sources(Antiphon
         StandaloneApp.cpp
         PluginEditor.cpp
         NinjamClient.cpp
-        jambot/BotBand.cpp
-        jambot/BandPatch.cpp
-        jambot/BotAddress.cpp
-        jambot/BotLanguage.cpp
-        jambot/BotNames.cpp
         PracticeServer.cpp
-        jambot/PracticeBot.cpp
         PracticeRoom.cpp
         MetronomeVoice.cpp
         RemoteUserStrip.cpp
@@ -67,8 +61,6 @@ target_sources(Antiphon
         LocalChannelStrip.cpp
         AntiphonLookAndFeel.cpp
         ChatFormat.cpp
-        jambot/BotAnswer.cpp
-        jambot/BotChat.cpp
         ClipsortLog.cpp
         SessionWriter.cpp
         AccessibilityAudit.cpp
@@ -91,6 +83,7 @@ target_link_libraries(Antiphon
     PRIVATE
         chalkwalk::music
         chalkwalk::dsp
+        chalkwalk::jambot
         chalkwalk::ninjam
         antiphon_fonts
         juce::juce_audio_utils

@@ -2,7 +2,7 @@
 
 #include "NinjamBotClient.h"
 
-#include "jambot/BotNames.h"
+#include <BotNames.h>
 
 #include "IntervalClock.h"
 

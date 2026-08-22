@@ -139,6 +139,23 @@ chalkwalk_add_library(dsp libs/dsp)
 # ---------------------------------------------------------------------------
 chalkwalk_add_library(ninjam libs/ninjam)
 
+# ---------------------------------------------------------------------------
+# chalkwalk-jambot -- the practice room's band, and the chat they answer.
+# Submodule: https://github.com/chalkwalk/chalkwalk-jambot (MIT).
+#
+# These were `src/jambot/` here until they earned their own repository. What
+# stays is the HOSTING a practice room needs and a command-line bot does not:
+# the loopback server, the room that puts a server and a band together, and
+# `NinjamBotClient`, which is the whole of what ties the band to this plugin's
+# transport.
+#
+# The direction of the dependency is the point. Antiphon uses the bots; the
+# bots know nothing about Antiphon, and their suite runs without it -- which is
+# what the `jambot-boundary` check was guarding towards and why that check is
+# gone. A boundary a build enforces does not need a test to describe it.
+# ---------------------------------------------------------------------------
+chalkwalk_add_library(jambot libs/jambot)
+
 add_subdirectory(src)
 
 # Offline tools. Kept out of src/ because nothing here is part of the plugin --

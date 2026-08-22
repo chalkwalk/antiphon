@@ -16,8 +16,8 @@
 #include <JuceHeader.h>
 
 #include "AudioMeasure.h"
-#include "jambot/BotBand.h"
-#include "jambot/BotVoice.h"
+#include <BotBand.h>
+#include <BotVoice.h>
 #include "MusicalKey.h"
 
 #include <chalkwalk/music/Duration.h>

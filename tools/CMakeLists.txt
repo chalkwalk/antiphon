@@ -27,7 +27,7 @@ target_compile_definitions(AntiphonStems PRIVATE
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonStems
-    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::ninjam
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::jambot chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events
@@ -57,15 +57,14 @@ juce_add_console_app(AntiphonVoiceLab
 juce_generate_juce_header(AntiphonVoiceLab)
 
 target_sources(AntiphonVoiceLab PRIVATE
-        VoiceLabMain.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp)
+        VoiceLabMain.cpp)
 
 target_compile_definitions(AntiphonVoiceLab PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonVoiceLab
-    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::dsp::measure chalkwalk::ninjam
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::jambot chalkwalk::dsp::measure chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events
@@ -92,16 +91,14 @@ juce_add_gui_app(AntiphonBandLab
 juce_generate_juce_header(AntiphonBandLab)
 
 target_sources(AntiphonBandLab PRIVATE
-        BandLabMain.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BandPatch.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp)
+        BandLabMain.cpp)
 
 target_compile_definitions(AntiphonBandLab PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0)
 
 target_link_libraries(AntiphonBandLab
-    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::dsp::measure chalkwalk::ninjam
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::jambot chalkwalk::dsp::measure chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_utils
     PUBLIC
@@ -130,14 +127,6 @@ target_sources(AntiphonPractice PRIVATE
         PracticeRoomMain.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/PracticeBot.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BandPatch.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotAddress.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotLanguage.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotAnswer.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotChat.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
@@ -153,7 +142,7 @@ target_compile_definitions(AntiphonPractice PRIVATE
         JUCE_MODAL_LOOPS_PERMITTED=1)
 
 target_link_libraries(AntiphonPractice
-    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::ninjam
+    PRIVATE chalkwalk::music chalkwalk::dsp chalkwalk::jambot chalkwalk::ninjam
     PRIVATE
         juce::juce_audio_formats
         juce::juce_events

@@ -1,4 +1,4 @@
-#include "../src/jambot/BotBand.h"
+#include <BotBand.h>
 #include "../src/Harmony.h"
 #include "../src/MusicalKey.h"
 #include <JuceHeader.h>

@@ -279,7 +279,7 @@ and notes that a value above 100 disables voting entirely.
 
 Two consequences worth stating: **not voting is voting against**, since the
 denominator counts you either way; and anything Antiphon connects to a room
-counts toward it. See `docs/BOT-CHAT.md` for what that means for the practice
+counts toward it. See `libs/jambot/docs/BOT-CHAT.md` for what that means for the practice
 band.
 
 ---
