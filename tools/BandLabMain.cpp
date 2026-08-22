@@ -719,8 +719,7 @@ private:
 
   void rerender() {
     player.request(band, currentVoice(), soloButton.getToggleState(),
-                   keyEditor.getText(),
-                   120, 8,
+                   keyEditor.getText(), 120, 8,
                    (std::uint32_t)seedEditor.getText().getLargeIntValue());
   }
 
@@ -737,9 +736,9 @@ private:
 
   void save() {
     chooser = std::make_unique<juce::FileChooser>(
-        "Save these settings", juce::File::getSpecialLocation(
-                                   juce::File::userHomeDirectory)
-                                   .getChildFile("band-patch.txt"),
+        "Save these settings",
+        juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+            .getChildFile("band-patch.txt"),
         "*.txt");
     chooser->launchAsync(juce::FileBrowserComponent::saveMode |
                              juce::FileBrowserComponent::canSelectFiles,
@@ -757,24 +756,23 @@ private:
     chooser = std::make_unique<juce::FileChooser>(
         "Load settings",
         juce::File::getSpecialLocation(juce::File::userHomeDirectory), "*.txt");
-    chooser->launchAsync(juce::FileBrowserComponent::openMode |
-                             juce::FileBrowserComponent::canSelectFiles,
-                         [this](const juce::FileChooser &fc) {
-                           const auto file = fc.getResult();
-                           if (file == juce::File())
-                             return;
-                           std::string error;
-                           if (!BandPatch::read(file.loadFileAsString()
-                                                    .toStdString(),
-                                                band, error)) {
-                             readout.setText(error, juce::dontSendNotification);
-                             return;
-                           }
-                           for (int v = 0; v < BotBand::kNumVoices; ++v)
-                             trimSliders[v].setValue(
-                                 band.trim[v], juce::dontSendNotification);
-                           rebuildRows();
-                         });
+    chooser->launchAsync(
+        juce::FileBrowserComponent::openMode |
+            juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser &fc) {
+          const auto file = fc.getResult();
+          if (file == juce::File())
+            return;
+          std::string error;
+          if (!BandPatch::read(file.loadFileAsString().toStdString(), band,
+                               error)) {
+            readout.setText(error, juce::dontSendNotification);
+            return;
+          }
+          for (int v = 0; v < BotBand::kNumVoices; ++v)
+            trimSliders[v].setValue(band.trim[v], juce::dontSendNotification);
+          rebuildRows();
+        });
   }
 
   BandPatch::Band band;

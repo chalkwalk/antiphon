@@ -56,8 +56,10 @@ public:
         const auto message = buildTagged(original);
         expect(chalkwalk::music::text::startsWith(message, "[key:"));
         const auto received = parseTagged(message);
-        expect(received.valid, "did not survive the round trip: " + juce::String(message));
-        expect(received == original, "changed in the round trip: " + juce::String(message));
+        expect(received.valid,
+               "did not survive the round trip: " + juce::String(message));
+        expect(received == original,
+               "changed in the round trip: " + juce::String(message));
       }
     }
 
@@ -87,9 +89,9 @@ public:
       // ...and THAT is the whole reason the second form exists. A bot must be
       // able to say how the key is set without setting it, which it can never
       // do with the tag, because the tag is matched anywhere.
-      const auto advice =
-          "the key is the room's. type \"" +
-          announcementAdvice(parseName("G minor")) + "\" to change it.";
+      const auto advice = "the key is the room's. type \"" +
+                          announcementAdvice(parseName("G minor")) +
+                          "\" to change it.";
       expect(!parseAnnouncement(advice).valid,
              "a bot explaining the key would have set it: " + advice);
 

@@ -40,8 +40,8 @@ inline int noSigPipe(juce::StreamingSocket &socket, const void *data,
   auto *p = static_cast<const char *>(data);
   int written = 0;
   while (written < numBytes) {
-    const auto n = ::send(fd, p + written, (size_t)(numBytes - written),
-                          MSG_NOSIGNAL);
+    const auto n =
+        ::send(fd, p + written, (size_t)(numBytes - written), MSG_NOSIGNAL);
     if (n <= 0)
       return written > 0 ? written : -1;
     written += (int)n;

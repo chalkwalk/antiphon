@@ -66,8 +66,8 @@ public:
       BotClient::Peer peer;
       peer.username = name.toStdString();
       for (const auto &[index, channel] : user.channels)
-        peer.channels.push_back({index, channel.channelName.toStdString(),
-                                 channel.recvEnabled});
+        peer.channels.push_back(
+            {index, channel.channelName.toStdString(), channel.recvEnabled});
       out.push_back(std::move(peer));
     }
     return out;
@@ -86,8 +86,8 @@ public:
     client.sendPrivateMessage(juce::String(to), juce::String(text));
   }
 
-  std::unique_ptr<BotClient::Timer> createTimer(
-      std::function<void()> onFire) override {
+  std::unique_ptr<BotClient::Timer>
+  createTimer(std::function<void()> onFire) override {
     return std::make_unique<MessageThreadTimer>(std::move(onFire));
   }
 
@@ -98,9 +98,7 @@ public:
     // Wrapped rather than copied: the caller already owns this memory for the
     // duration of the call, and an interval is several seconds of audio.
     float *channels[2] = {const_cast<float *>(left),
-                          const_cast<float *>(right != nullptr
-                                                  ? right
-                                                  : left)};
+                          const_cast<float *>(right != nullptr ? right : left)};
     juce::AudioBuffer<float> view(channels, right != nullptr ? 2 : 1,
                                   numSamples);
     client.processCapturedAudio(view, numSamples, 0, false);
@@ -133,7 +131,9 @@ private:
   };
 
   // NinjamClient calls these; the bots hear the versions above.
-  void onConnected() override { each([](auto *l) { l->onConnected(); }); }
+  void onConnected() override {
+    each([](auto *l) { l->onConnected(); });
+  }
 
   void onDisconnected(const juce::String &reason) override {
     const auto why = reason.toStdString();
