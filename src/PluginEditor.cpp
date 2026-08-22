@@ -146,7 +146,6 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   addChildComponent(transportButton);
   refreshTransportButton();
 
-
   // Compact toolbar groups
   channelGroupLabel.setText("Channel:", juce::dontSendNotification);
   channelGroupLabel.setJustificationType(juce::Justification::centredRight);
@@ -649,8 +648,10 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       std::abs(audioProcessor.hostBpm -
                (double)audioProcessor.internalBpm.load()) > 0.5;
   const bool headerWarning = connectFailed || mismatch;
+  const bool practice = audioProcessor.inPracticeRoom();
   juce::Colour headerBg =
-      connected       ? juce::Colour(0xff0d0d1a)  // navy -- normal
+      practice        ? juce::Colour(0xff141026)  // violet -- practice room
+      : connected     ? juce::Colour(0xff0d0d1a)  // navy -- normal
       : headerWarning ? juce::Colour(0xff2a1a0a)  // amber -- failed/mismatch
                       : juce::Colour(0xff111111); // dark grey -- idle
   g.setColour(headerBg);
@@ -664,9 +665,15 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   g.drawFittedText("ANTIPHON", row1.removeFromLeft(90),
                    juce::Justification::centredLeft, 1);
   g.setFont(juce::FontOptions{}.withHeight(13.0f));
-  g.setColour(connected ? teal : juce::Colours::grey);
-  g.drawFittedText(audioProcessor.connectionStatus, row1,
-                   juce::Justification::centredLeft, 1);
+  // The tint is never the only signal: the line says so in words, so a screen
+  // reader and a colour-blind player learn it the same way (PRINCIPLES 11).
+  // The address is deliberately not shown -- 127.0.0.1 with a port is true and
+  // tells you nothing about where you are.
+  g.setColour(practice ? juce::Colour(0xffb08cff)
+                       : (connected ? teal : juce::Colours::grey));
+  g.drawFittedText(practice ? juce::String("Practice room -- your own band")
+                            : audioProcessor.connectionStatus,
+                   row1, juce::Justification::centredLeft, 1);
 
   header.removeFromTop(2);
 
@@ -1040,6 +1047,25 @@ void AntiphonEditor::openServerBrowser() {
     audioProcessor.lastConnectFailed.store(false);
     audioProcessor.ninjamClient.connectToServer(host, port, user, pass);
   };
+  serverBrowser->onPractice = [this]() {
+    // Start the room, then join it exactly as if it were somebody else's
+    // server. The band is already in there waiting, silent, and the roster
+    // line teaches how to start it.
+    const int port = audioProcessor.startPracticeRoom();
+    if (port <= 0) {
+      if (serverBrowser != nullptr)
+        serverBrowser->setStatus(
+            "The practice room would not start -- no free port on this "
+            "machine.");
+      return;
+    }
+    const auto user = serverBrowser->usernameInput.getText().trim();
+    audioProcessor.lastConnectFailed.store(false);
+    audioProcessor.ninjamClient.connectToServer(
+        PracticeRoom::host(), port, user.isEmpty() ? "you" : user, "");
+    closeServerBrowser();
+  };
+
   serverBrowser->onClose = [this]() { closeServerBrowser(); };
 
   focusBeforeDialog = juce::Component::getCurrentlyFocusedComponent();
@@ -1771,10 +1797,19 @@ bool AntiphonEditor::updateStatusReadout() {
             ? "Not connected. The last connection attempt failed."
             : "Not connected.";
   } else {
-    s << "Connected to " << audioProcessor.lastHost << " as "
-      << (audioProcessor.lastUsername.isNotEmpty() ? audioProcessor.lastUsername
-                                                   : juce::String("anonymous"))
-      << ". " << bpm << " BPM, " << bpi << " beats per interval. ";
+    // A practice room is named rather than addressed. "Connected to
+    // 127.0.0.1" is true and useless, and it is the one thing a reader needs
+    // to know that a viewer gets from the header tint.
+    if (audioProcessor.inPracticeRoom())
+      s << "In the practice room with "
+        << audioProcessor.practiceRoom.botCount() << " bots. ";
+    else
+      s << "Connected to " << audioProcessor.lastHost << " as "
+        << (audioProcessor.lastUsername.isNotEmpty()
+                ? audioProcessor.lastUsername
+                : juce::String("anonymous"))
+        << ". ";
+    s << bpm << " BPM, " << bpi << " beats per interval. ";
 
     // The key and the chart belong in the spoken status because they are drawn
     // in the header: a reader should get what a viewer gets. The chord SOUNDING

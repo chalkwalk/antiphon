@@ -57,7 +57,6 @@ void RemoteUserStrip::resized() {
   }
 }
 
-
 void RemoteUserStrip::updateOutputBusCount(int numBuses) {
   for (auto *row : channelRows)
     row->updateOutputBusCount(numBuses);

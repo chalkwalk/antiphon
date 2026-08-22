@@ -8,6 +8,7 @@
 #include "TransmitSpans.h"
 #include "MetronomeVoice.h"
 #include "NinjamClient.h"
+#include "PracticeRoom.h"
 #include <JuceHeader.h>
 #include <array>
 #include <map>
@@ -172,6 +173,24 @@ public:
   void applyDebugCaptureSettings();
 
   NinjamClient ninjamClient;
+
+  // The practice room: a server on loopback and a band of bots on it.
+  //
+  // Owned here rather than by the editor, because a room must outlive a closed
+  // window -- shutting the plugin UI mid-jam would otherwise take the band with
+  // it. Started by the connect dialog, stopped when we leave.
+  //
+  // It is a DESTINATION, not a mode. Everything past connectToServer is the
+  // ordinary connected path: phase bar, remote strips, routing, chat, sync,
+  // recording, stems all work without knowing the far side is local.
+  PracticeRoom practiceRoom;
+
+  // Start the room and return the port to connect to, or 0 if it would not
+  // start. The caller connects; this deliberately does not, so that the one
+  // connect path in the editor stays the only one.
+  int startPracticeRoom();
+  void stopPracticeRoom();
+  bool inPracticeRoom() const { return practiceRoom.isRunning(); }
   juce::String connectionStatus = "Disconnected";
 
   // The UI's view of the local channels. Message thread only -- the audio

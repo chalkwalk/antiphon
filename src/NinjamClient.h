@@ -114,7 +114,6 @@ public:
 
   void swapIntervalBuffers();
 
-
   // Update the local channel names sent to the server via CLIENT_SET_CHANNEL_INFO (0x82).
   // Safe to call from any thread. Sends immediately if connected.
   void updateChannelInfo(const juce::StringArray &names);
@@ -196,9 +195,6 @@ public:
   // What we connected as, so the UI can tell your own messages from everyone
   // else's. Empty until a connection is attempted.
   juce::String getSelfUsername() const;
-
-
-
 
   // Whether anything, anywhere, is soloed -- a bitmask, exactly as the
   // reference client keeps it (`m_issoloactive`, njclient.cpp:1750 and :1886).
@@ -428,7 +424,6 @@ private:
   std::unique_ptr<juce::FileOutputStream> rxOggFile;
   std::unique_ptr<juce::AudioFormatWriter> rxWavWriter;
   juce::WavAudioFormat wavFormat;
-
 
   // The remote half of the global solo bus.
   void recomputeRemoteSolo();

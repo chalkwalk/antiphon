@@ -1391,7 +1391,6 @@ void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
   }
 }
 
-
 juce::Array<NinjamClient::ChatMessage> NinjamClient::getChatLog() const {
   juce::ScopedLock sl(chatMutex);
   return chatLog;

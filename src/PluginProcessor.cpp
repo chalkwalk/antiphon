@@ -29,6 +29,35 @@ AntiphonAudioProcessor::AntiphonAudioProcessor()
 
 AntiphonAudioProcessor::~AntiphonAudioProcessor() {
   ninjamClient.removeListener(this);
+  // Before the client goes: the room holds bot clients of its own, and they
+  // must be torn down while there is still a message thread to do it on.
+  stopPracticeRoom();
+}
+
+int AntiphonAudioProcessor::startPracticeRoom() {
+  if (practiceRoom.isRunning())
+    return practiceRoom.port();
+
+  PracticeRoom::Config cfg;
+  // The room runs at the host's rate, or the standalone device's. A band
+  // rendering at 48k into a 44.1k graph is in tune and in the wrong tempo.
+  const double sr = getSampleRate();
+  if (sr > 0.0)
+    cfg.sampleRate = sr;
+  // Who the band waits for. An empty name would make every human the owner,
+  // and the grace timers would never mean anything.
+  const auto owner = lastUsername.trim();
+  if (owner.isNotEmpty())
+    cfg.ownerName = owner;
+
+  if (!practiceRoom.start(cfg))
+    return 0;
+  return practiceRoom.port();
+}
+
+void AntiphonAudioProcessor::stopPracticeRoom() {
+  if (practiceRoom.isRunning())
+    practiceRoom.stop();
 }
 
 const juce::String AntiphonAudioProcessor::getName() const {
@@ -239,7 +268,6 @@ void AntiphonAudioProcessor::injectTestTone(int numSamples) {
   }
   testToneSample += numSamples;
 }
-
 
 void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
   if (count <= 0)
@@ -707,7 +735,6 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         }
       }
     }
-
   }
 
   // 7. Remote audio mix. Gated on being in the jam rather than merely
@@ -864,7 +891,6 @@ bool AntiphonAudioProcessor::applyRetroactiveTransmit(
   return true;
 }
 
-
 void AntiphonAudioProcessor::refreshLocalSoloState() {
   bool anyLocalSolo = false;
   {
@@ -909,6 +935,12 @@ void AntiphonAudioProcessor::onDisconnected(const juce::String &error) {
   connectionStatus =
       error.isEmpty() ? "Disconnected" : "Disconnected: " + error;
   phaseResetPending.store(true);
+
+  // Leaving a practice room shuts it. The band has grace timers for a player
+  // whose connection blipped, but those are for a room that outlives the
+  // client -- here the client IS the room's reason to exist, and a server left
+  // running on loopback with four bots in it is a leak you cannot see.
+  stopPracticeRoom();
 }
 
 void AntiphonAudioProcessor::onServerConfig(int bpm, int bpi) {

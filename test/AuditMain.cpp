@@ -133,10 +133,12 @@ int main() {
   settle(*editor);
   results.push_back(auditState("two channels, extra buses", {editor}));
 
-  // The practice room's own state goes here once it is reachable from the
-  // editor. It replaces the practice-echo state that stood here, which audited
-  // three synthetic taps in the mixer's remote half; the room puts REAL remote
-  // players there and they are covered by the connected states above.
+  // The practice room needs no state of its own, which is the point of it
+  // being a destination. Its one new control is the Practice room button, a
+  // child of the connect dialog audited below; everything after the join is
+  // the ordinary connected UI, already covered above. That is the difference
+  // from the practice echo that stood here, which had three synthetic taps and
+  // a delay picker existing nowhere else.
 
   // The connect dialog is its own top-level window, so it has to be handed in
   // as a root of its own. Built directly rather than through the editor: this

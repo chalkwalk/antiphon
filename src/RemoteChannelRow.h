@@ -9,7 +9,6 @@ public:
   RemoteChannelRow(AntiphonAudioProcessor &p, juce::String username,
                    int channelIndex);
 
-
   void update(const NinjamClient::RemoteUserChannel &c);
   void updatePeak(float peak);
   void updateOutputBusCount(int numBuses);

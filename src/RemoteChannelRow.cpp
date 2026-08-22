@@ -30,8 +30,8 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Volume in dB: -inf to +6, unity at 0. Remote channels default to "
       "-12 dB, matching the reference client.");
   volumeSlider.onValueChange = [this]() {
-      audioProcessor.ninjamClient.setRemoteUserVolume(
-          username, channelIndex, GainUtils::dbToGain(volumeSlider.getValue()));
+    audioProcessor.ninjamClient.setRemoteUserVolume(
+        username, channelIndex, GainUtils::dbToGain(volumeSlider.getValue()));
   };
   addAndMakeVisible(volumeSlider);
 
@@ -50,8 +50,8 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
                            "mix. Shortcut: Left or Right arrow");
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
-      audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
-                                                   (float)panSlider.getValue());
+    audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
+                                                 (float)panSlider.getValue());
   };
   addAndMakeVisible(panSlider);
 
@@ -61,8 +61,8 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   muteButton.setTooltip(
       "Mute: silence this player in your mix (audio still downloads)");
   muteButton.onClick = [this]() {
-      audioProcessor.ninjamClient.setRemoteUserMute(
-          username, channelIndex, muteButton.getToggleState());
+    audioProcessor.ninjamClient.setRemoteUserMute(username, channelIndex,
+                                                  muteButton.getToggleState());
   };
   addAndMakeVisible(muteButton);
 
@@ -71,8 +71,8 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Hear only soloed channels in your mix. Shortcut: S");
   soloButton.setTooltip("Solo: hear only soloed remote channels");
   soloButton.onClick = [this]() {
-      audioProcessor.ninjamClient.setRemoteUserSolo(
-          username, channelIndex, soloButton.getToggleState());
+    audioProcessor.ninjamClient.setRemoteUserSolo(username, channelIndex,
+                                                  soloButton.getToggleState());
   };
   addAndMakeVisible(soloButton);
 
@@ -98,7 +98,6 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   // The delay picker, in the Recv button's place. Same 1-based-ID pattern as
   // the output bus box below.
 
-
   outputBusBox.setTitle("Output bus");
   outputBusBox.setDescription(
       "Which plugin output bus this channel is routed to, for recording stems");
@@ -107,7 +106,7 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   outputBusBox.onChange = [this]() {
     int sel = outputBusBox.getSelectedId() - 1;
     if (sel >= 0)
-        audioProcessor.setRemoteUserOutputBus(username, channelIndex, sel);
+      audioProcessor.setRemoteUserOutputBus(username, channelIndex, sel);
   };
   addAndMakeVisible(outputBusBox);
   updateOutputBusCount(1);
@@ -127,7 +126,6 @@ void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
   if (busId != outputBusBox.getSelectedId())
     outputBusBox.setSelectedId(busId, juce::dontSendNotification);
 }
-
 
 void RemoteChannelRow::updateOutputBusCount(int numBuses) {
   int current = outputBusBox.getSelectedId();

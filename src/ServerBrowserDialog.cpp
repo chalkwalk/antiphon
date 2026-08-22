@@ -92,6 +92,19 @@ ServerBrowserDialog::ServerBrowserDialog() : table("Servers", this) {
   connectButton.setDescription("Join the server with these details");
   addAndMakeVisible(connectButton);
 
+  practiceButton.onClick = [this]() {
+    if (onPractice)
+      onPractice();
+  };
+  practiceButton.setTitle("Practice room");
+  practiceButton.setDescription(
+      "Start a practice room on this machine and join it: a band of bots you "
+      "can play with, and talk to in chat");
+  practiceButton.setTooltip(
+      "A band on your own machine. Nothing leaves it, and everything works as "
+      "it does in a real room -- phase, stems, chat and recording.");
+  addAndMakeVisible(practiceButton);
+
   cancelButton.onClick = [this]() { dismiss(); };
   cancelButton.setTitle("Cancel");
   cancelButton.setDescription("Close without connecting");
@@ -247,6 +260,10 @@ void ServerBrowserDialog::paint(juce::Graphics &g) {
                    juce::Justification::centredLeft, 1);
 }
 
+void ServerBrowserDialog::setStatus(const juce::String &text) {
+  statusLabel.setText(text, juce::dontSendNotification);
+}
+
 void ServerBrowserDialog::resized() {
   auto area = getLocalBounds().reduced(1); // inside border
 
@@ -265,6 +282,9 @@ void ServerBrowserDialog::resized() {
   cancelButton.setBounds(btnRow.removeFromRight(90).reduced(0, 3));
   btnRow.removeFromRight(8);
   connectButton.setBounds(btnRow.removeFromRight(90).reduced(0, 3));
+  // Left, away from Connect/Cancel: it is a different destination rather than
+  // a different way of pressing the same one.
+  practiceButton.setBounds(btnRow.removeFromLeft(130).reduced(0, 3));
 
   area.removeFromBottom(8);
 

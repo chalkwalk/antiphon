@@ -20,7 +20,6 @@ public:
   int getPreferredWidth() const;
   void updateOutputBusCount(int numBuses);
 
-
   bool isSelected() const { return selected; }
   void setSelected(bool sel);
   juce::String getUsername() const { return username; }

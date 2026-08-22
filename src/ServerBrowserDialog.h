@@ -18,6 +18,13 @@ public:
   std::function<void(const juce::String &, int, const juce::String &,
                      const juce::String &)>
       onConnect;
+
+  // Join the practice room instead of a server on the list.
+  //
+  // A destination rather than a mode, which is why it lives HERE and not on
+  // the toolbar: joining the band uses the same path as joining anyone else,
+  // and everything past it is the ordinary connected UI.
+  std::function<void()> onPractice;
   std::function<void()> onClose;
 
   ServerBrowserDialog();
@@ -25,6 +32,11 @@ public:
 
   void paint(juce::Graphics &) override;
   void resized() override;
+
+  // What the dialog is telling you right now. Public so a caller can report a
+  // failure it owns -- the practice room refusing to start is the editor's
+  // news, not the browser's.
+  void setStatus(const juce::String &text);
 
   int getNumRows() override;
   void paintRowBackground(juce::Graphics &, int, int, int, bool) override;
@@ -47,6 +59,7 @@ private:
   juce::TextButton closeButton{"X"};
   juce::TableListBox table;
   juce::TextButton connectButton{"Connect"}, cancelButton{"Cancel"};
+  juce::TextButton practiceButton{"Practice room"};
   juce::Label statusLabel;
 
   juce::Array<ServerEntry> servers;

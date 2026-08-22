@@ -83,7 +83,6 @@ target_link_libraries(Antiphon
     PRIVATE
         chalkwalk::music
         chalkwalk::dsp
-        chalkwalk::jambot
         chalkwalk::ninjam
         antiphon_fonts
         juce::juce_audio_utils
@@ -92,6 +91,11 @@ target_link_libraries(Antiphon
         vorbis
         vorbisenc
     PUBLIC
+        # PUBLIC because PluginProcessor.h owns a PracticeRoom, so the band's
+        # headers are part of this target's interface rather than an
+        # implementation detail -- anything that includes the processor needs
+        # them on its include path too.
+        chalkwalk::jambot
         juce::juce_recommended_config_flags)
 
 # Make sure JUCE finds headers
