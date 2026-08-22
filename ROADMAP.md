@@ -258,17 +258,6 @@ interval so far. See `DESIGN.md` section 6.1.
       logic under it (`TransmitSpans`, `GainRamp`) is tested; the press, the
       hold threshold, the flash and the announcement need hands.
 
-### Practice echo
-
-Shipped. See `DESIGN.md` section 6.2.
-
-- [ ] v1 echoes one local channel. Summing several needs to know when the last
-      channel's post for a boundary has arrived, which is fragile; deferred
-      rather than guessed at.
-- [ ] The echo history is rebuilt on a tempo or BPI change, since every stored
-      interval becomes the wrong length. Currently that means switching practice
-      off and on; doing it automatically, with an announcement, would be
-      friendlier.
 
 ### Underrun tail
 
@@ -627,9 +616,8 @@ a room can say about its music that Ninjam has no field for. Both halves live in
       it is the same knowledge and today's naming is deliberately mechanical.
 - [ ] **Fuller voicings.** Ninths and thirteenths voiced rather than named only,
       and dropping the root from the pad when the bass is already on it.
-- [ ] The practice room is not wired into the processor at all yet, so the
-      timeline's "show the band's own chart in practice" rule is written but
-      unreachable. It lands with the room.
+- [x] The practice room is wired into the processor now, so the timeline's
+      "show the band's own chart in practice" rule is reachable.
 
 ### Bots that talk
 
@@ -739,6 +727,11 @@ restraint rather than conversation.
 - [ ] Unprompted speech off outside the practice room. Nothing speaks
       unprompted yet, so there is nothing to switch off; it lands with the
       tutor.
+- [x] **The room is reachable from the app.** It was a separate command-line
+      tool and nothing in `src/` started one. It is a button in the connect
+      dialog now -- a destination beside the server list, not a mode -- and the
+      processor owns the room so a closed window does not take the band with
+      it. Leaving stops it.
 - [ ] **Being present without playing.** Built, bar two things: **the endings
       have never been listened to** -- they want ears and a `--seconds` render
       rather than another assertion -- and nothing outside the practice room can
@@ -808,8 +801,9 @@ restraint rather than conversation.
       - [x] The reply says what is about to happen rather than implying it
             stops now: "wrapping it up -- ending on the downbeat after this
             one."
-      - [ ] Nothing outside the practice room can start or stop the band yet:
-            the states are reachable only from chat.
+      - [ ] Nothing outside chat can start or stop the band: there is no
+            transport control for it in the UI. Reachable from the app now, but
+            only by typing.
       - [x] Arrive Silent. The band connects before the player does, so playing
             on connect played to an empty room; the roster line already re-arms
             for the first human and is where start/stop is taught -- the way IN

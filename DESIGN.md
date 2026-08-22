@@ -429,124 +429,55 @@ impossible; this is the trade that buys the feature.
 
 ---
 
-## 6.2 Practice echo
+## 6.2 The practice room
 
-Offline, your own audio is played back to you several intervals late, as virtual
-players. A duet with your past self: the same musical form the room gives you,
-alone. Deliberately **not a looper** -- no layers, no overdub, no persistence, no
-editing. Jamtaba's looper mixes its output into the channel *after* the fader
-(`LocalInputNode.cpp:352`), and that buffer is what reaches the encoder, so its
-loops are transmitted; that is the DAW-inside-the-plugin shape `NON-GOALS.md`
-refuses. An echo has no such gradient: there is nothing to add to it.
+Practising alone used to mean a **simulation**: your own audio played back a few
+intervals late as a synthetic remote player, so you could get the feel of the
+delay without strangers hearing it. It worked, and it was a fake room -- one
+virtual player who was you, with a synthetic strip in the mixer and a safety
+property (`runGateIsSafe`) whose whole job was to guarantee the fakery could
+never reach a server.
 
-**Offline-only**, which makes "never transmitted" true by construction rather
-than by discipline. It is stated at four independent layers, because this is
-the one property of the feature a user has to be able to trust:
+It is gone. What replaces it is a **real** room: a NINJAM server on the loopback
+interface and a band of bots connected to it as ordinary clients.
 
-1. **The storage is disjoint.** Echo audio lives in its own history ring and in
-   slots `[kFirstEchoSlot, kTotalSlots)`. The encoder is fed only by
-   `processCapturedAudio`, from the transmit ring. Nothing joins them, and
-   `acquireStreamSlot` stops at `kMaxStreams` so a network channel can never be
-   handed an echo slot.
-2. **The output cannot be re-captured.** Transmit reads `inputSnapshot`, taken
-   at the top of `processBlock` before the output is cleared and long before
-   any echo is mixed into it.
-3. **`RunGate` gates every block**, from live state, and the invariant
-   `!(inJam && echoOn)` is asserted over every input combination (`§4.1`).
-4. **The client refuses outright.** `setPracticeEnabled` and `writeEchoBlock`
-   both return early when connected. `test/LoopbackTests.cpp` proves it against
-   a real socket rather than a flag -- practice cannot be started while
-   connected, and cannot survive a connection.
+The distinction is the point. Nothing downstream knows the far side is local --
+the phase bar, remote strips, routing to separate output buses, chat, DAW sync,
+recording and stems all work exactly as they do on `ninbot.com`, because they
+are working on a real connection to real clients sending real intervals. There
+is no practice branch through the audio path to keep honest, and no invariant
+needed to contain it: the room rides `RunGate::inJam` like any other.
 
-Joining a room also **empties the transmit ring**. Capture runs for practice as
-well as for the jam, so a connection landing mid-interval would otherwise post
-an interval whose first half was played before you joined.
+**It is a destination, not a mode.** You reach it from the connect dialog, beside
+the server list, and you leave it by disconnecting. That siting is deliberate:
+joining the band is the same gesture as joining anybody else.
 
-The UI says the same thing rather than relying on it: the Practice toggle is
-**disabled while connected**, and follows the processor rather than the last
-click, because connecting switches practice off underneath it.
+The band arrives **silent**, and says so. Four bots connect before you do, so a
+band that played on connect would be playing to an empty room; instead the
+arrival roster names them and teaches start and stop, which is also the way back
+out of every other state. See `libs/jambot/docs/BOT-CHAT.md` section 15.
 
-**Slot segregation.** Echo taps live at `[kFirstEchoSlot, kTotalSlots)` in the
-same fixed array as the network streams, never among them. `acquireStreamSlot`
-stops at `kMaxStreams`, and every loop over the array takes an explicit range, so
-a disconnect cannot tear down an echo and `drainAllRetired` cannot free storage
-the history ring still owns. This also keeps SPSC true with a different owner:
-the invariant is **one non-audio owner per slot**, and for echo slots that owner
-is the message thread rather than the network thread.
+What lives here and what does not:
 
-**One ring, several taps.** The history is sized by the *deepest* tap regardless
-of mute -- a muted tap must unmute instantly rather than waiting for a refill,
-which would read as a bug. Three taps at 4, 6 and 8 therefore cost what 8 costs,
-not what 4+6+8 costs.
+| | |
+|---|---|
+| `PracticeServer` | the loopback server, so a room needs no external one |
+| `PracticeRoom` | the room: seeds, band settings, and the bots in it |
+| `NinjamBotClient` | `BotClient` over Antiphon's client -- all that ties the band to this plugin's transport |
+| `chalkwalk-jambot` | the bots themselves: voices, chat, arbitration. A submodule, and JUCE-free |
 
-The same entry is read by the 4-interval tap now and the 8-interval tap four
-intervals later, so **the audio thread must not be the thing that frees it**. It
-keeps handing entries back through `retired` exactly as it always did, and the
-bank's drain **pops and discards** -- the ring owns the storage for its whole
-life. Turning that discard into a free is a use-after-free in the mix.
+The processor owns the room rather than the editor, so closing the plugin window
+does not take the band with it, and leaving stops it -- a loopback server left
+running with four bots in it is a leak you cannot see.
 
-Depth is `deepest + 2`. One spare stops the writer catching a reader in the same
-interval; the second covers the crossfade tail the previous interval keeps
-sounding into the current one. `test/EchoScheduleTests.cpp` runs every tap depth
-over ten thousand intervals asserting no live entry is ever overwritten, and
-checks that one interval less of slack *would* collide -- so the +2 is measured
-rather than superstition.
+**Phase.** A bot renders interval N during N and is heard in N+1, exactly like a
+player. A bot that *reacts* to you cannot be heard before N+2. That is the true
+latency of the form rather than a limitation of this implementation.
 
-**Capture is on the audio thread, and that is what buys the shortest tap.**
-`writeEchoBlock` stores your input into the ring as it plays, block by block, so
-by the time a boundary arrives the entry is already complete: `closeEchoInterval`
-hands it to the taps and the swap immediately after picks it up. A tap can
-therefore be **one interval** -- what you just played, back at the top of the
-next one, which is what a looper does and what the room would have done with you
-at a delay of one.
-
-Going through the message thread cost an extra interval, because an entry stored
-just after a boundary could not be seen by the swap that had already happened.
-That made two the shallowest possible delay, and "why does the shortest echo
-start at 2?" is a fair question with no good answer.
-`EchoSchedule::kHandoffIntervals` is the one constant that states the cost, and
-`readSlotForPush` works *forward* from the interval an entry will be heard in
-rather than counting back from the store -- counting back is what once made
-every tap two intervals deeper than its label.
-
-The write allocates nothing, takes no lock, and does not clear: `writePos` is
-what the mix reads up to, so stale audio beyond it is unreachable and a
-multi-megabyte memset at every boundary is avoided. It is deliberately **not**
-transmit-gated -- transmit decides what the room hears, and offline there is no
-room.
-
-**Retiring the ring needs proof, not a comment.** The old code cleared
-`echoHistory` the moment practice was re-enabled while claiming the storage was
-released "once the slots have been observed free"; nothing observed anything,
-and ASan calls it a heap-use-after-free. A retired ring is now parked with the
-generation at which it was retired, the audio thread copies the generation back
-at the *end* of every block it touches echo on, and the ring is freed only once
-those match -- which means a whole block has come and gone since it stopped
-being published.
-
-**Swapping is once per interval; servicing is once per block.** `swapEchoBuffers`
-is the boundary swap, the exact counterpart of `swapIntervalBuffers`.
-`serviceEchoSlots` is the per-block call, and it completes the `Draining ->
-Free` transition and nothing else -- necessary because only the audio thread may
-publish `kFree`, so skipping it on idle blocks would strand the history forever.
-Calling the *swap* per block instead retires the playing interval one block
-after it starts, since `swapSlotRange` reads anything unplayed as a swap
-arriving early and fades it out: audible as a snippet at each interval start and
-silence for the rest. `test/EchoBankTests.cpp` measures the duty cycle of a
-whole interval across three block sizes for that reason, and its harness mirrors
-`processBlock`'s call order deliberately -- when it did not, the suite passed
-against a pipeline the product did not have.
-
-A memory budget clamps the deepest selectable delay, because a 32-BPI session at
-60 bpm makes each stored interval four times the size of a normal one.
-
-**In the mixer** the taps appear as a strip like any other player, so fader, pan,
-mute, solo and output bus all work -- an echo can be routed to its own DAW bus.
-Only the shortest is audible to begin with; all three exist so the delay pickers
-are discoverable. The picker takes the **Recv** button's place, Recv being
-meaningless when there is no server to stop sending.
-
----
+**Identifying it.** The header is tinted violet and reads `Practice room -- your
+own band` rather than a loopback address, which is true and tells you nothing;
+`StatusReadout` says the same in words, because colour is never the only carrier
+of meaning (`PRINCIPLES 11`).
 
 ## 6.3 Harmony: what the room is playing over
 

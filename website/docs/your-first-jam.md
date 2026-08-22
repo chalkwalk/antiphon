@@ -81,6 +81,32 @@ and you can **drop out without leaving** -- stop transmitting, keep listening,
 keep chatting. This is a normal and unremarkable thing to do in a NINJAM room,
 whether you are tuning up, taking a break, or just there to listen.
 
-Practice mode goes further: it lets you play against your own past interval
-without any of it reaching the server. Nothing you play in practice is ever
-transmitted, at any layer. See [Syncing with your DAW](./daw-sync.md).
+## The practice room
+
+Playing to a one-interval delay is a strange feeling the first time, and a room
+full of strangers is a poor place to discover that. So Antiphon can start a
+**practice room**: a band of four bots on your own machine that you can play
+with, and talk to.
+
+Open **Browse** and press **Practice room**. The header turns violet and reads
+*Practice room -- your own band*, and four players appear in the mixer.
+
+It is a real NINJAM room, not a simulation. The server runs on your own machine
+and the bots are ordinary clients on it, so everything works exactly as it does
+in a public room -- the phase bar, per-player faders, routing each bot to its
+own output bus, chat, DAW sync, recording and stems. Nothing you do there
+reaches the internet, because there is no internet involved.
+
+The band arrives **silent** and tells you how to start it. Talk to them in chat:
+
+| Say | And |
+|---|---|
+| `band, start` | they begin playing |
+| `band, stop` | they play an ending and go quiet, still there |
+| `[key: D minor]` or `/key D minor` | the room changes key |
+| `\| Am \| F \| C \| G \|` | they play those changes |
+| `shake` | they find a different figure |
+| `what are you playing?` | they tell you |
+| `band, go home` | they leave |
+
+Disconnecting shuts the room down.

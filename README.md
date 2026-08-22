@@ -36,15 +36,16 @@ centre, chat on the right](docs/images/antiphon.png)
 
 1. [Status](#status)
 2. [Quick start](#quick-start)
-3. [How a NINJAM jam works](#how-a-ninjam-jam-works)
-4. [The interface](#the-interface)
-5. [Walkthroughs](#walkthroughs)
-6. [Chat and voting](#chat-and-voting)
-7. [Accessibility](#accessibility)
-8. [Troubleshooting](#troubleshooting)
-9. [Licensing](#licensing)
-10. [How this was built](#how-this-was-built)
-11. [Contributing](#contributing)
+3. [The practice room](#the-practice-room)
+4. [How a NINJAM jam works](#how-a-ninjam-jam-works)
+5. [The interface](#the-interface)
+6. [Walkthroughs](#walkthroughs)
+7. [Chat and voting](#chat-and-voting)
+8. [Accessibility](#accessibility)
+9. [Troubleshooting](#troubleshooting)
+10. [Licensing](#licensing)
+11. [How this was built](#how-this-was-built)
+12. [Contributing](#contributing)
 
 ---
 
@@ -111,6 +112,42 @@ the metronome start clicking. Play something. In one interval's time, so will
 everyone else.
 
 `ninbot.com:2049` is the usual busy public server.
+
+---
+
+## The practice room
+
+Playing to a one-interval delay is a strange feeling the first time, and a room
+of strangers is a poor place to find that out. So Antiphon can start a band on
+your own machine.
+
+Open **Browse**, press **Practice room**. The header turns violet and reads
+*Practice room -- your own band*, and four players appear in the mixer.
+
+It is a **real NINJAM room**, not a simulation: a server on the loopback
+interface with four bots connected to it as ordinary clients. Everything works
+exactly as it does in a public room -- the phase bar, per-player faders, routing
+each bot to its own output bus, chat, DAW sync, recording and stems -- because
+none of it knows the far side is local. Nothing reaches the internet, because
+there is no internet involved.
+
+The band arrives **silent** and tells you how to start it. Talk to them in chat:
+
+| Say | And |
+|---|---|
+| `band, start` | they begin playing |
+| `band, stop` | they play an ending, then wait, still there |
+| `[key: D minor]` or `/key D minor` | the room changes key |
+| `\| Am \| F \| C \| G \|` | they play those changes |
+| `shake` | they find a different figure |
+| `what are you playing?` | they tell you |
+| `Ravo: quiet` | that one stops talking |
+| `band, go home` | they leave |
+
+Disconnecting shuts the room down.
+
+The bots live in [chalkwalk-jambot](https://github.com/chalkwalk/chalkwalk-jambot),
+which is JUCE-free and builds on its own; what stays here is the hosting.
 
 ---
 

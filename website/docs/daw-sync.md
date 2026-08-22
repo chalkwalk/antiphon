@@ -62,15 +62,10 @@ follow.
 
 ## Practising alone
 
-You can run the interval clock without being in a jam. The **practice echo**
-plays your own previous interval back to you, one interval late, exactly as the
-room would hear it -- so you can get the feel of playing to a delay before
-inflicting it on strangers.
+You can run the interval clock without being in a jam at all: press play in your
+DAW with nothing connected and the metronome, the phase bar and the interval
+grid all run, derived from the host's own tempo and position. A project at
+120 BPM gives you the interval you would get in a 120 BPM room.
 
-**Nothing you play in practice is ever transmitted.** That is true at every layer
-of the plugin, not merely as a UI state, and it is deliberately tested to stay
-true.
-
-Offline, with no server to define the grid, the interval is derived from the
-host's own tempo and position, so practising in a project at 120 BPM gives you
-the interval you would get in a 120 BPM room.
+For playing *with* somebody, there is the **practice room** -- a real band on
+your own machine. See [Your first jam](./your-first-jam.md#the-practice-room).
