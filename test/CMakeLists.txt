@@ -25,19 +25,9 @@ target_sources(NinjamTests
         ShortcutsTests.cpp
         AccessibilityAuditTests.cpp
         ChatFormatTests.cpp
-        BotAnswerTests.cpp
-        BandPlayStateTests.cpp
-
-        BotChatTests.cpp
         KeyTagTests.cpp
         SharedContractTests.cpp
         LeadLineTests.cpp
-        BotDspTests.cpp
-        BandPatchTests.cpp
-        BotBandTests.cpp
-        BotAddressTests.cpp
-        BotLanguageTests.cpp
-        BotNamesTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
         RunGateTests.cpp
@@ -49,24 +39,15 @@ target_sources(NinjamTests
         FakeNinjamServer.cpp
         LoopbackTests.cpp
         PracticeServerTests.cpp
-        PracticeBotTests.cpp
         PracticeRoomTests.cpp
         AudioLoopbackTests.cpp
         RealServerTests.cpp
         ReferenceFixtureTests.cpp
         ${CMAKE_SOURCE_DIR}/src/NinjamClient.cpp
         ${CMAKE_SOURCE_DIR}/src/MetronomeVoice.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotBand.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BandPatch.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotAddress.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotLanguage.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotNames.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeServer.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/PracticeBot.cpp
         ${CMAKE_SOURCE_DIR}/src/PracticeRoom.cpp
         ${CMAKE_SOURCE_DIR}/src/ChatFormat.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotAnswer.cpp
-        ${CMAKE_SOURCE_DIR}/src/jambot/BotChat.cpp
         ${CMAKE_SOURCE_DIR}/src/ClipsortLog.cpp
         ${CMAKE_SOURCE_DIR}/src/SessionWriter.cpp
         ${CMAKE_SOURCE_DIR}/src/AccessibilityAudit.cpp
@@ -88,6 +69,7 @@ target_link_libraries(NinjamTests
     PRIVATE
         chalkwalk::music
         chalkwalk::dsp
+        chalkwalk::jambot
         chalkwalk::dsp::measure
         chalkwalk::ninjam
         juce::juce_audio_formats
@@ -128,11 +110,6 @@ add_test(NAME no-build-standalone-macro
 # discovered when somebody tries to move the file.
 # The bots are being extracted; this fails when the set of things that would
 # have to come with them changes. See the script.
-add_test(NAME jambot-boundary
-         COMMAND ${CMAKE_COMMAND}
-                 -DSRC_DIR=${CMAKE_SOURCE_DIR}/src
-                 -DTEST_DIR=${CMAKE_SOURCE_DIR}/test
-                 -P ${CMAKE_SOURCE_DIR}/cmake/CheckJambotBoundary.cmake)
 
 add_test(NAME music-layer-is-juce-free
          COMMAND ${CMAKE_COMMAND}

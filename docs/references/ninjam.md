@@ -102,4 +102,4 @@ Four things this pins down that reading alone left ambiguous:
 4. **`!vote key Cm` is consumed and answered with an error.** It is *not*
    relayed to the room as ordinary chat, so no other client ever sees it. Any
    scheme that hoped to tally a key vote by watching `!vote key` lines in chat
-   cannot work -- see `docs/BOT-CHAT.md`.
+   cannot work -- see `libs/jambot/docs/BOT-CHAT.md`.

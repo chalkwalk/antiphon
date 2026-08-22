@@ -28,13 +28,10 @@ Authoritative docs (read these before designing anything new):
 - **`docs/PARITY.md`** -- what has been verified against the reference client,
   with the measured numbers.
 - **`docs/ACCESSIBILITY.md`** -- the accessibility story, honestly.
-- **`docs/BOT-CHAT.md`** -- what the practice room's bots would say and what
-  they would never say. **Answering is built end to end; the rest is still a
-  proposal.** Built: who a message is for (`BotAddress`), what it asks
-  (`BotLanguage`), what it says back (`BotAnswer`), the join (`BotChat`), the
-  name pool (`BotNames`) and the arrival roster. Not built: the tutor, the cue
-  budget, the vote policy, one-bot arbitration for common answers, and
-  everything the bots say unprompted.
+- **`libs/jambot/docs/BOT-CHAT.md`** -- what the practice room's bots would say
+  and what they would never say. It lives with the bots now; this repository
+  hosts them and does not design them.
+
 - **`test/README.md`** -- how to run every test layer.
 
 Ordering for any new work: **PRINCIPLES -> DESIGN -> ROADMAP**. If a proposal
@@ -78,6 +75,15 @@ libs/dsp/                   # SUBMODULE: chalkwalk-dsp (MIT, JUCE-free). Two
                             #   what `AudioMeasure` used to be -- and carries
                             #   libebur128, so only test and tool targets link
                             #   it.
+libs/jambot/                # SUBMODULE: chalkwalk-jambot (MIT, JUCE-free). The
+                            #   BAND, and the chat they answer. Was src/jambot/
+                            #   until it earned its own repository; what stays
+                            #   here is the hosting a practice room needs and a
+                            #   command-line bot does not. Its suite runs in our
+                            #   ctest, so we verify the bots rather than assume
+                            #   them. Corpora and BotDictionary.h live there
+                            #   now, and so do scripts/make_wordlist.py and
+                            #   lexicon_gaps.py.
 libs/ninjam/                # SUBMODULE: chalkwalk-ninjam (MIT, JUCE-free). The
                             #   wire protocol, and the room conventions in
                             #   RoomConventions.h. Vendors its own ogg/vorbis,
@@ -127,39 +133,6 @@ src/
   PracticeServer.{h,cpp}    # a Ninjam server on loopback, so a room needs none
   NinjamBotClient.h         # that interface over Antiphon's client. The whole of
                             #   what ties the band to this plugin's transport
-  # --- src/jambot/: STAGED FOR EXTRACTION to chalkwalk-jambot ---
-  #
-  # Separated here first so the move is proven by the tests that already exist
-  # rather than by a migration. The `jambot-boundary` ctest fails if anything
-  # here reaches back into Antiphon OR reaches for JUCE, and it is CLEAN on
-  # both: the theory comes from chalkwalk-music, the room conventions from
-  # chalkwalk-ninjam, and scheduling is asked of the host rather than taken
-  # from juce::Timer.
-  #
-  # PracticeBot is HERE now, and so is the interval loop. What stays in src/ is
-  # the hosting a practice room needs and a command-line bot does not: the
-  # loopback server, and the room that puts a server and a band together.
-  jambot/PracticeBot.{h,cpp}# one bot: renders its part, answers what it is asked
-  jambot/BotClient.h        # the room as a bot needs it: 14 calls out, 6 back.
-                            #   JUCE-free, and the line the bots extract along
-  jambot/Conductor.h        # the interval grid, driven. One thread, free-running
-                            #   -- Ninjam's absolute phase is free (PRINCIPLES 9)
-  jambot/BotBand.{h,cpp}    # the ensemble: which voice plays what, and the mix
-  jambot/BotVoice.h         # the instruments; BotDsp.h the primitives under them
-  jambot/BandPlayState.h    # Silent/Playing/Wrapping/Resolving: how a tune ends
-  jambot/BotNames.{h,cpp}   # the name pool, and picking a band that reads apart
-  jambot/BotAddress.{h,cpp} # WHO a message is for. Corpus: bot-addressing.txt
-  jambot/BotLanguage.{h,cpp}# WHAT it asks. Corpus: bot-phrases.txt, quarter held out
-  jambot/BotAnswer.{h,cpp}  # what it SAYS back: pure functions over room state.
-                            #   No reply may contain `[key:` -- saying it sets it.
-  jambot/BotChat.{h,cpp}    # the JOIN of the three, pure: context + message ->
-                            #   what to say and what to do. PracticeBot is a
-                            #   snapshot in and an intention out.
-  jambot/BotDictionary.h    # GENERATED (scripts/make_wordlist.py): a real word
-                            #   is not a mistyped one. Do not hand-edit.
-  jambot/BandPatch.{h,cpp}  # the band's tunable knobs, and the patch file the
-                            #   lab reads and writes. Band code, so it lives
-                            #   with the band rather than beside the plugin.
   # --- UI ---
   LocalChannelStrip.{h,cpp} # 90px vertical strip per local input channel
   RemoteUserStrip.{h,cpp}   # card per remote player, channels arranged horizontally
@@ -188,8 +161,6 @@ tools/
 scripts/
   testserver.sh             # fetches, builds and runs a local ninjamsrv out of tree
   analyze_archive.py        # measures a server session archive
-  make_wordlist.py          # SCOWL -> src/jambot/BotDictionary.h; rerun after a lexicon change
-  lexicon_gaps.py           # proposes BotLanguage lexicon entries from the corpus
   trim_soundfont.py         # cuts an SF2/SF3 down to the presets we would use
 docs/references/            # what was read to write this, and at which revision
 modules/                    # ogg, vorbis, clap-juce-extensions submodules
@@ -209,7 +180,7 @@ run against it:
 cmake -B build -DCHALKWALK_MUSIC_DIR=$HOME/Programming/chalkwalk-music
 ```
 
-`CHALKWALK_DSP_DIR` and `CHALKWALK_NINJAM_DIR` likewise, as cache variables or
+`CHALKWALK_DSP_DIR`, `CHALKWALK_NINJAM_DIR` and `CHALKWALK_JAMBOT_DIR` likewise, as cache variables or
 environment variables. Configure prints `OVERRIDE` when one is in use, because
 **the submodule SHA no longer describes what you built** -- so CI must not use
 them, and neither should anything meant to be attributable, `docs/PARITY.md`
@@ -357,8 +328,7 @@ reading past a buffer. Assume your change has the same failure mode.
 | Mixing, routing, playback delay | `test/AudioLoopbackTests.cpp` | Drives the real path end to end. |
 | Accessibility naming rules | `test/AccessibilityAuditTests.cpp` | Synthetic node tree; the real UI cannot be compiled into the test target. |
 | A new control, or a new UI state | `test/AuditMain.cpp` | The `AntiphonAudit` target links the plugin's own library and audits the **real** editor across five states. Add a state when you add a surface -- an unaudited state is how the connect dialog stayed unchecked for its whole life. |
-| What a bot understands | `test/fixtures/bot-phrases.txt` | **The corpus is the specification; add the phrasing first and watch it go red.** Every fourth line of each section is held out from tuning, and the holdout rate is the only figure that says anything about phrasing nobody has thought of. Append to the END of a section so new lines keep feeding it. Regenerate `src/jambot/BotDictionary.h` after any lexicon change. |
-| Who a bot answers | `test/fixtures/bot-addressing.txt` | Same shape. The commonest correct answer is nobody. |
+| What a bot understands or says | **`chalkwalk-jambot`, not here** | The bots left. Corpora, suites and the generator scripts went with them; iterate there with `-DCHALKWALK_JAMBOT_DIR=...` and bump the submodule when done. |
 | Server-visible behaviour | `test/RealServerTests.cpp` | Opt-in via `NINJAM_TEST_SERVER`; keep the default suite hermetic. |
 
 ### Rules that are easy to get wrong

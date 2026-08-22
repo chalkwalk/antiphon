@@ -638,7 +638,7 @@ teaching, the bots could feel like present players rather than pattern
 generators -- answering when asked what they are playing, noticing a chart they
 cannot read -- without a language model and without becoming a novelty.
 
-**Designed in `docs/BOT-CHAT.md`; that document is the proposal and this is the
+**Designed in `libs/jambot/docs/BOT-CHAT.md`; that document is the proposal and this is the
 checklist.** Chat only: the bots do not listen, and musical interaction is
 separate future work. What makes a bot feel alive here is precision and
 restraint rather than conversation.
@@ -661,7 +661,7 @@ restraint rather than conversation.
       fitting to noise; the remaining work on this feature is *connection*, not
       accuracy. Re-run the suites rather than citing these numbers second-hand
       (`PRINCIPLES §5`).
-- [ ] **Measure the server's vote threshold.** `docs/BOT-CHAT.md` proposes how
+- [ ] **Measure the server's vote threshold.** `libs/jambot/docs/BOT-CHAT.md` proposes how
       the band votes, and the whole proposal rests on `M` as a function of the
       number of clients -- which nothing here records. Connect a varying number
       of clients to `scripts/testserver.sh` and read it off the vote line before
@@ -670,7 +670,7 @@ restraint rather than conversation.
       toward the threshold, and abstaining is a vote against: four of them take
       tempo control away from a room of three humans entirely. The rule -- vote
       only for a candidate a majority of humans already back, never propose one,
-      staggered like the arrival roster -- is designed in `docs/BOT-CHAT.md` and needs
+      staggered like the arrival roster -- is designed in `libs/jambot/docs/BOT-CHAT.md` and needs
       no coordination between the bots: they queue behind staggered delays the
       way they announce themselves, and each checks on waking whether the motion
       already carried, so the band casts exactly the shortfall and stops.
@@ -689,7 +689,7 @@ restraint rather than conversation.
       not own.
 - [ ] Answering `SET_KEY`, `SET_TEMPO` and `SET_CHART` honestly. All three are
       recognised; none is a thing a bot may decide, and saying so is the point
-      of recognising them. Three parts, designed in `docs/BOT-CHAT.md`: that the
+      of recognising them. Three parts, designed in `libs/jambot/docs/BOT-CHAT.md`: that the
       room decides, what it currently is, and how to change it in any client
       (`!vote bpm N`, a `| Am | F |` line, a `[key: ...]` tag). Two special
       cases, both about not implying a decision was made: a key that was
@@ -731,7 +731,7 @@ restraint rather than conversation.
       tutor.
 - [ ] **Being present without playing.** Built, bar two things: the endings have
       never been listened to, and nothing outside the practice room can reach
-      the states. **Designed in `docs/BOT-CHAT.md` section 15; that section is
+      the states. **Designed in `libs/jambot/docs/BOT-CHAT.md` section 15; that section is
       the specification and this is the checklist.**
       - [x] Four states -- Silent, Playing, Wrapping, Resolving -- sampled ONCE
             per interval at the top of the render and held for it. `Wrapping`
@@ -993,7 +993,7 @@ decoration to the thing that makes the rest of this audible at all.
       The envelope is the actual work and it wants ears rather than a rule.
       `PadPatch` was shaped for chords that ring into each other -- its release
       is two seconds -- and a stab is a different instrument's gesture. This is
-      an `AntiphonVoiceLab` job (`docs/BOT-CHAT.md` has no opinion on it).
+      an `AntiphonVoiceLab` job (`libs/jambot/docs/BOT-CHAT.md` has no opinion on it).
 - [ ] **Being told a form.** `band, play ABACBA` as a chat intent: parse a
       letter string, bound its length, store it in `Settings`. Cheap once the
       mechanism exists and worth having last rather than first -- the default
@@ -1035,7 +1035,7 @@ band. The two pieces of work want doing in that order.
 - [ ] **Tab completion in the chat field.** Complete `/` commands from the
       command list, and usernames after `/msg` and `/kick` from the room's user
       list -- and a name at the start of a line, which is how a bot is addressed
-      (`docs/BOT-CHAT.md` section 5). Common prefix first, then cycling.
+      (`libs/jambot/docs/BOT-CHAT.md` section 5). Common prefix first, then cycling.
       Accessibility is half the point: the completion and the candidate list
       both want announcing, and a name nobody can spell is a name nobody can
       reach.
@@ -1363,7 +1363,7 @@ entirely is a first-class part of `chalkwalk-music`.
 
 ### A responsive jamming partner
 
-Sketched in `docs/BOT-CHAT.md` section 14, and not scheduled. A bot receives a
+Sketched in `libs/jambot/docs/BOT-CHAT.md` section 14, and not scheduled. A bot receives a
 whole interval at once and composes a whole interval at once, so it holds your
 complete phrase -- ending and all -- at the moment a human listener has heard
 only its first beat, and it answers into the same slot they would. It can

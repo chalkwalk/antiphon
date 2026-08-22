@@ -29,6 +29,23 @@
 # ---------------------------------------------------------------------------
 
 function(chalkwalk_add_library name submodule_path)
+    # Already added by a parent, so use theirs.
+    #
+    # These libraries nest: Antiphon pulls in chalkwalk-jambot, which pulls in
+    # the same chalkwalk-music, -dsp and -ninjam that Antiphon has already
+    # added. Adding a second copy is not a version conflict -- it is a
+    # duplicate CMake target name, which fails the configure outright.
+    #
+    # Whichever project adds it first wins and the rest reuse it, which is the
+    # same rule chalkwalk-ninjam applies to its vendored ogg and vorbis. It
+    # also means the OUTER project's submodule SHA is the one that describes
+    # the build, and the inner one is not consulted at all -- so a nested
+    # library does not need its own submodules checked out.
+    if(TARGET chalkwalk_${name})
+        message(STATUS "chalkwalk-${name}: already provided by a parent project")
+        return()
+    endif()
+
     string(TOUPPER "${name}" upper)
     set(var "CHALKWALK_${upper}_DIR")
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "NinjamClient.h"
-#include "jambot/BotClient.h"
+#include <BotClient.h>
 
 #include <algorithm>
 
