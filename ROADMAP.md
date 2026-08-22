@@ -687,21 +687,21 @@ restraint rather than conversation.
       `PracticeServer` has no chat hook to notice a key change through, and that
       plumbing wants designing rather than bolting on. Never on a server we do
       not own.
-- [ ] Answering `SET_KEY`, `SET_TEMPO` and `SET_CHART` honestly. All three are
+- [x] Answering `SET_KEY`, `SET_TEMPO` and `SET_CHART` honestly. All three are
       recognised; none is a thing a bot may decide, and saying so is the point
-      of recognising them. Three parts, designed in `libs/jambot/docs/BOT-CHAT.md`: that the
+      of recognising them. `BotAnswer::answerSetKey/answerSetTempo/answerSetChart`. Three parts, designed in `libs/jambot/docs/BOT-CHAT.md`: that the
       room decides, what it currently is, and how to change it in any client
       (`!vote bpm N`, a `| Am | F |` line, a `[key: ...]` tag). Two special
       cases, both about not implying a decision was made: a key that was
       defaulted rather than chosen, and no chart at all.
-- [ ] **The key tag is self-triggering, and reply text must respect it.**
+- [x] **The key tag is self-triggering, and reply text must respect it.**
       `MusicalKey::parseTagged` matches `[key:` anywhere in a line, so a bot
       explaining the syntax would set the key by explaining it. The answer is
       that the bot puts the tag up itself rather than teaching it -- a
       translator, not an authority, since any player in any client can type the
       tag and `/key` is only a shortcut for it. Whatever renders bot chat needs
       a test that no reply text parses as a key.
-- [ ] **One bot answers a common question.** Addressing decides who was asked,
+- [x] **One bot answers a common question.** Addressing decides who was asked,
       not how many should speak, and `REPORT_*`/`SET_*` are one fact rather than
       four. Acting stays collective -- `band, shake` rerolls all four -- and only
       the line about it is rationed.
@@ -710,8 +710,18 @@ restraint rather than conversation.
       then check whether the job is already done. It should replace the fixed
       "lowest instrument first" order the key-change cue was designed with,
       which picks a bot that may have been told `quiet` and then never speaks.
-- [ ] `src/BotChat.{h,cpp}` as pure functions over what a bot knows, so a seed
-      and a script of events give a byte-identical transcript.
+      **Two of the four are built** -- the roster and common answers -- and they
+      share `PracticeBot::speakDelayMs`. The vote and the key-change
+      acknowledgement do not exist to arbitrate yet.
+      - [x] The stagger is RANK in the room's sorted bot list times 400ms, not
+            a hash modulo. A hash has no minimum separation: it put two of four
+            bots 32ms apart, both timers fired in one scheduling wake on macOS,
+            and the roster was posted twice. It had never held -- Linux passed
+            on a margin nobody had measured. Found by CI on 2026-08-22, the
+            first run on a non-Linux compiler since the bots were written.
+- [x] `BotChat.{h,cpp}` as pure functions over what a bot knows: a snapshot in
+      and an intention out, so `PracticeBot` decides nothing and the join is
+      testable without a room.
 - [ ] A fifth, instrument-less tutor bot that teaches six lines and then parts.
       The players play the changes; they do not teach.
 - [ ] The tutor's one piece of listening: subscribed to the owner alone, using
@@ -729,9 +739,10 @@ restraint rather than conversation.
 - [ ] Unprompted speech off outside the practice room. Nothing speaks
       unprompted yet, so there is nothing to switch off; it lands with the
       tutor.
-- [ ] **Being present without playing.** Built, bar two things: the endings have
-      never been listened to, and nothing outside the practice room can reach
-      the states. **Designed in `libs/jambot/docs/BOT-CHAT.md` section 15; that section is
+- [ ] **Being present without playing.** Built, bar two things: **the endings
+      have never been listened to** -- they want ears and a `--seconds` render
+      rather than another assertion -- and nothing outside the practice room can
+      reach the states. **Designed in `libs/jambot/docs/BOT-CHAT.md` section 15; that section is
       the specification and this is the checklist.**
       - [x] Four states -- Silent, Playing, Wrapping, Resolving -- sampled ONCE
             per interval at the top of the render and held for it. `Wrapping`

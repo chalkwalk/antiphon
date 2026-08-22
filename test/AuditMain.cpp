@@ -133,22 +133,10 @@ int main() {
   settle(*editor);
   results.push_back(auditState("two channels, extra buses", {editor}));
 
-  // Practice mode, which puts three echo taps in the mixer's remote half with a
-  // delay picker where a real channel has Recv. Those controls exist nowhere
-  // else, so without this state they would never be audited -- which is exactly
-  // how the connect dialog went unchecked for its whole life.
-  {
-    processor.prepareToPlay(48000.0, 512);
-    const bool started = processor.setPracticeEnabled(true);
-    pump(300);
-    settle(*editor);
-    if (started)
-      results.push_back(auditState("practice mode, echo taps", {editor}));
-    else
-      std::printf("practice mode did not start; state not audited\n");
-    processor.setPracticeEnabled(false);
-    pump(100);
-  }
+  // The practice room's own state goes here once it is reachable from the
+  // editor. It replaces the practice-echo state that stood here, which audited
+  // three synthetic taps in the mixer's remote half; the room puts REAL remote
+  // players there and they are covered by the connected states above.
 
   // The connect dialog is its own top-level window, so it has to be handed in
   // as a root of its own. Built directly rather than through the editor: this

@@ -20,13 +20,6 @@ public:
   int getPreferredWidth() const;
   void updateOutputBusCount(int numBuses);
 
-  // Turns this into the practice-echo strip: one row per tap, each driving an
-  // echo rather than a remote channel. Everything else about the strip is
-  // unchanged, because an echo goes through the same mix path as a player --
-  // fader, pan, mute, solo and output bus all work, so an echo can be routed
-  // to its own DAW bus like anyone else.
-  void updateEchoTaps(const std::vector<NinjamClient::EchoTap> &taps,
-                      int maxDelay);
 
   bool isSelected() const { return selected; }
   void setSelected(bool sel);

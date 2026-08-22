@@ -1,12 +1,12 @@
 #pragma once
 
-// What is running right now: the clock, the jam, or practice.
+// What is running right now: the clock, or the jam.
 //
-// These three used to be one condition. `syncState.isRunning()` gated both
+// These two used to be one condition. `syncState.isRunning()` gated both
 // whether the interval clock advanced and whether we were in the jam, and
 // SyncState reports Disconnected whenever there is no server -- so offline the
-// clock, the metronome, the phase bar and capture all stopped together. That is
-// why practice mode needs the split: it wants the grid without the jam.
+// clock, the metronome, the phase bar and capture all stopped together, which
+// made Antiphon useless as a metronome on its own.
 //
 // The model is one sentence. **A transport drives the grid; the connection
 // decides what happens to the audio.** In the plugin that transport is the
@@ -25,8 +25,7 @@
 // right now" are separate questions, and `inJam` is the conjunction.
 //
 // Pure and JUCE-free so every combination can be tested, which matters because
-// the invariant below is a safety property and PluginProcessor cannot be
-// compiled into the test target.
+// PluginProcessor cannot be compiled into the test target at all.
 
 struct RunGate {
   // The interval clock advances, the metronome sounds, the phase bar moves.
@@ -36,24 +35,13 @@ struct RunGate {
 
   // Local audio is captured and transmitted, and remote players are mixed in.
   bool inJam = false;
-
-  // Your own audio is played back to you, delayed, as practice.
-  bool echoOn = false;
 };
 
 // `syncRunning` is SyncState::isRunning(): in step, not necessarily playing.
 inline RunGate computeRunGate(bool connected, bool syncRunning,
-                              bool transportPlaying, bool practiceEnabled) {
+                              bool transportPlaying) {
   RunGate g;
   g.gridRunning = transportPlaying;
   g.inJam = connected && syncRunning && transportPlaying;
-  // Practice is offline-only, which is what makes "never transmitted" true by
-  // construction rather than by remembering to check.
-  g.echoOn = practiceEnabled && !connected && transportPlaying;
   return g;
 }
-
-// The safety property, stated so it can be asserted rather than assumed:
-// transmitting and practising can never both be live, because one requires a
-// connection and the other requires none.
-inline bool runGateIsSafe(const RunGate &g) { return !(g.inJam && g.echoOn); }

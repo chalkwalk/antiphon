@@ -57,29 +57,6 @@ void RemoteUserStrip::resized() {
   }
 }
 
-void RemoteUserStrip::updateEchoTaps(
-    const std::vector<NinjamClient::EchoTap> &taps, int maxDelay) {
-  // Rows are created once and then only updated: rebuilding them every tick
-  // would take focus away from whatever the user was adjusting.
-  if (channelRows.size() != (int)taps.size()) {
-    channelRows.clear();
-    channelIndices.clear();
-    for (int i = 0; i < (int)taps.size(); ++i) {
-      auto *row = new RemoteChannelRow(audioProcessor, "Echo", i, i);
-      channelRows.add(row);
-      channelIndices.push_back(i);
-      addAndMakeVisible(row);
-    }
-    resized();
-  }
-
-  for (int i = 0; i < (int)taps.size() && i < channelRows.size(); ++i) {
-    channelRows[i]->update(taps[(std::size_t)i].channel);
-    channelRows[i]->updatePeak(taps[(std::size_t)i].channel.peakLevel);
-    channelRows[i]->setEchoDelayOptions(maxDelay,
-                                        taps[(std::size_t)i].delayIntervals);
-  }
-}
 
 void RemoteUserStrip::updateOutputBusCount(int numBuses) {
   for (auto *row : channelRows)

@@ -31,9 +31,7 @@ target_sources(NinjamTests
         ClipsortLogTests.cpp
         StemRenderTests.cpp
         RunGateTests.cpp
-        EchoScheduleTests.cpp
         HostGridTests.cpp
-        EchoBankTests.cpp
         GainRampTests.cpp
         TransmitSpansTests.cpp
         FakeNinjamServer.cpp

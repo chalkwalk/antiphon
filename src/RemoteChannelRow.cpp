@@ -1,12 +1,11 @@
-#include "EchoSchedule.h"
 #include "GainUtils.h"
 #include "AntiphonLookAndFeel.h"
 #include "RemoteChannelRow.h"
 #include "PluginProcessor.h"
 
 RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
-                                   juce::String uname, int chIdx, int tap)
-    : audioProcessor(p), username(uname), channelIndex(chIdx), echoTap(tap) {
+                                   juce::String uname, int chIdx)
+    : audioProcessor(p), username(uname), channelIndex(chIdx) {
 
   channelNameLabel.setFont(juce::FontOptions{}.withHeight(11.0f));
   channelNameLabel.setColour(juce::Label::textColourId,
@@ -31,10 +30,6 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Volume in dB: -inf to +6, unity at 0. Remote channels default to "
       "-12 dB, matching the reference client.");
   volumeSlider.onValueChange = [this]() {
-    if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapVolume(
-          echoTap, GainUtils::dbToGain(volumeSlider.getValue()));
-    else
       audioProcessor.ninjamClient.setRemoteUserVolume(
           username, channelIndex, GainUtils::dbToGain(volumeSlider.getValue()));
   };
@@ -55,10 +50,6 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
                            "mix. Shortcut: Left or Right arrow");
   panSlider.setTooltip("Pan: centre = 0, left = -1, right = +1");
   panSlider.onValueChange = [this]() {
-    if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapPan(echoTap,
-                                                (float)panSlider.getValue());
-    else
       audioProcessor.ninjamClient.setRemoteUserPan(username, channelIndex,
                                                    (float)panSlider.getValue());
   };
@@ -70,10 +61,6 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   muteButton.setTooltip(
       "Mute: silence this player in your mix (audio still downloads)");
   muteButton.onClick = [this]() {
-    if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapMute(echoTap,
-                                                 muteButton.getToggleState());
-    else
       audioProcessor.ninjamClient.setRemoteUserMute(
           username, channelIndex, muteButton.getToggleState());
   };
@@ -84,10 +71,6 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
       "Hear only soloed channels in your mix. Shortcut: S");
   soloButton.setTooltip("Solo: hear only soloed remote channels");
   soloButton.onClick = [this]() {
-    if (isEcho())
-      audioProcessor.ninjamClient.setEchoTapSolo(echoTap,
-                                                 soloButton.getToggleState());
-    else
       audioProcessor.ninjamClient.setRemoteUserSolo(
           username, channelIndex, soloButton.getToggleState());
   };
@@ -114,23 +97,7 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
 
   // The delay picker, in the Recv button's place. Same 1-based-ID pattern as
   // the output bus box below.
-  delayBox.onChange = [this]() {
-    const int sel = delayBox.getSelectedId();
-    if (sel > 0 && isEcho())
-      audioProcessor.ninjamClient.setEchoTapDelay(echoTap, sel);
-  };
-  delayBox.setTitle("Echo delay");
-  delayBox.setDescription(
-      "How many intervals late this echo plays your own audio back");
-  delayBox.setTooltip("How far behind this echo follows you, in intervals. A "
-                      "longer delay makes "
-                      "a wider canon.");
-  addChildComponent(delayBox);
 
-  if (isEcho()) {
-    recvButton.setVisible(false);
-    delayBox.setVisible(true);
-  }
 
   outputBusBox.setTitle("Output bus");
   outputBusBox.setDescription(
@@ -140,9 +107,6 @@ RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
   outputBusBox.onChange = [this]() {
     int sel = outputBusBox.getSelectedId() - 1;
     if (sel >= 0)
-      if (isEcho())
-        audioProcessor.ninjamClient.setEchoTapOutputBus(echoTap, sel);
-      else
         audioProcessor.setRemoteUserOutputBus(username, channelIndex, sel);
   };
   addAndMakeVisible(outputBusBox);
@@ -164,24 +128,6 @@ void RemoteChannelRow::update(const NinjamClient::RemoteUserChannel &c) {
     outputBusBox.setSelectedId(busId, juce::dontSendNotification);
 }
 
-void RemoteChannelRow::setEchoDelayOptions(int maxDelay, int current) {
-  if (!isEcho())
-    return;
-  // The list starts at the shallowest delay the pipeline can actually deliver.
-  // That is one interval -- what you just played, back at the top of the next
-  // one -- because the store happens on the audio thread. See EchoSchedule.
-  const int lowest = EchoSchedule::kMinDelayIntervals;
-  const int highest = juce::jmax(lowest, maxDelay);
-  const int wanted = juce::jlimit(lowest, highest, current);
-  if (delayBox.getNumItems() != highest - lowest + 1) {
-    delayBox.clear(juce::dontSendNotification);
-    for (int i = lowest; i <= highest; ++i)
-      delayBox.addItem(juce::String(i) + (i == 1 ? " interval" : " intervals"),
-                       i);
-  }
-  if (delayBox.getSelectedId() != wanted)
-    delayBox.setSelectedId(wanted, juce::dontSendNotification);
-}
 
 void RemoteChannelRow::updateOutputBusCount(int numBuses) {
   int current = outputBusBox.getSelectedId();
@@ -238,10 +184,7 @@ void RemoteChannelRow::resized() {
   area.removeFromTop(4);
 
   area.removeFromBottom(4);
-  if (isEcho())
-    delayBox.setBounds(area.removeFromBottom(22));
-  else
-    recvButton.setBounds(area.removeFromBottom(22));
+  recvButton.setBounds(area.removeFromBottom(22));
   area.removeFromBottom(4);
   outputBusBox.setBounds(area.removeFromBottom(22));
   area.removeFromBottom(4);

@@ -146,34 +146,6 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   addChildComponent(transportButton);
   refreshTransportButton();
 
-  practiceToggle.setButtonText("Practice");
-  practiceToggle.setToggleState(audioProcessor.ninjamClient.isPracticeEnabled(),
-                                juce::dontSendNotification);
-  practiceToggle.onClick = [this]() {
-    const bool on = practiceToggle.getToggleState();
-    const bool ok = audioProcessor.setPracticeEnabled(on);
-    if (on && !ok) {
-      practiceToggle.setToggleState(false, juce::dontSendNotification);
-      statusReadout.setStatus("Practice needs a tempo and a sample rate");
-      announcer.say("Practice could not start", true);
-    } else {
-      announcer.say(on ? "Practice on. Your playing comes back delayed."
-                       : "Practice off",
-                    true);
-    }
-    resized();
-  };
-  practiceToggle.setTitle("Practice");
-  practiceToggle.setDescription(
-      "Play your own audio back to you, several intervals late, as virtual "
-      "players. Offline only, and never transmitted");
-  practiceToggle.setTooltip(
-      "A duet with your past self: what you play comes back 4, 6 and 8 "
-      "intervals later as separate players you can mix.\n"
-      "Offline only -- it is not available while connected, and is never "
-      "transmitted.");
-  practiceToggle.setRepaintsOnMouseActivity(true);
-  addAndMakeVisible(practiceToggle);
 
   // Compact toolbar groups
   channelGroupLabel.setText("Channel:", juce::dontSendNotification);
@@ -954,7 +926,6 @@ void AntiphonEditor::resized() {
   toolbar.removeFromRight(4);
   metronomeToggle.setBounds(toolbar.removeFromRight(90).reduced(0, 4));
   toolbar.removeFromRight(4);
-  practiceToggle.setBounds(toolbar.removeFromRight(76).reduced(0, 4));
   toolbar.removeFromRight(10);
 
   // The DAW-only run, continuing from the left. In the standalone the note
@@ -1684,22 +1655,6 @@ void AntiphonEditor::updateToolbarStates() {
   // underneath it (onConnected), and a lit toggle over a feature that is no
   // longer running is the UI telling a lie about the one thing users most
   // want to be sure of.
-  const bool practiceOn = audioProcessor.ninjamClient.isPracticeEnabled();
-  if (practiceToggle.getToggleState() != practiceOn)
-    practiceToggle.setToggleState(practiceOn, juce::dontSendNotification);
-  practiceToggle.setEnabled(!connected);
-  practiceToggle.setTooltip(
-      connected ? juce::String("Practice is offline only -- disconnect to use "
-                               "it. Nothing you play in practice is ever sent.")
-                : juce::String("A duet with your past self: what you play "
-                               "comes back a chosen number of intervals "
-                               "later. Offline only, never transmitted."));
-  practiceToggle.setDescription(
-      connected
-          ? juce::String("Practice mode, unavailable while connected to a "
-                         "server. It is offline only and is never transmitted")
-          : juce::String("Play your own audio back to you, delayed, as virtual "
-                         "players. Offline only, and never transmitted"));
 
   // Everything below is DAW-only and was settled once by
   // applyHostContextToControls(). Re-enabling it here every timer tick would
@@ -1780,16 +1735,9 @@ void AntiphonEditor::relayoutChannelArea() {
   // Position remote strips: right-flush within container
   int rh = remoteUsersViewport.getHeight();
 
-  // The echo strip shares this area with the remote players, because that is
-  // what it is: a player who happens to be you, late. It has to be laid out
-  // here with them -- being in the container is not enough, and a strip with no
-  // bounds is invisible in a way that looks exactly like the feature not
-  // working.
   std::vector<RemoteUserStrip *> strips;
   for (auto *s : remoteUserStrips)
     strips.push_back(s);
-  if (echoStrip != nullptr)
-    strips.push_back(echoStrip.get());
 
   int total_remote = 0;
   for (auto *s : strips)
@@ -1977,45 +1925,15 @@ void AntiphonEditor::timerCallback() {
     int numOutBuses = audioProcessor.getBusCount(false);
     for (auto *s : remoteUserStrips)
       s->updateOutputBusCount(numOutBuses);
-    if (echoStrip != nullptr) {
-      remoteUsersContainer.removeChildComponent(echoStrip.get());
-      echoStrip.reset();
-    }
-  } else if (audioProcessor.ninjamClient.isPracticeEnabled()) {
-    // Offline with practice on: the echo taps take the mixer's remote half,
-    // because that is what they are -- players, who happen to be you, late.
-    if (!remoteUserStrips.isEmpty())
-      remoteUserStrips.clear();
-    const auto taps = audioProcessor.ninjamClient.getEchoTaps();
-    if (!taps.empty()) {
-      if (echoStrip == nullptr) {
-        echoStrip = std::make_unique<RemoteUserStrip>(audioProcessor,
-                                                      "Echo (you, delayed)");
-        echoStrip->setName("Echo");
-        remoteUsersContainer.addAndMakeVisible(echoStrip.get());
-      }
-      echoStrip->updateEchoTaps(taps,
-                                audioProcessor.ninjamClient.maxEchoDelay());
-      echoStrip->updateOutputBusCount(audioProcessor.getBusCount(false));
-    }
-  } else if (!remoteUserStrips.isEmpty() || echoStrip != nullptr) {
+  } else if (!remoteUserStrips.isEmpty()) {
     remoteUserStrips.clear();
-    if (echoStrip != nullptr) {
-      remoteUsersContainer.removeChildComponent(echoStrip.get());
-      echoStrip.reset();
-    }
   }
 
   // Laying out is cheap on its own, but every setBounds it performs marks a
   // component dirty and buys another repaint. Only do it when the set of strips
   // has actually changed; resized() handles the window moving.
-  // The echo strip has to be in the key. Without it, switching practice on
-  // while no players are present leaves the counts unchanged, the relayout is
-  // skipped, and the strip appears with no bounds -- invisible, and looking
-  // exactly like the feature not working.
-  const int layoutKey = localChannelStrips.size() * 1000 +
-                        remoteUserStrips.size() * 10 +
-                        (echoStrip != nullptr ? 1 : 0);
+  const int layoutKey =
+      localChannelStrips.size() * 1000 + remoteUserStrips.size() * 10;
   if (layoutKey != lastLayoutKey) {
     lastLayoutKey = layoutKey;
     relayoutChannelArea();

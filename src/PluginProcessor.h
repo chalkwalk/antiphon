@@ -246,14 +246,6 @@ public:
     return isStandaloneApp() ? localTransportPlaying.load() : hostIsPlaying;
   }
 
-  // Offline practice: your own audio played back to you, delayed. Offline-only,
-  // which is what makes "never transmitted" true by construction.
-  std::atomic<bool> practiceEnabled{false};
-
-  // Builds the echo history at the current interval length, which only the
-  // processor knows. Message thread: this allocates.
-  bool setPracticeEnabled(bool on);
-
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
   // Counts intervals since the clock was reset, so a press can be matched to
@@ -314,7 +306,6 @@ private:
   // every local channel's ring. Called once per segment of a block so that a
   // transmitted interval ends on the exact sample, not on a block boundary.
   void captureInputRange(int startSample, int count);
-  void captureEchoRange(int startSample, int count);
 
   int64_t testToneSample = 0;
   ninjam::IntervalProbe testProbe;

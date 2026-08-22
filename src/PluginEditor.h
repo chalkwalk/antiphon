@@ -127,9 +127,6 @@ private:
   // in the plugin you do not control the transport from here so you arm and
   // wait for the edge, while here pressing play IS the edge.
   juce::TextButton transportButton;
-  // Offline practice: your own audio, delayed, as virtual players. Offline-only,
-  // so it is disabled while connected rather than quietly doing nothing.
-  juce::ToggleButton practiceToggle;
   juce::ToggleButton chatToggle;
 
   // Compact toolbar groups: "Channel: [+]"  "Input bus: [+][-]"  "Output bus: [+][-]"
@@ -222,9 +219,6 @@ private:
   juce::Viewport remoteUsersViewport;
   juce::Component remoteUsersContainer;
   juce::OwnedArray<RemoteUserStrip> remoteUserStrips;
-  // The echo strip lives in the same container as the remote players, because
-  // that is exactly what it is: a player, that happens to be you, late.
-  std::unique_ptr<RemoteUserStrip> echoStrip;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AntiphonEditor)
 };
