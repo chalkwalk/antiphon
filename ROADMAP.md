@@ -1049,6 +1049,65 @@ band. The two pieces of work want doing in that order.
       one. Longest match against the names actually in the room fixes it, and
       is what makes tab completion and hand-typing agree.
 
+### The band's two names
+
+A player in a Ninjam room has two names, and Antiphon's band currently puts the
+same word in both. `PracticeRoom.cpp` derives one string from
+`BotBand::voiceName` and spends it twice: once inside the username, as
+`Delvo[bass-bot]`, and once as the bot's only channel name, as `bass`. So the
+mixer reads `bass` under a player called `...[bass-bot]`, which is a strip of
+screen saying nothing the line above it did not.
+
+**The two fields are not the same kind of fact, and the protocol already says
+which is which.** A username is fixed at `CLIENT_AUTH_USER` and cannot change
+without reconnecting. A channel name is re-sent with `CLIENT_SET_CHANNEL_INFO`
+whenever it changes and the server broadcasts `USER_INFO_CHANGE` to everyone
+(`docs/PROTOCOL.md`), which is how a rename reaches other clients at all --
+Antiphon already does this for local channels from `LocalChannelStrip`. So the
+immutable field should carry the immutable fact and the mutable one the
+changeable fact:
+
+- the **username carries the ROLE** -- kit, bass, keys, lead -- which is what
+  the bot is in the band for the whole session, and what it must be addressed
+  by;
+- the **channel name carries the INSTRUMENT** -- what it is holding right now,
+  which can change mid-session and should be free to.
+
+**The instrument names already exist and are already human.** `BotVoice`
+carries `LeadInstrument` with `leadInstrumentName` returning "electric piano",
+"guitar", "lead synth", and `bassPatch` / `keysPatch` / `leadPatch` are
+seed-chosen with player overrides. The band knows what it is holding and does
+not say so. This ships on the current synthesis, with no dependency on
+*Sampled instruments, alongside the models* -- that section makes the
+vocabulary bigger, not the mechanism different.
+
+It also disposes of a constraint the shared field forced. A username must be
+one token so `/msg` can reach it; a channel name has no such rule, which is why
+"electric piano" can be a channel name and can never be a handle.
+
+- [ ] Split the word in `libs/jambot`: `BotNames::usernameFor` takes the role
+      and stops taking the instrument. The `-bot]` marker stays exactly as it
+      is -- `looksLikeBot` and `handleOf` parse that bracket and addressing
+      depends on its shape, so this changes what goes inside it and nothing
+      else.
+- [ ] Name the channel for the instrument at join, from the patch the seed
+      chose, via the `CLIENT_SET_CHANNEL_INFO` path that already exists.
+- [ ] Re-send on change, so an instrument override renames the strip in every
+      client in the room rather than only in ours. This is the part that is
+      worth having and the part that is not built.
+- [ ] **Decide what a rename costs a screen reader** before shipping the
+      re-send. A channel name that changes mid-tune is a control whose label
+      moved under the reader, and `Announcer` must not narrate it on a timer
+      (`PRINCIPLES §11`). Most likely: announce on the player's own action,
+      never on a remote one.
+- [ ] Answer "what are you playing" with the channel name rather than the role,
+      in `BotChat`. The question already has a corpus entry and currently
+      returns the word the username also says.
+- [ ] Confirm a reference client and Jamtaba both show the rename. It is
+      ordinary protocol usage, so this is a check rather than a risk, and it
+      belongs with the *Multi-channel differential test* which already has to
+      confirm names round-trip.
+
 ### Sampled instruments, alongside the models
 
 Not scheduled, and deliberately not started while the synthesis plan has three
@@ -1100,7 +1159,36 @@ batlogic), which is a real cost against a build that is otherwise much simpler.
 So: FluidLite first if it renders the bank correctly, mainline FluidSynth as the
 known-good fallback. Both are the same licence and the same reasoning.
 
-**FluidLite has a known SF3 loop-point bug, and the fix is one character.**
+**The listening test above has already been run, in another Chalkwalk project,
+and FluidLite won.** `seq_play` ships `src/tonecore/ToneEngine`: one
+multi-timbral FluidLite instance against this same GeneralUser GS bank,
+JUCE-free, no external dependencies, voices pre-allocated and program changes
+resolved through a preset cache so nothing allocates once it is running. It
+renders the modulator-dependent presets correctly, which is the question the
+first checkbox below was written to answer. That does not close the checkbox
+here -- what a bank sounds like under a drum machine is not what it sounds like
+under this band, and the decision still wants one voice heard next to the model
+it would replace -- but it removes the risk that the fork is unusable, and it
+means the SF3 loop-end patch and the re-attack scan are carried rather than
+rediscovered.
+
+**So the real question this section now asks is an ecosystem one, and it is not
+answered here.** Two projects wanting the same engine against the same bank is
+the shape that produced `libs/dsp` and `libs/music`, and a second
+implementation of a General MIDI player is exactly what `PRINCIPLES §8`
+refuses. Whether `ToneEngine` becomes a shared library, and under whose name,
+belongs in the ecosystem plan kept outside this repository -- not in this file
+and not in `seq_play`'s. What is recorded here is that the choice exists and
+that copying the file would be the wrong way to take it.
+
+**It also gives the channel name something to say.** *The band's two names*
+puts the instrument in the channel name and can change it mid-session; a
+General MIDI program is a vocabulary of instrument names far larger than the
+three the lead currently has, and the two features are each other's payoff. The
+naming work does not wait for this -- it ships on the models -- but a bank is
+what makes a rename worth doing more than once.
+
+**FluidLite has a known SF3 loop-point bug, and the fix is a `+ 1`.**
 Already found and patched against this same GeneralUser GS bank
 (`fluidlite-sf3-loop-offbyone.patch`). Written down here so nobody
 rediscovers it, because every symptom points away from the loader.
@@ -1112,8 +1200,10 @@ no -- so it reads as a bad patch, or as a bad SF2 -> SF3 conversion. It is
 neither, and both were ruled out by controls: mainline fluidsynth 2.4.8 renders
 the same SF3 clean, and the source SF2 clean.
 
-*Cause.* In `fluid_defsfont_get_sample`, in the SF3 branch only, an Ogg sample
-is decoded and then `sample->end = sampleframes - 1` -- the LAST VALID INDEX.
+*Cause*, read at `divideconcept/FluidLite` 4a01cf1, which is the revision every
+line cited here was checked against. In `fluid_defsfont_get_sample`, in the SF3
+branch only, an Ogg sample is decoded and then `sample->end = sampleframes - 1`
+-- the LAST VALID INDEX.
 But `loopend` per the SoundFont spec is the first sample AFTER the loop, an
 EXCLUSIVE bound. FluidLite knows that; `fluid_voice.c:1795` says so in as many
 words (*"'end' is last valid sample, loopend can be + 1"*). The validity check
@@ -1131,6 +1221,19 @@ Grand Piano samples loop to the end; the E.Piano samples loop well short of it,
 which is exactly the split observed. **SF2 never reaches this code**, so the bug
 is confined to the format the size table below otherwise argues for.
 
+*Why it survived.* The SF2 path in the same file was rewritten, carefully, and
+the SF3 branch was not. `fixup_sample` now derives three named predicates and
+its comment says what the thinking was -- *"hours of thinking through this have
+concluded, that it would be best practice to mangle with loops as little as
+necessary by only making sure loopend is within sdtachunk_size"* -- so on that
+path `loopend > end` merely WARNS and uses the value anyway, and only a loop
+outside the sample data chunk is repaired at all. The SF3 branch is the old
+mangle-it-into-range code, still reachable because compressed samples are
+explicitly skipped by the careful path (*"compressed samples get fixed up after
+decompression"*) and then fixed up by the branch nobody revisited. That is the
+real shape of this: not an off-by-one somebody typed, but two loop checks in
+one file that no longer agree.
+
 *Fix.* `sample->loopend > sample->end + 1`, applied as a patch at configure time
 rather than a fork -- the same mechanism `patches/` already uses here.
 
@@ -1138,11 +1241,16 @@ rather than a fork -- the same mechanism `patches/` already uses here.
 decaying envelope for re-attacks (a monotonic decay has none): **4 re-attacks at
 +1.6 dB spaced ~2.0 s before, 0 after**, against 0 for both controls.
 
-One thing deliberately left unverified: the third clause of the same check,
-`loopstart <= sample->start`, looks off by one too. By then `loopstart` has been
-rebased to an offset from `start` (`fluid_defsfont.c:3245`) and `start` is 0, so
-a loop beginning at frame 0 would also be "repaired". Nothing in this bank
-appears to do that, so it was never measured and is not in the patch.
+One thing deliberately left unverified, and the comparison above says more
+about it than the first reading did: the third clause of the same check,
+`loopstart <= sample->start`. By then `loopstart` has been rebased to an offset
+from `start` and `start` is 0, so a loop beginning at frame 0 would also be
+"repaired". `fixup_sample` tests the same thing as `loopstart < start` --
+strictly less than -- so this is not a suspicion about which bound is right, it
+is the same two-checks-disagreeing split as the loopend clause, and the answer
+is already in the file. It stays out of the patch because nothing in this bank
+appears to loop from frame 0, so it was never measured, and a fix nobody can
+demonstrate is not a fix (`PRINCIPLES §5`).
 
 **Licensing is a non-issue, which is not obvious.** FluidSynth is
 LGPL-2.1-or-later, and LGPL's static-linking condition is that the user must be
