@@ -65,6 +65,7 @@ Shortcuts are on `Cmd+Option` (macOS) and `Ctrl+Alt` (Windows/Linux) for global 
 | `Cmd+Option+S` / `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
 | `Cmd+Option+C` / `Ctrl+Alt+C` | Focus the chat message box |
 | `Cmd+Option+O` / `Ctrl+Alt+O` | Open Server Browser / Connect dialog |
+| `Cmd+Option+P` / `Ctrl+Alt+P` | Start a practice room and join it |
 | `Cmd+Option+M` / `Ctrl+Alt+M` | Toggle Mute All local channels |
 | `Cmd+Option+H` / `Ctrl+Alt+H` or `?` | Open Keyboard Shortcuts Help dialog |
 | `Cmd+Option+L` / `R` or `Ctrl+Alt+L` / `R` | Focus Local Channels / Remote Users section |

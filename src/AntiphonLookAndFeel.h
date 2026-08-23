@@ -50,9 +50,18 @@ inline constexpr Palette kJamPalette{0xff00b4d8, 0xff05202b, 0xff16213e,
                                      0xff1a1a2e, 0xff0f3460, 0xff0d0d1a,
                                      0xff0f1524, 0xff11162a, 0xff2a3550};
 
-inline constexpr Palette kPracticePalette{0xffc9a2ff, 0xff1a0f2b, 0xff2a2145,
-                                          0xff211a33, 0xff3a2a63, 0xff141026,
-                                          0xff17102a, 0xff1a1230, 0xff3d3159};
+// Saturation is the only lever here: the accent is already at full value, so
+// "brighter" is not available and "more obvious" means less white in it. That
+// costs contrast, because a saturated violet is darker -- so the backgrounds
+// come down to pay for it, which makes the whole surface read more violet
+// rather than just the accent.
+//
+// 52% saturation against the 36% this started at. Contrast is 7.3:1 on the
+// header, where the accent is TEXT and AAA wants 7.0, and 6.6:1 against the
+// window, where it is slider fills and ticks and the graphical bar is 3.0.
+inline constexpr Palette kPracticePalette{0xffcc7aff, 0xff1a0f2b, 0xff2a1f4a,
+                                          0xff1a1230, 0xff3d2a6e, 0xff0e0820,
+                                          0xff140c26, 0xff160e2b, 0xff43317a};
 
 // Which one is live. Message thread only: it is read while painting and
 // written when a room is joined or left.

@@ -33,6 +33,7 @@ enum class Action {
   WriteAudit,             // Ctrl+Alt+A
   RetroactiveTransmit,    // Ctrl+Alt+Shift+T
   OpenConnect,            // Ctrl+Alt+O
+  StartPracticeRoom,      // Ctrl+Alt+P
   ToggleMuteAll,          // Ctrl+Alt+M
   AnnounceShortcutsHelp,  // Ctrl+Alt+H or '?'
   FocusLocalSection,      // Ctrl+Alt+L
@@ -148,6 +149,8 @@ inline Action match(int keyCode, bool ctrlDown, bool altDown,
       return Action::ArmSync;
     case 'O':
       return Action::OpenConnect;
+    case 'P':
+      return Action::StartPracticeRoom;
     case 'M':
       return Action::ToggleMuteAll;
     case 'H':

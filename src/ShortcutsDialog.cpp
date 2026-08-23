@@ -47,6 +47,7 @@ void ShortcutsDialog::populateShortcuts() {
   shortcuts.add({mod + "S", "Arm Sync (then start DAW transport)"});
   shortcuts.add({mod + "C", "Focus Chat message box"});
   shortcuts.add({mod + "O", "Open Connect / Server Browser dialog"});
+  shortcuts.add({mod + "P", "Start a practice room and join it"});
   shortcuts.add({mod + "M", "Toggle Mute All local channels"});
   shortcuts.add({mod + "H or ?", "Open Keyboard Shortcuts Help dialog"});
   shortcuts.add({mod + "A", "Write Accessibility Audit report to desktop"});

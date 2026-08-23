@@ -108,6 +108,7 @@ route to its action -- each control can also be tabbed to and pressed.
 | `Cmd+Option+S` / `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
 | `Cmd+Option+C` / `Ctrl+Alt+C` | Focus the chat message box |
 | `Cmd+Option+O` / `Ctrl+Alt+O` | Open Server Browser / Connect dialog |
+| `Cmd+Option+P` / `Ctrl+Alt+P` | Start a practice room and join it |
 | `Cmd+Option+M` / `Ctrl+Alt+M` | Toggle Mute All local channels |
 | `Cmd+Option+H` / `Ctrl+Alt+H` or `?` | Open Keyboard Shortcuts Help dialog |
 | `Cmd+Option+A` / `Ctrl+Alt+A` | Write an accessibility audit report to the desktop |

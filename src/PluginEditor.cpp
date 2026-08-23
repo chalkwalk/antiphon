@@ -715,8 +715,11 @@ void AntiphonEditor::paint(juce::Graphics &g) {
     g.drawFittedText(tempoText, row2, juce::Justification::centredLeft, 1);
   } else {
     g.setColour(juce::Colours::darkgrey);
-    g.drawFittedText("Not connected", row2, juce::Justification::centredLeft,
-                     1);
+    // Names the way in. This is the moment somebody most wants to play and
+    // least knows how: "Not connected" alone left the band undiscoverable
+    // unless you already knew to open Browse.
+    g.drawFittedText("Not connected -- Ctrl+Alt+P for a practice room", row2,
+                     juce::Justification::centredLeft, 1);
   }
 
   header.removeFromTop(4);
@@ -1073,7 +1076,10 @@ void AntiphonEditor::openServerBrowser() {
   serverBrowser->setSize(700, 460);
 
   juce::DialogWindow::LaunchOptions opts;
-  opts.dialogTitle = "Connect to a Ninjam server";
+  // Names both destinations. A screen reader reads this on open, and "Connect
+  // to a Ninjam server" told somebody looking for the band that they were in
+  // the wrong place.
+  opts.dialogTitle = "Connect: a server, or the practice room";
   opts.dialogBackgroundColour = juce::Colour(0xff1a1a2e);
   opts.content.setNonOwned(serverBrowser.get());
   opts.escapeKeyTriggersCloseButton = true;
@@ -1335,6 +1341,28 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   if (action == Shortcuts::Action::OpenConnect) {
     openServerBrowser();
     announcer.say("Opening Server Browser dialog", true);
+    return true;
+  }
+
+  if (action == Shortcuts::Action::StartPracticeRoom) {
+    // Straight into the room, without the dialog. The dialog is where you
+    // DISCOVER it; this is for somebody who already knows and wants to play.
+    if (audioProcessor.ninjamClient.isConnected()) {
+      announcer.say("Already connected. Disconnect first to start a practice "
+                    "room",
+                    true);
+      return true;
+    }
+    const int port = audioProcessor.startPracticeRoom();
+    if (port <= 0) {
+      announcer.say("The practice room would not start", true);
+      return true;
+    }
+    const auto user = audioProcessor.lastUsername.trim();
+    audioProcessor.lastConnectFailed.store(false);
+    audioProcessor.ninjamClient.connectToServer(
+        PracticeRoom::host(), port, user.isEmpty() ? "you" : user, "");
+    announcer.say("Starting a practice room", true);
     return true;
   }
 

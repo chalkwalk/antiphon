@@ -105,6 +105,16 @@ ServerBrowserDialog::ServerBrowserDialog() : table("Servers", this) {
   practiceButton.setTooltip(
       "A band on your own machine. Nothing leaves it, and everything works as "
       "it does in a real room -- phase, stems, chat and recording.");
+  // FIRST in the focus order, ahead of the server list and the credentials.
+  //
+  // JUCE's default traverser sorts by screen position, which put this behind
+  // the close button, the server table and four text fields -- six stops of
+  // machinery the practice room needs none of. A sighted user's eye finds it
+  // straight away; a keyboard or screen-reader user had to wade to it.
+  //
+  // Explicit order rather than moving it on screen: it belongs beside Connect
+  // visually, because it is the same kind of act.
+  practiceButton.setExplicitFocusOrder(1);
   addAndMakeVisible(practiceButton);
 
   cancelButton.onClick = [this]() { dismiss(); };
