@@ -1,5 +1,7 @@
 #include "ServerBrowserDialog.h"
 
+#include "AntiphonLookAndFeel.h"
+
 static const ServerBrowserDialog::ServerEntry kStaticServers[] = {
     {"ninbot.com", 2049},
     {"ninjam.com", 2049},
@@ -242,14 +244,14 @@ void ServerBrowserDialog::doFetch() {
 void ServerBrowserDialog::paint(juce::Graphics &g) {
   // Overall background + border
   g.fillAll(juce::Colour(0xff0d0d1a));
-  g.setColour(juce::Colour(0xff00b4d8));
+  g.setColour(juce::Colour(AntiphonTheme::current().accent));
   g.drawRect(getLocalBounds(), 1);
 
   // Title bar
   auto titleBar = getLocalBounds().removeFromTop(kTitleBarH);
   g.setColour(juce::Colour(0xff111122));
   g.fillRect(titleBar);
-  g.setColour(juce::Colour(0xff00b4d8));
+  g.setColour(juce::Colour(AntiphonTheme::current().accent));
   g.drawLine(0.0f, (float)kTitleBarH, (float)getWidth(), (float)kTitleBarH,
              1.0f);
 
@@ -313,8 +315,9 @@ int ServerBrowserDialog::getNumRows() { return servers.size(); }
 void ServerBrowserDialog::paintRowBackground(juce::Graphics &g, int /*row*/,
                                              int /*w*/, int /*h*/,
                                              bool selected) {
-  g.fillAll(selected ? juce::Colour(0xff00b4d8).withAlpha(0.30f)
-                     : juce::Colour(0xff111122));
+  g.fillAll(selected
+                ? juce::Colour(AntiphonTheme::current().accent).withAlpha(0.30f)
+                : juce::Colour(0xff111122));
 }
 
 void ServerBrowserDialog::paintCell(juce::Graphics & /*g*/, int /*row*/,

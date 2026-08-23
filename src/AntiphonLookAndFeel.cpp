@@ -45,32 +45,47 @@ void installProductLookAndFeel() {
     juce::LookAndFeel::setDefaultLookAndFeel(&productLnf);
 }
 
-AntiphonLookAndFeel::AntiphonLookAndFeel() {
+namespace AntiphonTheme {
+namespace {
+bool practiceOn = false;
+}
+const Palette &current() { return practiceOn ? kPracticePalette : kJamPalette; }
+void setPractice(bool on) { practiceOn = on; }
+bool isPractice() { return practiceOn; }
+} // namespace AntiphonTheme
+
+AntiphonLookAndFeel::AntiphonLookAndFeel() { applyPalette(); }
+
+void AntiphonLookAndFeel::applyPalette() {
   setColour(juce::ResizableWindow::backgroundColourId,
-            juce::Colour(0xff1a1a2e)); // Dark background
+            juce::Colour(AntiphonTheme::current().window)); // Dark background
   setColour(juce::TextButton::buttonColourId,
-            juce::Colour(0xff16213e)); // Button surface
+            juce::Colour(AntiphonTheme::current().control)); // Button surface
   // Lit, not a second shade of navy. The old 0xff0f3460 differed from the rest
   // state by a couple of percent and read as "off" at a glance.
   setColour(juce::TextButton::buttonOnColourId,
-            juce::Colour(AntiphonTheme::kAccent));
+            juce::Colour(AntiphonTheme::current().accent));
   setColour(juce::TextButton::textColourOffId, juce::Colours::lightgrey);
   setColour(juce::TextButton::textColourOnId,
-            juce::Colour(AntiphonTheme::kOnText));
+            juce::Colour(AntiphonTheme::current().onText));
   setColour(juce::Slider::thumbColourId,
-            juce::Colour(AntiphonTheme::kAccent)); // Teal Accent
+            juce::Colour(AntiphonTheme::current().accent)); // Teal Accent
   // Without these a horizontal slider drew its thumb over an unpainted track,
   // so the metronome volume read as a stray dot floating in the toolbar rather
   // than as a control with a range.
-  setColour(juce::Slider::trackColourId, juce::Colour(0xff2a3550));
-  setColour(juce::Slider::backgroundColourId, juce::Colour(0xff11162a));
-  setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff00b4d8));
+  setColour(juce::Slider::trackColourId,
+            juce::Colour(AntiphonTheme::current().sliderTrack));
+  setColour(juce::Slider::backgroundColourId,
+            juce::Colour(AntiphonTheme::current().sliderBg));
+  setColour(juce::Slider::rotarySliderFillColourId,
+            juce::Colour(AntiphonTheme::current().accent));
   setColour(juce::Slider::rotarySliderOutlineColourId,
             juce::Colour(0xff111111));
-  setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xff0f1524));
+  setColour(juce::TextEditor::backgroundColourId,
+            juce::Colour(AntiphonTheme::current().editorBg));
   setColour(juce::TextEditor::textColourId, juce::Colour(0xffe0e0e0));
   setColour(juce::TextEditor::highlightColourId,
-            juce::Colour(0xff00b4d8).withAlpha(0.3f));
+            juce::Colour(AntiphonTheme::current().accent).withAlpha(0.3f));
   setColour(juce::TextEditor::outlineColourId, juce::Colour(0xff333344));
   setColour(juce::Label::textColourId, juce::Colour(0xffe0e0e0));
 }
@@ -203,7 +218,7 @@ void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
     g.drawRoundedRectangle(tickBounds, 3.0f, 1.0f);
 
     if (button.getToggleState()) {
-      g.setColour(juce::Colour(0xff00b4d8)); // Teal tick
+      g.setColour(juce::Colour(AntiphonTheme::current().accent)); // Teal tick
       juce::Path tickPath;
       tickPath.startNewSubPath(tickBounds.getX() + 3.0f,
                                tickBounds.getCentreY());

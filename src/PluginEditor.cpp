@@ -649,15 +649,17 @@ void AntiphonEditor::paint(juce::Graphics &g) {
                (double)audioProcessor.internalBpm.load()) > 0.5;
   const bool headerWarning = connectFailed || mismatch;
   const bool practice = audioProcessor.inPracticeRoom();
+  // The whole surface is themed, so the header follows the palette rather than
+  // naming a colour of its own. The warning and idle states stay as they are:
+  // they mean the same thing in either room.
   juce::Colour headerBg =
-      practice        ? juce::Colour(0xff141026)  // violet -- practice room
-      : connected     ? juce::Colour(0xff0d0d1a)  // navy -- normal
+      connected       ? juce::Colour(AntiphonTheme::current().headerBg)
       : headerWarning ? juce::Colour(0xff2a1a0a)  // amber -- failed/mismatch
                       : juce::Colour(0xff111111); // dark grey -- idle
   g.setColour(headerBg);
   g.fillRect(header);
 
-  const juce::Colour teal(0xff00b4d8);
+  const juce::Colour teal(AntiphonTheme::current().accent);
 
   auto row1 = header.removeFromTop(22);
   g.setFont(juce::FontOptions{}.withHeight(15.0f).withStyle("Bold"));
@@ -669,8 +671,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   // reader and a colour-blind player learn it the same way (PRINCIPLES 11).
   // The address is deliberately not shown -- 127.0.0.1 with a port is true and
   // tells you nothing about where you are.
-  g.setColour(practice ? juce::Colour(0xffb08cff)
-                       : (connected ? teal : juce::Colours::grey));
+  g.setColour(connected ? teal : juce::Colours::grey);
   g.drawFittedText(practice ? juce::String("Practice room -- your own band")
                             : audioProcessor.connectionStatus,
                    row1, juce::Justification::centredLeft, 1);
@@ -1854,6 +1855,16 @@ bool AntiphonEditor::updateStatusReadout() {
 }
 
 void AntiphonEditor::timerCallback() {
+  // Swap the whole palette when a practice room is joined or left. JUCE caches
+  // colour ids, so the look-and-feel has to be told to read them again, and
+  // everything on screen has to be repainted once.
+  if (AntiphonTheme::isPractice() != audioProcessor.inPracticeRoom()) {
+    AntiphonTheme::setPractice(audioProcessor.inPracticeRoom());
+    customLookAndFeel.applyPalette();
+    sendLookAndFeelChange();
+    repaint();
+  }
+
   const bool statusChanged = updateStatusReadout();
 
   auto decay = [](std::atomic<float> &v) {

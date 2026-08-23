@@ -17,6 +17,49 @@
 //    "you cannot use this yet" always looks the same wherever it appears.
 namespace AntiphonTheme {
 
+// TWO PALETTES, one shape.
+//
+// The practice room is a real room and everything in it behaves like one, so
+// nothing about the layout changes -- but you should never be in any doubt
+// which room you are in. A whole-surface recolour is what makes that obvious
+// at a glance, where a tinted header alone was not.
+//
+// Violet rather than the coral this nearly became. Every warm hue in this app
+// is already load-bearing -- amber for a tempo mismatch, orange, red for an
+// error -- so a warm theme would read as a room in trouble. Violet carries no
+// existing meaning here, sits 75 degrees off the teal, and clears WCAG AAA
+// against the window at 9:1.
+//
+// It does NOT survive red-green colour blindness: violet and teal converge,
+// separated only by lightness. That is why the header says "Practice room" in
+// words and StatusReadout says it too. The theme is the fast signal, never the
+// only one (PRINCIPLES 11).
+struct Palette {
+  juce::uint32 accent;      // the product accent
+  juce::uint32 onText;      // near-black, for use ON the accent
+  juce::uint32 control;     // a control at rest
+  juce::uint32 window;      // the window behind everything
+  juce::uint32 panel;       // a raised panel
+  juce::uint32 headerBg;    // the header strip when connected
+  juce::uint32 editorBg;    // a text field
+  juce::uint32 sliderBg;    // a slider's groove
+  juce::uint32 sliderTrack; // and its filled part
+};
+
+inline constexpr Palette kJamPalette{0xff00b4d8, 0xff05202b, 0xff16213e,
+                                     0xff1a1a2e, 0xff0f3460, 0xff0d0d1a,
+                                     0xff0f1524, 0xff11162a, 0xff2a3550};
+
+inline constexpr Palette kPracticePalette{0xffc9a2ff, 0xff1a0f2b, 0xff2a2145,
+                                          0xff211a33, 0xff3a2a63, 0xff141026,
+                                          0xff17102a, 0xff1a1230, 0xff3d3159};
+
+// Which one is live. Message thread only: it is read while painting and
+// written when a room is joined or left.
+const Palette &current();
+void setPractice(bool on);
+bool isPractice();
+
 constexpr juce::uint32 kAccent = 0xff00b4d8;  // teal: the product accent
 constexpr juce::uint32 kOnText = 0xff05202b;  // near-black, for use on kAccent
 constexpr juce::uint32 kControl = 0xff16213e; // a control at rest
@@ -88,6 +131,11 @@ inline void drawDbScale(juce::Graphics &g, const juce::Slider &fader,
 }
 
 class AntiphonLookAndFeel : public juce::LookAndFeel_V4 {
+public:
+  // Re-read the live palette. Called when a practice room is joined or left;
+  // JUCE caches colour ids, so switching theme means setting them again.
+  void applyPalette();
+
 public:
   AntiphonLookAndFeel();
 
