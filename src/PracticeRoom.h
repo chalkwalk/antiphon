@@ -33,8 +33,18 @@ public:
   ~PracticeRoom();
 
   struct Config {
-    int bpm = 120;
-    int bpi = 8;
+    // 100 bpm and sixteen to the interval, not 120 and eight.
+    //
+    // Eight beats at 120 is four seconds, which is two bars -- so the band
+    // turns the form over twice as often as it sounds like it should, and the
+    // whole thing reads as double time or as 2/2. Sixteen at 100 is 9.6
+    // seconds and four bars of 4/4, which is a phrase rather than a fragment.
+    //
+    // It also gives the keys room. The pad's attack is capped at a quarter of
+    // the chord it is playing, so a chord held four beats at 100 allows the
+    // whole of the Strings swell where two beats at 120 clipped it.
+    int bpm = 100;
+    int bpi = 16;
     double sampleRate = 48000.0;
     juce::String ownerName = "you";
 

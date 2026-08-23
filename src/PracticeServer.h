@@ -31,7 +31,7 @@ public:
   PracticeServer();
   ~PracticeServer() override;
 
-  bool start(int bpm = 120, int bpi = 8);
+  bool start(int bpm = 100, int bpi = 16);
   void stop();
 
   int port() const { return boundPort.load(); }

@@ -48,8 +48,8 @@ int main(int argc, char **argv) {
   if (args.contains("--help") || args.contains("-h")) {
     std::cout
         << "antiphon-practice -- host a practice room and wait\n\n"
-           "  --bpm N        tempo (default 120)\n"
-           "  --bpi N        beats per interval (default 8)\n"
+           "  --bpm N        tempo (default 100)\n"
+           "  --bpi N        beats per interval (default 16)\n"
            "  --rate N       sample rate (default 48000)\n"
            "  --key NAME     starting key, e.g. \"D minor\" (default C major)\n"
            "  --seed N       band seed; the same seed is the same band\n"
@@ -61,8 +61,8 @@ int main(int argc, char **argv) {
   juce::ScopedJuceInitialiser_GUI juceInit;
 
   PracticeRoom::Config cfg;
-  cfg.bpm = flag(args, "--bpm", "120").getIntValue();
-  cfg.bpi = flag(args, "--bpi", "8").getIntValue();
+  cfg.bpm = flag(args, "--bpm", "100").getIntValue();
+  cfg.bpi = flag(args, "--bpi", "16").getIntValue();
   cfg.sampleRate = flag(args, "--rate", "48000").getDoubleValue();
   cfg.ownerName = flag(args, "--owner", "you");
   cfg.seed = (std::uint32_t)flag(args, "--seed", "20260811").getLargeIntValue();
