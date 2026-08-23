@@ -6,10 +6,21 @@ sidebar_position: 2
 
 # Getting started
 
-There is no installer yet. You build Antiphon from source, which on Linux takes
-one command and a cup of tea.
+There is no installer yet, but there is a download.
 
-## Build it
+## Take a build
+
+Every push to `main` publishes VST3, CLAP and standalone builds for Linux,
+macOS and Windows as CI artefacts. Open the newest green run on the
+[Build workflow](https://github.com/chalkwalk/antiphon/actions/workflows/build.yml)
+and take the one for your platform.
+
+You need to be signed in to GitHub to download them, and they expire after a
+while. The macOS and Windows builds compile and pass the full test suite, but
+**neither has ever been loaded in a host** -- and the macOS one is unsigned, so
+Gatekeeper will object to it.
+
+## Or build it
 
 You need CMake, a C++17 compiler, and git.
 

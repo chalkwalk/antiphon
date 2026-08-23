@@ -51,7 +51,18 @@ centre, chat on the right](docs/images/antiphon.png)
 
 ## Status
 
-**Public beta, built from source.** Honestly, where things stand:
+**Public beta.** There is no installer, but you do not have to build it:
+every push to `main` publishes VST3, CLAP and standalone builds for Linux,
+macOS and Windows as [CI
+artefacts](https://github.com/chalkwalk/antiphon/actions/workflows/build.yml).
+Open the newest green run and take the one for your platform.
+
+Three honest caveats about those downloads: GitHub requires you to be signed in
+to fetch them, they expire after a while, and **the macOS and Windows builds
+have never been loaded in a host** -- CI compiles and tests them, which is not
+the same thing. The macOS build is also unsigned, so Gatekeeper will object.
+
+Where things stand:
 
 | | |
 |---|---|
@@ -61,12 +72,13 @@ centre, chat on the right](docs/images/antiphon.png)
 | **Builds on** | Linux, macOS and Windows -- all three compile and pass the full unit suite in CI, with no platform-specific source |
 | **Not yet** | Loaded in a host on Windows: nothing there has opened a window, opened a device or joined a jam. macOS has been through that path exactly once, by hand -- it is not regularly tested and nothing automated instantiates the plugin on any platform. No packaged installers, no release |
 
-If you are on Linux and comfortable with CMake, it works today. macOS has been
-run for real once, including with a screen reader, and the report was good -- but
-once is once, and it is not part of any automated check, so treat it as
-encouraging rather than as a guarantee. Windows builds and tests clean, and
-"compiles and passes its tests" is not the same as "works in your DAW". If you
-are waiting for a download, that is [on the roadmap](ROADMAP.md).
+On Linux it works today, whether you take the CI build or compile it yourself.
+macOS has been run for real once, including with a screen reader, and the
+report was good -- but once is once, and it is not part of any automated check,
+so treat it as encouraging rather than as a guarantee. Windows builds and tests
+clean, and "compiles and passes its tests" is not the same as "works in your
+DAW". A signed, packaged release is [on the roadmap](ROADMAP.md); the CI builds
+are what exist until then.
 
 ---
 

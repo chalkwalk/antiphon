@@ -38,7 +38,9 @@ If you take one thing from this guide, take that.
 
 ## Where things stand
 
-Antiphon is **public beta, built from source.** Honestly:
+Antiphon is **public beta**. There is no installer, but you do not have to
+build it: CI publishes VST3, CLAP and standalone builds for all three platforms
+-- see [Getting started](./getting-started.md). Honestly:
 
 | | |
 |---|---|
