@@ -43,6 +43,17 @@ struct Options {
   juce::String keyName = "C major";
   int bpm = 120, bpi = 8, bars = 4;
 
+  // Play the tune out rather than stopping mid-groove: `bars` intervals of
+  // groove, then the wrap-up and the resolve, in one file.
+  //
+  // Two intervals rendered on their own would answer the wrong question. What
+  // is being judged is whether the ending sounds INTENDED, and that is a claim
+  // about what came before it -- how far the keys thin from where they were,
+  // whether the fill reads as a fill, whether the resolve lands as an arrival
+  // or as a dropout with a note on the front. None of it is audible without
+  // the groove in front of it.
+  bool ending = false;
+
   // Render one voice's PART rather than the whole band, at the band's settings
   // and with the band's per-voice seed. Not the same as rendering that voice
   // on its own: what is being measured is what it contributes to the mix.
@@ -106,6 +117,8 @@ void usage() {
       "band mode only:\n"
       "  --key <name>       C major, D minor, F# Dorian (default C major)\n"
       "  --only <voice>     render one part only: kit, bass, keys or lead\n"
+      "  --ending           play the tune out: --bars of groove, then the\n"
+      "                     wrap-up and the resolve, as the room hears them\n"
       "  --bpm <n> --bpi <n> --bars <n>\n"
       "  --articulation <n> 0 staccato, 50 as written, 100 legato\n"
       "\n"
@@ -224,6 +237,36 @@ std::vector<float> renderOne(const Options &o) {
 
 // The whole band through the real BotBand path, seeded the way PracticeRoom
 // seeds it, so what comes out is what the room would hear.
+// How many intervals the render covers, and what each one is.
+//
+// The order is `BandPlayState`'s, not an arrangement invented here: Playing
+// until told otherwise, then Wrapping for exactly one interval and Resolving
+// for exactly one. Rendering it any other way would tune the ending against
+// something the room never plays.
+int intervalCount(const Options &o) { return o.bars + (o.ending ? 2 : 0); }
+
+BotBand::Phase phaseAt(const Options &o, int interval) {
+  if (!o.ending)
+    return BotBand::Phase::Groove;
+  if (interval == o.bars)
+    return BotBand::Phase::Wrapping;
+  if (interval == o.bars + 1)
+    return BotBand::Phase::Resolving;
+  return BotBand::Phase::Groove;
+}
+
+const char *phaseName(BotBand::Phase p) {
+  switch (p) {
+  case BotBand::Phase::Groove:
+    return "groove";
+  case BotBand::Phase::Wrapping:
+    return "wrap-up";
+  case BotBand::Phase::Resolving:
+    return "resolve";
+  }
+  return "groove";
+}
+
 // One voice through the real BotBand path -- with its room, and in stereo if it
 // has one. Distinct from `renderOne`, which drives a bare BotVoice function and
 // so hears the drum without the kit around it.
@@ -240,9 +283,10 @@ void renderVoice(const Options &o, BotBand::Voice voice,
 
   left.clear();
   right.clear();
-  for (int interval = 0; interval < o.bars; ++interval) {
+  for (int interval = 0; interval < intervalCount(o); ++interval) {
     std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
-    BotBand::renderInterval(voice, settings, interval, l.data(), r.data(), n);
+    BotBand::renderInterval(voice, settings, interval, phaseAt(o, interval),
+                            l.data(), r.data(), n);
     if (!BotBand::isStereo(voice))
       r = l;
     left.insert(left.end(), l.begin(), l.end());
@@ -272,7 +316,8 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
 
   mixL.clear();
   mixR.clear();
-  for (int interval = 0; interval < o.bars; ++interval) {
+  for (int interval = 0; interval < intervalCount(o); ++interval) {
+    const auto phase = phaseAt(o, interval);
     std::vector<float> accL, accR;
     for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
                        BotBand::Voice::Keys, BotBand::Voice::Lead}) {
@@ -295,19 +340,24 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
       }
 
       std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
-      BotBand::renderInterval(voice, settings, interval, l.data(), r.data(), n);
+      BotBand::renderInterval(voice, settings, interval, phase, l.data(),
+                              r.data(), n);
       if (!BotBand::isStereo(voice))
         r = l;
 
-      if (interval == 0) {
+      // The first groove interval, and then each ending interval: what is
+      // being compared is the wrap-up and the resolve against the tune they
+      // came out of, so all three want the same numbers.
+      if (interval == 0 || (o.ending && interval >= o.bars)) {
         // As the pair that goes out: a mono voice is duplicated by the bot, so
         // measuring one channel would report it 3 LU under the kit for no
         // reason but arithmetic.
         const double lufs =
             AudioMeasure::integratedLufs(l.data(), r.data(), n, o.sampleRate);
-        std::printf("  %-6s peak %.3f  rms %6.1f dBFS  %6.1f LUFS  "
+        std::printf("  %-7s %-6s peak %.3f  rms %6.1f dBFS  %6.1f LUFS  "
                     "brightness %7.1f Hz%s\n",
-                    BotBand::voiceName(voice), AudioMeasure::peak(l.data(), n),
+                    phaseName(phase), BotBand::voiceName(voice),
+                    AudioMeasure::peak(l.data(), n),
                     AudioMeasure::toDb(AudioMeasure::rms(l.data(), n)), lufs,
                     AudioMeasure::brightnessHz(l.data(), n, o.sampleRate),
                     BotBand::isStereo(voice) ? "  stereo" : "");
@@ -331,7 +381,8 @@ std::vector<float> renderBand(const Options &o) {
     key = MusicalKey::parseName("C major");
 
   std::vector<float> mix;
-  for (int interval = 0; interval < o.bars; ++interval) {
+  for (int interval = 0; interval < intervalCount(o); ++interval) {
+    const auto phase = phaseAt(o, interval);
     std::vector<float> acc;
     for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
                        BotBand::Voice::Keys, BotBand::Voice::Lead}) {
@@ -347,14 +398,15 @@ std::vector<float> renderBand(const Options &o) {
         acc.assign((size_t)n, 0.0f);
 
       std::vector<float> one((size_t)n, 0.0f);
-      BotBand::renderInterval(voice, settings, interval, one.data(), n);
+      BotBand::renderInterval(voice, settings, interval, phase, one.data(),
+                              nullptr, n);
 
-      if (interval == 0) {
+      if (interval == 0 || (o.ending && interval >= o.bars)) {
         // Each voice on its own, before it is summed, so a problem can be
         // pinned on a player rather than on the band.
-        std::printf("  %-6s peak %.3f  rms %.4f (%6.1f dBFS)  f0 %7.1f Hz  "
-                    "brightness %7.1f Hz\n",
-                    BotBand::voiceName(voice),
+        std::printf("  %-7s %-6s peak %.3f  rms %.4f (%6.1f dBFS)  f0 %7.1f "
+                    "Hz  brightness %7.1f Hz\n",
+                    phaseName(phase), BotBand::voiceName(voice),
                     AudioMeasure::peak(one.data(), n),
                     AudioMeasure::rms(one.data(), n),
                     AudioMeasure::toDb(AudioMeasure::rms(one.data(), n)),
@@ -591,6 +643,8 @@ int main(int argc, char *argv[]) {
       o.bars = next().getIntValue();
     else if (arg == "--only")
       o.onlyVoice = next().toLowerCase();
+    else if (arg == "--ending")
+      o.ending = true;
     else if (arg == "--technique") {
       const auto name = next().toLowerCase();
       if (name == "picked")

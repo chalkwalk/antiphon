@@ -211,6 +211,11 @@ ctest --test-dir build --output-on-failure
 # against, so tuning by ear and setting a threshold use one instrument.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab kick --seconds 0.6
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab band --seed 12345
+# Hearing the ENDING: --bars intervals of groove, then the wrap-up and the
+# resolve, in one file. The two ending intervals in isolation answer the wrong
+# question -- whether they sound intended is a claim about what preceded them.
+./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab band --ending --bars 2 \
+  --key "D minor" --bpm 100 --bpi 16 -o ending.wav
 # Comparing two renders for timbre rather than for level: --lufs normalises to
 # an integrated loudness. It warns when a target would clip a sparse voice.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab hat --lufs -27
