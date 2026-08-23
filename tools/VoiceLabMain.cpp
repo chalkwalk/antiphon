@@ -43,6 +43,12 @@ struct Options {
   juce::String keyName = "C major";
   int bpm = 120, bpi = 8, bars = 4;
 
+  // Render one voice's PART rather than the whole band, at the band's settings
+  // and with the band's per-voice seed. Not the same as rendering that voice
+  // on its own: what is being measured is what it contributes to the mix.
+  // Empty renders all four.
+  juce::String onlyVoice;
+
   // Bass articulation.
   BotVoice::BassTechnique technique = BotVoice::BassTechnique::Fingered;
 
@@ -99,6 +105,7 @@ void usage() {
       "\n"
       "band mode only:\n"
       "  --key <name>       C major, D minor, F# Dorian (default C major)\n"
+      "  --only <voice>     render one part only: kit, bass, keys or lead\n"
       "  --bpm <n> --bpi <n> --bars <n>\n"
       "  --articulation <n> 0 staccato, 50 as written, 100 legato\n"
       "\n"
@@ -243,6 +250,20 @@ void renderVoice(const Options &o, BotBand::Voice voice,
   }
 }
 
+bool voiceMatches(BotBand::Voice v, const juce::String &name) {
+  switch (v) {
+  case BotBand::Voice::Drums:
+    return name == "drums" || name == "kit";
+  case BotBand::Voice::Bass:
+    return name == "bass";
+  case BotBand::Voice::Keys:
+    return name == "keys";
+  case BotBand::Voice::Lead:
+    return name == "lead";
+  }
+  return false;
+}
+
 void renderBandStereo(const Options &o, std::vector<float> &mixL,
                       std::vector<float> &mixR) {
   auto key = MusicalKey::parseName(o.keyName.toStdString());
@@ -255,6 +276,11 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
     std::vector<float> accL, accR;
     for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
                        BotBand::Voice::Keys, BotBand::Voice::Lead}) {
+      // The seed still advances for skipped voices, so --only renders exactly
+      // the part that voice plays in the full band rather than a different one.
+      if (o.onlyVoice.isNotEmpty() && !voiceMatches(voice, o.onlyVoice)) {
+        continue;
+      }
       std::uint32_t seed = o.seed;
       for (int step = 0; step < (int)voice; ++step)
         seed = seed * 1664525u + 1013904223u;
@@ -563,6 +589,8 @@ int main(int argc, char *argv[]) {
       o.bpi = next().getIntValue();
     else if (arg == "--bars")
       o.bars = next().getIntValue();
+    else if (arg == "--only")
+      o.onlyVoice = next().toLowerCase();
     else if (arg == "--technique") {
       const auto name = next().toLowerCase();
       if (name == "picked")
