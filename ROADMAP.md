@@ -348,12 +348,24 @@ intervals decode incrementally as each `SERVER_DOWNLOAD_INTERVAL_WRITE` arrives,
 on the network thread, rather than in one pass at the boundary. Nothing to do
 here; recorded so it is not "fixed" into a burst by someone tidying.
 
-- [ ] **Stagger the bots.** Four renders back to back become four renders at
-      their own offsets within the interval, which cuts the longest contiguous
-      burst from ~1.07 s to ~270 ms for no change to the renderer at all. The
-      slack is there: Ninjam transmits interval N while N-1 plays, so a bot has
-      most of an interval to produce one. Needs per-bot phase in
-      `jambot::Conductor`, which today calls one callback per interval.
+- [x] **Stagger the bots.** `jambot::Conductor` gained a slice count and calls
+      back once per slice at even offsets through the interval; `PracticeRoom`
+      renders one bot per slice. No change to the renderer at all, and the
+      slack was already there -- Ninjam transmits interval N while N-1 plays,
+      so a bot rendered three quarters of the way through still arrives in
+      time.
+
+      **Measured 1073 ms -> 435 ms**, by timing the worst `botNames()` latency
+      while the band plays: that call takes `botsMutex`, so what it reports is
+      the longest time the room spends inside one render. Asserted in
+      `PracticeRoomTests.cpp`.
+
+      The prediction here was ~270 ms, which is 1073/4 and was wrong: the four
+      voices do not cost the same, so quartering the calls does not quarter the
+      longest one. The kit and the keys are stereo and go through a room and a
+      chorus respectively. Worth remembering before the next item's estimate --
+      if the longest slice needs to come down further, it is one voice that
+      has to get cheaper, not the schedule that has to get finer.
 - [ ] **Chunk the local encode.** `NinjamClient::processCapturedAudio` encodes a
       whole interval in one pass, and for a human player that pass runs on the
       MESSAGE thread, posted by the `callAsync` in *Lock-free TX handoff*. So

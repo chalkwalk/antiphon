@@ -4,6 +4,8 @@
 
 #include <BotNames.h>
 
+#include <algorithm>
+
 #include "IntervalClock.h"
 
 PracticeRoom::PracticeRoom() = default;
@@ -104,11 +106,24 @@ bool PracticeRoom::start(const Config &config) {
   }
 
   running = true;
-  conductor.start(
-      (double)intervalSamples / cfg.sampleRate, [this](int intervalIndex) {
-        reapPartedBots();
-        renderOneInterval(intervalIndex, [this] { return !running.load(); });
-      });
+
+  // One bot per slice, so the band's compute is spread through the interval
+  // rather than landing on the boundary in one burst. See ROADMAP.md, *The
+  // interval boundary is a compute spike*: the total is unchanged, the longest
+  // contiguous piece of it is not.
+  //
+  // The slice count is fixed at start and the bot list can only shrink, so a
+  // slice with no bot left to render is normal rather than an error.
+  const int slices = std::max(1, (int)bots.size());
+  conductor.start((double)intervalSamples / cfg.sampleRate, slices,
+                  [this](int intervalIndex, int slice) {
+                    // Reaping once per interval, not once per slice: it takes
+                    // the lock and nothing about it is urgent.
+                    if (slice == 0)
+                      reapPartedBots();
+                    renderOneBot(intervalIndex, slice,
+                                 [this] { return !running.load(); });
+                  });
   return true;
 }
 
@@ -183,16 +198,16 @@ void PracticeRoom::reapPartedBots() {
   publishBotCount();
 }
 
-void PracticeRoom::renderOneInterval(int intervalIndex,
-                                     const std::function<bool()> &shouldStop) {
+void PracticeRoom::renderOneBot(int intervalIndex, int slice,
+                                const std::function<bool()> &shouldStop) {
   juce::ScopedLock sl(botsMutex);
-  for (auto &b : bots) {
-    // Between bots, not just between intervals. One interval of four bots is
-    // four Vorbis encodes of several seconds of audio each; without a check in
-    // here, stop() waits for all of them however long that takes, and the
-    // budget it allows is not the one that matters.
-    if (shouldStop && shouldStop())
-      return;
-    b->renderInterval(intervalSamples, intervalIndex);
-  }
+  if (slice < 0 || slice >= (int)bots.size())
+    return; // A bot parted and its slice outlived it.
+
+  // Checked here as well as by the conductor, because this is the call that
+  // takes a while: one bot is a synth pass and a Vorbis encode of several
+  // seconds of audio, and stop() waits for whichever one is in flight.
+  if (shouldStop && shouldStop())
+    return;
+  bots[(std::size_t)slice]->renderInterval(intervalSamples, intervalIndex);
 }

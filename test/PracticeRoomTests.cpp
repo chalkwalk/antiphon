@@ -186,6 +186,54 @@ public:
              "botCount() blocked for " + juce::String(worstMs.load(), 1) +
                  " ms -- the render is holding the lock the UI reads");
     }
+
+    beginTest("the band's compute is spread across the interval, not stacked");
+    {
+      // The same measurement pointed at a accessor that DOES take the lock, so
+      // what it reports is the longest time the room spends inside one render.
+      //
+      // The band used to render all four bots back to back, which put a
+      // second of contiguous compute on every interval boundary -- measured at
+      // 1073 ms at 120/8, and the reason a fan spins up. One bot per conductor
+      // slice makes the longest piece one bot's synth-and-encode instead.
+      //
+      // The bound is a quarter of the old burst plus room to spare, because
+      // what is asserted is that four renders are no longer one.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you));
+      expect(startBand(you, room), "the band never started playing");
+
+      std::atomic<bool> polling{true};
+      std::atomic<double> worstMs{0.0};
+
+      std::thread prober([&] {
+        while (polling.load()) {
+          const auto before = juce::Time::getMillisecondCounterHiRes();
+          (void)room.botNames();
+          const auto took = juce::Time::getMillisecondCounterHiRes() - before;
+
+          double previous = worstMs.load();
+          while (took > previous &&
+                 !worstMs.compare_exchange_weak(previous, took)) {
+          }
+          juce::Thread::sleep(1);
+        }
+      });
+
+      juce::Thread::sleep(6000);
+      polling = false;
+      prober.join();
+
+      logMessage("longest single render: " + juce::String(worstMs.load(), 1) +
+                 " ms (all four back to back measured 1073 ms)");
+      expect(worstMs.load() < 700.0,
+             "the longest render was " + juce::String(worstMs.load(), 1) +
+                 " ms -- the bots are still rendering back to back");
+    }
   }
 
   void runStartupTests() {

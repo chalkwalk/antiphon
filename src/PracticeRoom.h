@@ -113,8 +113,11 @@ private:
   // `jambot::Conductor`, which is JUCE-free because a band on a command line
   // needs exactly the same counting.
 
-  void renderOneInterval(int intervalIndex,
-                         const std::function<bool()> &shouldStop);
+  // One bot's interval, identified by its slice. The conductor calls this once
+  // per slice rather than once per interval, which is what spreads the band's
+  // compute through the interval instead of stacking it on the boundary.
+  void renderOneBot(int intervalIndex, int slice,
+                    const std::function<bool()> &shouldStop);
   void reapPartedBots();
 
   // Republishes `publishedBotCount`. Call while holding `botsMutex`, from
