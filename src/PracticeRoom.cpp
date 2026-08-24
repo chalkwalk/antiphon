@@ -107,23 +107,20 @@ bool PracticeRoom::start(const Config &config) {
 
   running = true;
 
-  // One bot per slice, so the band's compute is spread through the interval
-  // rather than landing on the boundary in one burst. See ROADMAP.md, *The
-  // interval boundary is a compute spike*: the total is unchanged, the longest
-  // contiguous piece of it is not.
+  // Ticks, not one call per bot. The band's compute is spread through the
+  // interval rather than landing on the boundary in one burst (ROADMAP.md,
+  // *The interval boundary is a compute spike*), but the schedule has to be
+  // finer than one tick per bot so a start arriving mid-interval can still be
+  // fitted into what is left of it.
   //
-  // The slice count is fixed at start and the bot list can only shrink, so a
-  // slice with no bot left to render is normal rather than an error.
-  const int slices = std::max(1, (int)bots.size());
-  conductor.start((double)intervalSamples / cfg.sampleRate, slices,
-                  [this](int intervalIndex, int slice) {
-                    // Reaping once per interval, not once per slice: it takes
-                    // the lock and nothing about it is urgent.
-                    if (slice == 0)
-                      reapPartedBots();
-                    renderOneBot(intervalIndex, slice,
-                                 [this] { return !running.load(); });
-                  });
+  // Four ticks per bot: fine enough to place a late start sensibly, coarse
+  // enough that the wakeups cost nothing.
+  ticksPerInterval = std::max(1, (int)bots.size()) * kTicksPerBot;
+  renderTick.assign(bots.size(), 0);
+
+  conductor.start(
+      (double)intervalSamples / cfg.sampleRate, ticksPerInterval,
+      [this](int intervalIndex, int tick) { onTick(intervalIndex, tick); });
   return true;
 }
 
@@ -196,6 +193,111 @@ void PracticeRoom::reapPartedBots() {
     if (!bots[(size_t)i]->isActive())
       bots.erase(bots.begin() + i);
   publishBotCount();
+}
+
+void PracticeRoom::onTick(int intervalIndex, int tick) {
+  const auto shouldStop = [this] { return !running.load(); };
+
+  if (tick == 0) {
+    // Reaping once per interval, not once per tick: it takes the lock and
+    // nothing about it is urgent.
+    reapPartedBots();
+
+    // THE DECISION POINT, and the only one for a stop. Every bot latches its
+    // phase here, together, so the band wraps up and resolves as a band even
+    // though the four renders that follow are seconds apart. A stop asked for
+    // mid-interval therefore takes effect at the head of the next one -- the
+    // whole band a beat late rather than half of it a whole interval late.
+    latchBand();
+    scheduleRendersFrom(0);
+  } else if (bandWantsStart() && enoughTimeToStart(tick)) {
+    // A start is the one transition worth catching mid-interval: waiting for
+    // the next head would put an interval of silence between asking the band
+    // to play and hearing it, and unlike an ending there is nothing musical
+    // happening in that gap. Re-latch (without advancing -- that already
+    // happened at tick 0) and fit everyone into what is left.
+    refreshBandLatch();
+    scheduleRendersFrom(tick);
+  }
+
+  renderScheduledBots(intervalIndex, tick, shouldStop);
+}
+
+void PracticeRoom::latchBand() {
+  juce::ScopedLock sl(botsMutex);
+  for (auto &b : bots)
+    b->beginInterval();
+}
+
+void PracticeRoom::refreshBandLatch() {
+  juce::ScopedLock sl(botsMutex);
+  for (auto &b : bots)
+    b->refreshLatch();
+}
+
+bool PracticeRoom::bandWantsStart() const {
+  juce::ScopedLock sl(botsMutex);
+  for (const auto &b : bots)
+    if (b->startPending())
+      return true;
+  return false;
+}
+
+bool PracticeRoom::enoughTimeToStart(int tick) const {
+  // Measured, not assumed: what one bot costs depends on the machine, the
+  // tempo and the interval length, and a constant here would be wrong on three
+  // axes at once. `avgBotRenderMs` is an average of the renders actually done.
+  //
+  // Before anything has been rendered there is no measurement, so the first
+  // start of a session waits for the next head rather than guessing. That
+  // costs one interval, once.
+  const double perBot = avgBotRenderMs.load();
+  if (perBot <= 0.0)
+    return false;
+
+  const int count = publishedBotCount.load(std::memory_order_relaxed);
+  const double intervalMs = 1000.0 * (double)intervalSamples /
+                            (cfg.sampleRate > 0.0 ? cfg.sampleRate : 48000.0);
+  const double remainingMs =
+      intervalMs * (double)(ticksPerInterval - tick) / (double)ticksPerInterval;
+
+  // Twice what the work should take. The band has to finish inside the
+  // interval it is playing for, and being wrong here means a torn start --
+  // worse than the interval of silence it is trying to avoid.
+  return remainingMs > 2.0 * perBot * (double)count;
+}
+
+void PracticeRoom::scheduleRendersFrom(int tick) {
+  juce::ScopedLock sl(botsMutex);
+  renderTick.assign(bots.size(), 0);
+  if (bots.empty())
+    return;
+
+  // Spread across whatever is left, so a start late in the interval is tighter
+  // than one at its head rather than being refused outright.
+  const int remaining = std::max(1, ticksPerInterval - tick);
+  for (std::size_t i = 0; i < bots.size(); ++i)
+    renderTick[i] = tick + (int)((remaining * i) / bots.size());
+}
+
+void PracticeRoom::renderScheduledBots(
+    int intervalIndex, int tick, const std::function<bool()> &shouldStop) {
+  for (std::size_t i = 0; i < renderTick.size(); ++i) {
+    if (renderTick[i] != tick)
+      continue;
+    if (shouldStop && shouldStop())
+      return;
+
+    const double startMs = juce::Time::getMillisecondCounterHiRes();
+    renderOneBot(intervalIndex, (int)i, shouldStop);
+    const double tookMs = juce::Time::getMillisecondCounterHiRes() - startMs;
+
+    // A running average rather than the last value, so one descheduled render
+    // does not convince the room it has no time to start.
+    const double previous = avgBotRenderMs.load();
+    avgBotRenderMs.store(previous <= 0.0 ? tookMs
+                                         : 0.75 * previous + 0.25 * tookMs);
+  }
 }
 
 void PracticeRoom::renderOneBot(int intervalIndex, int slice,

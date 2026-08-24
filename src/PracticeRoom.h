@@ -113,11 +113,31 @@ private:
   // `jambot::Conductor`, which is JUCE-free because a band on a command line
   // needs exactly the same counting.
 
-  // One bot's interval, identified by its slice. The conductor calls this once
-  // per slice rather than once per interval, which is what spreads the band's
-  // compute through the interval instead of stacking it on the boundary.
+  // The conductor's callback. Ticks run several times per bot per interval:
+  // tick 0 is the band's decision point and the rest are render slots.
+  void onTick(int intervalIndex, int tick);
+
+  // Every bot latches the phase it will render this interval, together. The
+  // band's transitions have to be simultaneous even though its renders are
+  // not; see `PracticeBot::beginInterval`.
+  void latchBand();
+  void refreshBandLatch();
+  bool bandWantsStart() const;
+
+  // Whether what is left of the interval will fit the whole band's renders.
+  bool enoughTimeToStart(int tick) const;
+
+  // Lays the band's renders out across the ticks from `tick` to the end of the
+  // interval.
+  void scheduleRendersFrom(int tick);
+  void renderScheduledBots(int intervalIndex, int tick,
+                           const std::function<bool()> &shouldStop);
+
+  // One bot's interval, identified by its index in `bots`.
   void renderOneBot(int intervalIndex, int slice,
                     const std::function<bool()> &shouldStop);
+
+  static constexpr int kTicksPerBot = 4;
   void reapPartedBots();
 
   // Republishes `publishedBotCount`. Call while holding `botsMutex`, from
@@ -138,6 +158,16 @@ private:
 
   // `bots.size()`, readable without the lock.
   std::atomic<int> publishedBotCount{0};
+
+  int ticksPerInterval = 0;
+
+  // Which tick each bot renders on, this interval. Rewritten whenever the
+  // schedule changes, which is at every head and at a start taken mid-interval.
+  std::vector<int> renderTick;
+
+  // A running average of what one bot's render costs on this machine, which is
+  // what decides whether a late start can still be fitted into the interval.
+  std::atomic<double> avgBotRenderMs{0.0};
 
   jambot::Conductor conductor;
   Config cfg;

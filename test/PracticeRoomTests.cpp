@@ -193,6 +193,69 @@ public:
                    " ms -- the render is holding the lock the UI reads");
     }
 
+    beginTest("the band transitions as a band, not one bot at a time");
+    {
+      // The regression that spreading the renders introduced. Each bot used to
+      // sample its own play state inside its own render, and once those renders
+      // were seconds apart so were the decisions: asked to stop mid-interval,
+      // the bots that had already rendered kept going an interval longer, and
+      // the last interval of the ending had only the kit and the bass in it.
+      //
+      // What is asserted is not WHEN the band changes state but that its
+      // members are never in different ones. Sampled far faster than an
+      // interval, so a divergence lasting even a fraction of one is caught.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you));
+      expect(startBand(you, room), "the band never started playing");
+
+      std::atomic<bool> watching{true};
+      std::atomic<bool> diverged{false};
+      std::atomic<int> samples{0};
+
+      std::thread watcher([&] {
+        while (watching.load()) {
+          const auto phases = room.bandPhases();
+          if (phases.size() > 1) {
+            for (std::size_t i = 1; i < phases.size(); ++i)
+              if (phases[i] != phases[0])
+                diverged = true;
+            samples.fetch_add(1);
+          }
+          juce::Thread::sleep(5);
+        }
+      });
+
+      // Pumped, not slept: chat reaches the bots through callAsync, so a test
+      // that sleeps the main thread blocks the very delivery it is waiting for.
+      // Deliberately mid-interval, which is the case that broke -- a stop
+      // landing on the boundary would have looked fine all along.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(1500);
+      you.client.sendChatMessage("band stop");
+
+      // Long enough to cover the wrap-up and the resolve and land in silence,
+      // worst case. A stop is taken at the HEAD of the next interval now, so
+      // one landing just after a head waits nearly a whole interval before it
+      // is even latched: at 120/8 that is 4 s of waiting plus two 4 s ending
+      // intervals, and the band is silent some time inside the fourth.
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(14000);
+      watching = false;
+      watcher.join();
+
+      expect(samples.load() > 100, "the watcher barely ran");
+      expect(!diverged.load(),
+             "the band's bots were in different play states -- the decision is "
+             "being taken per render again, not once for the band");
+
+      const auto finalPhases = room.bandPhases();
+      for (auto p : finalPhases)
+        expect(p == BandPlayState::State::Silent,
+               "a bot was still going after the ending");
+    }
+
     beginTest("the band's compute is spread across the interval, not stacked");
     {
       // The same measurement pointed at a accessor that DOES take the lock, so
