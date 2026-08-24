@@ -117,9 +117,24 @@ private:
                          const std::function<bool()> &shouldStop);
   void reapPartedBots();
 
+  // Republishes `publishedBotCount`. Call while holding `botsMutex`, from
+  // every path that changes `bots`.
+  void publishBotCount();
+
   PracticeServer server;
   std::vector<std::unique_ptr<PracticeBot>> bots;
+
+  // Held for a WHOLE interval render -- four synths and four Vorbis encodes.
+  // Nothing on the message thread may take it: the editor's timer runs at 30
+  // Hz and would block behind the burst, which is what stalled the meters and
+  // the phase bar for over a second an interval while the audio played on.
+  //
+  // Anything the UI needs gets published out here instead, the way
+  // `botCount()` does.
   mutable juce::CriticalSection botsMutex;
+
+  // `bots.size()`, readable without the lock.
+  std::atomic<int> publishedBotCount{0};
 
   jambot::Conductor conductor;
   Config cfg;

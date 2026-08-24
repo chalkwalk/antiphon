@@ -5,6 +5,7 @@
 #include "../src/PracticeRoom.h"
 #include "FakeNinjamServer.h" // for waitUntil
 #include <limits>
+#include <thread>
 #include <JuceHeader.h>
 
 // Two things are under test here, and the second matters more than it looks.
@@ -120,11 +121,71 @@ public:
 
   void runTest() override {
     runStartupTests();
+    runUiResponsivenessTests();
     runBotVisibilityTests();
     runPartCommandTests();
     runBandFollowingTests();
     runOwnerDepartureTests();
     runConnectionLossTests();
+  }
+
+  // What the UI does, thirty times a second, on the message thread.
+  //
+  // The band renders a whole interval in one burst on the conductor thread --
+  // four synths and four Vorbis encodes, over a second of work -- and it used
+  // to hold `botsMutex` for all of it. `botCount()` took the same lock, so the
+  // editor's timer blocked behind the render and the meters and phase bar
+  // stalled for as long as it took. Audio was unaffected, which is what made
+  // it read as a graphics problem: the audio thread never touches this lock.
+  //
+  // The bound is deliberately loose. This asserts that asking how many bots
+  // there are does not wait for a Vorbis encode, not that it takes any
+  // particular number of microseconds -- a tight bound here would fail on a
+  // loaded CI box for reasons that have nothing to do with the bug.
+  void runUiResponsivenessTests() {
+    beginTest("asking the room a question does not block behind the render");
+    {
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      // A SILENT bot transmits nothing and so encodes nothing, which is most
+      // of the cost. Without this the render burst never happens and the test
+      // passes against the bug.
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you));
+      expect(startBand(you, room), "the band never started playing");
+
+      std::atomic<bool> polling{true};
+      std::atomic<double> worstMs{0.0};
+      std::atomic<int> polls{0};
+
+      std::thread ui([&] {
+        while (polling.load()) {
+          const auto before = juce::Time::getMillisecondCounterHiRes();
+          (void)room.botCount();
+          const auto took = juce::Time::getMillisecondCounterHiRes() - before;
+
+          double previous = worstMs.load();
+          while (took > previous &&
+                 !worstMs.compare_exchange_weak(previous, took)) {
+          }
+          polls.fetch_add(1);
+          juce::Thread::sleep(1);
+        }
+      });
+
+      // Long enough to cover several interval boundaries at 120/8, which is
+      // where the render burst happens.
+      juce::Thread::sleep(6000);
+      polling = false;
+      ui.join();
+
+      expect(polls.load() > 100, "the poller barely ran");
+      expect(worstMs.load() < 100.0,
+             "botCount() blocked for " + juce::String(worstMs.load(), 1) +
+                 " ms -- the render is holding the lock the UI reads");
+    }
   }
 
   void runStartupTests() {

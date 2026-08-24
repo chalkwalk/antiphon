@@ -36,6 +36,7 @@ bool PracticeRoom::start(const Config &config) {
   {
     juce::ScopedLock sl(botsMutex);
     bots.clear();
+    publishBotCount();
 
     const BotBand::Voice voices[] = {BotBand::Voice::Drums,
                                      BotBand::Voice::Bass, BotBand::Voice::Keys,
@@ -77,6 +78,7 @@ bool PracticeRoom::start(const Config &config) {
       bot->setGrace(cfg.ownerGraceMs, cfg.initialGraceMs);
       bot->playAs(voice, cfg.key, cfg.bpm, cfg.bpi, cfg.sampleRate, seed);
       bots.push_back(std::move(bot));
+      publishBotCount();
 
       // A different seed per player as well as the salt inside BotBand, so two
       // voices cannot land on the same figure by coincidence.
@@ -95,6 +97,7 @@ bool PracticeRoom::start(const Config &config) {
     for (auto &b : bots)
       if (!b->join(std::string(host()), server.port(), cfg.sampleRate)) {
         bots.clear();
+        publishBotCount();
         server.stop();
         return false;
       }
@@ -126,6 +129,7 @@ void PracticeRoom::stop() {
     for (auto &b : bots)
       b->part();
     bots.clear();
+    publishBotCount();
   }
 
   server.stop();
@@ -133,8 +137,13 @@ void PracticeRoom::stop() {
 }
 
 int PracticeRoom::botCount() const {
-  juce::ScopedLock sl(botsMutex);
-  return (int)bots.size();
+  // Deliberately lock-free. See the note on `botsMutex`: this is called from
+  // the editor's timer, and the lock is held across a whole interval render.
+  return publishedBotCount.load(std::memory_order_relaxed);
+}
+
+void PracticeRoom::publishBotCount() {
+  publishedBotCount.store((int)bots.size(), std::memory_order_relaxed);
 }
 
 juce::StringArray PracticeRoom::botNames() const {
@@ -171,6 +180,7 @@ void PracticeRoom::reapPartedBots() {
   for (int i = (int)bots.size() - 1; i >= 0; --i)
     if (!bots[(size_t)i]->isActive())
       bots.erase(bots.begin() + i);
+  publishBotCount();
 }
 
 void PracticeRoom::renderOneInterval(int intervalIndex,
