@@ -539,8 +539,12 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
           // switching it cannot click in what the other players hear.
           lc->spans[(std::size_t)handoff].applyTo(buf.getArrayOfWritePointers(),
                                                   2, length, rampSamples);
+          // Enqueued, not encoded here. Everything above this line is a
+          // memcpy and a ramp; the Vorbis pass below it is a few hundred
+          // milliseconds, and doing it on the message thread froze the UI once
+          // an interval. See NinjamClient::enqueueCapturedAudio.
           if (postInJam)
-            ninjamClient.processCapturedAudio(buf, length, ci, mono);
+            ninjamClient.enqueueCapturedAudio(std::move(buf), length, ci, mono);
         });
       } else {
         lc->fifo.reset();

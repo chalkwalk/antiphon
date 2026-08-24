@@ -366,15 +366,31 @@ here; recorded so it is not "fixed" into a burst by someone tidying.
       chorus respectively. Worth remembering before the next item's estimate --
       if the longest slice needs to come down further, it is one voice that
       has to get cheaper, not the schedule that has to get finer.
-- [ ] **Chunk the local encode.** `NinjamClient::processCapturedAudio` encodes a
+- [x] **Chunk the local encode.** `NinjamClient::processCapturedAudio` encodes a
       whole interval in one pass, and for a human player that pass runs on the
       MESSAGE thread, posted by the `callAsync` in *Lock-free TX handoff*. So
       every player, in every room, takes a UI hitch at each boundary -- this is
       not a practice-room problem. The loop is already in 1024-sample blocks
       (the `// We should send smaller chunks` comment is about the packets, not
       the pass); what is missing is spreading those blocks over the interval
-      instead of running them back to back. Do this WITH the FIFO redesign, not
-      before it: they touch the same handoff.
+      instead of running them back to back.
+
+      **Done, and it did NOT need the FIFO redesign first**, which this entry
+      claimed it would. The handoff splits cleanly in two: draining the FIFO
+      and applying the transmit spans is a memcpy and a ramp and has to stay on
+      the message thread, because the FIFO wants emptying promptly; the Vorbis
+      pass is the expensive half and nothing about it is thread-bound.
+      `enqueueCapturedAudio` hands that half to an `EncodeWorker`, which paces
+      it across half the interval. `processCapturedAudio` is unchanged for its
+      other caller: the band's bots pass no pacing and encode flat out on the
+      conductor thread, because they are already a slice apart and pacing them
+      again would run one bot's encode into the next bot's slice.
+
+      Everything the encode touches was already thread-safe -- `writeFull` takes
+      a lock and documents three calling threads, `SessionWriter` locks, and
+      `getSystemRandom()` is `thread_local` -- which is why this was contained.
+      The `callAsync` itself is untouched and *Lock-free TX handoff* still owns
+      it.
 - [ ] **Beat-sized synthesis, if staggering is not enough.** The deep version of
       this, and much the most expensive: `BotBand::renderInterval` renders a
       whole interval as one deterministic function of `(voice, settings,
@@ -382,6 +398,23 @@ here; recorded so it is not "fixed" into a burst by someone tidying.
       across chunk boundaries -- notes ring past the beat they start on -- which
       is a stateful renderer where there is now a pure one. Do not start it
       until the cheap staggering has been measured and found wanting.
+- [ ] **A pre-existing TSan race in the practice room, found on the way.** Two
+      warnings from `PracticeRoomTests`: `NinjamClient::removeListener` on the
+      conductor thread -- `reapPartedBots` destroys a bot, which destroys its
+      `NinjamBotClient` -- against `ListenerList::call` on the main thread.
+      `juce::ListenerList` is instantiated with `DummyCriticalSection` here, so
+      it does no locking of its own.
+
+      **Not introduced by either change above**: verified by running the same
+      suite under TSan at the two commits before them, where the same two
+      warnings appear. Recorded rather than fixed because it is a different
+      bug with a different owner, and folding it into a scheduling change would
+      hide it.
+
+      It also means **`AGENTS.md`'s "the baseline is zero warnings" is no longer
+      true**, which is worse than the race: a baseline nobody can trust is how
+      the next real finding gets waved through. Either fix this or write the
+      exception down, but do not leave the claim standing as it is.
 - [ ] **Then measure again, on the machine that complained.** The number that
       matters is not the duty cycle but whether an audio callback ever misses,
       and neither of the figures above is that measurement (`PRINCIPLES §5`).

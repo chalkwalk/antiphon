@@ -160,6 +160,14 @@ void NinjamClient::disconnectFromServer() {
   // with a timeout rather than blocking, so signalling is enough to end it --
   // see readFull.
   connectionState = 0;
+
+  // Before the socket goes: an encode in flight would otherwise keep writing
+  // uploads for a session that has ended, and a queue of them would be encoded
+  // for nobody. `abort` is checked between blocks, so a spread does not have
+  // to be waited out.
+  encodeWorker.discardPending();
+  encodeWorker.stopThread(2000);
+
   signalThreadShouldExit();
   stopThread(3000);
 }
@@ -738,9 +746,98 @@ void NinjamClient::updateChannelInfo(const juce::StringArray &names) {
     sendChannelInfo();
 }
 
+void NinjamClient::EncodeWorker::post(juce::AudioBuffer<float> &&buffer,
+                                      int numSamples, int channelIndex,
+                                      bool mono, double spreadOverSeconds) {
+  {
+    juce::ScopedLock sl(jobMutex);
+
+    // Bounded, and the oldest goes first. An unbounded queue in front of an
+    // encoder that has fallen behind is a memory leak with a schedule; a
+    // dropped interval is a gap other players hear once.
+    constexpr int kMaxPending = 16;
+    while ((int)jobs.size() >= kMaxPending) {
+      jobs.pop_front();
+      owner.diagEncodeDrops.fetch_add(1);
+    }
+
+    Job job;
+    job.buffer = std::move(buffer);
+    job.numSamples = numSamples;
+    job.channelIndex = channelIndex;
+    job.mono = mono;
+    job.spreadOverSeconds = spreadOverSeconds;
+    jobs.push_back(std::move(job));
+  }
+  wake.signal();
+}
+
+void NinjamClient::EncodeWorker::discardPending() {
+  juce::ScopedLock sl(jobMutex);
+  jobs.clear();
+}
+
+int NinjamClient::EncodeWorker::pendingCount() const {
+  juce::ScopedLock sl(jobMutex);
+  return (int)jobs.size();
+}
+
+void NinjamClient::EncodeWorker::run() {
+  while (!threadShouldExit()) {
+    Job job;
+    bool have = false;
+    {
+      juce::ScopedLock sl(jobMutex);
+      if (!jobs.empty()) {
+        job = std::move(jobs.front());
+        jobs.pop_front();
+        have = true;
+      }
+    }
+
+    if (!have) {
+      // Bounded rather than infinite so exiting does not depend on a signal
+      // arriving, which is the same reasoning as the conductor's predicate.
+      wake.wait(200);
+      continue;
+    }
+
+    EncodePacing pacing;
+    pacing.spreadOverSeconds = job.spreadOverSeconds;
+    pacing.abort = [this] { return threadShouldExit(); };
+    owner.processCapturedAudio(job.buffer, job.numSamples, job.channelIndex,
+                               job.mono, pacing);
+  }
+}
+
+void NinjamClient::enqueueCapturedAudio(juce::AudioBuffer<float> buffer,
+                                        int numSamples, int channelIndex,
+                                        bool mono) {
+  if (!isConnected() || numSamples <= 0)
+    return;
+
+  if (!encodeWorker.isThreadRunning())
+    encodeWorker.startThread();
+
+  // Spread over half the interval the audio came from. Half rather than all of
+  // it so a late start, a slow machine or a second channel still finishes
+  // inside the interval it belongs to -- the upload has to reach the server
+  // before the interval it is for comes round.
+  const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
+  const double spread = 0.5 * (double)numSamples / rate;
+
+  encodeWorker.post(std::move(buffer), numSamples, channelIndex, mono, spread);
+}
+
 void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
                                         int numSamples, int channelIndex,
                                         bool mono) {
+  processCapturedAudio(buffer, numSamples, channelIndex, mono, EncodePacing{});
+}
+
+void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
+                                        int numSamples, int channelIndex,
+                                        bool mono, const EncodePacing &pacing) {
   if (!isConnected())
     return;
 
@@ -786,7 +883,26 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
   const int blockSize = 1024;
   int pos = 0;
 
+  // Pacing, when the caller asked for it. The deadline for each block is its
+  // share of the spread, so the loop sleeps only when it is running AHEAD --
+  // an encoder that cannot keep up is never slowed down further.
+  const double startMs = juce::Time::getMillisecondCounterHiRes();
+  const double spreadMs = pacing.spreadOverSeconds * 1000.0;
+
   while (pos < numSamples) {
+    if (pacing.abort && pacing.abort())
+      return;
+
+    if (spreadMs > 0.0 && pos > 0) {
+      const double dueMs = spreadMs * (double)pos / (double)numSamples;
+      const double aheadMs =
+          dueMs - (juce::Time::getMillisecondCounterHiRes() - startMs);
+      // Capped so an abort is never more than this far away, and floored so a
+      // sub-millisecond debt does not turn into a busy loop.
+      if (aheadMs >= 1.0)
+        juce::Thread::sleep((int)std::min(aheadMs, 20.0));
+    }
+
     int toProcess = std::min(blockSize, numSamples - pos);
 
     std::vector<float> interleaved(static_cast<std::size_t>(toProcess * numCh));

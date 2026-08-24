@@ -6,6 +6,7 @@
 #include <chalkwalk/ninjam/Bytes.h>
 #include <JuceHeader.h>
 #include <array>
+#include <deque>
 #include <memory>
 #include <set>
 #include <vector>
@@ -94,7 +95,46 @@ public:
 
   bool isConnected() const { return connectionState == 3; }
 
+  // How an encode is allowed to spend its time.
+  //
+  // Encoding an interval is a few hundred milliseconds of Vorbis, and running
+  // it flat out is one contiguous burst of compute on whichever thread called
+  // -- the shape ROADMAP.md's *The interval boundary is a compute spike*
+  // exists to get rid of. `spreadOverSeconds` stretches the block loop to
+  // roughly that duration by sleeping between blocks, so the same work lands
+  // as a thin smear instead. Zero means flat out, which is what a caller with
+  // its own schedule wants: the band's bots are already staggered a slice
+  // apart and pacing them again would run one bot's encode into the next
+  // bot's slice.
+  //
+  // `abort` is checked between blocks so stopping does not have to wait out a
+  // spread. An aborted encode leaves an upload the server has a BEGIN for and
+  // no final flush, which is only reachable on the way to disconnecting.
+  struct EncodePacing {
+    double spreadOverSeconds = 0.0;
+    std::function<bool()> abort;
+  };
+
+  // Flat out, on the calling thread. What the band's bots use.
   void processCapturedAudio(juce::AudioBuffer<float> &buffer, int numSamples,
+                            int channelIndex, bool mono);
+
+  // Paced, and abortable.
+  void processCapturedAudio(juce::AudioBuffer<float> &buffer, int numSamples,
+                            int channelIndex, bool mono,
+                            const EncodePacing &pacing);
+
+  // The same thing, off this thread and paced across the interval.
+  //
+  // For the LOCAL player, whose capture arrives on the message thread from the
+  // `callAsync` in `processBlock`. Encoding there froze the UI for the length
+  // of an interval's Vorbis, every interval, in every room -- meters and phase
+  // bar included. The cheap half of the handoff (draining the FIFO, applying
+  // the transmit spans) has to stay on the message thread because the FIFO
+  // wants emptying promptly; only the expensive half moves.
+  //
+  // Takes the buffer by value: the job outlives the caller's stack frame.
+  void enqueueCapturedAudio(juce::AudioBuffer<float> buffer, int numSamples,
                             int channelIndex, bool mono);
   void getDecodedAudio(juce::AudioBuffer<float> &buffer);
 
@@ -429,6 +469,46 @@ private:
   void recomputeRemoteSolo();
 
   SessionWriter sessionWriter;
+
+  // Encodes intervals off the message thread, one at a time, in order.
+  //
+  // A `juce::Thread` like the client itself rather than a `std::thread`, so
+  // there is one idiom for "a thread this class owns".
+  class EncodeWorker final : public juce::Thread {
+  public:
+    explicit EncodeWorker(NinjamClient &o)
+        : juce::Thread("Antiphon encode"), owner(o) {}
+    ~EncodeWorker() override { stopThread(2000); }
+
+    void post(juce::AudioBuffer<float> &&buffer, int numSamples,
+              int channelIndex, bool mono, double spreadOverSeconds);
+    void discardPending();
+    int pendingCount() const;
+
+    void run() override;
+
+  private:
+    struct Job {
+      juce::AudioBuffer<float> buffer;
+      int numSamples = 0;
+      int channelIndex = 0;
+      bool mono = false;
+      double spreadOverSeconds = 0.0;
+    };
+
+    NinjamClient &owner;
+    mutable juce::CriticalSection jobMutex;
+    std::deque<Job> jobs;
+    juce::WaitableEvent wake;
+  };
+
+  EncodeWorker encodeWorker{*this};
+
+  // Intervals dropped because the encoder could not keep up. Not expected to
+  // move: an interval takes a fraction of itself to encode, so a backlog means
+  // something is badly wrong and dropping is better than growing without
+  // bound.
+  std::atomic<int> diagEncodeDrops{0};
 
   juce::CriticalSection txFileMutex;
   juce::CriticalSection rxFileMutex;

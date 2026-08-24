@@ -129,6 +129,40 @@ public:
     beginTest("round-trip at 96 kHz preserves pitch and length");
     checkRoundTrip(96000.0);
 
+    beginTest("enqueued capture returns at once and still arrives whole");
+    {
+      // The local player's path. `processCapturedAudio` encodes an interval's
+      // Vorbis inline, and it used to run on the MESSAGE thread, posted by the
+      // callAsync in processBlock -- so the UI froze for the length of that
+      // encode, every interval, in every room. `enqueueCapturedAudio` hands it
+      // to a worker instead.
+      //
+      // Two claims, and the second is what stops the first being a lie: the
+      // call returns without doing the work, and the work still happens.
+      AudioSession rig;
+      expect(rig.start(48000.0, 120, 8));
+
+      auto pcm = makeSineBuffer(rig.intervalSamples, 440.0, 48000.0, 0.5f);
+      const int before = rig.server.completedUploads();
+
+      const auto startMs = juce::Time::getMillisecondCounterHiRes();
+      rig.client.enqueueCapturedAudio(std::move(pcm), rig.intervalSamples, 0,
+                                      false);
+      const auto tookMs = juce::Time::getMillisecondCounterHiRes() - startMs;
+
+      // Encoding one interval is hundreds of milliseconds; a copy and a queue
+      // push is microseconds. The bound only has to separate those two.
+      expect(tookMs < 50.0, "enqueueCapturedAudio took " +
+                                juce::String(tookMs, 1) +
+                                " ms, so it encoded on the calling thread");
+
+      // Generous: the encode is deliberately spread across half the interval,
+      // which at 120/8 is two seconds.
+      expect(waitUntil([&] { return rig.server.completedUploads() > before; },
+                       15000),
+             "the enqueued interval never reached the server");
+    }
+
     beginTest("mono channel round-trips to both output channels");
     {
       AudioSession s;
