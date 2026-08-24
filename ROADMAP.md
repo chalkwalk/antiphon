@@ -417,6 +417,22 @@ here; recorded so it is not "fixed" into a burst by someone tidying.
       anyone had looked. **It is back to zero**: TSan clean across every
       threaded suite, ASan clean, and the only UBSan output is the libvorbis
       line `AGENTS.md` already documents as not ours.
+- [ ] **A command reaches the band one bot at a time.** Chat is delivered to
+      each bot through its own client's `callAsync`, so four bots learn of a
+      `stop` in four separate dispatches. The band's phase latch is taken for
+      all of them in one pass, which makes the render decision uniform -- but a
+      latch landing INSIDE that dispatch window would still catch some bots
+      before the command and some after, which is the same split the latch
+      exists to prevent, narrowed from seconds to the width of four callbacks.
+      Found by a test that watched the raw states and was flaky for exactly
+      this reason; the test now watches the latch, which is the observable that
+      decides what is heard.
+
+      The fix, if it is worth one: bots record a REQUESTED transition and the
+      room drains those atomically at latch time, so the command lands on the
+      band rather than on four objects in turn. Not done -- it reaches into
+      `BotChat`'s act handling, and the remaining window is orders of magnitude
+      narrower than the bug that prompted it.
 - [ ] **Then measure again, on the machine that complained.** The number that
       matters is not the duty cycle but whether an audio callback ever misses,
       and neither of the figures above is that measurement (`PRINCIPLES §5`).

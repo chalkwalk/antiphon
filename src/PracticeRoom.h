@@ -106,6 +106,17 @@ public:
   // and being silent is several seconds of audio, which no test can watch.
   std::vector<BandPlayState::State> bandPhases() const;
 
+  // What each bot LATCHED for the interval it is rendering, which is a
+  // different question from `bandPhases` and the one that says whether the
+  // band is actually playing yet.
+  //
+  // `bandPhases` reports the state machine, and that flips the instant a
+  // command lands -- so it says a band asked to play is playing before a note
+  // has been rendered. The latch is what a render will actually produce, so it
+  // is what tells a test whether a start was taken inside this interval or
+  // deferred to the head of the next.
+  std::vector<BandPlayState::State> bandLatchedPhases() const;
+
   PracticeServer &practiceServer() { return server; }
 
 private:
@@ -123,6 +134,10 @@ private:
   void latchBand();
   void refreshBandLatch();
   bool bandWantsStart() const;
+
+  // Whether this bot's latched phase will actually produce audio. Only these
+  // renders are worth timing; see `renderScheduledBots`.
+  bool botIsAudible(int index) const;
 
   // Whether what is left of the interval will fit the whole band's renders.
   bool enoughTimeToStart(int tick) const;

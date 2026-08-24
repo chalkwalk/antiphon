@@ -223,6 +223,23 @@ void PracticeRoom::onTick(int intervalIndex, int tick) {
   renderScheduledBots(intervalIndex, tick, shouldStop);
 }
 
+std::vector<BandPlayState::State> PracticeRoom::bandLatchedPhases() const {
+  juce::ScopedLock sl(botsMutex);
+  std::vector<BandPlayState::State> out;
+  out.reserve(bots.size());
+  for (const auto &b : bots)
+    out.push_back(b->latchedPhase());
+  return out;
+}
+
+bool PracticeRoom::botIsAudible(int index) const {
+  juce::ScopedLock sl(botsMutex);
+  if (index < 0 || index >= (int)bots.size())
+    return false;
+  return bots[(std::size_t)index]->latchedPhase() !=
+         BandPlayState::State::Silent;
+}
+
 void PracticeRoom::latchBand() {
   juce::ScopedLock sl(botsMutex);
   for (auto &b : bots)
@@ -244,22 +261,31 @@ bool PracticeRoom::bandWantsStart() const {
 }
 
 bool PracticeRoom::enoughTimeToStart(int tick) const {
-  // Measured, not assumed: what one bot costs depends on the machine, the
-  // tempo and the interval length, and a constant here would be wrong on three
-  // axes at once. `avgBotRenderMs` is an average of the renders actually done.
-  //
-  // Before anything has been rendered there is no measurement, so the first
-  // start of a session waits for the next head rather than guessing. That
-  // costs one interval, once.
-  const double perBot = avgBotRenderMs.load();
-  if (perBot <= 0.0)
-    return false;
-
-  const int count = publishedBotCount.load(std::memory_order_relaxed);
   const double intervalMs = 1000.0 * (double)intervalSamples /
                             (cfg.sampleRate > 0.0 ? cfg.sampleRate : 48000.0);
   const double remainingMs =
       intervalMs * (double)(ticksPerInterval - tick) / (double)ticksPerInterval;
+
+  // Measured, not assumed: what one bot costs depends on the machine, the
+  // tempo and the interval length, and a constant here would be wrong on three
+  // axes at once. `avgBotRenderMs` averages the AUDIBLE renders only.
+  //
+  // But a practice room is typically started once and played once, so the
+  // first start is the one that matters and there is nothing to average yet.
+  // Refusing on that basis would put an interval of silence between asking and
+  // hearing in exactly the case this exists for.
+  //
+  // So a cold start leans on the interval instead: half of it. The band has to
+  // render a whole interval within every interval or it cannot keep up at all,
+  // so a machine that cannot manage the band inside half an interval is
+  // already failing its ordinary job -- and where this was measured the whole
+  // band costs about a quarter of one. The bound scales with tempo and bpi for
+  // free, because both are already in `intervalMs`.
+  const double perBot = avgBotRenderMs.load();
+  if (perBot <= 0.0)
+    return remainingMs > 0.5 * intervalMs;
+
+  const int count = publishedBotCount.load(std::memory_order_relaxed);
 
   // Twice what the work should take. The band has to finish inside the
   // interval it is playing for, and being wrong here means a torn start --
@@ -288,9 +314,24 @@ void PracticeRoom::renderScheduledBots(
     if (shouldStop && shouldStop())
       return;
 
+    // Whether this render will do any WORK, decided before it runs. A silent
+    // bot returns immediately -- no synthesis, no encode, nothing on the wire
+    // -- so timing it would measure the early return.
+    //
+    // That is not a missing measurement but a poisonous one. The band sits
+    // silent between tunes, so an average fed by silent renders converges
+    // toward zero, and a cost of zero fits any remaining time at all: a start
+    // arriving with a twentieth of an interval left would be judged to have
+    // room for four full renders. That is the torn start this exists to
+    // prevent, reached by measuring the wrong thing.
+    const bool audible = botIsAudible((int)i);
+
     const double startMs = juce::Time::getMillisecondCounterHiRes();
     renderOneBot(intervalIndex, (int)i, shouldStop);
     const double tookMs = juce::Time::getMillisecondCounterHiRes() - startMs;
+
+    if (!audible)
+      continue;
 
     // A running average rather than the last value, so one descheduled render
     // does not convince the room it has no time to start.

@@ -193,6 +193,68 @@ public:
                    " ms -- the render is holding the lock the UI reads");
     }
 
+    beginTest("the first start of a session does not wait for a measurement");
+    {
+      // A practice room is typically started once and played once, so the FIRST
+      // start is the one that matters -- and it is the one with no render
+      // history to judge by, because a silent band renders nothing.
+      //
+      // An earlier version refused to start mid-interval without a measured
+      // cost, which put an interval of silence between asking and hearing in
+      // exactly the case the mechanism exists for. The cold start leans on the
+      // interval instead.
+      //
+      // At 120/8 an interval is 4 s. Asking within the first half of one
+      // should be honoured inside it, so the band is playing well before two
+      // intervals have passed.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you));
+
+      for (auto p : room.bandPhases())
+        expect(p == BandPlayState::State::Silent,
+               "the band did not arrive silent, so this proves nothing");
+
+      const auto askedAtMs = juce::Time::getMillisecondCounterHiRes();
+      you.client.sendChatMessage("band play");
+
+      // The LATCH, not the state machine. `bandPhases` flips the moment the
+      // command lands, so it would report success before a note was rendered
+      // and this test would pass with the mechanism removed entirely.
+      expect(waitUntil(
+                 [&] {
+                   const auto latched = room.bandLatchedPhases();
+                   if (latched.empty())
+                     return false;
+                   for (auto p : latched)
+                     if (p != BandPlayState::State::Playing)
+                       return false;
+                   return true;
+                 },
+                 12000),
+             "the band never latched a playing interval");
+
+      const double tookMs =
+          juce::Time::getMillisecondCounterHiRes() - askedAtMs;
+      logMessage("cold start latched after " + juce::String(tookMs, 0) + " ms");
+
+      // One interval at 120/8 is 4000 ms. Deferring to the head of the next
+      // interval would take up to that; taking the start inside the current
+      // one is bounded by what is left of it, and the room only accepts when
+      // at least half remains. Two seconds is the honest ceiling, and the
+      // bound is checked only where a stopwatch means anything.
+      if (timingbounds::kDistorted)
+        logMessage("sanitiser build -- timing bound not asserted");
+      else
+        expect(tookMs < 2200.0,
+               "the cold start waited " + juce::String(tookMs, 0) +
+                   " ms, so it deferred to the next interval instead of "
+                   "using what was left of this one");
+    }
+
     beginTest("the band transitions as a band, not one bot at a time");
     {
       // The regression that spreading the renders introduced. Each bot used to
@@ -216,9 +278,18 @@ public:
       std::atomic<bool> diverged{false};
       std::atomic<int> samples{0};
 
+      // The LATCH, not the state machine.
+      //
+      // `bandPhases` reports each bot's own state, and a command reaches four
+      // independent bots through four separate callAsync dispatches -- so for
+      // the width of that dispatch they genuinely disagree, and watching it
+      // makes this test flaky for a reason that is not the bug. The latch is
+      // taken for the whole band in one pass under one lock, and it is what
+      // decides what gets rendered, so it is both the stable observable and
+      // the one that matters.
       std::thread watcher([&] {
         while (watching.load()) {
-          const auto phases = room.bandPhases();
+          const auto phases = room.bandLatchedPhases();
           if (phases.size() > 1) {
             for (std::size_t i = 1; i < phases.size(); ++i)
               if (phases[i] != phases[0])
@@ -250,7 +321,7 @@ public:
              "the band's bots were in different play states -- the decision is "
              "being taken per render again, not once for the band");
 
-      const auto finalPhases = room.bandPhases();
+      const auto finalPhases = room.bandLatchedPhases();
       for (auto p : finalPhases)
         expect(p == BandPlayState::State::Silent,
                "a bot was still going after the ending");
