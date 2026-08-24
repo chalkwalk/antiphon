@@ -276,7 +276,26 @@ public:
   void dumpDiagnostics();
 
 private:
-  juce::ListenerList<NinjamClientListener> listeners;
+  // THREAD-SAFE, and it has to be. Every `listeners.call` is posted through
+  // `callAsyncIfAlive` and so runs on the message thread, but `addListener`
+  // and `removeListener` are called from wherever a listener happens to be
+  // built or destroyed -- a bot reaped by `PracticeRoom::reapPartedBots` on
+  // the conductor thread destroys its `NinjamBotClient`, which removes itself
+  // from here.
+  //
+  // The stock `ListenerList` locks `listeners->getLock()` in both `remove()`
+  // and the callback loop, but its default array uses `DummyCriticalSection`,
+  // so both locks are no-ops and the two race on the list's iterator
+  // bookkeeping. TSan reported it against `PracticeRoomTests` for as long as
+  // anyone has looked. `ThreadSafeListenerList` is the same class with a real
+  // `CriticalSection`, which makes those two existing locks mean something.
+  //
+  // The callback loop holds that lock, so a listener callback must never block
+  // on something a remover holds. Nothing does today: the listeners are the
+  // processor, the editor, `NinjamBotClient` and the tests, and none of them
+  // touches `PracticeRoom::botsMutex` -- which is the lock the reap path holds
+  // when it removes.
+  juce::ThreadSafeListenerList<NinjamClientListener> listeners;
   std::unique_ptr<juce::StreamingSocket> socket;
 
   // One decoded interval of audio from a remote channel.

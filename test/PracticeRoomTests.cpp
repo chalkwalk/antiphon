@@ -4,6 +4,7 @@
 #include <PracticeBot.h>
 #include "../src/PracticeRoom.h"
 #include "FakeNinjamServer.h" // for waitUntil
+#include "TimingBounds.h"
 #include <limits>
 #include <thread>
 #include <JuceHeader.h>
@@ -182,9 +183,14 @@ public:
       ui.join();
 
       expect(polls.load() > 100, "the poller barely ran");
-      expect(worstMs.load() < 100.0,
-             "botCount() blocked for " + juce::String(worstMs.load(), 1) +
-                 " ms -- the render is holding the lock the UI reads");
+      logMessage("worst botCount() latency: " +
+                 juce::String(worstMs.load(), 1) + " ms");
+      if (timingbounds::kDistorted)
+        logMessage("sanitiser build -- timing bound not asserted");
+      else
+        expect(worstMs.load() < 100.0,
+               "botCount() blocked for " + juce::String(worstMs.load(), 1) +
+                   " ms -- the render is holding the lock the UI reads");
     }
 
     beginTest("the band's compute is spread across the interval, not stacked");
@@ -230,9 +236,12 @@ public:
 
       logMessage("longest single render: " + juce::String(worstMs.load(), 1) +
                  " ms (all four back to back measured 1073 ms)");
-      expect(worstMs.load() < 700.0,
-             "the longest render was " + juce::String(worstMs.load(), 1) +
-                 " ms -- the bots are still rendering back to back");
+      if (timingbounds::kDistorted)
+        logMessage("sanitiser build -- timing bound not asserted");
+      else
+        expect(worstMs.load() < 700.0,
+               "the longest render was " + juce::String(worstMs.load(), 1) +
+                   " ms -- the bots are still rendering back to back");
     }
   }
 

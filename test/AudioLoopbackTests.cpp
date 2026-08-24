@@ -6,6 +6,7 @@
 #include "IntervalClock.h"
 #include "NinjamClient.h"
 #include "TestSignal.h"
+#include "TimingBounds.h"
 
 #include <vector>
 
@@ -152,9 +153,14 @@ public:
 
       // Encoding one interval is hundreds of milliseconds; a copy and a queue
       // push is microseconds. The bound only has to separate those two.
-      expect(tookMs < 50.0, "enqueueCapturedAudio took " +
-                                juce::String(tookMs, 1) +
-                                " ms, so it encoded on the calling thread");
+      logMessage("enqueueCapturedAudio returned in " + juce::String(tookMs, 1) +
+                 " ms");
+      if (timingbounds::kDistorted)
+        logMessage("sanitiser build -- timing bound not asserted");
+      else
+        expect(tookMs < 50.0, "enqueueCapturedAudio took " +
+                                  juce::String(tookMs, 1) +
+                                  " ms, so it encoded on the calling thread");
 
       // Generous: the encode is deliberately spread across half the interval,
       // which at 120/8 is two seconds.

@@ -239,7 +239,12 @@ Logic session. `Chlk` is the shared Chalkwalk manufacturer code; a plugin needs 
 plugin code, not its own manufacturer code. Allocated codes are tracked in the
 ecosystem plan.
 
-Sanitiser builds -- keep them around, they are worth more than gdb here:
+Sanitiser builds -- keep them around, they are worth more than gdb here.
+
+**Add `-DCHALKWALK_JUCE_DIR=...` to each of these if the JUCE submodule is
+deinitialised**, which it is on a checkout using the shared JUCE (see
+`cmake/JuceSource.cmake`). Without it configure fails on "No JUCE", which reads
+as a broken command rather than a missing option.
 
 ```bash
 # ASan + UBSan
@@ -251,7 +256,14 @@ cmake --build build-asan -j $(nproc)
 ./build-asan/test/NinjamTests_artefacts/Debug/NinjamTests   # note: under Debug/
 
 # TSan (cannot be combined with ASan)
-cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=thread -g"
+cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=thread -g" \
+  -DCMAKE_C_FLAGS="-fsanitize=thread -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+cmake --build build-tsan -j $(nproc)
+./build-tsan/test/NinjamTests_artefacts/Debug/NinjamTests
+
+# A sanitiser distorts wall-clock time by roughly ten times, so the few tests
+# that assert a DURATION skip their bound there and log the measurement instead
+# (test/TimingBounds.h). They still run; only the stopwatch is off.
 
 # Symbols for gdb
 cmake -S . -B build-dbg -DCMAKE_BUILD_TYPE=RelWithDebInfo

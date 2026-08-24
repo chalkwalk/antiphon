@@ -398,23 +398,25 @@ here; recorded so it is not "fixed" into a burst by someone tidying.
       across chunk boundaries -- notes ring past the beat they start on -- which
       is a stateful renderer where there is now a pure one. Do not start it
       until the cheap staggering has been measured and found wanting.
-- [ ] **A pre-existing TSan race in the practice room, found on the way.** Two
-      warnings from `PracticeRoomTests`: `NinjamClient::removeListener` on the
-      conductor thread -- `reapPartedBots` destroys a bot, which destroys its
-      `NinjamBotClient` -- against `ListenerList::call` on the main thread.
-      `juce::ListenerList` is instantiated with `DummyCriticalSection` here, so
-      it does no locking of its own.
+- [x] **A pre-existing TSan race in the practice room, found on the way, and
+      fixed.** `NinjamClient::removeListener` on the conductor thread --
+      `reapPartedBots` destroys a bot, which destroys its `NinjamBotClient` --
+      against `ListenerList::call` on the main thread.
 
-      **Not introduced by either change above**: verified by running the same
-      suite under TSan at the two commits before them, where the same two
-      warnings appear. Recorded rather than fixed because it is a different
-      bug with a different owner, and folding it into a scheduling change would
-      hide it.
+      The cause was one template argument. `ListenerList::remove` and its
+      callback loop BOTH take `listeners->getLock()`, so the locking was
+      already written; the default array uses `DummyCriticalSection`, so both
+      locks were no-ops and the two raced on the list's iterator bookkeeping.
+      `juce::ThreadSafeListenerList` is the same class with a real
+      `CriticalSection`. Safe to hold across callbacks here because every
+      `listeners.call` is posted through `callAsyncIfAlive` and so runs on the
+      message thread, and no listener touches the lock the reap path holds.
 
-      It also means **`AGENTS.md`'s "the baseline is zero warnings" is no longer
-      true**, which is worse than the race: a baseline nobody can trust is how
-      the next real finding gets waved through. Either fix this or write the
-      exception down, but do not leave the claim standing as it is.
+      Not introduced by the two changes above -- verified under TSan at the two
+      commits preceding them -- so the baseline had been broken for longer than
+      anyone had looked. **It is back to zero**: TSan clean across every
+      threaded suite, ASan clean, and the only UBSan output is the libvorbis
+      line `AGENTS.md` already documents as not ours.
 - [ ] **Then measure again, on the machine that complained.** The number that
       matters is not the duty cycle but whether an audio callback ever misses,
       and neither of the figures above is that measurement (`PRINCIPLES §5`).
