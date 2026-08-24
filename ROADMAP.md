@@ -312,6 +312,68 @@ block, which is why it outlived the rest.
 - [ ] Verify transmitted interval length is unchanged against the reference
       client -- this touches the exact path `docs/PARITY.md` measures.
 
+### The interval boundary is a compute spike
+
+Everything this project does periodically, it does **all at once, at the
+interval boundary**. That is the cheapest thing to write and the worst shape for
+a live audio process: a long contiguous burst of compute is what starves an
+audio callback on a busy or low-core machine, where the same total work spread
+thinly would not.
+
+Measured on the practice room at 120 bpm, 8 bpi -- a 4 s interval -- with four
+bots:
+
+| | per interval | share |
+|---|---|---|
+| synthesis, four voices | 0.73 s | 68% |
+| Vorbis encode and transmit | 0.34 s | 32% |
+| **total burst** | **1.07 s** | **27% of one core** |
+
+Synthesis is from the marginal cost of an extra interval in `AntiphonVoiceLab`
+(`--bars` 1, 3 and 5, differenced to remove process startup); the total is what
+the responsiveness test in `PracticeRoomTests.cpp` measures directly. Both
+scale with the sample count, so the 27% duty holds at other tempos -- 100/16 is
+the same fraction of a longer interval.
+
+**Smearing does not make it cheaper, and the fan will not get quieter.** Worth
+stating plainly because the two get conflated: the conductor is single-threaded,
+so spreading the burst changes neither the total work nor the peak core in use.
+What it buys is the length of the longest contiguous compute region, which is
+what decides whether an audio callback misses its deadline. If the goal is less
+CPU rather than smoother CPU, that is an optimisation problem and synthesis is
+where two thirds of it is.
+
+**The receive side is already smeared, and should be left alone.** Remote
+intervals decode incrementally as each `SERVER_DOWNLOAD_INTERVAL_WRITE` arrives,
+on the network thread, rather than in one pass at the boundary. Nothing to do
+here; recorded so it is not "fixed" into a burst by someone tidying.
+
+- [ ] **Stagger the bots.** Four renders back to back become four renders at
+      their own offsets within the interval, which cuts the longest contiguous
+      burst from ~1.07 s to ~270 ms for no change to the renderer at all. The
+      slack is there: Ninjam transmits interval N while N-1 plays, so a bot has
+      most of an interval to produce one. Needs per-bot phase in
+      `jambot::Conductor`, which today calls one callback per interval.
+- [ ] **Chunk the local encode.** `NinjamClient::processCapturedAudio` encodes a
+      whole interval in one pass, and for a human player that pass runs on the
+      MESSAGE thread, posted by the `callAsync` in *Lock-free TX handoff*. So
+      every player, in every room, takes a UI hitch at each boundary -- this is
+      not a practice-room problem. The loop is already in 1024-sample blocks
+      (the `// We should send smaller chunks` comment is about the packets, not
+      the pass); what is missing is spreading those blocks over the interval
+      instead of running them back to back. Do this WITH the FIFO redesign, not
+      before it: they touch the same handoff.
+- [ ] **Beat-sized synthesis, if staggering is not enough.** The deep version of
+      this, and much the most expensive: `BotBand::renderInterval` renders a
+      whole interval as one deterministic function of `(voice, settings,
+      intervalIndex)`. Rendering a beat at a time means carrying voice state
+      across chunk boundaries -- notes ring past the beat they start on -- which
+      is a stateful renderer where there is now a pure one. Do not start it
+      until the cheap staggering has been measured and found wanting.
+- [ ] **Then measure again, on the machine that complained.** The number that
+      matters is not the duty cycle but whether an audio callback ever misses,
+      and neither of the figures above is that measurement (`PRINCIPLES §5`).
+
 ---
 
 ## Interoperability
