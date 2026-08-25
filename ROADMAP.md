@@ -1174,6 +1174,62 @@ band. The two pieces of work want doing in that order.
       one. Longest match against the names actually in the room fixes it, and
       is what makes tab completion and hand-typing agree.
 
+### A band of more than four
+
+Four is a good practice room and a bad ceiling, and the reason it is four is
+that `BotBand::Voice` has four values and each of them IS its synthesis.
+
+**Designed in `libs/jambot/docs/BOT-CHAT.md` section 16; that section is the
+specification and this is the checklist for the half that lives here.** The
+band's own half -- strata, roles, the full part each role selects from, the
+per-stratum mix budget, instrument family tags -- belongs to the bots and is
+not restated.
+
+The shape, in one paragraph: four rhythmic STRATA (foundation, pad, lead,
+accent) with any number of players attached to one; a ROLE is a stratum plus a
+register plus how it relates to that stratum's figure; the stratum computes a
+full part and each role selects from it, so nobody invents rhythm at the leaf
+and the aggregate coheres without coordination. Roles accumulate in a fixed
+order -- rhythm, bass, chords, lead, accent, chord double, perc, backup melody
+-- so the Nth player plays the Nth role.
+
+**At N=4 that is exactly the band that exists**, which is how it gets verified:
+it can land without changing what the practice room sounds like, so it is
+checkable against a mix already tuned by ear rather than being a rewrite whose
+output nobody can judge.
+
+- [ ] **`PracticeRoom::Config` gains a band size**, and the room enforces the
+      cap: eight on loopback, four elsewhere. The cap lives here rather than in
+      whatever asks for a bot, so no chat path can exceed it. Four elsewhere is
+      etiquette encoded as a default -- eight uploads into a stranger's room is
+      not something to do by accident.
+- [ ] **Channel names carry `role: instrument`** and are re-sent when either
+      changes. `updateChannelInfo` already does the sending and
+      `LocalChannelStrip` already proves the path; what is missing is the bots
+      using it for anything but a fixed word. Supersedes *The band's two names*
+      below, which put the role in the username -- see section 16.7 for why
+      that was wrong.
+- [ ] **Addressing resolves against live channel names.** A bot is addressed by
+      role or instrument, and both now live in a channel name that changes.
+      `RemoteUserChannel::channelName` already carries what is needed. Accepts
+      that a bot which has just switched stays briefly addressable by its old
+      role.
+- [ ] **The tutor brings a bot in, the room creates it.** Growth in session is
+      an arranging act and belongs to the bot whose job is the session; a
+      playing bot recruiting another makes the band self-replicating. The room
+      owns creation and the cap regardless.
+- [ ] **A role change has to land on a boundary.** Switching a bot from chords
+      to bass mid-phrase changes the arrangement under a line somebody is
+      playing over. Probably the same treatment as the ending -- take effect at
+      an interval head, possibly only at a phrase boundary -- and it is
+      unexamined in section 16.10.
+- [ ] **Make a voice cheaper FIRST.** The quartet is 27% of a core; eight is
+      ~54% plus eight Ogg encodes and eight uploads. *The interval boundary is
+      a compute spike* already concludes that the longest render now comes down
+      by making a voice cheaper rather than by scheduling it better. That is a
+      prerequisite for six-plus, not a companion to it, and this work area
+      should not start above about six players until it is done.
+
 ### The band's two names
 
 A player in a Ninjam room has two names, and Antiphon's band currently puts the
@@ -1197,6 +1253,20 @@ changeable fact:
   by;
 - the **channel name carries the INSTRUMENT** -- what it is holding right now,
   which can change mid-session and should be free to.
+
+**The first of those is SUPERSEDED, and by its own argument.** It rests on the
+role being fixed for the session, and once a band can be more than four that is
+false: a role changes when a player leaves and the band closes ranks, and when
+somebody asks a bot to switch. A role in the username means a rejoin to change
+one -- the band visibly leaving and coming back to rearrange itself.
+
+So the username carries identity alone (`Name[bot]`) and the channel name
+carries `role: instrument`, both halves mutable. See *A band of more than four*
+above and `libs/jambot/docs/BOT-CHAT.md` section 16.7. What survives from this
+entry is everything below: that the two fields are different KINDS of fact, that
+the mutable one is the channel name, that `CLIENT_SET_CHANNEL_INFO` is the
+mechanism and re-sending on change is the part worth having, and the screen
+reader question a mid-tune rename raises.
 
 **The instrument names already exist and are already human.** `BotVoice`
 carries `LeadInstrument` with `leadInstrumentName` returning "electric piano",
