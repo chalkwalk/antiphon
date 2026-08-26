@@ -211,6 +211,9 @@ ctest --test-dir build --output-on-failure
 # Host a practice room and join it with the standalone on the port it prints.
 # The band is not reachable from the plugin yet; this is how you hear it.
 ./build/tools/AntiphonPractice_artefacts/AntiphonPractice --key "D minor"
+# The room brings a tutor by default -- five bots, one of which teaches six
+# lines and then parts. --no-tutor for the four-piece.
+./build/tools/AntiphonPractice_artefacts/AntiphonPractice --no-tutor
 # Offline: turn a session archive into WAV stems.
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/
 # Tuning the band's synthesis: render one voice and measure it. The numbers it

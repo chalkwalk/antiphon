@@ -86,13 +86,20 @@ public:
     // The fifth bot: no instrument, no channel, six lines and gone
     // (`libs/jambot/docs/BOT-CHAT.md` section 7).
     //
-    // OFF by default for now, which is not where it should end up. A practice
-    // room is exactly where somebody meeting the interval model for the first
-    // time arrives, so the tutor wants to be on -- but flipping it changes the
-    // membership of every room this repository's tests start, and that is a
-    // deliberate change to make on its own rather than smuggled in with the
-    // bot it enables.
-    bool withTutor = false;
+    // ON, because a practice room is exactly where somebody meeting the
+    // interval model for the first time arrives, and a tutorial nobody
+    // switches on teaches nobody.
+    //
+    // It was off while the bot was being built, on the grounds that flipping
+    // it changes the membership of every room this repository's tests start.
+    // What made it safe to flip is not that the tests were updated: it is that
+    // the tutor is finite by construction and now has a test saying so -- ten
+    // lines is its whole vocabulary, however long a session runs, and then it
+    // parts of its own accord. A room that has heard it is a room with four
+    // bots in it again.
+    //
+    // Set it false for a room whose owner has done this before.
+    bool withTutor = true;
   };
 
   // Brings up the server and the band. Returns false having cleaned up if the

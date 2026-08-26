@@ -111,6 +111,11 @@ PracticeRoom::Config testConfig(const juce::String &owner = "you") {
   // it, never how long three minutes is.
   c.ownerGraceMs = 1200;
   c.initialGraceMs = 60000;
+  // Off unless a test asks for it, so that membership and chat are the test's
+  // own. The DEFAULT is on -- asserted below rather than relied on here, since
+  // a shared fixture quietly carrying it would be the last place anybody would
+  // look to find out.
+  c.withTutor = false;
   return c;
 }
 
@@ -191,6 +196,15 @@ public:
         expect(worstMs.load() < 100.0,
                "botCount() blocked for " + juce::String(worstMs.load(), 1) +
                    " ms -- the render is holding the lock the UI reads");
+    }
+
+    beginTest("a room brings a tutor unless told not to");
+    {
+      // The default, pinned. A practice room is where somebody meets the
+      // interval model for the first time, and a tutorial nobody switches on
+      // teaches nobody.
+      const PracticeRoom::Config fresh;
+      expect(fresh.withTutor, "the practice room stopped teaching by default");
     }
 
     beginTest("a room can bring a tutor, and it is not one of the band");

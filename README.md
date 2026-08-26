@@ -136,6 +136,11 @@ your own machine.
 Open **Browse**, press **Practice room**. The header turns violet and reads
 *Practice room -- your own band*, and four players appear in the mixer.
 
+A fifth member is there to teach, with no instrument and no channel. It says
+six things, each one when you have actually done the thing it is about, and
+then it leaves for good -- so the room settles back to a band once you have got
+it. Nothing needs silencing and there is nothing to dismiss.
+
 It is a **real NINJAM room**, not a simulation: a server on the loopback
 interface with four bots connected to it as ordinary clients. Everything works
 exactly as it does in a public room -- the phase bar, per-player faders, routing

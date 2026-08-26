@@ -91,6 +91,11 @@ with, and talk to.
 Open **Browse** and press **Practice room**. The header turns violet and reads
 *Practice room -- your own band*, and four players appear in the mixer.
 
+There is a fifth name in the room with no instrument. It is there to teach: it
+says six things, each one at the moment you have done the thing it is about --
+your first interval, your first key change -- and then it says so and leaves.
+You will not need to dismiss it, and it does not come back.
+
 It is a real NINJAM room, not a simulation. The server runs on your own machine
 and the bots are ordinary clients on it, so everything works exactly as it does
 in a public room -- the phase bar, per-player faders, routing each bot to its

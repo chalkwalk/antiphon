@@ -53,7 +53,8 @@ int main(int argc, char **argv) {
            "  --rate N       sample rate (default 48000)\n"
            "  --key NAME     starting key, e.g. \"D minor\" (default C major)\n"
            "  --seed N       band seed; the same seed is the same band\n"
-           "  --owner NAME   the username the band treats as its owner\n\n"
+           "  --owner NAME   the username the band treats as its owner\n"
+           "  --no-tutor     leave out the bot that teaches the six lines\n\n"
            "Then connect the standalone to 127.0.0.1 on the port printed.\n";
     return 0;
   }
@@ -66,6 +67,12 @@ int main(int argc, char **argv) {
   cfg.sampleRate = flag(args, "--rate", "48000").getDoubleValue();
   cfg.ownerName = flag(args, "--owner", "you");
   cfg.seed = (std::uint32_t)flag(args, "--seed", "20260811").getLargeIntValue();
+
+  // Anybody reaching for this tool has almost certainly seen the tutorial, but
+  // it stays ON by default here too: the room a flag produces should be the
+  // room the button produces, or one of them is lying about what a practice
+  // room is.
+  cfg.withTutor = !args.contains("--no-tutor");
 
   const auto keyName = flag(args, "--key", "C major");
   if (const auto key = MusicalKey::parseName(keyName.toStdString());
@@ -89,7 +96,9 @@ int main(int argc, char **argv) {
             << "\n"
             << "  " << cfg.bpm << " bpm, " << cfg.bpi << " bpi, "
             << MusicalKey::displayName(cfg.key) << ", seed " << cfg.seed << "\n"
-            << "  band: " << room.botNames().joinIntoString(", ") << "\n\n"
+            << "  band: " << room.botNames().joinIntoString(", ")
+            << (cfg.withTutor ? " (plus a tutor, which leaves when done)" : "")
+            << "\n\n"
             << "connect the standalone to that address as \"" << cfg.ownerName
             << "\".\n"
             << "in chat: \"shake\" rerolls, \"[key: D minor]\" or \"/key D "

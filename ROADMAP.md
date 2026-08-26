@@ -887,16 +887,55 @@ restraint rather than conversation.
       a faint signal, clicks and clipping from somebody playing -- so it can say
       "that went out" rather than hope. It gates which encouraging line is said
       and never becomes a judgement.
-- [ ] The budget, and a test that asserts a hundred events produce at most N
-      lines. The test that keeps it from becoming annoying.
+- [x] The budget, and a test that asserts a hundred events produce at most N
+      lines. N is TEN -- five lessons, a sign-off, and four diagnostics that
+      fire once each -- and there is no budget mechanism because section 7 is
+      right that the tutor is finite by construction. The test is what holds
+      the construction to it: a hundred events of every kind, including audio
+      of every reading, and the tutor must not find an eleventh thing to say.
+      It goes red if a diagnostic is allowed to repeat.
+
+      What the test does NOT cover, said plainly rather than left to look
+      covered: `advance` now takes the step it expects and derives its own
+      line, so a caller cannot pair one step's line with another's. Every
+      caller tests `step()` and then acts, which is a check and an act with the
+      lock released between them. The hardening is reasoned, not proved -- a
+      threaded test was written, passed against the old shape as well as the
+      new one, and was deleted rather than kept as decoration.
 - [x] `quiet`, per bot: `SET_QUIET`/`SET_LOUD` reach
       `BotChat::Act::SetChatMuted`. The gate is applied once, after the
       decision, so a new intent cannot forget it; only two things still speak,
       and both confirm an action rather than commenting on one -- coming back,
       without which there is no way out of the mute, and leaving.
-- [ ] Unprompted speech off outside the practice room. Nothing speaks
-      unprompted yet, so there is nothing to switch off; it lands with the
-      tutor.
+- [x] Unprompted speech off outside the practice room, **for the tutor**. It
+      is opt-in by construction: nothing but `PracticeRoom` ever builds one,
+      and it is behind `Config::withTutor`. There is no flag to add because
+      creating the bot IS the switch.
+
+      The premise of this item was wrong, though, and the correction belongs
+      somewhere: "nothing speaks unprompted yet" was already untrue when it was
+      written. The **arrival roster** is unprompted speech -- a bot joins and
+      names the band without being asked -- and it predates the tutor by some
+      way. Whether that should be conditional on the room is a real question
+      and a separate one; it is about the players, and the tutor cannot answer
+      it. It is the item below.
+- [ ] **Decide whether the arrival roster belongs on a public server.** A bot
+      joins, waits its rank in the stagger, and posts "The Understudies: Mirn
+      (kit), ..." without being asked. In a practice room that is the band
+      introducing itself and is most of what makes it read as a band rather
+      than four processes starting. On somebody else's server it is four
+      clients typing into a room that did not ask, and the case for it is much
+      weaker.
+      - [ ] Decide: always, never, or only where the room is ours. "Only where
+            the room is ours" needs the bot to KNOW, which it currently has no
+            way to -- a practice room is a Ninjam server like any other, which
+            is the property the whole design rests on and is not worth giving
+            up for this.
+      - [ ] Whatever is chosen, a bot that says nothing on arrival still has to
+            be identifiable. The channel name carries the instrument, so the
+            roster is not the only thing that says who is playing what -- check
+            that before assuming the roster is load-bearing.
+
 - [x] **The room is reachable from the app.** It was a separate command-line
       tool and nothing in `src/` started one. It is a button in the connect
       dialog now -- a destination beside the server list, not a mode -- and the
