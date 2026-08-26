@@ -1335,12 +1335,34 @@ output nobody can judge.
       added in arranging order rather than enumeration order. Zero gives one
       player; a room with no band in it is a server, and there is a class for
       that.
-- [ ] **Channel names carry `role: instrument`** and are re-sent when either
-      changes. `updateChannelInfo` already does the sending and
-      `LocalChannelStrip` already proves the path; what is missing is the bots
-      using it for anything but a fixed word. Supersedes *The band's two names*
-      below, which put the role in the username -- see section 16.7 for why
-      that was wrong.
+- [x] **Channel names carry `role: instrument`** and are re-sent when either
+      changes. Supersedes *The band's two names* below, which put the role in
+      the username -- see section 16.7 for why that was wrong.
+
+      `BotBand::roleName` and `instrumentName` compose it; `PracticeBot`
+      publishes it at join, at `playAs`, after a shake, and when the lead is
+      asked for by name, guarded on having actually changed. The room no longer
+      decides what a part is called -- it does not know, and its answer would
+      be stale the first time somebody said "shake".
+
+      The role word is not the voice's name: `voiceName` says how a part is
+      MADE and `roleName` says what it DOES, so the keyboard is `chords:
+      strings` rather than `keys: strings`. One-to-one only while there are
+      four of each.
+
+- [ ] **A bare "shake" may not reach the bots at all.** Found while writing the
+      channel-name tests and deliberately not chased there. `Ravo: shake`
+      reshuffles a bot; a bare `shake` from the owner did not, in a unit rig,
+      with or without bandmates set. `BotChat` produces `Act::Reshuffle` for
+      it and comments that one shake rerolls the whole band, so the loss is
+      somewhere in addressing rather than in the intent.
+      - [ ] Find out whether the ROOM is affected. `README.md` documents
+            `shake` as a thing you type, and the room's own test calls
+            `shake()` directly rather than saying it, so the chat path has no
+            coverage end to end -- which is why this could be true and unnoticed.
+      - [ ] Whichever way it goes, the room test should say the word rather
+            than call the method. A feature documented as something you type
+            wants a test that types it.
 - [ ] **Addressing resolves against live channel names.** A bot is addressed by
       role or instrument, and both now live in a channel name that changes.
       `RemoteUserChannel::channelName` already carries what is needed. Accepts

@@ -96,6 +96,13 @@ bool PracticeRoom::start(const Config &config) {
 
       // Antiphon's client, behind the interface the bots see. This is the one
       // place the plugin's transport meets the band.
+      //
+      // The channel name passed here is only a placeholder for the moment
+      // between construction and `playAs`: the bot renames its own channel
+      // `role: instrument` as soon as it has a voice, and re-sends it whenever
+      // either half moves. The room does not get to decide what a part is
+      // called -- it does not know, and it would be stale the first time
+      // somebody said "shake".
       auto bot = std::make_unique<PracticeBot>(
           botUsername.toStdString(),
           std::vector<std::string>{instrument.toStdString()},

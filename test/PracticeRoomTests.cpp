@@ -250,6 +250,38 @@ public:
              "three bots were made but not all three arrived");
     }
 
+    beginTest("a bot's channel says its role and its instrument");
+    {
+      // End to end through a real socket, which is the half the bot's own
+      // tests cannot reach: that `role: instrument` survives
+      // CLIENT_SET_CHANNEL_INFO and arrives at another client as the name of
+      // that bot's channel. Everything downstream -- the mixer strip, and
+      // addressing a bot by what it plays -- reads it from there.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] { return you.client.getRemoteUsers().size() == 4; }),
+             "the band did not all arrive");
+
+      expect(waitUntil([&] {
+               for (const auto &[name, user] : you.client.getRemoteUsers())
+                 for (const auto &[index, channel] : user.channels)
+                   if (channel.channelName.startsWith("chords: "))
+                     return true;
+               return false;
+             }),
+             "no channel arrived named for its role and instrument");
+
+      // Every player, not just the one that happened to be checked first.
+      for (const auto &[name, user] : you.client.getRemoteUsers())
+        for (const auto &[index, channel] : user.channels)
+          expect(channel.channelName.contains(": "),
+                 "a bot's channel is not `role: instrument`: " +
+                     channel.channelName);
+    }
+
     beginTest("a room brings a tutor unless told not to");
     {
       // The default, pinned. A practice room is where somebody meets the
