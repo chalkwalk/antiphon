@@ -16,6 +16,8 @@
 #include <JuceHeader.h>
 
 #include "AudioMeasure.h"
+
+#include <chrono>
 #include <BotBand.h>
 #include <BotVoice.h>
 #include "MusicalKey.h"
@@ -114,6 +116,8 @@ void usage() {
       "  --lufs <target>    normalise the output to this integrated loudness,\n"
       "                     so an A/B is about timbre and not about level\n"
       "\n"
+      "bench: what one interval of each voice costs to synthesise. --bars is\n"
+      "  the number of intervals timed per voice (default 2).\n\n"
       "band mode only:\n"
       "  --key <name>       C major, D minor, F# Dorian (default C major)\n"
       "  --only <voice>     render one part only: kit, bass, keys or lead\n"
@@ -292,6 +296,59 @@ void renderVoice(const Options &o, BotBand::Voice voice,
     left.insert(left.end(), l.begin(), l.end());
     right.insert(right.end(), r.begin(), r.end());
   }
+}
+
+// What one interval of each voice costs to synthesise, and the band together.
+//
+// The question "make a voice cheaper" cannot be started without this: the band
+// is four voices and they are not equally expensive, so the first thing worth
+// knowing is which one to look at. Whole intervals rather than a synthetic
+// loop, because that is the unit the conductor actually renders and the one
+// the interval budget is expressed in.
+int benchmarkBand(const Options &o) {
+  auto key = MusicalKey::parseName(o.keyName.toStdString());
+  if (!key.valid)
+    key = MusicalKey::parseName("C major");
+
+  const int n = (int)(o.sampleRate * 60.0 / o.bpm) * o.bpi;
+  const double intervalSeconds = (double)n / o.sampleRate;
+  const int reps = juce::jmax(1, o.bars);
+
+  std::printf("bench  %d bpm  %d bpi  %.2f s per interval  %d intervals each\n",
+              o.bpm, o.bpi, intervalSeconds, reps);
+
+  std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
+  double total = 0.0;
+
+  for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
+                     BotBand::Voice::Keys, BotBand::Voice::Lead}) {
+    std::uint32_t seed = o.seed;
+    for (int step = 0; step < (int)voice; ++step)
+      seed = seed * 1664525u + 1013904223u;
+    auto settings = BotBand::defaults(key, o.bpm, o.bpi, o.sampleRate, seed);
+    settings.articulation = o.articulation;
+
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < reps; ++i)
+      BotBand::renderInterval(voice, settings, i, BotBand::Phase::Groove,
+                              l.data(), r.data(), n);
+    const auto end = std::chrono::steady_clock::now();
+
+    const double ms =
+        std::chrono::duration<double, std::milli>(end - start).count() / reps;
+    total += ms;
+
+    // Share of ONE interval of wall clock: what fraction of the time available
+    // this voice spends. Four voices summing under 100% is the band keeping up
+    // on one core, which is the property that matters.
+    std::printf("  %-6s %8.1f ms  %5.1f%% of an interval\n",
+                BotBand::voiceName(voice), ms,
+                100.0 * ms / (intervalSeconds * 1000.0));
+  }
+
+  std::printf("  %-6s %8.1f ms  %5.1f%% of an interval\n", "BAND", total,
+              100.0 * total / (intervalSeconds * 1000.0));
+  return 0;
 }
 
 bool voiceMatches(BotBand::Voice v, const juce::String &name) {
@@ -734,7 +791,7 @@ int main(int argc, char *argv[]) {
 
   const juce::StringArray known{"kick", "snare", "hat",      "bass",
                                 "lead", "pad",   "kit",      "keys",
-                                "solo", "band",  "leadstats"};
+                                "solo", "band",  "leadstats", "bench"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -911,6 +968,9 @@ int main(int argc, char *argv[]) {
     }
     return 0;
   }
+
+  if (o.voice == "bench")
+    return benchmarkBand(o);
 
   if (o.voice == "band") {
     if (o.out == juce::File())

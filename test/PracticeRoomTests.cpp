@@ -379,12 +379,18 @@ public:
       // what it reports is the longest time the room spends inside one render.
       //
       // The band used to render all four bots back to back, which put a
-      // second of contiguous compute on every interval boundary -- measured at
-      // 1073 ms at 120/8, and the reason a fan spins up. One bot per conductor
-      // slice makes the longest piece one bot's synth-and-encode instead.
+      // second of contiguous compute on every interval boundary -- 1073 ms at
+      // 120/8, and the reason a fan spins up. One bot per conductor slice
+      // makes the longest piece one bot's synth-and-encode instead.
       //
-      // The bound is a quarter of the old burst plus room to spare, because
-      // what is asserted is that four renders are no longer one.
+      // EVERY NUMBER IN THIS COMMENT IS FROM AN UNOPTIMISED BUILD, which is
+      // what `cmake -B build` produced until the tree started defaulting to
+      // RelWithDebInfo. Optimised, one render is about 162 ms rather than
+      // 435. The bound below is deliberately NOT retightened to suit: it has
+      // to hold on a Debug build too, and the claim being made is that four
+      // renders are no longer one, not that a render is any particular speed.
+      // Quote the build with the number, or the number means nothing
+      // (`PRINCIPLES` section 5).
       PracticeRoom room;
       expect(room.start(testConfig("you")));
 
@@ -415,7 +421,8 @@ public:
       prober.join();
 
       logMessage("longest single render: " + juce::String(worstMs.load(), 1) +
-                 " ms (all four back to back measured 1073 ms)");
+                 " ms (all four back to back measured 1073 ms, both on a "
+                 "build with no optimiser in it)");
       if (timingbounds::kDistorted)
         logMessage("sanitiser build -- timing bound not asserted");
       else

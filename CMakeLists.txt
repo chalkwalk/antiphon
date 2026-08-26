@@ -7,6 +7,34 @@ project(Antiphon VERSION 0.1.0)
 # enable_testing() must be called at the top level for ctest to work
 enable_testing()
 
+# A build type, when the caller did not name one.
+#
+# CMake's default is the EMPTY string, which is not "Debug" -- it is no flags
+# at all: no -O, no -g, and NDEBUG left undefined. That is the worst of both,
+# and it is what `cmake -B build` had been producing since the beginning.
+#
+# It was not a theoretical cost. The band's synthesis was measured at 27% of a
+# core and that number went into ROADMAP.md as the reason to make a voice
+# cheaper before growing the band past four. Rebuilt with -O2 it is closer to
+# 10%, and the prerequisite it justified was an artefact of the flags. A
+# measurement is only as good as the build it was taken on
+# (`PRINCIPLES.md` section 5),
+# and the build nobody chose is the easiest one to forget you are on.
+#
+# RelWithDebInfo rather than Release because this default is for people working
+# on the tree: -O2 and -g, so a profile means something and gdb has symbols.
+# CI names Release explicitly and is unaffected, as are the sanitiser builds,
+# which name Debug.
+#
+# The cost, stated because it is real: RelWithDebInfo defines NDEBUG, so
+# `jassert` compiles out. Configure with -DCMAKE_BUILD_TYPE=Debug when that is
+# what you want.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
+        "Build type; RelWithDebInfo when the caller names none" FORCE)
+    message(STATUS "No CMAKE_BUILD_TYPE given; using ${CMAKE_BUILD_TYPE}")
+endif()
+
 # C++20 -- applies to every target in the tree, including the format-specific
 # plugin wrappers (Antiphon_Standalone / _VST3 / _CLAP) that juce_add_plugin
 # creates. A per-target PUBLIC cxx_std_20 does NOT reach those wrappers,

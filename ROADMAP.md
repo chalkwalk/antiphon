@@ -320,20 +320,36 @@ a live audio process: a long contiguous burst of compute is what starves an
 audio callback on a busy or low-core machine, where the same total work spread
 thinly would not.
 
-Measured on the practice room at 120 bpm, 8 bpi -- a 4 s interval -- with four
-bots:
+**The 27% below was measured on a build with no optimiser in it.** `cmake -B
+build`, the command this repository documents, left `CMAKE_BUILD_TYPE` empty,
+and CMake's empty is not Debug -- it is no flags at all: no `-O`, no `-g`,
+NDEBUG undefined. The tree defaults to RelWithDebInfo now, and the numbers
+below are both builds so the correction is visible rather than quietly
+substituted. `PRINCIPLES` §5 says suspect the measurement; the build the
+measurement was taken on turns out to be part of the measurement.
 
-| | per interval | share |
-|---|---|---|
-| synthesis, four voices | 0.73 s | 68% |
-| Vorbis encode and transmit | 0.34 s | 32% |
-| **total burst** | **1.07 s** | **27% of one core** |
+Synthesis, per interval, at 100 bpm and bpi 16 -- the practice room's OWN
+shape, which is the second thing that was wrong here: the old figure came from
+the test fixture's 120/8, a 4 s interval the room never uses.
 
-Synthesis is from the marginal cost of an extra interval in `AntiphonVoiceLab`
-(`--bars` 1, 3 and 5, differenced to remove process startup); the total is what
-the responsiveness test in `PracticeRoomTests.cpp` measures directly. Both
-scale with the sample count, so the 27% duty holds at other tempos -- 100/16 is
-the same fraction of a longer interval.
+| voice | no optimiser | `-O2` | share of the band |
+|---|---|---|---|
+| Kit | 1300 ms | **394 ms** | 58% |
+| Bass | 78 ms | 25 ms | 4% |
+| Keys | 459 ms | 229 ms | 34% |
+| Lead | 52 ms | 32 ms | 5% |
+| **band** | **1890 ms (19.7%)** | **679 ms (7.1%)** | |
+
+From `AntiphonVoiceLab bench`, which renders whole intervals and times them --
+the unit the conductor actually renders. Across four seeds the optimised band
+lands at 7.5-10.3% of an interval; the kit is 55-62% of it every time.
+
+End to end, including the Vorbis encode, from the responsiveness test in
+`PracticeRoomTests.cpp`: the longest single bot render is **162 ms optimised**
+against 435 ms before, at 120/8. The most expensive single voice there is Keys
+at 123 ms, so encode is about 39 ms -- a quarter of a bot's cost rather than
+the third the old table claimed. The quartet costs roughly **10-11% of one
+core** in a build anybody would ship or profile.
 
 **Smearing does not make it cheaper, and the fan will not get quieter.** Worth
 stating plainly because the two get conflated: the conductor is single-threaded,
@@ -342,6 +358,15 @@ What it buys is the length of the longest contiguous compute region, which is
 what decides whether an audio callback misses its deadline. If the goal is less
 CPU rather than smoother CPU, that is an optimisation problem and synthesis is
 where two thirds of it is.
+
+**Threading the bots is not the answer to either, and is worth refusing by
+name.** It cannot reduce total work, which is the paragraph above. It would
+shorten the burst -- but the burst is already staggered, and the freeze that
+started this was a LOCK rather than the cost. What it would spend is the reason
+`PracticeRoom` has one conductor thread: bots that share a clock stay tight
+with each other for free, and one thread is one thing to reason about at
+teardown. At 7% of a core for four and perhaps 14% for eight, there is no
+capacity problem for parallelism to solve.
 
 **The receive side is already smeared, and should be left alone.** Remote
 intervals decode incrementally as each `SERVER_DOWNLOAD_INTERVAL_WRITE` arrives,
@@ -1241,11 +1266,19 @@ band. The two pieces of work want doing in that order.
       touches it.
 - [ ] **The unit suite takes two minutes, and that is now an iteration cost.**
       It grew honestly -- most of it is rendering audio and measuring it, which
-      is what the band tests are for -- but BotBand alone is 57 seconds and the
-      loop between an edit and an answer is long enough to discourage running it.
-      Worth an hour with a profile: shorter renders where a defect shows in the
-      first note, fewer redundant seeds, and possibly a `--quick` subset for the
-      edit loop with the full sweep left to CI.
+      is what the band tests are for -- but the loop between an edit and an
+      answer is long enough to discourage running it. Worth an hour with a
+      profile: shorter renders where a defect shows in the first note, fewer
+      redundant seeds, and possibly a `--quick` subset for the edit loop with
+      the full sweep left to CI.
+
+      **Most of it was the missing optimiser**, and defaulting the tree to
+      RelWithDebInfo took the whole ctest run from 261 s to 178 s -- jambot's
+      own suite from 81 s to 27 s. What is left is a different problem from the
+      one described above: `ninjam-unit-tests` barely moved, 149 s to 141 s, so
+      it is not compute-bound at all. It is waiting -- sleeps, sockets and
+      timeouts -- and no amount of shorter rendering will touch it. Profile
+      before shortening anything.
 - [ ] **Tab completion in the chat field.** Complete `/` commands from the
       command list, and usernames after `/msg` and `/kick` from the room's user
       list -- and a name at the start of a line, which is how a bot is addressed
@@ -1307,12 +1340,21 @@ output nobody can judge.
       playing over. Probably the same treatment as the ending -- take effect at
       an interval head, possibly only at a phrase boundary -- and it is
       unexamined in section 16.10.
-- [ ] **Make a voice cheaper FIRST.** The quartet is 27% of a core; eight is
-      ~54% plus eight Ogg encodes and eight uploads. *The interval boundary is
-      a compute spike* already concludes that the longest render now comes down
-      by making a voice cheaper rather than by scheduling it better. That is a
-      prerequisite for six-plus, not a companion to it, and this work area
-      should not start above about six players until it is done.
+- [x] **Make a voice cheaper first -- WITHDRAWN, the number was wrong.** This
+      said the quartet was 27% of a core and eight would be ~54%, and made
+      cheapness a prerequisite for six-plus players. Both figures came from a
+      build with no optimiser in it, at a tempo the practice room does not use.
+      Optimised, at 100/16, the quartet is 10-11% of a core including encode,
+      so eight is somewhere near 20% and there is nothing to clear first. See
+      *The interval boundary is a compute spike* for the measurements and the
+      method.
+
+      What survives is the ranking, which is worth keeping because it is the
+      answer if this ever does bind: the **kit is 55-62% of the band's
+      synthesis**, more than the other three together, and keys is most of the
+      rest. Bass and lead are under 10% between them and are not worth looking
+      at. Nothing should be made cheaper until there is a number saying it
+      needs to be -- this entry is what happens otherwise.
 
 ### The band's two names
 

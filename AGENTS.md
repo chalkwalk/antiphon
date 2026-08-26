@@ -196,7 +196,10 @@ calling anything done. Same shape as Anvil's `CHALKWALK_PHYSICAL_DIR`.
 
 ```bash
 # Configure (once, or after CMakeLists changes). No generator flag -- use
-# whatever CMake picks.
+# whatever CMake picks. No build type either: the tree defaults to
+# RelWithDebInfo, because CMake's own default is no flags at all -- no -O, no
+# -g -- and every performance number this repository recorded before
+# 2026-08-26 was taken on it. Pass -DCMAKE_BUILD_TYPE=Debug for assertions.
 cmake -B build
 # Build (always from the repo root)
 cmake --build build -j $(nproc)
@@ -229,6 +232,10 @@ ctest --test-dir build --output-on-failure
 # Comparing two renders for timbre rather than for level: --lufs normalises to
 # an integrated loudness. It warns when a target would clip a sparse voice.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab hat --lufs -27
+# What a voice COSTS: whole intervals rendered and timed, which is the unit the
+# conductor renders. --bars is how many are timed per voice. Answers "which
+# voice do I make cheaper", and it is the kit.
+./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab bench --bpm 100 --bpi 16
 # Comparing renders from builds you can no longer reproduce: measure the WAVs,
 # and write copies matched to one loudness so the A/B is about the sound.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab file a.wav b.wav
@@ -419,9 +426,12 @@ reading past a buffer. Assume your change has the same failure mode.
 
 Learned the hard way; each of these cost real time.
 
-- **Reach for a sanitiser before gdb.** The default build has no `-g`, so gdb
-  backtraces are useless address soup. ASan found a use-after-free instantly,
+- **Reach for a sanitiser before gdb.** ASan found a use-after-free instantly,
   with file and line, in code gdb could not even name. Build commands above.
+  (This used to add that the default build had no `-g`. It has, now that the
+  tree defaults to RelWithDebInfo -- but inlining at `-O2` still makes a
+  sanitiser the better first move, and `-DCMAKE_BUILD_TYPE=Debug` is there when
+  a backtrace has to be exact.)
 
 - **TSan for the threading bugs ASan cannot see.** Four threads touch shared
   state here, and every threading bug found so far was of that kind.
