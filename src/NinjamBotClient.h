@@ -161,6 +161,19 @@ private:
     each([&](auto *l) { l->onChatMessage(t, u, m); });
   }
 
+  // Straight through, on the network thread it arrived on. The samples are
+  // borrowed for the duration of the call at both ends of this hop, which is
+  // why nothing here copies them: an interval is several seconds of audio and
+  // the only listener measures it and keeps a number.
+  void onIntervalReceived(const juce::String &username, int channelIndex,
+                          const float *left, const float *right,
+                          int numSamples) override {
+    const auto u = username.toStdString();
+    each([&](auto *l) {
+      l->onIntervalReceived(u, channelIndex, left, right, numSamples);
+    });
+  }
+
   template <typename Fn> void each(Fn fn) {
     // A copy, because a listener may remove itself while being called -- which
     // is exactly what a bot does when it is told to leave.

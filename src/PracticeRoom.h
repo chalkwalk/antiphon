@@ -3,6 +3,7 @@
 #include <BandPlayState.h>
 #include <Conductor.h>
 #include <PracticeBot.h>
+#include <TutorBot.h>
 #include "PracticeServer.h"
 #include <JuceHeader.h>
 #include <functional>
@@ -81,6 +82,17 @@ public:
     // Rerolled by "shake". Fixed by default so a practice room is the same
     // room twice, which matters more for learning a piece than novelty does.
     std::uint32_t seed = 20260811u;
+
+    // The fifth bot: no instrument, no channel, six lines and gone
+    // (`libs/jambot/docs/BOT-CHAT.md` section 7).
+    //
+    // OFF by default for now, which is not where it should end up. A practice
+    // room is exactly where somebody meeting the interval model for the first
+    // time arrives, so the tutor wants to be on -- but flipping it changes the
+    // membership of every room this repository's tests start, and that is a
+    // deliberate change to make on its own rather than smuggled in with the
+    // bot it enables.
+    bool withTutor = false;
   };
 
   // Brings up the server and the band. Returns false having cleaned up if the
@@ -161,6 +173,11 @@ private:
 
   PracticeServer server;
   std::vector<std::unique_ptr<PracticeBot>> bots;
+
+  // Outside `bots` on purpose. It has no voice, so it takes no conductor slice
+  // and no share of the mix, and every loop over the band would otherwise have
+  // to remember to skip it.
+  std::unique_ptr<TutorBot> tutor;
 
   // Held for a WHOLE interval render -- four synths and four Vorbis encodes.
   // Nothing on the message thread may take it: the editor's timer runs at 30

@@ -193,6 +193,38 @@ public:
                    " ms -- the render is holding the lock the UI reads");
     }
 
+    beginTest("a room can bring a tutor, and it is not one of the band");
+    {
+      // End to end through a real socket, which is the half TutorBotTests
+      // cannot reach: that the tutor joins as an ordinary client, is visible in
+      // the room, and takes no part in the band.
+      auto cfg = testConfig("you");
+      cfg.withTutor = true;
+
+      PracticeRoom room;
+      expect(room.start(cfg));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &m : you.client.getRoomMembers())
+                     if (m.username.contains("Tutor"))
+                       return true;
+                   return false;
+                 },
+                 6000),
+             "the tutor never appeared in the room");
+
+      // It is not in the band: no conductor slice, no share of the mix, and
+      // botCount is what the UI reports.
+      expectEquals(room.botCount(), 4,
+                   "the tutor was counted as one of the players");
+      for (const auto &n : room.botNames())
+        expect(!n.contains("Tutor"), "the tutor turned up in the band list");
+    }
+
     beginTest("the first start of a session does not wait for a measurement");
     {
       // A practice room is typically started once and played once, so the FIRST

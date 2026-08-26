@@ -36,6 +36,28 @@ public:
   virtual void onChatMessage(const juce::String &type,
                              const juce::String &username,
                              const juce::String &text) {}
+
+  // A remote interval, complete and decoded, at our sample rate.
+  //
+  // ON THE NETWORK THREAD, unlike every other callback here, which are posted
+  // to the message thread. Posting this one would mean copying an interval of
+  // audio per listener per interval to hand it over, and the only caller wants
+  // to measure it and keep a number. So it is delivered where it is decoded
+  // and the samples are valid only for the duration of the call.
+  //
+  // Nothing in the plugin listens to this. It exists for the bots, whose
+  // `BotClient::Listener` has the matching call: a bot could send audio and
+  // never receive any, which is half an interface for something meant to
+  // become a partner that reacts to what you play.
+  virtual void onIntervalReceived(const juce::String &username,
+                                  int channelIndex, const float *left,
+                                  const float *right, int numSamples) {
+    (void)username;
+    (void)channelIndex;
+    (void)left;
+    (void)right;
+    (void)numSamples;
+  }
 };
 
 class NinjamClient : public juce::Thread {

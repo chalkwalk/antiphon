@@ -634,6 +634,24 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
         if (flags & 1) {
           interval.finalReceived.store(true);
           diagLastIntervalSamples.store(interval.writePos.load());
+
+          // Hand the whole interval to anything listening, on this thread and
+          // without copying it. Not posted to the message thread like the
+          // other callbacks: that would mean a copy of several seconds of
+          // audio per listener per interval, and the only caller measures it
+          // and keeps a number.
+          const int frames = interval.writePos.load();
+          if (frames > 0) {
+            const float *l = interval.buffer.getNumChannels() > 0
+                                 ? interval.buffer.getReadPointer(0)
+                                 : nullptr;
+            const float *r = interval.buffer.getNumChannels() > 1
+                                 ? interval.buffer.getReadPointer(1)
+                                 : nullptr;
+            if (l != nullptr)
+              listeners.call(&NinjamClientListener::onIntervalReceived,
+                             pd.username, pd.channelIndex, l, r, frames);
+          }
           int bpm = serverBpm, bpi = serverBpi;
           if (bpm > 0 && bpi > 0)
             diagLastIntervalExpected.store(

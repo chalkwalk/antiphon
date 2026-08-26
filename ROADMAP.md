@@ -835,9 +835,33 @@ restraint rather than conversation.
 - [x] `BotChat.{h,cpp}` as pure functions over what a bot knows: a snapshot in
       and an intention out, so `PracticeBot` decides nothing and the join is
       testable without a room.
-- [ ] A fifth, instrument-less tutor bot that teaches six lines and then parts.
-      The players play the changes; they do not teach.
-- [ ] The tutor's one piece of listening: subscribed to the owner alone, using
+- [x] A fifth, instrument-less tutor bot that teaches six lines and then parts.
+      The players play the changes; they do not teach. `TutorBot` in
+      chalkwalk-jambot, hosted here behind `PracticeRoom::Config::withTutor`,
+      which is OFF by default -- a practice room is exactly where somebody
+      meeting the interval model first arrives, so it should end up on, but
+      flipping it changes the membership of every room the tests start and that
+      is a change to make deliberately rather than alongside the bot.
+
+      It needed an interface change first, and that is the part worth
+      remembering: `BotClient::Listener` had no audio callback at all, so a bot
+      could send audio and never receive any. Two of the six lines are gated on
+      hearing the player, so they were not merely unbuilt but unobservable.
+      `onIntervalReceived` is generic rather than a favour to the tutor -- *A
+      responsive jamming partner* needs exactly the same thing.
+- [ ] The tutor's one piece of listening -- the PLUMBING is done and this is now
+      only the analysis. `onIntervalReceived` delivers the interval and the
+      tutor subscribes to the owner alone; what is missing is the diagnostic
+      table. Step 2 says the encouraging line unconditionally today, which is
+      what section 7 requires whenever a reading is unclear, so the neutral
+      path is kept rather than replaced.
+
+      Note for when it lands: the table needs peak, rms, crest, a duty cycle
+      and a transient count, and NO integrated loudness -- so the cheap
+      instruments can be split out of `chalkwalk-dsp`'s `Measure.h`, which
+      includes `<ebur128.h>` for the whole header but only uses it in
+      `integratedLufs` and `gainForLufs`. That keeps libebur128 out of a
+      JUCE-free library. Original text follows: subscribed to the owner alone, using
       `AudioMeasure` plus a duty cycle and a transient count to tell silence,
       a faint signal, clicks and clipping from somebody playing -- so it can say
       "that went out" rather than hope. It gates which encouraging line is said

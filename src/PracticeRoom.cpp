@@ -105,6 +105,17 @@ bool PracticeRoom::start(const Config &config) {
       }
   }
 
+  // After the band, so the tutor's greeting lands after the roster rather than
+  // racing it, and so a failure to bring the band does not leave a tutor in an
+  // empty room.
+  if (cfg.withTutor) {
+    tutor = std::make_unique<TutorBot>(BotNames::tutorName(),
+                                       std::make_unique<NinjamBotClient>());
+    tutor->setOwner(cfg.ownerName.toStdString());
+    if (!tutor->join(std::string(host()), server.port(), cfg.sampleRate))
+      tutor.reset(); // A room without a tutor is a room; not worth failing for.
+  }
+
   running = true;
 
   // Ticks, not one call per bot. The band's compute is spread through the
@@ -135,6 +146,11 @@ void PracticeRoom::stop() {
   // sanitiser. Waiting is the safe half of that trade: `renderOneInterval`
   // checks between bots, so the longest this can block is one bot's encode.
   conductor.stop();
+
+  if (tutor) {
+    tutor->part();
+    tutor.reset();
+  }
 
   {
     juce::ScopedLock sl(botsMutex);
