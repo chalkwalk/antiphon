@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chalkwalk/dsp/Loudness.h>
 #include <chalkwalk/dsp/Measure.h>
 
 // Peak, rms, crest, dB, brightness, pitch and loudness live in
@@ -13,4 +14,10 @@
 // `MusicalKey` there is nothing of Antiphon's to add: the whole of it moved.
 // The old spelling is kept because the call sites read better for it -- what
 // this repository measures is audio, and the library it comes from is dsp.
+//
+// Both headers, because everything that includes this one is a tool or a test
+// and already links `chalkwalk::dsp::measure`. Upstream they are separate so
+// that `peak` does not cost libebur128; here there is nobody to spare. Anything
+// in `src/` that grows a need to measure should include `Measure.h` directly
+// and stay on the cheap side of that wall.
 namespace AudioMeasure = chalkwalk::dsp::measure;

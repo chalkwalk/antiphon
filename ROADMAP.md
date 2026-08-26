@@ -856,12 +856,19 @@ restraint rather than conversation.
       what section 7 requires whenever a reading is unclear, so the neutral
       path is kept rather than replaced.
 
-      Note for when it lands: the table needs peak, rms, crest, a duty cycle
-      and a transient count, and NO integrated loudness -- so the cheap
-      instruments can be split out of `chalkwalk-dsp`'s `Measure.h`, which
-      includes `<ebur128.h>` for the whole header but only uses it in
-      `integratedLufs` and `gainForLufs`. That keeps libebur128 out of a
-      JUCE-free library. Original text follows: subscribed to the owner alone, using
+      **The instruments are reachable now.** chalkwalk-dsp 16e6486 splits
+      `Loudness.h` out of `Measure.h`, which had `<ebur128.h>` at the top of it
+      and so could not be included by anything linking the header-only
+      `chalkwalk::dsp` -- which is exactly what chalkwalk-jambot links. Peak,
+      rms and crest were reachable only from that library's TEST target, the
+      wrong half of a repository to be able to measure a signal. The table
+      needs those three plus a duty cycle and a transient count, and NO
+      integrated loudness, so nothing about this wants libebur128 back.
+      `test/MeasureIsolation.cpp` upstream is what keeps the wall standing: it
+      builds `Measure.h` against `chalkwalk::dsp` alone and has no test cases,
+      because the compile is the assertion.
+
+      Original text follows: subscribed to the owner alone, using
       `AudioMeasure` plus a duty cycle and a transient count to tell silence,
       a faint signal, clicks and clipping from somebody playing -- so it can say
       "that went out" rather than hope. It gates which encouraging line is said

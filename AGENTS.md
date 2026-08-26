@@ -68,13 +68,16 @@ libs/music/                 # SUBMODULE: chalkwalk-music (MIT, JUCE-free).
                             #   lives there now, not in src/. Builds and tests
                             #   standalone; its Catch2 suite runs in our ctest.
 libs/dsp/                   # SUBMODULE: chalkwalk-dsp (MIT, JUCE-free). Two
-                            #   targets: `chalkwalk::dsp` is header-only
-                            #   primitives (Svf, PolyBlep, SoftClip, Hermite,
-                            #   Denormal) and the plugin links it;
-                            #   `chalkwalk::dsp::measure` is the instruments --
-                            #   what `AudioMeasure` used to be -- and carries
-                            #   libebur128, so only test and tool targets link
-                            #   it.
+                            #   targets: `chalkwalk::dsp` is header-only and
+                            #   dependency-free -- primitives (Svf, PolyBlep,
+                            #   SoftClip, Hermite, Denormal) AND `Measure.h`,
+                            #   the instruments `AudioMeasure` used to be;
+                            #   `chalkwalk::dsp::measure` is `Loudness.h` alone
+                            #   and carries libebur128, so only test and tool
+                            #   targets link it. Measuring a signal costs
+                            #   nothing; measuring BS.1770 loudness costs a
+                            #   dependency, and that is now a choice a consumer
+                            #   makes rather than one an #include makes for it.
 libs/jambot/                # SUBMODULE: chalkwalk-jambot (MIT, JUCE-free). The
                             #   BAND, and the chat they answer. Was src/jambot/
                             #   until it earned its own repository; what stays
@@ -122,7 +125,11 @@ src/
                             #   three copies across the ecosystem and
                             #   `fundamentalHz` two, and an uncalibrated
                             #   detector is how measurement error passes for a
-                            #   bug. libebur128 went with them.
+                            #   bug. Includes BOTH dsp headers, because every
+                            #   consumer of this one is a tool or a test that
+                            #   links the loudness target anyway; new code in
+                            #   src/ should include Measure.h directly and stay
+                            #   off libebur128.
   ChatFormat.{h,cpp}        # chat rendering: vote lines, chord progressions
   RoomHarmony.h             # WHICH of the two a chat line is, and nothing else.
                             #   What each MEANS is Harmony::Session in
