@@ -1321,11 +1321,20 @@ it can land without changing what the practice room sounds like, so it is
 checkable against a mix already tuned by ear rather than being a rewrite whose
 output nobody can judge.
 
-- [ ] **`PracticeRoom::Config` gains a band size**, and the room enforces the
+- [x] **`PracticeRoom::Config` gains a band size**, and the room enforces the
       cap: eight on loopback, four elsewhere. The cap lives here rather than in
       whatever asks for a bot, so no chat path can exceed it. Four elsewhere is
       etiquette encoded as a default -- eight uploads into a stranger's room is
       not something to do by accident.
+
+      `voiceableBandSize` takes the lower of the cap and what the band can
+      actually voice, which is four until section 16's roles land -- so the cap
+      is not yet the binding limit anywhere, and that is the point of putting
+      it in before anything can exceed it. Downward it already does something:
+      `--players 3` is a trio, and it is the RIGHT three, because players are
+      added in arranging order rather than enumeration order. Zero gives one
+      player; a room with no band in it is a server, and there is a class for
+      that.
 - [ ] **Channel names carry `role: instrument`** and are re-sent when either
       changes. `updateChannelInfo` already does the sending and
       `LocalChannelStrip` already proves the path; what is missing is the bots

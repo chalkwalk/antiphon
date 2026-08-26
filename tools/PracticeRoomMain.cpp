@@ -54,6 +54,8 @@ int main(int argc, char **argv) {
            "  --key NAME     starting key, e.g. \"D minor\" (default C major)\n"
            "  --seed N       band seed; the same seed is the same band\n"
            "  --owner NAME   the username the band treats as its owner\n"
+           "  --players N    how many bots (default 4, and 4 is the most the\n"
+           "                 band can voice today)\n"
            "  --no-tutor     leave out the bot that teaches the six lines\n\n"
            "Then connect the standalone to 127.0.0.1 on the port printed.\n";
     return 0;
@@ -72,6 +74,7 @@ int main(int argc, char **argv) {
   // it stays ON by default here too: the room a flag produces should be the
   // room the button produces, or one of them is lying about what a practice
   // room is.
+  cfg.bandSize = flag(args, "--players", "4").getIntValue();
   cfg.withTutor = !args.contains("--no-tutor");
 
   const auto keyName = flag(args, "--key", "C major");

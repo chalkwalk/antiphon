@@ -83,6 +83,21 @@ public:
     // room twice, which matters more for learning a piece than novelty does.
     std::uint32_t seed = 20260811u;
 
+    // How many players. Clamped to `maxBandSize` for where the room is, and
+    // to what the band can actually voice.
+    //
+    // Four is the default and, today, also the most that means anything:
+    // `BotBand::Voice` has four values and each one IS its synthesis, so a
+    // fifth player has nothing to play. The roles work in
+    // `libs/jambot/docs/BOT-CHAT.md` section 16 is what lifts that, and it
+    // lands in the band rather than here.
+    //
+    // The size and the cap exist ahead of it deliberately. The cap has to be
+    // the room's, not the caller's -- see `maxBandSize` -- and a limit is much
+    // easier to put in before anything can exceed it than after. Below four it
+    // already does something: a trio or a duo is a real room.
+    int bandSize = 4;
+
     // The fifth bot: no instrument, no channel, six lines and gone
     // (`libs/jambot/docs/BOT-CHAT.md` section 7).
     //
@@ -101,6 +116,23 @@ public:
     // Set it false for a room whose owner has done this before.
     bool withTutor = true;
   };
+
+  // The most players a room may have, which depends on WHOSE room it is.
+  //
+  // Eight on loopback and four anywhere else, and the difference is etiquette
+  // encoded rather than advice given: eight bots uploading into a stranger's
+  // server is not a thing to do by accident, and the person who would do it by
+  // accident is exactly the one who will not have read a note about it.
+  //
+  // It lives here rather than in whatever asks for a bot so that no path --
+  // config, chat, a tutor recruiting one -- can get around it by not knowing
+  // about it. Today nothing can reach either number anyway, because the band
+  // can only voice four; that is the point of putting it in first.
+  static int maxBandSize(bool loopback) { return loopback ? 8 : 4; }
+
+  // How many players this room could actually field, whatever was asked for.
+  // The lower of the cap and what `BotBand` has voices for.
+  static int voiceableBandSize(int requested, bool loopback);
 
   // Brings up the server and the band. Returns false having cleaned up if the
   // room could not be started.

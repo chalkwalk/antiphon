@@ -198,6 +198,58 @@ public:
                    " ms -- the render is holding the lock the UI reads");
     }
 
+    beginTest("the band size is clamped by the room, not by the caller");
+    {
+      // Pure, so it is driven directly. The cap is the room's business: a chat
+      // path or a tutor recruiting a player must not be able to exceed it by
+      // not knowing about it, which is why nothing else gets to do this
+      // arithmetic.
+      expectEquals(PracticeRoom::maxBandSize(true), 8);
+      expectEquals(PracticeRoom::maxBandSize(false), 4,
+                   "somebody else's server got the loopback allowance");
+
+      // Four voices exist, so four is the ceiling everywhere today even where
+      // the cap is eight. When section 16's roles land, this is the assertion
+      // that changes and the cap is what starts binding.
+      expectEquals(PracticeRoom::voiceableBandSize(8, true), 4);
+      expectEquals(PracticeRoom::voiceableBandSize(99, true), 4);
+      expectEquals(PracticeRoom::voiceableBandSize(8, false), 4,
+                   "the off-loopback cap was not applied");
+
+      expectEquals(PracticeRoom::voiceableBandSize(3, true), 3);
+      expectEquals(PracticeRoom::voiceableBandSize(1, true), 1);
+
+      // A room with no band in it is a server, and there is a class for that.
+      expectEquals(PracticeRoom::voiceableBandSize(0, true), 1);
+      expectEquals(PracticeRoom::voiceableBandSize(-5, true), 1);
+    }
+
+    beginTest("a trio is a real room, and it is the right three");
+    {
+      // Players are added in arranging order, so what a trio drops is the
+      // lead rather than whichever voice the enumeration happened to end on.
+      auto cfg = testConfig("you");
+      cfg.bandSize = 3;
+
+      PracticeRoom room;
+      expect(room.start(cfg));
+      expectEquals(room.botCount(), 3, "asking for a trio did not give three");
+
+      const auto names = room.botNames();
+      expectEquals(names.size(), 3);
+      expect(names.joinIntoString(" ").contains("kit"),
+             "the trio has no drummer");
+      expect(names.joinIntoString(" ").contains("bass"),
+             "the trio has no bass");
+      expect(!names.joinIntoString(" ").contains("lead"),
+             "the trio kept the lead and dropped something else");
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] { return you.client.getRemoteUsers().size() == 3; }),
+             "three bots were made but not all three arrived");
+    }
+
     beginTest("a room brings a tutor unless told not to");
     {
       // The default, pinned. A practice room is where somebody meets the

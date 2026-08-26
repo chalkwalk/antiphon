@@ -12,6 +12,22 @@ PracticeRoom::PracticeRoom() = default;
 
 PracticeRoom::~PracticeRoom() { stop(); }
 
+// Two limits, and the smaller wins.
+//
+// `maxBandSize` is a decision about whose room this is. The voice count is a
+// fact about what the band can play: `BotBand::Voice` has four values and each
+// one IS its synthesis, so a fifth player would be a name in the mixer with an
+// empty channel -- worse than not being there, because it looks like a fault.
+// Section 16's roles are what make the cap the binding one.
+//
+// A request of zero or less gives one player rather than an empty room. A room
+// with no band in it is a server, and there is a class for that.
+int PracticeRoom::voiceableBandSize(int requested, bool loopback) {
+  const int voices = 4;
+  const int allowed = std::min(maxBandSize(loopback), voices);
+  return std::max(1, std::min(requested, allowed));
+}
+
 bool PracticeRoom::start(const Config &config) {
   stop();
   cfg = config;
@@ -40,9 +56,15 @@ bool PracticeRoom::start(const Config &config) {
     bots.clear();
     publishBotCount();
 
+    // The order players are added in, which is an arranging decision rather
+    // than an enumeration one: a trio is drums, bass and keys, and a duo is
+    // drums and bass, because that is what you would leave out. Section 16's
+    // role order is the same argument carried past four.
     const BotBand::Voice voices[] = {BotBand::Voice::Drums,
                                      BotBand::Voice::Bass, BotBand::Voice::Keys,
                                      BotBand::Voice::Lead};
+
+    const int size = voiceableBandSize(cfg.bandSize, true);
 
     // Names before players, because a name has to be checked against the room.
     //
@@ -54,11 +76,13 @@ bool PracticeRoom::start(const Config &config) {
     std::vector<std::string> taken;
     if (cfg.ownerName.isNotEmpty())
       taken.push_back(cfg.ownerName.toStdString());
-    const auto chosen = BotNames::bandFor(4, cfg.seed, taken);
+    const auto chosen = BotNames::bandFor(size, cfg.seed, taken);
 
     std::uint32_t seed = cfg.seed;
     int index = 0;
     for (auto voice : voices) {
+      if (index >= size)
+        break;
       const juce::String instrument =
           juce::String(BotBand::voiceName(voice)).toLowerCase();
 
