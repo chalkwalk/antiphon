@@ -17,9 +17,9 @@ enable_testing()
 # core and that number went into ROADMAP.md as the reason to make a voice
 # cheaper before growing the band past four. Rebuilt with -O2 it is closer to
 # 10%, and the prerequisite it justified was an artefact of the flags. A
-# measurement is only as good as the build it was taken on
-# (`PRINCIPLES.md` section 5),
-# and the build nobody chose is the easiest one to forget you are on.
+# measurement is only as good as the build it was taken on (`PRINCIPLES.md`
+# section 5), and the build nobody chose is the easiest one to forget you are
+# on.
 #
 # RelWithDebInfo rather than Release because this default is for people working
 # on the tree: -O2 and -g, so a profile means something and gdb has symbols.
