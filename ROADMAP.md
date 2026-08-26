@@ -323,7 +323,8 @@ thinly would not.
 **The 27% below was measured on a build with no optimiser in it.** `cmake -B
 build`, the command this repository documents, left `CMAKE_BUILD_TYPE` empty,
 and CMake's empty is not Debug -- it is no flags at all: no `-O`, no `-g`,
-NDEBUG undefined. The tree defaults to RelWithDebInfo now, and the numbers
+NDEBUG undefined. The tree defaults to RelWithDebInfo now -- with NDEBUG stripped back out of it, so assertions
+survive the optimiser -- and the numbers
 below are both builds so the correction is visible rather than quietly
 substituted. `PRINCIPLES` §5 says suspect the measurement; the build the
 measurement was taken on turns out to be part of the measurement.
@@ -332,13 +333,18 @@ Synthesis, per interval, at 100 bpm and bpi 16 -- the practice room's OWN
 shape, which is the second thing that was wrong here: the old figure came from
 the test fixture's 120/8, a 4 s interval the room never uses.
 
-| voice | no optimiser | `-O2` | share of the band |
+| voice | no optimiser | `-O2`, the default | share of the band |
 |---|---|---|---|
-| Kit | 1300 ms | **394 ms** | 58% |
-| Bass | 78 ms | 25 ms | 4% |
-| Keys | 459 ms | 229 ms | 34% |
-| Lead | 52 ms | 32 ms | 5% |
-| **band** | **1890 ms (19.7%)** | **679 ms (7.1%)** | |
+| Kit | 1300 ms | **452 ms** | 62% |
+| Bass | 78 ms | 25 ms | 3% |
+| Keys | 459 ms | 219 ms | 30% |
+| Lead | 52 ms | 31 ms | 4% |
+| **band** | **1890 ms (19.7%)** | **728 ms (7.6%)** | |
+
+The `-O2` column is with assertions LIVE, since that is what the default build
+is. Stripping them as well gives 679 ms rather than 728 -- a 7% difference,
+which is what `assert` and JUCE's debug checks cost here and is not a reason to
+give either up. The whole ctest run is 179 s with them and 178 s without.
 
 From `AntiphonVoiceLab bench`, which renders whole intervals and times them --
 the unit the conductor actually renders. Across four seeds the optimised band

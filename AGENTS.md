@@ -199,7 +199,12 @@ calling anything done. Same shape as Anvil's `CHALKWALK_PHYSICAL_DIR`.
 # whatever CMake picks. No build type either: the tree defaults to
 # RelWithDebInfo, because CMake's own default is no flags at all -- no -O, no
 # -g -- and every performance number this repository recorded before
-# 2026-08-26 was taken on it. Pass -DCMAKE_BUILD_TYPE=Debug for assertions.
+# 2026-08-26 was taken on it.
+#
+# RelWithDebInfo here KEEPS ASSERTIONS: the root CMakeLists strips NDEBUG from
+# it, so `assert` and `jassert` are both live at -O2. Optimisation and
+# assertions are orthogonal and only the config's stock flag string ties them
+# together. Release, which CI and every shipped artefact use, is untouched.
 cmake -B build
 # Build (always from the repo root)
 cmake --build build -j $(nproc)

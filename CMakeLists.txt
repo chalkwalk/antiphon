@@ -24,16 +24,34 @@ enable_testing()
 # RelWithDebInfo rather than Release because this default is for people working
 # on the tree: -O2 and -g, so a profile means something and gdb has symbols.
 # CI names Release explicitly and is unaffected, as are the sanitiser builds,
-# which name Debug.
+# which name Debug. Assertions stay on -- see the NDEBUG block below.
 #
-# The cost, stated because it is real: RelWithDebInfo defines NDEBUG, so
-# `jassert` compiles out. Configure with -DCMAKE_BUILD_TYPE=Debug when that is
-# what you want.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
         "Build type; RelWithDebInfo when the caller names none" FORCE)
     message(STATUS "No CMAKE_BUILD_TYPE given; using ${CMAKE_BUILD_TYPE}")
 endif()
+
+# RelWithDebInfo KEEPS ASSERTIONS in this tree.
+#
+# Stock RelWithDebInfo defines NDEBUG, which compiles out `assert` and, because
+# JUCE decides JUCE_DEBUG from exactly that macro, every `jassert` with it.
+# That is the wrong trade for the build people work in: the optimiser is what
+# makes a measurement mean anything, and the assertions are what catch the bug
+# before the measurement is needed. There is no reason to pay for one with the
+# other -- -O2 and an assert are orthogonal, and only the config's default flag
+# string ties them together.
+#
+# Applied to RelWithDebInfo however it was chosen, not only when defaulted to,
+# so that the type means one thing here. Release is untouched and is what CI
+# and every shipped artefact build with, so nothing ships with assertions in
+# it.
+foreach(lang C CXX)
+    string(REPLACE "-DNDEBUG" "" CMAKE_${lang}_FLAGS_RELWITHDEBINFO
+           "${CMAKE_${lang}_FLAGS_RELWITHDEBINFO}")
+    string(REPLACE "/DNDEBUG" "" CMAKE_${lang}_FLAGS_RELWITHDEBINFO
+           "${CMAKE_${lang}_FLAGS_RELWITHDEBINFO}")
+endforeach()
 
 # C++20 -- applies to every target in the tree, including the format-specific
 # plugin wrappers (Antiphon_Standalone / _VST3 / _CLAP) that juce_add_plugin
