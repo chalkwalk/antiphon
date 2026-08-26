@@ -849,12 +849,26 @@ restraint rather than conversation.
       hearing the player, so they were not merely unbuilt but unobservable.
       `onIntervalReceived` is generic rather than a favour to the tutor -- *A
       responsive jamming partner* needs exactly the same thing.
-- [ ] The tutor's one piece of listening -- the PLUMBING is done and this is now
-      only the analysis. `onIntervalReceived` delivers the interval and the
-      tutor subscribes to the owner alone; what is missing is the diagnostic
-      table. Step 2 says the encouraging line unconditionally today, which is
-      what section 7 requires whenever a reading is unclear, so the neutral
-      path is kept rather than replaced.
+- [x] The tutor's one piece of listening. `InputCheck` in chalkwalk-jambot:
+      an interval in, one of five readings out, and the tutor uses it to decide
+      whether "that interval just went out" is a true thing to say.
+
+      **A click is not a duty cycle, and that was found by building it.**
+      Section 7's table says "tiny duty cycle"; measured as a fraction of an
+      interval, ONE short percussive note -- which that same section names by
+      hand as a part that must never be called silence -- is indistinguishable
+      from a buffer underrun, and the same click would be caught at bpi 8 and
+      missed at bpi 32. It is judged in seconds now. The test fails under the
+      fraction rule, which is how the correction was checked.
+
+      Two smaller departures, both in section 7 now: the `Playing` row is the
+      FALLBACK rather than a positive test, since the uncertainty rule sends
+      anything unclear there anyway -- which retires the transient count the
+      table asked for, as it appears only in the row never evaluated. And the
+      check outlives step 2, because read strictly it would make the quiet and
+      clipping rows unreachable: both let the thread through, so it is past
+      step 2 within two intervals and a row needing three in a row could never
+      fire.
 
       **The instruments are reachable now.** chalkwalk-dsp 16e6486 splits
       `Loudness.h` out of `Measure.h`, which had `<ebur128.h>` at the top of it
