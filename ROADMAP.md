@@ -1192,9 +1192,38 @@ interval behind cannot infer where the phrase begins from the notes alone. The
 turnaround is what makes the structure perceptible, which promotes it from
 decoration to the thing that makes the rest of this audible at all.
 
-- [ ] **Split the seed**, per above. No audible change on its own -- with a
-      one-section form the band plays exactly as it does now -- which is what
-      makes it safe to land first and measure against.
+- [x] **Split the seed**, per above -- landed as `BotBand::Hold` and
+      `figureSeed`, naming the three answers to "how long is this decision
+      held": Session, Section, Interval. Every call site kept its exact value,
+      so the band plays identically; proved by rendering three intervals before
+      and after and comparing byte for byte, not by the suite passing.
+
+      **The model above was too simple, and classifying the sites is what
+      showed it.** Decisions are not held per VOICE, they are held per
+      DECISION, and no voice is internally consistent: the lead's RHYTHM is
+      session-held while only its note contour rerolls, so "the lead never
+      repeats" is true of half of it. That also means there is no default form
+      that is a no-op for everything -- a one-section form would freeze the
+      lead's contour, and a section-per-interval form would unfreeze
+      everything else. Hence a per-decision hold rather than a per-voice one.
+
+      **Nothing is section-held yet**, which is the gap rather than an
+      oversight: there are no sections until there is a form, so
+      `Hold::Section` folds to `Hold::Session` and that is the true statement.
+
+- [ ] **The performance seeds are session-held too, and nobody noticed.** Found
+      while classifying: the per-hit jitter, the per-note drift and the
+      velocity variation all seed from `saltedSeed(voice, seed) + step`, with
+      no interval term at all -- so **every interval is jittered identically**
+      today. What makes two consecutive drum intervals differ is the hat
+      rotation and nothing else.
+
+      That matters because the interlock at the bottom of this section assumes
+      the performance already varies and only the figure needs freeing. It does
+      not. `performanceSeed` is the other half of the split and it lands WITH
+      the repeat rather than before it, because on its own it changes the audio
+      for no benefit -- a fresh jitter per interval is only worth having once
+      there is a figure returning for it to differentiate.
 - [ ] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
       interval, so a phrase is a thing the listener can recognise coming back
       rather than a fresh roll each time. The table and the section length come
@@ -1249,8 +1278,11 @@ consecutive drum intervals are not bit-identical -- today the hat rotation
 carries that -- and genuine repetition is exactly what would break it: AABA
 puts two A intervals next to each other, and under one seed they would be the
 same samples. The answer is not to weaken the test. It is the seed split above:
-repetition is identical in its *figure* and never in its *performance*, which
-is what the swing and per-hit jitter in the synthesis work provide. A phrase that returns played
+repetition is identical in its *figure* and never in its *performance* -- but
+note the item above, because the performance does NOT currently vary between
+intervals at all. The swing and per-hit jitter are session-held, so they
+produce the same deviation every time; `performanceSeed` is what has to make
+them differ, and it is a prerequisite of the repeat rather than a companion. A phrase that returns played
 exactly the same way twice is a loop; played fractionally differently, it is a
 band. The two pieces of work want doing in that order.
 
