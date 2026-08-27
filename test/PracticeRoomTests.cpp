@@ -303,6 +303,43 @@ public:
              "nobody answered to `chords`");
     }
 
+    beginTest("a player can be brought in, up to the cap and no further");
+    {
+      // Growth in session, and the cap enforced where bots are made rather
+      // than where they are asked for -- so no chat path can exceed it by not
+      // knowing about it (section 16.9).
+      auto cfg = testConfig("you");
+      cfg.bandSize = 2;
+
+      PracticeRoom room;
+      expect(room.start(cfg));
+      expectEquals(room.botCount(), 2);
+
+      Joiner you;
+      expect(you.join(room, "you"));
+
+      expect(room.addPlayer(), "a trio would not fit in a room of eight");
+      expectEquals(room.botCount(), 3);
+
+      // In arranging order: the third player is the keys, not whichever voice
+      // came next in an enumeration.
+      expect(room.botNames().joinIntoString(" ").contains("keys"),
+             "the player brought in was not the next one a band would add");
+
+      expect(room.addPlayer());
+      expectEquals(room.botCount(), 4);
+
+      // And then it stops, because four is all this band can voice. False is
+      // the rule speaking, not a failure.
+      expect(!room.addPlayer(),
+             "a fifth player was created with nothing for it to play");
+      expectEquals(room.botCount(), 4);
+
+      // The newcomers are real clients in the room, not just objects.
+      expect(waitUntil([&] { return you.client.getRemoteUsers().size() == 4; }),
+             "the players brought in never arrived");
+    }
+
     beginTest("a room brings a tutor unless told not to");
     {
       // The default, pinned. A practice room is where somebody meets the

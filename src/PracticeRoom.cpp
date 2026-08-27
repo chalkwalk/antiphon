@@ -166,6 +166,83 @@ bool PracticeRoom::start(const Config &config) {
   return true;
 }
 
+// One more player, in arranging order, if the room can field one.
+//
+// The cap is checked HERE and nowhere else (docs/BOT-CHAT.md section 16.9): a
+// tutor that recruits, a chat command, anything later -- all of them ask the
+// room, so none of them can be the path that exceeds it by not knowing about
+// it.
+//
+// Returns false when the band is already as large as it can be. That is a rule
+// rather than a failure, and the caller's job is to say so rather than to
+// retry.
+bool PracticeRoom::addPlayer() {
+  if (!running.load())
+    return false;
+
+  const BotBand::Voice voices[] = {BotBand::Voice::Drums, BotBand::Voice::Bass,
+                                   BotBand::Voice::Keys, BotBand::Voice::Lead};
+
+  juce::ScopedLock sl(botsMutex);
+
+  const int have = (int)bots.size();
+  if (have >= voiceableBandSize(maxBandSize(true), true))
+    return false;
+
+  const auto voice = voices[have];
+  const juce::String instrument =
+      juce::String(BotBand::voiceName(voice)).toLowerCase();
+
+  // Distinct from everybody already here, and from the owner. `bandFor` is
+  // what keeps two players from sounding alike when spoken, so it has to see
+  // the room as it now is rather than as it was at startup.
+  std::vector<std::string> taken;
+  if (cfg.ownerName.isNotEmpty())
+    taken.push_back(cfg.ownerName.toStdString());
+  for (const auto &b : bots)
+    taken.push_back(b->name());
+
+  const auto chosen = BotNames::bandFor(1, cfg.seed + (std::uint32_t)have * 2654435761u,
+                                        taken);
+  if (chosen.empty())
+    return false;
+
+  const juce::String botUsername =
+      BotNames::usernameFor(chosen.front(), instrument.toStdString());
+
+  // The same seed walk the startup band uses, advanced to this player's
+  // position, so the fifth bot to arrive plays what the fifth bot would have
+  // played had the room started with it.
+  std::uint32_t seed = cfg.seed;
+  for (int i = 0; i < have; ++i)
+    seed = seed * 1664525u + 1013904223u;
+
+  auto bot = std::make_unique<PracticeBot>(
+      botUsername.toStdString(),
+      std::vector<std::string>{instrument.toStdString()},
+      std::make_unique<NinjamBotClient>());
+  bot->setOwner(cfg.ownerName.toStdString());
+  bot->setGrace(cfg.ownerGraceMs, cfg.initialGraceMs);
+  bot->playAs(voice, cfg.key, cfg.bpm, cfg.bpi, cfg.sampleRate, seed);
+
+  if (!bot->join(std::string(host()), server.port(), cfg.sampleRate))
+    return false;
+
+  bots.push_back(std::move(bot));
+  publishBotCount();
+
+  // Everybody's roster, including the newcomer's. A band that does not know
+  // who is in it answers "who is playing" wrongly, and the arrival roster is
+  // the one line a player is guaranteed to read.
+  std::vector<std::string> names;
+  for (const auto &b : bots)
+    names.push_back(b->name());
+  for (auto &b : bots)
+    b->setBandmates(names, cfg.bandName.toStdString());
+
+  return true;
+}
+
 void PracticeRoom::stop() {
   running = false;
 

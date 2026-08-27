@@ -145,6 +145,15 @@ public:
   static const char *host() { return "127.0.0.1"; }
   int port() const { return server.port(); }
 
+  // Brings one more player in, if the room can field one. Returns false when
+  // it cannot, which is not an error -- the cap is a rule, not a failure.
+  //
+  // Creation lives HERE, and section 16.9 is explicit about why: the cap has
+  // to be enforced where bots are actually made, so no chat path can exceed it
+  // whatever any bot decides. Whoever asks -- a tutor, a command, a future
+  // arranger -- asks the room.
+  bool addPlayer();
+
   int botCount() const;
   juce::StringArray botNames() const;
 

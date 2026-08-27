@@ -1387,10 +1387,39 @@ output nobody can judge.
       Also fixed on the way: a bot built its own room entry from the channel
       name passed at CONSTRUCTION, a placeholder the room never sees, so it was
       the only participant unable to recognise its own role.
-- [ ] **The tutor brings a bot in, the room creates it.** Growth in session is
-      an arranging act and belongs to the bot whose job is the session; a
-      playing bot recruiting another makes the band self-replicating. The room
-      owns creation and the cap regardless.
+- [x] **The room creates a player, and owns the cap.** `PracticeRoom::addPlayer`
+      brings one more in, in arranging order, and returns false when the band
+      is already as large as it can be -- a rule speaking, not a failure. The
+      check lives there and nowhere else, so a tutor, a chat command or
+      anything later cannot become the path that exceeds it by not knowing
+      about it (section 16.9).
+
+- [ ] **The TUTOR brings one in, and section 7 says it will have left.** The
+      other half of 16.9, and it is blocked on a conflict between two sections
+      rather than on code.
+
+      Section 7 makes finishing one of the tutor's three defining properties:
+      six lines and it parts, and "a tutorial that leaves when you have got it
+      is a rare and good thing". Section 16.9 gives the tutor the job of
+      recruiting **in session**, on the good argument that it is the bot whose
+      job is the session rather than the music. Both cannot hold: a bot that
+      has gone cannot recruit.
+
+      Resolutions, none of them free, and this wants deciding before building:
+      - The tutor stays but silent, waking only to recruit. Cheap, and it
+        spends the property section 7 argues hardest for.
+      - A sixth bot whose job is arranging. Honest, and it is another name in
+        the room doing nothing most of the time.
+      - The room takes the request directly from chat, with no bot in the
+        middle. Simplest, and it drops 16.9's argument that recruiting is an
+        arranging ACT rather than a command.
+      - The tutor recruits only during its six lines, and never after. Keeps
+        both properties intact by narrowing the window to when a newcomer is
+        least likely to want a fifth player, which may make it worthless.
+
+- [ ] **Nothing asks for a player yet.** `addPlayer` has no caller outside the
+      tests, so growth in session is reachable from code and not from a room.
+      Whatever resolves the item above is what calls it.
 - [ ] **A role change has to land on a boundary.** Switching a bot from chords
       to bass mid-phrase changes the arrangement under a line somebody is
       playing over. Probably the same treatment as the ending -- take effect at
