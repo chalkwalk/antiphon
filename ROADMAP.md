@@ -1370,11 +1370,23 @@ output nobody can judge.
       this went unnoticed is the reason it is worth writing down -- a feature
       documented as something you type needs a test that types it, and the old
       one called the method.
-- [ ] **Addressing resolves against live channel names.** A bot is addressed by
-      role or instrument, and both now live in a channel name that changes.
-      `RemoteUserChannel::channelName` already carries what is needed. Accepts
-      that a bot which has just switched stays briefly addressable by its old
-      role.
+- [x] **Addressing resolves against live channel names.** `Participant` carries
+      `role` and `sound` split off the live channel name, ALONGSIDE the
+      `instrument` it takes off the username, and a word reaches a bot if it
+      matches any of them. The keyboard answers to `keys`, to `chords` and to
+      `strings`.
+
+      Keeping both is deliberate: the username does not change, so neither
+      should what a player who learned it last week types. The live words get a
+      narrower rule than the static vocabulary -- matched only where a name
+      could go, never mid-sentence -- because that list earned the benefit of
+      the doubt by being closed and curated, and a channel name is whatever a
+      bot is calling itself. The 150-case corpus is untouched, which is what
+      makes this additive rather than a rewrite.
+
+      Also fixed on the way: a bot built its own room entry from the channel
+      name passed at CONSTRUCTION, a placeholder the room never sees, so it was
+      the only participant unable to recognise its own role.
 - [ ] **The tutor brings a bot in, the room creates it.** Growth in session is
       an arranging act and belongs to the bot whose job is the session; a
       playing bot recruiting another makes the band self-replicating. The room
@@ -1450,24 +1462,34 @@ It also disposes of a constraint the shared field forced. A username must be
 one token so `/msg` can reach it; a channel name has no such rule, which is why
 "electric piano" can be a channel name and can never be a handle.
 
-- [ ] Split the word in `libs/jambot`: `BotNames::usernameFor` takes the role
-      and stops taking the instrument. The `-bot]` marker stays exactly as it
-      is -- `looksLikeBot` and `handleOf` parse that bracket and addressing
-      depends on its shape, so this changes what goes inside it and nothing
-      else.
-- [ ] Name the channel for the instrument at join, from the patch the seed
-      chose, via the `CLIENT_SET_CHANNEL_INFO` path that already exists.
-- [ ] Re-send on change, so an instrument override renames the strip in every
-      client in the room rather than only in ours. This is the part that is
-      worth having and the part that is not built.
-- [ ] **Decide what a rename costs a screen reader** before shipping the
-      re-send. A channel name that changes mid-tune is a control whose label
+**SUPERSEDED by *A band of more than four* above, and reconciled here rather
+than left to contradict it.** That section put the role in the USERNAME; 16.7
+moved it to the channel name instead, because roles change and a username
+cannot without a rejoin. What shipped is `role: instrument` in the channel,
+`Name[instrument-bot]` unchanged in the username.
+
+Two of the items below shipped under that design, and one was abandoned with
+it. What is left is genuinely still open and is kept:
+
+- [ ] ~~Split the word so `usernameFor` takes the role~~ -- **abandoned**. The
+      username keeps the instrument, and addressing reads the role off the live
+      channel instead. Nothing about `looksLikeBot` or `handleOf` changed.
+- [x] Name the channel from the patch the seed chose, via
+      `CLIENT_SET_CHANNEL_INFO`. Shipped as `role: instrument`.
+- [x] Re-send on change. Shipped: at join, at `playAs`, after a shake, and when
+      the lead is asked for by name, guarded on having actually changed.
+- [ ] **Decide what a rename costs a screen reader.** Now the most urgent item
+      in this section, because the re-send it was meant to precede has already
+      shipped. A channel name that changes mid-tune is a control whose label
       moved under the reader, and `Announcer` must not narrate it on a timer
       (`PRINCIPLES §11`). Most likely: announce on the player's own action,
-      never on a remote one.
+      never on a remote one. Nothing announces it today, which is the safe
+      default but not a decision.
 - [ ] Answer "what are you playing" with the channel name rather than the role,
       in `BotChat`. The question already has a corpus entry and currently
-      returns the word the username also says.
+      returns the word the username also says -- and now that the channel says
+      something different and truer, the gap is wider than when this was
+      written.
 - [ ] Confirm a reference client and Jamtaba both show the rename. It is
       ordinary protocol usage, so this is a check rather than a risk, and it
       belongs with the *Multi-channel differential test* which already has to

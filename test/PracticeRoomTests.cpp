@@ -282,6 +282,27 @@ public:
                      channel.channelName);
     }
 
+    beginTest("a bot answers to the role its channel advertises");
+    {
+      // The half the bots' own tests cannot reach: that the role reaches
+      // another client over CLIENT_SET_CHANNEL_INFO and comes back as an
+      // address that works. `chords` is not in anybody's username and not in
+      // the static vocabulary, so the only way this can pass is by the channel
+      // name having made the round trip.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you));
+
+      const auto before = you.snapshot().size();
+      you.client.sendChatMessage("chords, what are you playing?");
+
+      expect(waitUntil([&] { return you.snapshot().size() > before; }),
+             "nobody answered to `chords`");
+    }
+
     beginTest("a room brings a tutor unless told not to");
     {
       // The default, pinned. A practice room is where somebody meets the
