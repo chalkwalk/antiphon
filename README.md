@@ -156,10 +156,17 @@ The band arrives **silent** and tells you how to start it. Talk to them in chat:
 | `band, stop` | they play an ending, then wait, still there |
 | `[key: D minor]` or `/key D minor` | the room changes key |
 | `\| Am \| F \| C \| G \|` | they play those changes |
-| `shake` | they find a different figure |
-| `what are you playing?` | they tell you |
+| `band, shake` | they find a different figure |
+| `band, what are you playing?` | they tell you |
 | `Ravo: quiet` | that one stops talking |
 | `band, go home` | they leave |
+
+**Say who you mean.** The bots ignore anything not addressed to them -- `band`,
+`everyone`, `bots`, or one player's name. That is not ceremony: they are
+ordinary NINJAM clients and can join any server, and a band that reacted to
+every line typed between two people would be unusable in a room with people in
+it. Once you have spoken to one it keeps listening to you for a few turns, so a
+bare `shake` works in the middle of a conversation and not out of the blue.
 
 Disconnecting shuts the room down.
 

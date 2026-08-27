@@ -1350,19 +1350,26 @@ output nobody can judge.
       strings` rather than `keys: strings`. One-to-one only while there are
       four of each.
 
-- [ ] **A bare "shake" may not reach the bots at all.** Found while writing the
-      channel-name tests and deliberately not chased there. `Ravo: shake`
-      reshuffles a bot; a bare `shake` from the owner did not, in a unit rig,
-      with or without bandmates set. `BotChat` produces `Act::Reshuffle` for
-      it and comments that one shake rerolls the whole band, so the loss is
-      somewhere in addressing rather than in the intent.
-      - [ ] Find out whether the ROOM is affected. `README.md` documents
-            `shake` as a thing you type, and the room's own test calls
-            `shake()` directly rather than saying it, so the chat path has no
-            coverage end to end -- which is why this could be true and unnoticed.
-      - [ ] Whichever way it goes, the room test should say the word rather
-            than call the method. A feature documented as something you type
-            wants a test that types it.
+- [x] **A bare "shake" does not reach the bots, and that is correct.** Settled:
+      the CODE was right and the manual was wrong. `BotAddress` classifies an
+      unaddressed line as `Ignore` -- nobody is addressed by default, because
+      these are ordinary clients that can join anybody's server and a band that
+      reacted to every line typed between two people would be unusable in a
+      room with people in it.
+
+      `README.md` and `website/docs/your-first-jam.md` listed `shake` and `what
+      are you playing?` bare, beside `band, start`. Both now carry the address,
+      and both state the rule rather than leaving it to be inferred from a
+      table -- including the exception that made it confusing: having spoken to
+      a bot, its attention window keeps it listening for a few turns, so a bare
+      `shake` works mid-conversation and not out of the blue.
+
+      The room was never broken -- `band, shake` reaches all four over chat,
+      which is now asserted by typing it rather than by calling `shake()`. That
+      test has teeth: sending the bare form fails four assertions. The reason
+      this went unnoticed is the reason it is worth writing down -- a feature
+      documented as something you type needs a test that types it, and the old
+      one called the method.
 - [ ] **Addressing resolves against live channel names.** A bot is addressed by
       role or instrument, and both now live in a channel name that changes.
       `RemoteUserChannel::channelName` already carries what is needed. Accepts

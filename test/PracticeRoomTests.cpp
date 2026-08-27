@@ -928,6 +928,49 @@ public:
              "shake produced an adjacent seed");
     }
 
+    beginTest("shake is TYPED, and it has to be addressed");
+    {
+      // The gap this closes: `shake` is documented as a thing you type, and
+      // the test above calls the method instead. A feature described as
+      // something you say wants a test that says it -- otherwise the chat path
+      // can break without anything noticing, which is how this was found.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you));
+
+      const auto seedsNow = [&] {
+        std::vector<std::uint32_t> out;
+        for (const auto &s : room.bandSettings())
+          out.push_back(s.seed);
+        return out;
+      };
+      const auto before = seedsNow();
+      expect(!before.empty(), "no band to shake");
+
+      // Unaddressed: nothing happens, because nobody is addressed by default.
+      // These are ordinary clients that can join anybody's server, and a band
+      // that reacts to every line typed between two people is the thing the
+      // chat design refuses.
+      you.client.sendChatMessage("shake");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(1500);
+      expect(seedsNow() == before,
+             "an unaddressed `shake` rerolled the band");
+
+      // Addressed: the whole band rerolls, which is what the manual means.
+      you.client.sendChatMessage("band, shake");
+      expect(waitUntil([&] { return seedsNow() != before; }),
+             "`band, shake` did not reach the band over chat");
+
+      // All of them, not whichever one happened to be listening.
+      const auto after = seedsNow();
+      for (std::size_t i = 0; i < before.size() && i < after.size(); ++i)
+        expect(before[i] != after[i],
+               "one shake left a bot on its old figure");
+    }
+
     beginTest("the shake words are recognised, and nothing else is");
     {
       expect(PracticeBot::isShakeCommand("shake"));
