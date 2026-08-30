@@ -22,7 +22,7 @@ argument is not restated here, and nothing below depends on having read it.
 
 ## Active focus
 
-*(2026-08-15)*
+*(2026-08-30)*
 
 The client works, and it has now been used by somebody other than its author.
 It connects to real servers, transmits and receives in time with other clients,
@@ -37,24 +37,46 @@ hygiene is down to the one tracked `callAsync`, the GitHub move shipped, and all
 three platforms build and pass the unit suite. The work since has been the
 practice room and its band.
 
+**Re-derived 2026-08-30**, which the previous ordering asked for in as many
+words. *Bots that talk* stood at the top of it and was already largely built --
+`BotChat` wires `BotLanguage` and `BotAnswer` into `PracticeBot` -- and the
+cross-platform items below it are unchanged and unstarted. What follows is the
+band's half, ordered; the platform work is not superseded, only set beside it.
+
 Next, in order:
 
-1. **Bots that talk** -- specifically, wiring `BotLanguage` and `BotAnswer` into
-   `PracticeBot`. Both are finished and measured (99.3% on a held-out corpus)
-   and **neither has a caller**, so none of that accuracy is reachable by a
-   player. The largest gap in the project between what is built and what can be
-   used, and the cheapest to close.
-2. **Turn the macOS report into findings** -- a verdict cannot be acted on. Ask
-   for the specifics while they are fresh, and decide what stops the AU
-   regressing silently, `auval` in CI being the cheap first answer.
-3. **Windows in a host** -- the remaining platform where nothing has opened a
-   window, opened a device or joined a jam, and half of where the
-   screen-reader work is reachable at all.
+1. **The room takes a request for a fifth player from chat.** `addPlayer` has
+   no caller outside the tests, so a band that can grow is reachable from code
+   and not from a room. This was blocked on a design conflict rather than on
+   typing, and the conflict is now decided -- see *A band of more than four*.
+   The smallest unblocked piece, and it is what makes the band size a thing a
+   player can touch.
+2. **`performanceSeed`, and then phrases.** The band never repeats anything, so
+   a long session meanders. The prerequisite is not the repeat: it is that the
+   performance seeds are session-held today, so every interval is jittered
+   identically and a returning phrase would be a loop rather than a take. The
+   two land together, within-interval repetition before the form across
+   intervals. See *Form: repetition, tension and release*.
+3. **The naming tail.** `role: instrument` in the channel shipped, and what is
+   left is two items rather than a work area: `BotChat` answering "what are you
+   playing" from the channel rather than the username, and confirming the
+   rename round-trips to a reference client. The second belongs with
+   *Multi-channel differential test* and should travel with it.
+4. **General MIDI, behind the ecosystem answer.** Decided, and smaller than it
+   first looked: what is shared with `seq_play` is the patched FluidLite
+   VENDORING -- the submodule pin, the SF3 loop-end patch and its writeup, the
+   re-attack test, the trimmer -- and not a C++ engine, which turned out to be
+   626 lines shaped around that project's track model. The shape of that
+   repository lives in the ecosystem plan; what Antiphon does first is
+   unchanged and independent of it -- load an SF2 from a path the player
+   chooses, and hear one sampled voice next to the model it would replace. See
+   *Sampled instruments, alongside the models*.
 
-*(This block predates the ecosystem work described immediately below and has
-not been re-derived since; item 1 in particular is now largely built --
-`BotChat` wires `BotLanguage` and `BotAnswer` into `PracticeBot`. Treat the
-ordering as stale until it is refreshed.)*
+Still open and not reordered by the above: **turn the macOS report into
+findings** -- a verdict cannot be acted on, and `auval` in CI is the cheap first
+answer to what stops the AU regressing silently -- and **Windows in a host**,
+the remaining platform where nothing has opened a window, opened a device or
+joined a jam, and half of where the screen-reader work is reachable at all.
 
 **What has landed since, 2026-08-18/19: the repository split, and it went the
 other way round.** That plan is complete. This project consumes
@@ -1373,17 +1395,42 @@ decoration to the thing that makes the rest of this audible at all.
       the repeat rather than before it, because on its own it changes the audio
       for no benefit -- a fresh jitter per interval is only worth having once
       there is a figure returning for it to differentiate.
-- [ ] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
-      interval, so a phrase is a thing the listener can recognise coming back
-      rather than a fresh roll each time. The table and the section length come
-      from the room seed, so `shake` changes the shape of the music and not just
-      its notes.
+
+      **The repeat it lands with is the one INSIDE the interval**, not the
+      form. That is the smallest thing that gives the fresh jitter something to
+      differentiate, and it keeps the two changes separable when something
+      sounds wrong: a figure recurring four times in one interval either
+      breathes or it does not, and the answer is audible in one render rather
+      than across a section. The three items are one branch in this order --
+      `performanceSeed`, phrase length inside the interval, then the form.
 - [ ] **Phrase length inside the interval.** A figure whose period is a half or
       a quarter of the interval, repeated, rather than one that spans it. Seed
       chosen per voice, since a bass riff and a lead line do not want the same
       answer -- and the bass figure is already nudged AWAY from repeating
       inside the interval on purpose, so that rule becomes a choice rather than
       a constant.
+
+      **This comes before the form, and lands in the same branch as
+      `performanceSeed`.** Two reasons, and neither is preference. It is the
+      larger win per unit of work, per the two-axes note above -- a riff played
+      four times against eight bars of through-composed line is a bigger
+      audible change than which interval recurs. And it does not touch the
+      interlock at the bottom of this section: repetition inside one interval
+      puts no two identical intervals next to each other, so
+      `test/BotBandTests.cpp` stays green on its own terms while
+      `performanceSeed` is proved out on something smaller than AABA.
+- [ ] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
+      interval, so a phrase is a thing the listener can recognise coming back
+      rather than a fresh roll each time. The table and the section length come
+      from the room seed, so `shake` changes the shape of the music and not just
+      its notes.
+
+      This is the item the interlock is about, and it is third rather than
+      first for that reason: it is the first thing that can put two A intervals
+      adjacent, and it is only safe once the performance actually varies
+      between them. It is also what finally makes `Hold::Section` mean
+      something -- today it folds to `Hold::Session` because there are no
+      sections.
 - [ ] **Starting a tune starts the form.** `BandPlayState` going from Silent to
       Playing should reset the form origin, or the band comes in mid-structure
       -- which is not what "start playing" means. The play states already exist;
@@ -1575,9 +1622,9 @@ output nobody can judge.
       anything later cannot become the path that exceeds it by not knowing
       about it (section 16.9).
 
-- [ ] **The TUTOR brings one in, and section 7 says it will have left.** The
-      other half of 16.9, and it is blocked on a conflict between two sections
-      rather than on code.
+- [ ] **The TUTOR brings one in, and section 7 says it will have left --
+      DECIDED, it does not.** The other half of 16.9, and it was blocked on a
+      conflict between two sections rather than on code.
 
       Section 7 makes finishing one of the tutor's three defining properties:
       six lines and it parts, and "a tutorial that leaves when you have got it
@@ -1586,21 +1633,39 @@ output nobody can judge.
       job is the session rather than the music. Both cannot hold: a bot that
       has gone cannot recruit.
 
-      Resolutions, none of them free, and this wants deciding before building:
-      - The tutor stays but silent, waking only to recruit. Cheap, and it
-        spends the property section 7 argues hardest for.
-      - A sixth bot whose job is arranging. Honest, and it is another name in
-        the room doing nothing most of the time.
-      - The room takes the request directly from chat, with no bot in the
-        middle. Simplest, and it drops 16.9's argument that recruiting is an
-        arranging ACT rather than a command.
-      - The tutor recruits only during its six lines, and never after. Keeps
-        both properties intact by narrowing the window to when a newcomer is
-        least likely to want a fifth player, which may make it worthless.
+      **Section 7 wins, and the room takes the request directly from chat with
+      no bot in the middle.** Of the two properties in conflict, one is
+      load-bearing and one is an argument about where a capability is best
+      housed. A tutorial that leaves is a thing the project has and few others
+      do; recruiting-as-an-arranging-act is a preference about attribution that
+      changes nothing a player can hear. So the tutor keeps its ending intact
+      and the room grows on request.
+
+      What that spends, said plainly rather than left to be discovered: 16.9's
+      argument that recruiting is an arranging ACT rather than a command. It is
+      a real loss -- "we could use a bass player" reads as a musician speaking
+      and `band, add a player` reads as a command line -- and it is bounded,
+      because nothing stops a bot acquiring the intent later once the room can
+      honour it. The path is what is being decided here, not the phrasing.
+
+      The three alternatives and why each lost, so this is not re-argued:
+      - The tutor stays but silent, waking only to recruit -- spends exactly
+        the property that just won.
+      - A sixth bot whose job is arranging -- another name in the room doing
+        nothing most of the time, in a room whose whole case is that it reads
+        as a band rather than as processes.
+      - The tutor recruits only during its six lines -- keeps both properties
+        by narrowing the window to when a newcomer is least likely to want a
+        fifth player, which is a way of keeping a feature by making it
+        worthless.
 
 - [ ] **Nothing asks for a player yet.** `addPlayer` has no caller outside the
       tests, so growth in session is reachable from code and not from a room.
-      Whatever resolves the item above is what calls it.
+      Per the decision above, the caller is the ROOM, reading a chat intent --
+      not a bot. The cap check stays where it is and does not move to the
+      caller: that is the whole reason it lives in `addPlayer` (section 16.9).
+      A refusal is a rule speaking, so it wants a line in the room rather than
+      a silent `false`.
 - [ ] **A role change has to land on a boundary.** Switching a bot from chords
       to bass mid-phrase changes the arrangement under a line somebody is
       playing over. Probably the same treatment as the ending -- take effect at
@@ -1624,7 +1689,19 @@ output nobody can judge.
 
 ### The band's two names
 
-A player in a Ninjam room has two names, and Antiphon's band currently puts the
+**The mechanism shipped; two items remain and neither is a work area.** Read
+the checklist at the bottom before the argument above it -- `role: instrument`
+is live in the channel name, re-sent on change, and addressing resolves against
+it. What is left is `BotChat` answering "what are you playing" from the channel
+rather than the username, and confirming the rename round-trips to a reference
+client, which belongs with *Multi-channel differential test* and should travel
+with it rather than be done twice.
+
+Everything below is the reasoning that produced that, kept because two of its
+conclusions were superseded and knowing which is worth more than a tidy
+section.
+
+A player in a Ninjam room has two names, and Antiphon's band originally put the
 same word in both. `PracticeRoom.cpp` derives one string from
 `BotBand::voiceName` and spends it twice: once inside the username, as
 `Delvo[bass-bot]`, and once as the bot's only channel name, as `bass`. So the
@@ -1700,11 +1777,13 @@ it. What is left is genuinely still open and is kept:
       in `BotChat`. The question already has a corpus entry and currently
       returns the word the username also says -- and now that the channel says
       something different and truer, the gap is wider than when this was
-      written.
+      written. The corpus is in chalkwalk-jambot, so this is an override-and-bump
+      job (`CHALKWALK_JAMBOT_DIR`) rather than a change here.
 - [ ] Confirm a reference client and Jamtaba both show the rename. It is
       ordinary protocol usage, so this is a check rather than a risk, and it
       belongs with the *Multi-channel differential test* which already has to
-      confirm names round-trip.
+      confirm names round-trip. **Do it there**, in one session against one
+      client, rather than standing a second manual check up beside it.
 
 ### Sampled instruments, alongside the models
 
@@ -1770,14 +1849,94 @@ it would replace -- but it removes the risk that the fork is unusable, and it
 means the SF3 loop-end patch and the re-attack scan are carried rather than
 rediscovered.
 
-**So the real question this section now asks is an ecosystem one, and it is not
-answered here.** Two projects wanting the same engine against the same bank is
-the shape that produced `libs/dsp` and `libs/music`, and a second
-implementation of a General MIDI player is exactly what `PRINCIPLES §8`
-refuses. Whether `ToneEngine` becomes a shared library, and under whose name,
-belongs in the ecosystem plan kept outside this repository -- not in this file
-and not in `seq_play`'s. What is recorded here is that the choice exists and
-that copying the file would be the wrong way to take it.
+**The ecosystem question is DECIDED, and the answer is smaller than the
+question assumed: what is shared is the VENDORING, not an engine.** The shape
+of it -- which repository, under whose name, and on what schedule -- lives in
+the ecosystem plan kept outside this repository, not in this file and not in
+`seq_play`'s. What is recorded here is the reasoning, because it corrects an
+earlier entry in this section, and what it means for Antiphon.
+
+The first answer was "extract `ToneEngine` as a shared library", by analogy
+with `libs/dsp` and `libs/music`. Reading the code rather than the description
+of it says otherwise, on three counts:
+
+- **FluidLite is nearly all of it.** `ToneEngine` is 626 lines -- 370 in the
+  `.cpp`, 141 in the header, 115 in `tone_preset_swap` -- against a vendored
+  synth with libvorbis inside it. The interesting part was never the wrapper.
+- **The wrapper is Lockstep-shaped, and says so.** Its `kNumChannels = 16` is
+  documented as load-bearing: it is that project's track count, its MIDI
+  channel count and its audio-group count at once, and "the track index IS the
+  channel is the whole design". Antiphon has bots and not tracks, and no
+  16-way identity to spend.
+- **A fifth of it solves a problem this project does not have.**
+  `tone_preset_swap` exists so a program change does not allocate on the audio
+  thread. The band renders on the conductor thread against a four-second
+  deadline, so `PRINCIPLES §7` is not engaged here at all -- which is stated
+  further down this section as the reason the whole feature is cheap.
+
+**`PRINCIPLES §8` is satisfied by the vendoring rather than by the library**, and
+the principle's own wording is what distinguishes them: a module named for a
+RULE rather than a component. The rule with two consumers is *how the SF3 loop
+bound is read, and against which FluidLite revision* -- and today it has two
+homes, or will the moment a second project applies the patch. The wrapper is a
+component, shaped by each consumer's threading model, and two wrappers over one
+correctly-patched synth have nothing to drift about because the only thing that
+could drift is the patch. `ChannelMix` exists because "mono" had quietly
+acquired three meanings; there is no equivalent here.
+
+So the shared repository holds four things and no C++ adapter:
+
+- the **FluidLite submodule pin** (`divideconcept/FluidLite`, `ignore = dirty`,
+  patched at configure time), so both consumers build the same revision rather
+  than drifting apart;
+- **`fluidlite-sf3-loop-offbyone.patch`**, one character of diff and sixty
+  lines of writeup, of which the writeup is the valuable half -- every symptom
+  of this bug points away from the loader, which is why it is worth exactly one
+  home;
+- the **re-attack regression test** -- a held C4 on program 0, rendered long
+  and scanned for a rise in a decaying envelope. It is the only thing that
+  catches this class of fault and it must not be written twice;
+- **`scripts/trim_soundfont.py`**, which is bank-shaped rather than
+  engine-shaped and depends on neither consumer's architecture.
+
+Antiphon then writes its own thin engine over it -- load, note on and off,
+program select, render -- which is a smaller job than seq_play's for exactly
+the reasons above.
+
+**The bank does not go with the vendoring either, and that is unchanged by the
+reframing above.** Three things already measured below decide it. The trim is provably LOSSLESS -- bit-identical FluidSynth output, not
+"sounds the same" -- so a per-consumer bank costs nothing in fidelity. The size
+is essentially all acoustic multisampling, so dropping the synths and effects
+saves 11% and "everything" is not a small delta over "the useful part": 10.07 MB
+against 6.16 for the band set. And the two consumers want DIFFERENT sets --
+Antiphon drops the electronic and 808/909 kits because the modelled kit does
+that job better, and drops Room because `BotDsp::Room` already puts the kit in a
+room, which is close to the opposite of what a drum machine wants. A union bank
+would be the largest of the three and would serve neither.
+
+So the shared repository ships the TRIMMER and not the bytes -- the same move
+that took `make_wordlist.py` into chalkwalk-jambot, for the same reason: the
+tool belongs with the thing it feeds. Each consumer declares its own preset set
+and the hash of the result, and its CI builds that bank at package time from
+the upstream SF2. One patched synth, one trimmer, N banks, nothing committed.
+Antiphon's set is **band + 5 acoustic kits**, for the reasons argued below.
+
+That also keeps the provenance caveat where it belongs: a disclosure each
+consumer weighs for itself, rather than one baked into a library every later
+project links.
+
+**The libogg/libvorbis split is MOOT under this shape, and the note is kept
+only so it is not re-raised.** Against a shared library it was a real question:
+SF3 needs the codecs, this repository vendors both for the Ninjam codec, and
+another consumer might not -- which is the `Loudness.h` situation exactly. With
+no shared C++ target there is nothing to split. FluidLite carries its own
+vendored libvorbis and each consumer resolves the guard its own way, the same
+way `libs/ninjam` already handles whichever project adds ogg and vorbis first.
+
+**None of this blocks anything here.** The first checkbox below is loading an
+SF2 from a path the player chooses, with no bundled bank and so no packaging or
+provenance question at all, and the listening test that decides whether a
+sampled voice earns its place comes before any of the above matters.
 
 **It also gives the channel name something to say.** *The band's two names*
 puts the instrument in the channel name and can change it mid-session; a
@@ -2031,12 +2190,14 @@ bowed strings, reeds.
       through both and listening for the modulator-dependent presets. Submodule,
       not a fork; `THIRDPARTY.md` entry either way. Build SF3 support against the
       libogg and libvorbis already vendored here.
-- [ ] **If FluidLite wins: carry the SF3 loop-end patch from the first day**, as
-      `patches/fluidlite-sf3-loop-offbyone.patch` -- written up above, and one
-      character. Take the re-attack scan with it, as a test rather than a
-      listening note: a held C4 rendered long and scanned for a rise in a
-      decaying envelope is a cheap assertion, and it is the only thing that
-      catches this class of fault. Check upstream first, in case it has landed.
+- [ ] **If FluidLite wins: take the patch from the shared vendoring, not a copy
+      of it** -- `fluidlite-sf3-loop-offbyone.patch`, written up above, and one
+      character. That repository is the one home for it and for the re-attack
+      scan, which comes as a test rather than a listening note: a held C4
+      rendered long and scanned for a rise in a decaying envelope is a cheap
+      assertion, and it is the only thing that catches this class of fault.
+      Check upstream FluidLite first, in case the fix has landed and the patch
+      can be dropped on both sides at once.
 - [ ] Load an SF2 from a path the player chooses. No bundled bank, so no
       packaging or provenance question yet.
 - [ ] One shared synth, a channel per voice, driven from the conductor thread.
