@@ -587,6 +587,17 @@ applies -- a favourable result gets the same scrutiny as an unfavourable one.
       badly, where the tab order surprised them, whether announcements arrived
       at useful moments, and what they reached for that was not there. A verdict
       cannot be turned into a fix; a list can.
+- [ ] **Four specific questions**, which *Four channels, and we have built one*
+      designs an answer to without having asked anybody. Every item there is a
+      defensible default rather than a validated one, and one sentence back
+      could reorder the section:
+      - Did you want chat SPOKEN -- all of it, mentions only, or none?
+      - Would a tone for arrivals and departures help, or get in the way of
+        listening to the band?
+      - Do you use OSARA in Reaper? ReaNINJAM ships with it and a blind NINJAM
+        player is likely arriving from there, so its idioms probably beat ours.
+      - What did you do when you wanted to re-read something that had scrolled
+        past?
 - [ ] Test with NVDA on Windows -- the other platform where JUCE has a backend,
       and still wholly unexercised.
 - [ ] Repeat sessions rather than one. The questions the audit cannot answer are
@@ -596,21 +607,159 @@ applies -- a favourable result gets the same scrutiny as an unfavourable one.
       `AudioDeviceSelectorComponent`, never looked at). Not covered by the
       session above, which came in through the AU.
 
+### Four channels, and we have built one
+
+The organising idea the accessibility work has been missing, and the reason the
+three items below it read as unrelated when they are one design.
+
+A screen reader is SERIAL. There is no peripheral vision to put something in
+the corner of, so every piece of information is either an interruption or it is
+invisible -- and the user is holding an instrument, where speech over your own
+playing is worse than missing the line that caused it. Accessible realtime
+applications converge on four carriers rather than one, and which carrier a
+fact gets is the whole design:
+
+| Layer | Carrier | For |
+|---|---|---|
+| **Ambient** | a non-speech cue | joins, parts, "a message arrived" |
+| **Directed** | speech, interrupts | private messages and mentions -- somebody is waiting on you |
+| **On demand** | speech, because you asked | review the last message, the levels, the key |
+| **Structural** | navigation | move through history item by item |
+
+Antiphon has a partial layer 2 and nothing else. *Chat history structure* is
+layer 4 and *Level check gesture* is layer 3; they are below because they were
+written before the model was, not because they are separate work.
+
+**The reference implementation is Reaper with OSARA**, and the overlap is not a
+coincidence worth ignoring: Reaper is Justin Frankel's, ReaNINJAM ships with
+it, and a blind NINJAM player today is very likely arriving from exactly there.
+Matching their idioms beats inventing ours, and finding out whether our macOS
+contributor is an OSARA user is one question.
+
+#### Ambient: earcons
+
+**Established technique, not an invention.** Earcons -- structured abstract
+tones -- and auditory icons are a literature going back to Blattner and
+Brewster, and every screen reader ships sound schemes. Users routinely turn
+SPEECH off for a class of event and leave the TONE on, for the reason above: a
+cue is parsed in under a tenth of a second and costs nothing from the speech
+channel.
+
+A musical application is the best and the worst place for this at once. Best,
+because the user is already listening closely with a trained ear. Worst,
+because the whole output is sound, so a cue can be misheard as a part and it
+lands in the mix. That tension gives the design rules, and none of them is
+arbitrary:
+
+- **Short**, under about 150 ms, so it fits between notes.
+- **A timbre the band cannot produce.** The most important one. Against drums,
+  bass, keys and lead, a bare sine pip or a filtered-noise tick is instantly
+  not-music; anything with an instrumental envelope will be heard as a part.
+- **Deliberately off the grid.** On a beat it is music, between beats it is an
+  event. Counterintuitive, and it is what sells the distinction.
+- **A direction metaphor rather than a code book.** Rising for arrival, falling
+  for departure -- nothing to memorise. Reserve arbitrary timbres for events
+  with no natural direction.
+- **A fixed pitch unrelated to the room key.** Tempting to put it in key so it
+  blends; that is the wrong goal. It should be legible as not the band.
+- **Rate limited**, exactly as `Announcer` already does for speech. Six players
+  arriving is one event.
+
+- [ ] **`CueVoice`, beside `MetronomeVoice`.** The same shape and the same test
+      layer -- one-shot, JUCE-free, pitch asserted by measurement rather than
+      by formula. Three to start: arrival, departure, message.
+- [ ] **Its own enable and its own level**, like the metronome's. Defaulting on
+      in the standalone.
+- [ ] **Panned to the player it is about**, once the rest works. It answers
+      "who left" with no speech at all, and the pan is already in the strip.
+      Second iteration; start mono and prove the idea first.
+
+**Two things about the routing are already settled by the code**, and both are
+favourable. Cues would never be TRANSMITTED: `processBlock` snapshots every
+input before anything overwrites it and capture works from that snapshot, which
+is why the metronome click does not reach the room, and a cue mixed at the same
+point inherits it. And cues would land in the plugin's OUTPUT, so a DAW
+recording the master bus records them -- which is not novel, it is the deal the
+metronome already has, and nobody tracks with the click on. In the standalone,
+where a blind player most likely is and where the practice room lives, the
+question does not arise.
+
+#### Directed: what speech is actually for
+
+**Nothing announces chat today, and `Announcer.h` says otherwise.** Its header
+states "chat traffic is All-only", describing a policy that was never
+implemented: `onChatMessage` announces the harmony it can derive from a message
+and nothing else, so `Verbosity::All` promises chat and delivers essentially
+what `Important` does. That is a defect regardless of what is decided here.
+
+- [ ] **Never auto-speak ordinary room chat.** The setting a blind user turns
+      off first in a busy room, and the practice room made this sharper rather
+      than softer: the bots post a roster and answer questions, so a beginner
+      gets MORE chat than a quiet public room at exactly the moment they are
+      least able to field interruptions.
+- [ ] **Speak the directed subset.** `ChatFormat::Category::PrivateMessage`
+      already exists; mentions -- a message containing your own username -- are
+      the one thing to add. Small, well defined, and the set where interrupting
+      is justified because somebody is waiting.
+- [ ] **Make `Announcer`'s comment and its behaviour agree**, whichever way the
+      above lands.
+
+#### The rename question, decided
+
+*The band's two names* asks what a channel rename costs a screen reader, and it
+became urgent when the re-send shipped ahead of it. **Decided: silent.** A
+remote rename is ambient information and nobody is waiting on it; announcing it
+is precisely the "a control's label moved under the reader" problem
+`PRINCIPLES §11` exists to prevent. It stays discoverable by navigating to the
+strip, where the name is already the accessible label, and through the review
+gesture if a bot said something about it.
+
+- [ ] Carry that decision back to *The band's two names* and close its
+      checkbox, once anything here ships.
+
+#### The caveat that outranks all of the above
+
+This is reasoned from how the technology works, not from playing a jam with a
+screen reader, and it is a defensible default rather than a validated one. **We
+have a real user**: the contributor who built the AU on macOS, joined a jam and
+worked it with a reader. One sentence from them could reorder this whole
+section.
+
+- [ ] Ask, with the specifics, and add it to *Screen-reader verification*'s
+      list: **when you were in that jam, did you want chat spoken -- all of it,
+      mentions only, or none? Would a tone for arrivals and departures help or
+      get in the way? Do you use OSARA?**
+
 ### Chat history structure
 
-Chat history is a read-only text editor. It is navigable, but there is no
-per-message structure a reader can jump between, so finding "what did they say
-three messages ago" means scanning character by character.
+**Layer 4 of *Four channels* above.** Chat history is a read-only text editor.
+It is navigable, but there is no per-message structure a reader can jump
+between, so finding "what did they say three messages ago" means scanning
+character by character.
 
 - [ ] Give messages individual structure a reader can navigate.
+- [ ] **Room events reviewable as their own thread.** Joins and parts render
+      into the chat display as `JoinPart` and are then buried in whatever was
+      said around them. "Who left?" is a question with an exact answer, and it
+      should not require reading the conversation to find it. Nearly free once
+      messages have structure, and it is the half of the earcon idea that says
+      what the tone was about.
 
 ### Level check gesture
+
+**Layer 3 of *Four channels* above**, and the pattern generalises further than
+levels: anything that changes too often to announce wants a gesture that says
+it once, on demand.
 
 VU meters expose a value, but there is no way to hear levels without a reader
 announcing them continuously -- which `PRINCIPLES §11` explicitly refuses. A
 deliberate "read me the levels now" gesture is the missing half of that decision.
 
 - [ ] A shortcut that speaks the current levels once, on demand.
+- [ ] **The same gesture for the last chat message**, and again for the one
+      before it. The counterpart to not auto-speaking chat: an earcon says
+      something arrived and this is how you find out what. Cheap, and it is the
+      layer that makes the ambient one usable rather than merely quiet.
 - [ ] The same gesture, or one beside it, for the harmony: the key, the chart,
       and the chord sounding now. The chord changes several times a bar, so it
       can never be announced on a timer -- which is exactly the argument above,
@@ -1539,13 +1688,14 @@ it. What is left is genuinely still open and is kept:
       `CLIENT_SET_CHANNEL_INFO`. Shipped as `role: instrument`.
 - [x] Re-send on change. Shipped: at join, at `playAs`, after a shake, and when
       the lead is asked for by name, guarded on having actually changed.
-- [ ] **Decide what a rename costs a screen reader.** Now the most urgent item
-      in this section, because the re-send it was meant to precede has already
-      shipped. A channel name that changes mid-tune is a control whose label
-      moved under the reader, and `Announcer` must not narrate it on a timer
-      (`PRINCIPLES §11`). Most likely: announce on the player's own action,
-      never on a remote one. Nothing announces it today, which is the safe
-      default but not a decision.
+- [ ] **Decide what a rename costs a screen reader -- DECIDED, silent; this
+      closes when something ships.** A remote rename is ambient and nobody is
+      waiting on it, so announcing it is exactly the "a control's label moved
+      under the reader" problem `PRINCIPLES §11` exists to prevent. It stays
+      discoverable by navigating to the strip, where the name is already the
+      accessible label. Nothing announces it today, so the behaviour is already
+      right; what was missing was the decision. See *Four channels, and we have
+      built one*.
 - [ ] Answer "what are you playing" with the channel name rather than the role,
       in `BotChat`. The question already has a corpus entry and currently
       returns the word the username also says -- and now that the channel says
