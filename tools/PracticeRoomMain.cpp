@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
   // juce::Timer, including the arrival roster -- runs on the message thread.
   // Sleeping here instead queued all of it and ran none of it: the band played
   // perfectly and ignored every word said to it, because audio is driven by the
-  // conductor and network threads and needs no loop at all.
+  // pump and network threads and needs no loop at all.
   while (!stopping.load() && room.isRunning())
     juce::MessageManager::getInstance()->runDispatchLoopUntil(200);
 

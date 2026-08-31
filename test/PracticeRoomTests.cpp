@@ -137,7 +137,7 @@ public:
 
   // What the UI does, thirty times a second, on the message thread.
   //
-  // The band renders a whole interval in one burst on the conductor thread --
+  // The band renders a whole interval in one burst on the pump thread --
   // four synths and four Vorbis encodes, over a second of work -- and it used
   // to hold `botsMutex` for all of it. `botCount()` took the same lock, so the
   // editor's timer blocked behind the render and the meters and phase bar
@@ -373,7 +373,7 @@ public:
                  6000),
              "the tutor never appeared in the room");
 
-      // It is not in the band: no conductor slice, no share of the mix, and
+      // It is not in the band: no pump slice, no share of the mix, and
       // botCount is what the UI reports.
       expectEquals(room.botCount(), 4,
                    "the tutor was counted as one of the players");
@@ -522,7 +522,7 @@ public:
       //
       // The band used to render all four bots back to back, which put a
       // second of contiguous compute on every interval boundary -- 1073 ms at
-      // 120/8, and the reason a fan spins up. One bot per conductor slice
+      // 120/8, and the reason a fan spins up. One bot per pump slice
       // makes the longest piece one bot's synth-and-encode instead.
       //
       // EVERY NUMBER IN THIS COMMENT IS FROM AN UNOPTIMISED BUILD, which is

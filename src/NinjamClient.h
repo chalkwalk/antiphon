@@ -302,7 +302,7 @@ private:
   // `callAsyncIfAlive` and so runs on the message thread, but `addListener`
   // and `removeListener` are called from wherever a listener happens to be
   // built or destroyed -- a bot reaped by `PracticeRoom::reapPartedBots` on
-  // the conductor thread destroys its `NinjamBotClient`, which removes itself
+  // the pump thread destroys its `NinjamBotClient`, which removes itself
   // from here.
   //
   // The stock `ListenerList` locks `listeners->getLock()` in both `remove()`

@@ -815,7 +815,7 @@ void NinjamClient::EncodeWorker::run() {
 
     if (!have) {
       // Bounded rather than infinite so exiting does not depend on a signal
-      // arriving, which is the same reasoning as the conductor's predicate.
+      // arriving, which is the same reasoning as the pump's predicate.
       wake.wait(200);
       continue;
     }

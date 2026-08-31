@@ -1,7 +1,7 @@
 #pragma once
 
 #include <BandPlayState.h>
-#include <Conductor.h>
+#include <IntervalPump.h>
 #include <PracticeBot.h>
 #include <TutorBot.h>
 #include "PracticeServer.h"
@@ -19,7 +19,7 @@
 // without knowing this room is any different: phase bar, remote strips,
 // routing, chat, sync, recording, stems.
 //
-// The conductor is one thread for the whole band rather than one per bot. Bots
+// The pump is one thread for the whole band rather than one per bot. Bots
 // that share a clock stay tight with each other for free, which is what a band
 // is; and one thread is one thing to reason about at teardown.
 //
@@ -181,10 +181,10 @@ public:
 
 private:
   // Drives every bot's interval render in step. The loop itself is
-  // `jambot::Conductor`, which is JUCE-free because a band on a command line
+  // `jambot::IntervalPump`, which is JUCE-free because a band on a command line
   // needs exactly the same counting.
 
-  // The conductor's callback. Ticks run several times per bot per interval:
+  // The pump's callback. Ticks run several times per bot per interval:
   // tick 0 is the band's decision point and the rest are render slots.
   void onTick(int intervalIndex, int tick);
 
@@ -222,7 +222,7 @@ private:
   PracticeServer server;
   std::vector<std::unique_ptr<PracticeBot>> bots;
 
-  // Outside `bots` on purpose. It has no voice, so it takes no conductor slice
+  // Outside `bots` on purpose. It has no voice, so it takes no pump slice
   // and no share of the mix, and every loop over the band would otherwise have
   // to remember to skip it.
   std::unique_ptr<TutorBot> tutor;
@@ -249,7 +249,7 @@ private:
   // what decides whether a late start can still be fitted into the interval.
   std::atomic<double> avgBotRenderMs{0.0};
 
-  jambot::Conductor conductor;
+  jambot::IntervalPump pump;
   Config cfg;
   std::atomic<bool> running{false};
   int intervalSamples = 0;

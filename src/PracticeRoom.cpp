@@ -160,7 +160,7 @@ bool PracticeRoom::start(const Config &config) {
   ticksPerInterval = std::max(1, (int)bots.size()) * kTicksPerBot;
   renderTick.assign(bots.size(), 0);
 
-  conductor.start(
+  pump.start(
       (double)intervalSamples / cfg.sampleRate, ticksPerInterval,
       [this](int intervalIndex, int tick) { onTick(intervalIndex, tick); });
   return true;
@@ -248,12 +248,12 @@ void PracticeRoom::stop() {
 
   // Joins, and waits as long as it takes rather than to a deadline.
   //
-  // The deadline it replaces was there because a conductor still running is
+  // The deadline it replaces was there because a pump still running is
   // one whose bots are about to be destroyed underneath it, and rendering a
   // whole interval for four bots means four Vorbis encodes -- not fast under a
   // sanitiser. Waiting is the safe half of that trade: `renderOneInterval`
   // checks between bots, so the longest this can block is one bot's encode.
-  conductor.stop();
+  pump.stop();
 
   if (tutor) {
     tutor->part();
@@ -471,7 +471,7 @@ void PracticeRoom::renderOneBot(int intervalIndex, int slice,
   if (slice < 0 || slice >= (int)bots.size())
     return; // A bot parted and its slice outlived it.
 
-  // Checked here as well as by the conductor, because this is the call that
+  // Checked here as well as by the pump, because this is the call that
   // takes a while: one bot is a synth pass and a Vorbis encode of several
   // seconds of audio, and stop() waits for whichever one is in flight.
   if (shouldStop && shouldStop())

@@ -241,7 +241,7 @@ ctest --test-dir build --output-on-failure
 # an integrated loudness. It warns when a target would clip a sparse voice.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab hat --lufs -27
 # What a voice COSTS: whole intervals rendered and timed, which is the unit the
-# conductor renders. --bars is how many are timed per voice. Answers "which
+# pump renders. --bars is how many are timed per voice. Answers "which
 # voice do I make cheaper", and it is the kit.
 ./build/tools/AntiphonVoiceLab_artefacts/AntiphonVoiceLab bench --bpm 100 --bpi 16
 # Comparing renders from builds you can no longer reproduce: measure the WAVs,

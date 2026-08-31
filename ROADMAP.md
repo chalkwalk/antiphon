@@ -401,9 +401,10 @@ intervals decode incrementally as each `SERVER_DOWNLOAD_INTERVAL_WRITE` arrives,
 on the network thread, rather than in one pass at the boundary. Nothing to do
 here; recorded so it is not "fixed" into a burst by someone tidying.
 
-- [x] **Stagger the bots.** `jambot::Conductor` gained a slice count and calls
-      back once per slice at even offsets through the interval; `PracticeRoom`
-      renders one bot per slice. No change to the renderer at all, and the
+- [x] **Stagger the bots.** `jambot::IntervalPump` -- named `Conductor` when
+      this shipped -- gained a slice count and calls back once per slice at
+      even offsets through the interval; `PracticeRoom` renders one bot per
+      slice. No change to the renderer at all, and the
       slack was already there -- Ninjam transmits interval N while N-1 plays,
       so a bot rendered three quarters of the way through still arrives in
       time.

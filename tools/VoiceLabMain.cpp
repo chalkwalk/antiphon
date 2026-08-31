@@ -303,7 +303,7 @@ void renderVoice(const Options &o, BotBand::Voice voice,
 // The question "make a voice cheaper" cannot be started without this: the band
 // is four voices and they are not equally expensive, so the first thing worth
 // knowing is which one to look at. Whole intervals rather than a synthetic
-// loop, because that is the unit the conductor actually renders and the one
+// loop, because that is the unit the pump actually renders and the one
 // the interval budget is expressed in.
 int benchmarkBand(const Options &o) {
   auto key = MusicalKey::parseName(o.keyName.toStdString());
