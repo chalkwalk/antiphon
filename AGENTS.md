@@ -168,7 +168,10 @@ tools/
 scripts/
   testserver.sh             # fetches, builds and runs a local ninjamsrv out of tree
   analyze_archive.py        # measures a server session archive
-  trim_soundfont.py         # cuts an SF2/SF3 down to the presets we would use
+  # trim_soundfont.py is GONE -- it lives in chalkwalk-soundfont now
+  # (github.com/chalkwalk/chalkwalk-soundfont), beside the patched FluidLite it
+  # feeds. The useful bank differs per consumer; the trim that makes one does
+  # not, so it belongs with the engine rather than with either consumer.
 docs/references/            # what was read to write this, and at which revision
 modules/                    # ogg, vorbis, clap-juce-extensions submodules
 ```

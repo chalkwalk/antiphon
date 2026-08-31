@@ -1884,7 +1884,12 @@ correctly-patched synth have nothing to drift about because the only thing that
 could drift is the patch. `ChannelMix` exists because "mono" had quietly
 acquired three meanings; there is no equivalent here.
 
-So the shared repository holds four things and no C++ adapter:
+**It exists now**, as
+[chalkwalk-soundfont](https://github.com/chalkwalk/chalkwalk-soundfont),
+LGPL-2.1-or-later, green on Linux, macOS and Windows, and Lockstep is ported
+onto it. Consume it with `add_subdirectory` and link `chalkwalk::soundfont`;
+`CHALKWALK_SOUNDFONT_DIR` overrides the submodule the same way the other
+libraries do. It holds four things and no C++ adapter:
 
 - the **FluidLite submodule pin** (`divideconcept/FluidLite`, `ignore = dirty`,
   patched at configure time), so both consumers build the same revision rather
@@ -1895,13 +1900,36 @@ So the shared repository holds four things and no C++ adapter:
   home;
 - the **re-attack regression test** -- a held C4 on program 0, rendered long
   and scanned for a rise in a decaying envelope. It is the only thing that
-  catches this class of fault and it must not be written twice;
-- **`scripts/trim_soundfont.py`**, which is bank-shaped rather than
-  engine-shaped and depends on neither consumer's architecture.
+  catches this class of fault and it must not be written twice. It runs in the
+  CONSUMER's ctest as well as its own, so a project verifies the patch in the
+  build it actually made; and that library's CI reverses the patch and requires
+  the test to fail, because an assertion that would hold either way is not one;
+- **`trim_soundfont.py`**, which is bank-shaped rather than engine-shaped and
+  depends on neither consumer's architecture. It has LEFT `scripts/` here.
 
 Antiphon then writes its own thin engine over it -- load, note on and off,
 program select, render -- which is a smaller job than seq_play's for exactly
 the reasons above.
+
+**Three things recorded here were wrong, and porting Lockstep found them.**
+Corrected rather than quietly fixed, because each was believed on the strength
+of this file:
+
+- **SF3 is built against the vendored `stb_vorbis`, not Xiph.** The argument
+  below -- that the feature is nearly free because this repository already
+  vendors libogg and libvorbis for the Ninjam codec -- is true of an option
+  nobody takes. stb is one vendored header, and the real reason is not the
+  dependency count: FluidLite's Xiph path in `fluid_defsfont.c` decodes through
+  a file-static `vorbisData` struct and is **not reentrant**, while
+  `stb_vorbis_decode_memory` is stateless. So the hazard does not exist on this
+  path rather than being avoided by care.
+- **The re-attack count is five, not four.** Re-measured against both the full
+  bank and the trimmed fixture, on this machine and on a clean CI runner: five
+  rises, worst +1.65 dB. The amplitude matches what was recorded; the count does
+  not. Nothing depends on it -- the assertion is `== 0` -- but a number in this
+  file should be the number that was measured.
+- **`sf3convert` needs `-z`.** The invocation quoted below and in the trimmer's
+  own docstring omits it, exits 2, and compresses nothing.
 
 **The bank does not go with the vendoring either, and that is unchanged by the
 reframing above.** Three things already measured below decide it. The trim is provably LOSSLESS -- bit-identical FluidSynth output, not
@@ -1995,8 +2023,10 @@ one file that no longer agree.
 rather than a fork -- the same mechanism `patches/` already uses here.
 
 *Measured*, by holding a C4 on program 0, rendering 14 s and scanning the
-decaying envelope for re-attacks (a monotonic decay has none): **4 re-attacks at
-+1.6 dB spaced ~2.0 s before, 0 after**, against 0 for both controls.
+decaying envelope for re-attacks (a monotonic decay has none): **5 re-attacks at
++1.65 dB before, 0 after**, against 0 for both controls. (Recorded here as four
+until it was re-measured for the shared repository's test, on this machine and
+on a clean CI runner. The amplitude was right; the count was not.)
 
 One thing deliberately left unverified, and the comparison above says more
 about it than the first reading did: the third clause of the same check,
@@ -2041,10 +2071,13 @@ cheap to remedy.
 **SF3 changes the weight question, and costs us nothing to support.** SoundFont
 3 is the same format with the samples Ogg Vorbis compressed -- an extension
 Werner Schweer created for MuseScore for exactly this reason. The decompression
-is free to us: FluidLite builds SF3 support against Xiph's libogg and libvorbis,
-**which this repository already vendors as submodules** because the Ninjam codec
-needs them. So the whole feature adds one small library and no new third-party
-code at all.
+is free to us -- though not by the route this paragraph originally claimed.
+FluidLite CAN build SF3 against Xiph's libogg and libvorbis, which this
+repository already vendors for the Ninjam codec, and that is what made the
+feature look cheap. The path actually taken is the vendored `stb_vorbis`: one
+header, no external dependency at all, and reentrant where the Xiph path is not
+(see the corrections above). Either way the whole feature adds no new
+third-party code.
 
 **Measured, by converting the bank at every quality setting:**
 
@@ -2186,10 +2219,18 @@ rather than articulation. Samples lose for everything the band currently plays
 and win for what we will never model -- an acoustic piano, a brass section,
 bowed strings, reeds.
 
-- [ ] Decide between FluidLite and mainline FluidSynth by rendering the bank
-      through both and listening for the modulator-dependent presets. Submodule,
-      not a fork; `THIRDPARTY.md` entry either way. Build SF3 support against the
-      libogg and libvorbis already vendored here.
+- [x] **Decide between FluidLite and mainline FluidSynth -- FluidLite, and it is
+      already carried.** Settled by `chalkwalk-soundfont`, which pins it,
+      patches it and renders the modulator-dependent presets correctly, with
+      Lockstep running on it. Submodule and not a fork, as this asked; SF3
+      builds against the vendored `stb_vorbis` rather than the Xiph path named
+      here originally, which is not reentrant (see the corrections above).
+
+      This settles the ENGINE only. Whether a sampled voice earns its place in
+      THIS band is a different question and is still open, two boxes down --
+      what a bank sounds like under a drum machine is not what it sounds like
+      here. `THIRDPARTY.md` still wants an entry, and it wants one for
+      chalkwalk-soundfont rather than for FluidLite directly.
 - [ ] **If FluidLite wins: take the patch from the shared vendoring, not a copy
       of it** -- `fluidlite-sf3-loop-offbyone.patch`, written up above, and one
       character. That repository is the one home for it and for the re-attack
