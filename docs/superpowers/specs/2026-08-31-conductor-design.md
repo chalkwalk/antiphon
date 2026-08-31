@@ -173,7 +173,8 @@ always has one.
 So **"it parts" becomes "its teaching ends"**, and the room's headcount never
 drops.
 
-This is a real change to a documented property and is recorded as one. The
+**Accepted 2026-08-31.** This is a real change to a documented property and is
+recorded as one. The
 *spirit* survives: section 7 argues against a tutorial that lingers uselessly,
 and a conductor is not lingering -- it has an ongoing job. A leader who taught
 you and then settled into leading is a coherent character. The alternative
@@ -211,18 +212,33 @@ before calling anything done.
   already records as WITHDRAWN; they came from a build with no optimiser. Fix
   while in there.
 
+## Voting: the band is one vote
+
+**Decided 2026-08-31.** The conductor votes. Members **abstain**.
+
+The conductor is an ordinary Ninjam client, so a server counts it whether it
+means to vote or not -- which makes abstention a decision rather than a default,
+and one worth making deliberately.
+
+If members voted too, a four-piece plus a conductor would cast five votes
+against the owner's one, and the band could never be outvoted in its own
+practice room. That is not a threshold to tune; it is the wrong shape. Members
+abstaining costs nothing -- a client that sends no vote is simply not counted --
+and it follows directly from the rule already set: plural matters are the
+conductor's, and a vote is the most plural thing the band does.
+
+It is also the polite behaviour on somebody else's server. A band that arrives
+and swings every vote by weight of numbers is a band nobody invites back.
+
 ## Open questions
 
 Genuinely unsettled, listed rather than papered over:
 
 1. **What the conductor says when it refuses at the cap.** A refusal is a rule
    speaking, not a failure, so it wants a line rather than a silent `false`.
-2. **Whether the conductor votes.** It is an ordinary client, so a Ninjam server
-   counts it in a tempo vote. Four members plus a conductor changes the
-   arithmetic of every vote threshold.
-3. **Removing a bot**, and what that does to the roles below it. `BOT-CHAT.md`
+2. **Removing a bot**, and what that does to the roles below it. `BOT-CHAT.md`
    16.10 already lists this as unexamined.
-4. **What a role change sounds like** when the band closes ranks -- 16.10 again;
+3. **What a role change sounds like** when the band closes ranks -- 16.10 again;
    probably wants an interval or phrase boundary, like the ending.
-5. **The public-server shape.** One binary, one conductor, N members, joining a
+4. **The public-server shape.** One binary, one conductor, N members, joining a
    stranger's room with the cap at four. Sketched, not designed.
