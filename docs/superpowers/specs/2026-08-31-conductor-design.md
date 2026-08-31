@@ -212,33 +212,47 @@ before calling anything done.
   already records as WITHDRAWN; they came from a build with no optimiser. Fix
   while in there.
 
-## Voting: the band is one vote
+## Voting: DEFERRED, and the decision was made on bad information
 
-**Decided 2026-08-31.** The conductor votes. Members **abstain**.
+**Provisional, and not to be built yet.** The shape is "the conductor votes,
+members abstain", but that was decided before reading what is already here, and
+it rests on a number nobody has measured.
 
-The conductor is an ordinary Ninjam client, so a server counts it whether it
-means to vote or not -- which makes abstention a decision rather than a default,
-and one worth making deliberately.
+**What is already built and deliberate.** `BotAnswer.h:105` -- *"Asked to cast a
+vote directly. A bot never starts one -- four bots voting on one person's say-so
+is that person having four votes."* So the current position is not an oversight,
+it is a considered refusal, and `BotChat.cpp:397` repeats the reasoning. Any
+change here overturns a decision that was made on purpose.
 
-If members voted too, a four-piece plus a conductor would cast five votes
-against the owner's one, and the band could never be outvoted in its own
-practice room. That is not a threshold to tune; it is the wrong shape. Members
-abstaining costs nothing -- a client that sends no vote is simply not counted --
-and it follows directly from the rule already set: plural matters are the
-conductor's, and a vote is the most plural thing the band does.
+**The argument for the conductor voting is not the one first given.** "It is
+counted whether it means to or not" is true and beside the point. The real
+hazard is the DENOMINATOR: if a Ninjam tempo vote needs a majority of users,
+then one human among five silent bots can never reach it, and abstention does
+not keep the band neutral -- it makes votes unwinnable by the only person in the
+room who wants anything. Whether that is what happens depends on how the server
+counts.
 
-It is also the polite behaviour on somebody else's server. A band that arrives
-and swings every vote by weight of numbers is a band nobody invites back.
+**And that is unmeasured.** `ROADMAP.md` already carries *Measure the server's
+vote threshold* as an open item. Until it is measured, "the conductor votes"
+might be necessary, harmful, or irrelevant, and there is no way to tell which.
+
+**So: measure first, decide after, build last.** Nothing else in this design
+depends on voting, so it is cleanly separable. What survives regardless is the
+part that follows from the rest of the design rather than from the threshold: if
+the band votes at all, it casts ONE vote, because plural matters are the
+conductor's and a vote is the most plural thing a band does -- and a band that
+swings every vote by weight of numbers is one nobody invites back.
 
 ## Open questions
 
 Genuinely unsettled, listed rather than papered over:
 
-1. **What the conductor says when it refuses at the cap.** A refusal is a rule
+1. **The vote threshold**, per the section above -- measure before deciding.
+2. **What the conductor says when it refuses at the cap.** A refusal is a rule
    speaking, not a failure, so it wants a line rather than a silent `false`.
-2. **Removing a bot**, and what that does to the roles below it. `BOT-CHAT.md`
+3. **Removing a bot**, and what that does to the roles below it. `BOT-CHAT.md`
    16.10 already lists this as unexamined.
-3. **What a role change sounds like** when the band closes ranks -- 16.10 again;
+4. **What a role change sounds like** when the band closes ranks -- 16.10 again;
    probably wants an interval or phrase boundary, like the ending.
-4. **The public-server shape.** One binary, one conductor, N members, joining a
+5. **The public-server shape.** One binary, one conductor, N members, joining a
    stranger's room with the cap at four. Sketched, not designed.
