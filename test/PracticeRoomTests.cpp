@@ -1059,8 +1059,7 @@ public:
       // chat design refuses.
       you.client.sendChatMessage("shake");
       juce::MessageManager::getInstance()->runDispatchLoopUntil(1500);
-      expect(seedsNow() == before,
-             "an unaddressed `shake` rerolled the band");
+      expect(seedsNow() == before, "an unaddressed `shake` rerolled the band");
 
       // Addressed: the whole band rerolls, which is what the manual means.
       you.client.sendChatMessage("band, shake");
@@ -1070,8 +1069,7 @@ public:
       // All of them, not whichever one happened to be listening.
       const auto after = seedsNow();
       for (std::size_t i = 0; i < before.size() && i < after.size(); ++i)
-        expect(before[i] != after[i],
-               "one shake left a bot on its old figure");
+        expect(before[i] != after[i], "one shake left a bot on its old figure");
     }
 
     beginTest("the shake words are recognised, and nothing else is");

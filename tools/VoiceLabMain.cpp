@@ -789,8 +789,8 @@ int main(int argc, char *argv[]) {
     return failures;
   }
 
-  const juce::StringArray known{"kick", "snare", "hat",      "bass",
-                                "lead", "pad",   "kit",      "keys",
+  const juce::StringArray known{"kick", "snare", "hat",       "bass",
+                                "lead", "pad",   "kit",       "keys",
                                 "solo", "band",  "leadstats", "bench"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());

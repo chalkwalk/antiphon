@@ -142,11 +142,12 @@ bool PracticeRoom::start(const Config &config) {
   //
   // ALWAYS one, and it is a `TutorBot` when the room teaches -- a tutor is a
   // conductor that also teaches, not a second bot beside one.
-  conductor = cfg.withTutor
-                  ? std::unique_ptr<Conductor>(std::make_unique<TutorBot>(
-                        BotNames::tutorName(), std::make_unique<NinjamBotClient>()))
-                  : std::make_unique<Conductor>(
-                        BotNames::conductorName(), std::make_unique<NinjamBotClient>());
+  conductor =
+      cfg.withTutor
+          ? std::unique_ptr<Conductor>(std::make_unique<TutorBot>(
+                BotNames::tutorName(), std::make_unique<NinjamBotClient>()))
+          : std::make_unique<Conductor>(BotNames::conductorName(),
+                                        std::make_unique<NinjamBotClient>());
   conductor->setOwner(cfg.ownerName.toStdString());
   if (!conductor->join(std::string(host()), server.port(), cfg.sampleRate))
     conductor.reset(); // A room whose leader could not join is still a room.
@@ -206,8 +207,8 @@ bool PracticeRoom::addPlayer() {
   for (const auto &b : bots)
     taken.push_back(b->name());
 
-  const auto chosen = BotNames::bandFor(1, cfg.seed + (std::uint32_t)have * 2654435761u,
-                                        taken);
+  const auto chosen =
+      BotNames::bandFor(1, cfg.seed + (std::uint32_t)have * 2654435761u, taken);
   if (chosen.empty())
     return false;
 
