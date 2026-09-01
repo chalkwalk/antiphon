@@ -135,14 +135,41 @@ to be incidental: in one process the same benefit costs no wire hop. PMs remain
 available for what they are actually good at, a human privately addressing one
 bot.
 
-## Speech: singular stays, plural moves
+## Speech: one answer or many
 
-- **Singular** -- "Mirn, what are you playing?" -- the addressed member answers.
-  This needs no arbitration because exactly one bot was addressed. `BotAnswer`,
-  the 150-case addressing corpus and `Participant`'s role/sound matching are
-  untouched.
-- **Plural** -- the arrival roster, the tempo vote, the key-change
-  acknowledgement, common questions -- the conductor.
+**Revised 2026-09-01.** The first cut of this split on how many bots were
+ADDRESSED. That is the wrong axis. The right one is **how many answers the
+question has**:
+
+- **Many answers** -- "what are you playing?" put to the whole band -- each
+  member answers for itself. No arbitration is needed because they are not
+  competing: they are saying different true things, and a single reply would be
+  a worse answer rather than a tidier one.
+- **One answer** -- who is here, what key, what chart, has the band stopped --
+  the conductor says it once.
+- **Addressed to the conductor** -- band level by definition.
+
+`BotAnswer`, the 150-case addressing corpus and `Participant`'s role/sound
+matching are untouched either way.
+
+**Why the axis matters.** Under the old framing, `band stop` looked like four
+bots competing to confirm, which is why the current code ranks a bot that ACTED
+above one that had nothing to do (`kIdleSpeakerPenaltyMs`) -- with the band half
+stopped, "already stopped" from the idle one would tell the room nothing was
+happening while three bots ended the tune. Under the right framing that is not a
+contest at all: it is ONE fact about the band, and the conductor states it.
+
+**Which exposes an ordering constraint.** The conductor can only state that fact
+if it knows the band's play state -- and under the intent-command model it knows
+it because it ISSUED the command. So command confirmations must follow the
+commands, not precede them. A conductor answering `band stop` before it owns
+`stop` would be guessing at state it does not have, which is the same mistake in
+a new place.
+
+Coordination between the conductor and its members uses PRIVMSG where a message
+is genuinely needed. That is not in tension with commands being direct calls:
+chat coordination is not on a musical deadline, so a wire hop costs nothing,
+whereas an intent naming an interval index is only meaningful within one pump.
 
 This is the split that deletes rank-stagger arbitration: it only ever arbitrated
 the plural cases. `PracticeBot::speakDelayMs` and the rank ordering go with it.
@@ -208,6 +235,22 @@ Two consequences follow:
 - `setOwner` stops being tutor-specific and moves up. The conductor wants to
   know who the owner is anyway -- it is the bot that cares whether the owner is
   present.
+
+## A future direction: "be a rock band"
+
+Not scheduled, and recorded because it is the clearest argument for the whole
+design rather than a feature request.
+
+Telling the band a STYLE -- be a rock band, be a jazz band -- and having the
+roles and instruments fall out of it is trivial with a conductor and nearly
+impossible without one. One authority assigns roles; four peers negotiating a
+style by deterministic agreement would have to agree on the assignment as well
+as the style, with no way to break a tie that does not reintroduce the
+arbitration this design removes.
+
+It depends on roles being assignable at all (*A band of more than four*) and on
+stylistic parameters that do not exist yet, so it is a direction rather than a
+plan.
 
 ## Where the code lives
 
