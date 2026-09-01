@@ -52,7 +52,7 @@ same desire that fits.
 
 ## Notes on the close calls
 
-Four of these are narrower than they first read, and the boundaries are worth
+Five of these are narrower than they first read, and the boundaries are worth
 stating so they are not re-litigated from the summary line.
 
 **Video (#1) is a scope decision, not a technical one.** It is well understood
@@ -89,6 +89,31 @@ Output bus routing, persisted per (username, channel) and reapplied when a
 player rejoins, is real work in service of this fence -- the alternative is a
 stereo pair with everybody summed into it, which makes the DAW's mixer useless
 and would quietly force us to grow our own.
+
+**Hosting is a product decision, and the practice room is not a product (#4).**
+Antiphon contains a Ninjam server. `PracticeServer` is a real one -- it
+authenticates, tracks membership, relays intervals and carries chat -- and the
+connect dialog starts it. Read from the summary line alone that looks like the
+fence falling over, so the boundary is worth stating.
+
+What #4 refuses is server hosting as a **feature with an operational story**: a
+room you advertise, configure, keep up, forward a port to, and support. None of
+that exists and none of it is planned. What `PracticeServer` does is make the
+practice room a real jam rather than a simulation of one -- it binds 127.0.0.1
+and nothing else, and every player in it is this process. It is an
+implementation of the practice room, in the same way the metronome is an
+implementation of the interval rather than a drum machine we shipped.
+
+The fence still does its work: there is no browser for rooms you host, no server
+configuration surface, no accounts, no port-forwarding help, and no way to let
+anybody outside your own machine into a room Antiphon started.
+
+A full server is being designed, and it is deliberately **not here** -- a
+separate repository, a separate binary, a separate operational story, which is
+this fence's own description of the job. `PracticeServer` is its seed and will
+move out to it. While that work is in flight this repository will briefly hold
+more server than it ships, which is the condition this note exists to keep
+legible.
 
 **Tempo push (#7) is parked, not condemned.** Unlike the others this is a fence
 about *mechanism*, not desire: wanting the DAW to follow the server tempo is
