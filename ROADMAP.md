@@ -1721,6 +1721,21 @@ output nobody can judge.
       job is the session rather than the music. Both cannot hold: a bot that
       has gone cannot recruit.
 
+      **SHIPPED DIFFERENTLY, and better: the CONDUCTOR takes the request.**
+      What follows was the resolution recorded on 2026-08-31, and it was
+      overtaken the same week by the conductor design -- there IS a bot in the
+      middle, and it is the one whose whole job is the session rather than the
+      music. That recovers 16.9's argument in full rather than spending it, and
+      section 7 keeps its ending too, because the tutor is a conductor that
+      also teaches rather than a separate bot. Both properties survive, which
+      the original resolution could not manage.
+
+      Corrected here rather than left standing, because a file with two answers
+      in it is worse than a file with the wrong one. See
+      `docs/superpowers/specs/2026-08-31-conductor-design.md`.
+
+      *Superseded reasoning follows.*
+
       **Section 7 wins, and the room takes the request directly from chat with
       no bot in the middle.** Of the two properties in conflict, one is
       load-bearing and one is an argument about where a capability is best
@@ -1747,7 +1762,17 @@ output nobody can judge.
         fifth player, which is a way of keeping a feature by making it
         worthless.
 
-- [ ] **A player brought in mid-session is not announced.** The band used to
+- [x] **A player brought in mid-session is announced by the conductor.** The
+      band used to handle this itself: a bot that had never been announced said
+      so and named the room it could see. That rule went with the roster, and
+      for one plan nothing replaced it -- harmlessly, because nothing could
+      bring a player in. Now something can, so the conductor names whoever
+      arrived, reading the room before and after rather than being handed a
+      name. The roster is not re-posted: everybody has met the others.
+
+      Original entry follows.
+
+- [ ] ~~**A player brought in mid-session is not announced.**~~ The band used to
       handle this itself: a bot that had never been announced said so and named
       the room it could see, so the introduction landed when the band was
       complete rather than being lost because the moment passed. That rule was
@@ -1760,13 +1785,16 @@ output nobody can judge.
       nobody says who arrived. It belongs with the item below rather than with
       the roster, because the moment worth announcing is the moment somebody is
       ADDED, and that is what the caller below does.
-- [ ] **Nothing asks for a player yet.** `addPlayer` has no caller outside the
-      tests, so growth in session is reachable from code and not from a room.
-      Per the decision above, the caller is the ROOM, reading a chat intent --
-      not a bot. The cap check stays where it is and does not move to the
-      caller: that is the whole reason it lives in `addPlayer` (section 16.9).
-      A refusal is a rule speaking, so it wants a line in the room rather than
-      a silent `false`.
+- [x] **Somebody can ask for a player, and get one.** `addPlayer` had no caller
+      outside the tests, so growth was reachable from code and not from a room.
+      The caller is the CONDUCTOR, reading a chat intent -- not the room
+      directly, which is what the entry above corrects.
+
+      The cap did not move: it is checked in `addPlayer` and nowhere else,
+      which is the whole reason it lives there (section 16.9), and the callback
+      returns only whether it worked so that no second place can get it wrong.
+      A refusal is a rule speaking, so it says "that is as many of us as this
+      room takes" rather than returning a silent `false`.
 - [ ] **A role change has to land on a boundary.** Switching a bot from chords
       to bass mid-phrase changes the arrangement under a line somebody is
       playing over. Probably the same treatment as the ending -- take effect at

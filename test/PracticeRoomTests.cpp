@@ -1082,6 +1082,66 @@ public:
       expect(!PracticeBot::isShakeCommand(""));
     }
 
+    beginTest("asking in chat brings a player in");
+    {
+      // The whole point of the item this closes: growth was reachable from
+      // code and not from a room.
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.bandSize = 3;
+      expect(room.start(cfg));
+      expectEquals(room.botCount(), 3);
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you), "the band never introduced itself");
+
+      const int before = you.snapshot().size();
+      you.client.sendChatMessage("band, add a player");
+      expect(waitUntil([&] { return room.botCount() == 4; }, 8000),
+             "asking for a player did not bring one in");
+
+      // And it said so, naming them. A band that grows silently reads as a
+      // process starting.
+      expect(waitUntil(
+                 [&] {
+                   const auto lines = you.snapshot();
+                   for (int i = before; i < lines.size(); ++i)
+                     if (lines[i].containsIgnoreCase("bringing"))
+                       return true;
+                   return false;
+                 },
+                 6000),
+             "the band grew and nobody said who arrived");
+    }
+
+    beginTest("a full room says no, and says why");
+    {
+      PracticeRoom room;
+      auto cfg = testConfig("you");
+      cfg.bandSize = PracticeRoom::maxBandSize(true);
+      expect(room.start(cfg));
+      const int full = room.botCount();
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you), "the band never introduced itself");
+
+      const int before = you.snapshot().size();
+      you.client.sendChatMessage("band, add a player");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(3000);
+
+      expectEquals(room.botCount(), full, "a full room grew anyway");
+
+      bool refused = false;
+      const auto lines = you.snapshot();
+      for (int i = before; i < lines.size(); ++i)
+        if (lines[i].containsIgnoreCase("as many"))
+          refused = true;
+      expect(refused,
+             "the room refused silently, which reads as a broken command");
+    }
+
     beginTest("the band introduces itself once, and only once");
     {
       // The one line every player is guaranteed to read, and the only answer to

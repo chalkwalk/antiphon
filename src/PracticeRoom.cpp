@@ -140,6 +140,16 @@ bool PracticeRoom::start(const Config &config) {
           : std::make_unique<Conductor>(BotNames::conductorName(),
                                         std::make_unique<NinjamBotClient>());
   conductor->setBandName(cfg.bandName.toStdString());
+
+  // The cap is NOT checked here. `addPlayer` owns it, and owning it in one
+  // place is the whole reason it lives there (`PracticeRoom.h`, `maxBandSize`)
+  // -- a second check would be a second thing to get wrong, and this is exactly
+  // the path that section warns about.
+  //
+  // Captures `this`, which outlives the conductor: `stop()` resets the
+  // conductor before anything else it owns. If that order ever changes, this is
+  // what breaks.
+  conductor->setRecruit([this] { return addPlayer(); });
   conductor->setOwner(cfg.ownerName.toStdString());
   if (!conductor->join(std::string(host()), server.port(), cfg.sampleRate))
     conductor.reset(); // A room whose leader could not join is still a room.
