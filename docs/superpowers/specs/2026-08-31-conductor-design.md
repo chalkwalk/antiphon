@@ -85,6 +85,26 @@ thing regardless of when it arrives.
 **rejected, not applied late**. A slow path can never make one member play
 something the others did not.
 
+**The index names the interval a command takes effect FROM, and a START may
+land inside it.** Corrected 2026-09-01, against the code: `PracticeRoom::onTick`
+catches a start mid-interval on purpose, because *"waiting for the next head
+would put an interval of silence between asking the band to play and hearing
+it, and unlike an ending there is nothing musical happening in that gap"*. A
+stop lands at the head of its interval; a start lands as soon as there is time
+to render inside it. Applying one rule uniformly would insert a silent interval
+for the sake of tidiness, which is a regression dressed as consistency.
+
+What the index buys is unchanged either way: every member applies the same
+command in the same interval regardless of when the message reached it, so the
+dispatch window stops being a race.
+
+**The room already latches, and that is most of the win already banked.**
+`latchBand()` at tick 0 takes every bot's phase together, so the band wraps up
+and resolves as a band even though the renders are seconds apart. What the index
+adds is the residual window `ROADMAP.md` records under *A command reaches the
+band one bot at a time*: a command landing INSIDE the dispatch catches some bots
+before the latch and some after. This design subsumes that item.
+
 ## Why one process
 
 `jambot::IntervalPump` (renamed from `Conductor` in `ca35f3a` to free the name)
@@ -165,6 +185,15 @@ it because it ISSUED the command. So command confirmations must follow the
 commands, not precede them. A conductor answering `band stop` before it owns
 `stop` would be guessing at state it does not have, which is the same mistake in
 a new place.
+
+**One interface, not a scatter of callbacks.** The conductor needs four things
+from whoever hosts the room: the current interval, a way to command the band,
+the band's play state, and a way to ask for another player. They are one
+relationship, so they are one abstract class -- a host that implements three of
+four should not compile, where four loose `std::function`s would fail at
+runtime instead. `addPlayer` defaults to returning false, which states "this
+room does not grow" rather than leaving it indistinguishable from "nobody wired
+it up".
 
 Coordination between the conductor and its members uses PRIVMSG where a message
 is genuinely needed. That is not in tension with commands being direct calls:
