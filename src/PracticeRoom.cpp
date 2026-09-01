@@ -136,16 +136,20 @@ bool PracticeRoom::start(const Config &config) {
       }
   }
 
-  // After the band, so the tutor's greeting lands after the roster rather than
-  // racing it, and so a failure to bring the band does not leave a tutor in an
-  // empty room.
-  if (cfg.withTutor) {
-    tutor = std::make_unique<TutorBot>(BotNames::tutorName(),
-                                       std::make_unique<NinjamBotClient>());
-    tutor->setOwner(cfg.ownerName.toStdString());
-    if (!tutor->join(std::string(host()), server.port(), cfg.sampleRate))
-      tutor.reset(); // A room without a tutor is a room; not worth failing for.
-  }
+  // After the band, so the conductor's first line lands after the roster rather
+  // than racing it, and so a failure to bring the band does not leave a leader
+  // in an empty room.
+  //
+  // ALWAYS one, and it is a `TutorBot` when the room teaches -- a tutor is a
+  // conductor that also teaches, not a second bot beside one.
+  conductor = cfg.withTutor
+                  ? std::unique_ptr<Conductor>(std::make_unique<TutorBot>(
+                        BotNames::tutorName(), std::make_unique<NinjamBotClient>()))
+                  : std::make_unique<Conductor>(
+                        BotNames::conductorName(), std::make_unique<NinjamBotClient>());
+  conductor->setOwner(cfg.ownerName.toStdString());
+  if (!conductor->join(std::string(host()), server.port(), cfg.sampleRate))
+    conductor.reset(); // A room whose leader could not join is still a room.
 
   running = true;
 
@@ -255,9 +259,9 @@ void PracticeRoom::stop() {
   // checks between bots, so the longest this can block is one bot's encode.
   pump.stop();
 
-  if (tutor) {
-    tutor->part();
-    tutor.reset();
+  if (conductor) {
+    conductor->part();
+    conductor.reset();
   }
 
   {

@@ -3,6 +3,7 @@
 #include <BandPlayState.h>
 #include <IntervalPump.h>
 #include <PracticeBot.h>
+#include <Conductor.h>
 #include <TutorBot.h>
 #include "PracticeServer.h"
 #include <JuceHeader.h>
@@ -154,6 +155,10 @@ public:
   // arranger -- asks the room.
   bool addPlayer();
 
+  // Whether the room's leader is here. A room that is running always has one;
+  // this exists so a test can say so.
+  bool hasConductor() const { return conductor != nullptr; }
+
   int botCount() const;
   juce::StringArray botNames() const;
 
@@ -225,7 +230,16 @@ private:
   // Outside `bots` on purpose. It has no voice, so it takes no pump slice
   // and no share of the mix, and every loop over the band would otherwise have
   // to remember to skip it.
-  std::unique_ptr<TutorBot> tutor;
+  // The band's leader, and ALWAYS present. When the room brings a tutor this
+  // holds a `TutorBot`, which is a Conductor that also teaches -- so a room
+  // contains exactly one instrument-less bot in both cases rather than two
+  // during a tutorial.
+  //
+  // Outside `bots` for the same reason the tutor always was: it has no voice,
+  // so it takes no pump slice and no share of the mix, and `botCount` must not
+  // report it as a player. Its name does not satisfy `looksLikeBot`, which is
+  // what keeps it out of the roster too.
+  std::unique_ptr<Conductor> conductor;
 
   // Held for a WHOLE interval render -- four synths and four Vorbis encodes.
   // Nothing on the message thread may take it: the editor's timer runs at 30

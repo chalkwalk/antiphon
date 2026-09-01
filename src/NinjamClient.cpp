@@ -754,11 +754,21 @@ void NinjamClient::sendChannelInfo() {
   writeFull(0x82, payload.data(), static_cast<int>(payload.size()));
 }
 
+// An EMPTY list means no channels, and is sent as one. Ninjam supports a user
+// with none -- that is what a listener is, and `PracticeServer` already relies
+// on it: JOIN and PART carry room membership precisely so that players with no
+// audio channels at all are still known to the far end.
+//
+// This used to substitute a "Local Instrument" channel for an empty list, which
+// made being a listener impossible and gave every instrument-less bot a stray
+// strip in everybody's mixer -- contradicting the tutor's own claim to take no
+// channel. The substitution was also dead for its only non-bot caller: the
+// plugin constructs one local channel and `removeLastInputBus` refuses to go
+// below one, so it cannot pass an empty list.
 void NinjamClient::updateChannelInfo(const juce::StringArray &names) {
   {
     juce::ScopedLock sl(channelInfoMutex);
-    storedChannelNames =
-        names.isEmpty() ? juce::StringArray{"Local Instrument"} : names;
+    storedChannelNames = names;
   }
   if (isConnected())
     sendChannelInfo();

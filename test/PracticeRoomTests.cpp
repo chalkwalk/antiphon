@@ -100,6 +100,18 @@ bool waitForRoster(const Joiner &you) {
       12000);
 }
 
+// Players, not everybody present. A room always has a conductor now, and it is
+// deliberately not one of the band -- no voice, no pump slice, no share of the
+// mix -- so a test asking "did the band arrive" must not count it. It has no
+// channels at all, which is what tells it apart from a player.
+int playersSeen(const NinjamClient &client) {
+  int n = 0;
+  for (const auto &[name, user] : client.getRemoteUsers())
+    if (!user.channels.empty())
+      ++n;
+  return n;
+}
+
 PracticeRoom::Config testConfig(const juce::String &owner = "you") {
   PracticeRoom::Config c;
   c.bpm = 120;
@@ -246,7 +258,7 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] { return you.client.getRemoteUsers().size() == 3; }),
+      expect(waitUntil([&] { return playersSeen(you.client) == 3; }),
              "three bots were made but not all three arrived");
     }
 
@@ -262,7 +274,7 @@ public:
 
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] { return you.client.getRemoteUsers().size() == 4; }),
+      expect(waitUntil([&] { return playersSeen(you.client) == 4; }),
              "the band did not all arrive");
 
       expect(waitUntil([&] {
@@ -336,7 +348,7 @@ public:
       expectEquals(room.botCount(), 4);
 
       // The newcomers are real clients in the room, not just objects.
-      expect(waitUntil([&] { return you.client.getRemoteUsers().size() == 4; }),
+      expect(waitUntil([&] { return playersSeen(you.client) == 4; }),
              "the players brought in never arrived");
     }
 
@@ -379,6 +391,39 @@ public:
                    "the tutor was counted as one of the players");
       for (const auto &n : room.botNames())
         expect(!n.contains("Tutor"), "the tutor turned up in the band list");
+    }
+
+    beginTest("a room always has a conductor, tutor or not");
+    {
+      // The conductor is mandatory: an optional one would mean keeping both
+      // coordination mechanisms alive and testing the fallback nobody
+      // exercises, which is how the roster race held on Linux until macOS
+      // found it. So --no-tutor still leaves a leader in the room.
+      auto cfg = testConfig("you");
+      cfg.withTutor = false;
+
+      PracticeRoom room;
+      expect(room.start(cfg));
+      expect(room.hasConductor(), "a room without a tutor still has a leader");
+
+      Joiner you;
+      expect(you.join(room, "you"));
+
+      expect(waitUntil(
+                 [&] {
+                   for (const auto &m : you.client.getRoomMembers())
+                     if (m.username.contains("Conductor"))
+                       return true;
+                   return false;
+                 },
+                 6000),
+             "the conductor never appeared in the room");
+
+      expectEquals(room.botCount(), 4,
+                   "the conductor was counted as one of the players");
+      for (const auto &n : room.botNames())
+        expect(!n.contains("Conductor"),
+               "the conductor turned up in the band list");
     }
 
     beginTest("the first start of a session does not wait for a measurement");
