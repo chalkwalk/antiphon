@@ -1071,6 +1071,36 @@ restraint rather than conversation.
             and the roster was posted twice. It had never held -- Linux passed
             on a margin nobody had measured. Found by CI on 2026-08-22, the
             first run on a non-Linux compiler since the bots were written.
+      - [ ] **The rank stagger STILL races, about one run in seven**, and this
+            is where the fix lives rather than in another round of tuning.
+            Observed 2026-09-01 on Linux, in `PracticeRoomTests`' latecomer
+            case:
+
+            ```
+            !!! Test 8 failed: an already-announced bot spoke again:
+            MSG|Pemo[lead-bot]|say "band play" to start us and "band stop" ...
+            ```
+
+            A bot whose arrival window had already closed posted the joining
+            instructions a second time. Not reproducible on demand -- one
+            failure in seven runs of the same binary -- which is the shape of
+            the 2026-08-22 bug rather than a new one: the margin was narrowed
+            and never made safe.
+
+            **Deliberately not being fixed by tuning the stagger.** The
+            conductor design removes this mechanism entirely: plural speech
+            becomes the conductor's, singular answers need no arbitration
+            because exactly one bot was addressed, and `speakDelayMs` and
+            `rankAmong` are deleted rather than repaired. Widening the delay
+            again would buy margin nobody can measure, on a mechanism with a
+            scheduled end. See
+            `docs/superpowers/specs/2026-08-31-conductor-design.md`.
+
+            **What that costs meanwhile:** an intermittent red build. It is a
+            test failure and not a player-visible fault -- the worst a listener
+            gets is the joining instructions twice -- so it is being carried
+            rather than papered over with a longer timeout, which would hide
+            the evidence that the mechanism is unsound.
 - [x] `BotChat.{h,cpp}` as pure functions over what a bot knows: a snapshot in
       and an intention out, so `PracticeBot` decides nothing and the join is
       testable without a room.

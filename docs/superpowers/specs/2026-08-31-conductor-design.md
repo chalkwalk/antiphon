@@ -147,6 +147,24 @@ bot.
 This is the split that deletes rank-stagger arbitration: it only ever arbitrated
 the plural cases. `PracticeBot::speakDelayMs` and the rank ordering go with it.
 
+**And it is still failing, which is the case for doing this rather than tuning
+it again.** Observed on Linux, 2026-09-01, about one run in seven:
+
+```
+!!! Test 8 failed: an already-announced bot spoke again:
+MSG|Pemo[lead-bot]|say "band play" to start us and "band stop" ...
+```
+
+A bot whose arrival window had closed posted the joining instructions a second
+time. That is the same fault as the 2026-08-22 double roster, which was
+"fixed" by replacing a hash modulo with rank times 400ms -- so the margin was
+widened and never made safe, and the second occurrence is the evidence that
+widening is not a fix. Arbitration by timer cannot be made correct by choosing
+a bigger timer; it can only be made unlikely.
+
+The conductor does not narrow the race. It removes the question, because there
+is no longer a set of peers who might each answer.
+
 ## Membership
 
 A human asks the conductor. The conductor asks the room. `PracticeRoom::addPlayer`
