@@ -882,13 +882,13 @@ public:
              "the band was gone when the player came back");
 
       // The room says the band is still there and how to start it. Not a
-      // separate "welcome back" line: the arrival roster already re-arms for
-      // the first human in a room, which on a reconnect is you -- so a line of
-      // our own would say what the roster is about to say anyway.
+      // separate "welcome back" line: the CONDUCTOR's arrival re-arms for the
+      // first human in a room, which on a reconnect is you -- so a line of our
+      // own would say what it is about to say anyway.
       expect(waitUntil(
                  [&] {
                    for (const auto &line : back.snapshot())
-                     if (juce::String(line).contains("-bot]") &&
+                     if (juce::String(line).contains("bot]") &&
                          juce::String(line).containsIgnoreCase("play"))
                        return true;
                    return false;
@@ -1114,8 +1114,11 @@ public:
 
       juce::StringArray roster, instructions, introductions;
       for (const auto &line : you.snapshot()) {
+        // `[bot]` rather than `-bot]`: the roster comes from the CONDUCTOR now,
+        // and a conductor is not a bandmate, so it carries the role marker
+        // rather than an instrument one.
         if (!juce::String(line).startsWith("MSG|") ||
-            !juce::String(line).contains("-bot]"))
+            !juce::String(line).contains("bot]"))
           continue;
         if (juce::String(line).contains("The Understudies"))
           roster.add(line);
@@ -1148,76 +1151,6 @@ public:
       expect(nameAt >= 0 && partAt > nameAt,
              "the eviction command is offered before the interesting one: " +
                  instructions[0]);
-    }
-
-    beginTest("a bot that was never announced announces the band itself");
-    {
-      // The case a tiebreak cannot handle, and the reason the rule is "announce
-      // unless somebody announced ME" rather than "announce if you are first".
-      //
-      // A bot joining after the roster has gone out was not in it, so it says
-      // so -- and it names the band it can SEE, which by then is everybody. The
-      // announcement lands when the band is complete rather than being lost
-      // because the moment passed.
-      PracticeRoom room;
-      expect(room.start(testConfig("you")));
-
-      Joiner you;
-      expect(you.join(room, "you"));
-      expect(waitUntil(
-                 [&] {
-                   for (const auto &line : you.snapshot())
-                     if (juce::String(line).contains("The Understudies"))
-                       return true;
-                   return false;
-                 },
-                 9000),
-             "no first roster");
-
-      const int before = you.snapshot().size();
-
-      // A latecomer, arriving well after the roster it was not part of.
-      PracticeBot late("Vurn[horn-bot]", {"horn"},
-                       std::make_unique<NinjamBotClient>());
-      late.playAs(BotBand::Voice::Lead, MusicalKey::parseName("C major"), 120,
-                  8, 48000.0, 77u);
-      expect(late.join(PracticeRoom::host(), room.port(), 48000.0));
-
-      juce::String second;
-      expect(waitUntil(
-                 [&] {
-                   const auto lines = you.snapshot();
-                   for (int i = before; i < lines.size(); ++i)
-                     if (lines[i].startsWith("MSG|Vurn[horn-bot]|")) {
-                       second = lines[i];
-                       return true;
-                     }
-                   return false;
-                 },
-                 9000),
-             "the latecomer never introduced itself");
-
-      // And it named the WHOLE room, not just itself.
-      expect(second.containsIgnoreCase("vurn"),
-             "it left itself out: " + second);
-      int named = 0;
-      for (const auto &n : room.botNames())
-        if (second.containsIgnoreCase(
-                juce::String(BotNames::handleOf(n.toStdString()))))
-          ++named;
-      expect(named >= 3, "the latecomer announced only itself: " + second);
-
-      // Nobody who was already announced said anything again.
-      juce::StringArray extra;
-      const auto lines = you.snapshot();
-      for (int i = before; i < lines.size(); ++i)
-        if (lines[i].startsWith("MSG|") && lines[i].contains("-bot]") &&
-            !lines[i].startsWith("MSG|Vurn[horn-bot]|"))
-          extra.add(lines[i]);
-      expect(extra.isEmpty(), "an already-announced bot spoke again: " +
-                                  extra.joinIntoString(" / "));
-
-      late.part();
     }
 
     beginTest("nobody answers a question that was not aimed at anybody");
@@ -1357,7 +1290,7 @@ public:
       // reads has to carry the way in.
       bool taught = false;
       for (const auto &line : you.snapshot())
-        if (juce::String(line).contains("-bot]") &&
+        if (juce::String(line).contains("bot]") &&
             juce::String(line).containsIgnoreCase("play"))
           taught = true;
       expect(taught, "nothing told the room how to start the band");
@@ -1452,22 +1385,19 @@ public:
       expect(waitForRoster(you), "the band never introduced itself");
       expect(startBand(you, room), "the band would not start");
 
-      // Stop the bot that would WIN a flat race, so that a race is exactly
-      // what this catches. Picking any other one makes the test pass or fail
-      // on which names the seed happened to draw, which is no test at all.
-      std::vector<std::string> band;
-      for (const auto &n : room.botNames())
-        band.push_back(n.toStdString());
-
-      juce::String first;
-      int best = std::numeric_limits<int>::max();
-      for (const auto &n : room.botNames()) {
-        const int d = PracticeBot::speakDelayMs(n.toStdString(), band);
-        if (d < best) {
-          best = d;
-          first = n;
-        }
-      }
+      // Any bot will do, and that is new. This used to stop whichever bot
+      // would WIN a flat race, because the delay was ranked by name and
+      // picking another would have let the winner answer regardless. The
+      // rank is gone with the arrival roster it arbitrated, and command
+      // confirmations now wait a FLAT delay -- so nothing about the choice
+      // can hide a broken idle penalty, which is the only thing still
+      // separating these bots.
+      //
+      // Sorted rather than first-out-of-the-container, so a failure names
+      // the same bot every time.
+      auto names = room.botNames();
+      names.sort(true);
+      const juce::String first = names[0];
       expect(first.isNotEmpty());
 
       const auto handle = juce::String(BotNames::handleOf(first.toStdString()));

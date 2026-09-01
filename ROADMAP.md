@@ -1071,8 +1071,29 @@ restraint rather than conversation.
             and the roster was posted twice. It had never held -- Linux passed
             on a margin nobody had measured. Found by CI on 2026-08-22, the
             first run on a non-Linux compiler since the bots were written.
-      - [ ] **The rank stagger STILL races, about one run in seven**, and this
-            is where the fix lives rather than in another round of tuning.
+      - [x] **The ARRIVAL race is gone, and by removal rather than tuning.**
+            The roster and the joining instructions are the conductor's now,
+            and a conductor is alone, so there is nothing left to arbitrate on
+            that path. Verified by ten consecutive runs of the suite that
+            failed one in seven -- a single green run would not have been
+            evidence.
+
+            **The stagger itself survives, for commands only**, and that is
+            not an oversight. `band stop` is still four peers who might each
+            answer, so `speakDelayMs` still ranks them. Proved the hard way
+            during this work: flattening that delay made every acting bot wake
+            at once, and the band confirmed one `band stop` three times. The
+            check `heardAnotherBot` only works if somebody is heard FIRST.
+
+            It goes when the conductor owns commands and can state the fact
+            itself -- it will know whether the band wrapped up or was already
+            stopped because it issued the stop. Until then this path keeps the
+            mechanism, race and all.
+
+            Original entry follows.
+
+      - [ ] ~~**The rank stagger STILL races, about one run in seven**~~, and
+            this is where the fix lives rather than in another round of tuning.
             Observed 2026-09-01 on Linux, in `PracticeRoomTests`' latecomer
             case:
 
@@ -1726,6 +1747,19 @@ output nobody can judge.
         fifth player, which is a way of keeping a feature by making it
         worthless.
 
+- [ ] **A player brought in mid-session is not announced.** The band used to
+      handle this itself: a bot that had never been announced said so and named
+      the room it could see, so the introduction landed when the band was
+      complete rather than being lost because the moment passed. That rule was
+      "announce unless somebody announced ME", and it went with the roster when
+      the conductor took it -- deliberately, because it is the same rule that
+      raced.
+
+      Nothing has replaced it, so today a fifth player simply appears. The room
+      is not blind -- Ninjam sends a JOIN and the mixer gains a strip -- but
+      nobody says who arrived. It belongs with the item below rather than with
+      the roster, because the moment worth announcing is the moment somebody is
+      ADDED, and that is what the caller below does.
 - [ ] **Nothing asks for a player yet.** `addPlayer` has no caller outside the
       tests, so growth in session is reachable from code and not from a room.
       Per the decision above, the caller is the ROOM, reading a chat intent --

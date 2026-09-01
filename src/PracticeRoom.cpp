@@ -118,15 +118,6 @@ bool PracticeRoom::start(const Config &config) {
       seed = seed * 1664525u + 1013904223u;
     }
 
-    // Who arrived together, so the roster can say whether these are a band or
-    // merely a list. Told before joining, because the announcement happens five
-    // seconds after connect and nobody should be racing it.
-    std::vector<std::string> names;
-    for (const auto &b : bots)
-      names.push_back(b->name());
-    for (auto &b : bots)
-      b->setBandmates(names, cfg.bandName.toStdString());
-
     for (auto &b : bots)
       if (!b->join(std::string(host()), server.port(), cfg.sampleRate)) {
         bots.clear();
@@ -148,6 +139,7 @@ bool PracticeRoom::start(const Config &config) {
                 BotNames::tutorName(), std::make_unique<NinjamBotClient>()))
           : std::make_unique<Conductor>(BotNames::conductorName(),
                                         std::make_unique<NinjamBotClient>());
+  conductor->setBandName(cfg.bandName.toStdString());
   conductor->setOwner(cfg.ownerName.toStdString());
   if (!conductor->join(std::string(host()), server.port(), cfg.sampleRate))
     conductor.reset(); // A room whose leader could not join is still a room.
@@ -236,14 +228,9 @@ bool PracticeRoom::addPlayer() {
   bots.push_back(std::move(bot));
   publishBotCount();
 
-  // Everybody's roster, including the newcomer's. A band that does not know
-  // who is in it answers "who is playing" wrongly, and the arrival roster is
-  // the one line a player is guaranteed to read.
-  std::vector<std::string> names;
-  for (const auto &b : bots)
-    names.push_back(b->name());
-  for (auto &b : bots)
-    b->setBandmates(names, cfg.bandName.toStdString());
+  // Nothing to tell the band about its own membership: the roster is the
+  // conductor's, and it reads the room rather than being told about it -- so a
+  // player brought in later is named without anybody being updated.
 
   return true;
 }
