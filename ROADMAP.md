@@ -505,6 +505,42 @@ in a scratch directory, the way `scripts/testserver.sh` now fetches the server.
 Whatever it proves must land as fixtures in `test/fixtures/reference/` and
 numbers in `docs/PARITY.md` before it is torn down again.
 
+### Can one machine mix a room in the gap?
+
+A measurement, not a feature, and the precondition for something else entirely:
+a server that lets people listen to a jam in a browser, designed in
+`docs/superpowers/specs/2026-08-31-observer-server-design.md` and recorded in
+the ecosystem plan. Nothing about that server is scheduled and this item does
+not schedule it. What it does is answer the one question the whole design rests
+on, cheaply, before anybody writes a line of it.
+
+**The question.** A server producing one stream for listeners must decode every
+player's channels for interval N, mix them, and encode the result. It cannot do
+that as the uploads arrive: interval delivery is all-or-nothing, so a sparse
+interval decodes to nothing until the end-of-stream flush. The whole job
+therefore happens in the gap at the interval boundary -- and every millisecond
+over budget is PERMANENT extra lag for every listener, not a one-off, because
+the next interval starts no later for being late with this one.
+
+**Why it belongs here.** This repository owns `VorbisCodec` and `ChannelMix`,
+and it owns the discipline for this kind of claim: a number quoted anywhere
+needs a method (`PRINCIPLES §5`), and this file already carries a withdrawn CPU
+estimate taken on a build with no optimiser in it. The same trap is open here,
+on a slower machine.
+
+- [ ] Decode a realistic room's worth of channels for one interval, mix them,
+      and encode one stereo stream. Time it as a whole, on an optimised build,
+      at a real bpm/bpi rather than a convenient one.
+- [ ] On the machine that would have to do it -- a Raspberry Pi -- and not only
+      on a development machine, since that is the number that decides whether a
+      Pi is the right host at all.
+- [ ] Report it as a fraction of the interval, which is the unit that matters:
+      the budget is the gap at the boundary, and what is left over is the margin
+      before listeners slip to two intervals behind.
+- [ ] Say what the answer means either way. A comfortable number makes the
+      server worth planning; a bad one changes the design rather than the
+      schedule -- mixing would have to move off the boundary, or off the Pi.
+
 ### Multi-channel differential test
 
 Every parity run so far used a **single channel**. Multi-channel transmit is a
