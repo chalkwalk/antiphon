@@ -1021,7 +1021,26 @@ restraint rather than conversation.
       fitting to noise; the remaining work on this feature is *connection*, not
       accuracy. Re-run the suites rather than citing these numbers second-hand
       (`PRINCIPLES §5`).
-- [ ] **Measure the server's vote threshold.** `libs/jambot/docs/BOT-CHAT.md` proposes how
+- [ ] **Measure the server's vote threshold.** The RULE is settled and is in
+      `libs/jambot/docs/BOT-CHAT.md` section 8; what is open is the
+      measurement. Its arithmetic was read from the reference server rather
+      than observed, and a number quoted anywhere needs a method
+      (`PRINCIPLES §5`).
+
+      One correction carried back from the conductor work, because it was
+      recorded the other way for a day: **abstaining is a vote against.** The
+      denominator is everyone connected, bots included, so a band that stays
+      out of a vote does not stay neutral -- it makes the vote unwinnable. The
+      conductor design briefly said the band should cast ONE vote with the
+      others abstaining, which would leave a room of one human and four bots
+      unable to change tempo at all.
+
+      What the conductor does change is how the band votes once the gate trips.
+      Section 8 point 4 has each bot wait its own delay and check whether the
+      motion has carried -- which is the delay-and-watch mechanism deleted
+      everywhere else, and the last place it is still assumed. A conductor can
+      compute how many votes are needed and command exactly that many.
+ `libs/jambot/docs/BOT-CHAT.md` proposes how
       the band votes, and the whole proposal rests on `M` as a function of the
       number of clients -- which nothing here records. Connect a varying number
       of clients to `scripts/testserver.sh` and read it off the vote line before

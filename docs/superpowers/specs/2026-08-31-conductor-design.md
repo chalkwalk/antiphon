@@ -302,42 +302,66 @@ before calling anything done.
   already records as WITHDRAWN; they came from a build with no optimiser. Fix
   while in there.
 
-## Voting: DEFERRED, and the decision was made on bad information
+## Voting: CORRECTED, and the earlier decision was harmful
 
-**Provisional, and not to be built yet.** The shape is "the conductor votes,
-members abstain", but that was decided before reading what is already here, and
-it rests on a number nobody has measured.
+**The shape recorded here on 2026-08-31 -- "the conductor votes, members
+abstain" -- is wrong and would break a room.** It was reasoned from first
+principles without reading `BOT-CHAT.md` section 8, which had already worked
+the problem out against the reference server.
 
-**What is already built and deliberate.** `BotAnswer.h:105` -- *"Asked to cast a
-vote directly. A bot never starts one -- four bots voting on one person's say-so
-is that person having four votes."* So the current position is not an oversight,
-it is a considered refusal, and `BotChat.cpp:397` repeats the reasoning. Any
-change here overturns a decision that was made on purpose.
+**Abstaining is not neutral.** A NINJAM tempo change is a vote of *everyone
+connected*, bots included, voted or not: the denominator is `vucnt`, every user
+with `m_auth_state > 0` (`justinfrankel/ninjam server/usercon.cpp:1192-1200`,
+and the arithmetic at `:1239`). So a bot that does not vote is a vote against.
 
-**The argument for the conductor voting is not the one first given.** "It is
-counted whether it means to or not" is true and beside the point. The real
-hazard is the DENOMINATOR: if a Ninjam tempo vote needs a majority of users,
-then one human among five silent bots can never reach it, and abstention does
-not keep the band neutral -- it makes votes unwinnable by the only person in the
-room who wants anything. Whether that is what happens depends on how the server
-counts.
+| Humans | Bots | Needed at 60% | Humans can carry it? |
+|---|---|---|---|
+| 1 | 0 | 1 | yes |
+| 1 | 4 | 3 | **never** |
+| 3 | 4 | 5 | **never, even unanimously** |
 
-**And that is unmeasured.** `ROADMAP.md` already carries *Measure the server's
-vote threshold* as an open item. Until it is measured, "the conductor votes"
-might be necessary, harmful, or irrelevant, and there is no way to tell which.
+One human plus a voting conductor is two of the three needed. **Members
+abstaining leaves the room unable to change tempo at all** -- the band would be
+worse than playing alone, which is the exact failure that section exists to
+prevent.
 
-**So: measure first, decide after, build last.** Nothing else in this design
-depends on voting, so it is cleanly separable. What survives regardless is the
-part that follows from the rest of the design rather than from the threshold: if
-the band votes at all, it casts ONE vote, because plural matters are the
-conductor's and a vote is the most plural thing a band does -- and a band that
-swings every vote by weight of numbers is one nobody invites back.
+**The rule is `BOT-CHAT.md` section 8's, and it stands.** A bot never proposes a
+value, so no tempo change can originate with the band. The band moves only when
+a strict majority of the humans present already backs the leading candidate --
+`humanVotes * 2 > H` -- tested only while the band is still silent, so `N` *is*
+the human count and nothing has to be disentangled. A change of leading
+candidate resets it: the band supports a value, not the idea of changing.
+
+**What the conductor changes is HOW the band then votes, and it is the last
+place the deleted arbitration was still assumed.** Section 8 point 4 has each
+bot wait its own delay and, on waking, check whether the motion has already
+carried -- delay-and-watch, the mechanism this design removed everywhere else.
+It was the right answer for peers: it casts only the votes the band's own
+presence made necessary, with no ranking and no message passing.
+
+A conductor does the same job without the timer. It knows `H`, the vote count
+and the threshold, so it can compute **exactly how many bot votes are needed**
+and command that many. Deterministic instead of raced, immediate instead of
+staggered, and the same outcome -- the band casts what its presence made
+necessary and no more.
+
+That also fits the split this design rests on: whether the gate has tripped is
+one answer about the room, so it is the conductor's; voting is an act, so it is
+the members'. Deciding is central, acting is collective -- as with play and stop.
+
+**Still not scheduled, and still wants measuring.** `ROADMAP.md` carries
+*Measure the server's vote threshold*. The mechanics above are read from the
+reference source rather than observed, and this project's own rule is that a
+number needs a method (`PRINCIPLES §5`). Read, then verified against a real
+`ninjamsrv`, then built.
 
 ## Open questions
 
 Genuinely unsettled, listed rather than papered over:
 
-1. **The vote threshold**, per the section above -- measure before deciding.
+1. **The vote threshold**, per the section above. The RULE is settled and
+   corrected; what is unmeasured is the server's actual arithmetic, which was
+   read from the reference rather than observed.
 2. **What the conductor says when it refuses at the cap.** A refusal is a rule
    speaking, not a failure, so it wants a line rather than a silent `false`.
 3. **Removing a bot**, and what that does to the roles below it. `BOT-CHAT.md`
