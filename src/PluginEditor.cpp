@@ -325,14 +325,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   };
   addChildComponent(chipDismissButton);
 
-  chatDisplay.setMultiLine(true);
-  chatDisplay.setReadOnly(true);
-  chatDisplay.setScrollbarsShown(true);
-  chatDisplay.setCaretVisible(false);
   chatDisplay.setColour(juce::TextEditor::backgroundColourId,
                         juce::Colour(0xff121212));
-  chatDisplay.setTitle("Chat history");
-  chatDisplay.setDescription("Messages from the server and the other players");
   addAndMakeVisible(chatDisplay);
 
   chatInput.setName("chatInput");
@@ -359,8 +353,11 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
           audioProcessor.ninjamClient.sendChatMessage(
               MusicalKey::buildTagged(key));
         } else {
-          chatDisplay.insertTextAtCaret("Local: not a key. Try /key Dm, /key "
-                                        "F# Dorian, /key Bb major.\n");
+          const juce::String msg =
+              "Local: not a key. Try /key Dm, /key F# Dorian, /key Bb major.";
+          chatDisplay.appendMessage(
+              msg, colourForChatCategory(ChatFormat::Category::ServerNotice));
+          announcer.say(msg, true);
         }
       } else if (text.startsWithIgnoreCase("/chords ")) {
         // Degrees are resolved here and only here. What goes on the wire is
@@ -375,16 +372,21 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
           audioProcessor.ninjamClient.sendChatMessage(
               Harmony::chartText(parsed, sessionKey));
         } else if (!sessionKey.valid) {
-          chatDisplay.insertTextAtCaret(
-              "Local: set a key first, and then degrees will work: /key Dm.\n");
+          const juce::String msg =
+              "Local: set a key first, and then degrees will work: /key Dm.";
+          chatDisplay.appendMessage(
+              msg, colourForChatCategory(ChatFormat::Category::ServerNotice));
+          announcer.say(msg, true);
         } else if (Harmony::parseDegreeChart(chart.toStdString(), sessionKey,
                                              parsed)) {
           audioProcessor.ninjamClient.sendChatMessage(
               Harmony::chartText(parsed, sessionKey));
         } else {
-          chatDisplay.insertTextAtCaret(
-              "Local: not chords. Try /chords Am F C G, or in degrees, "
-              "/chords ii V I.\n");
+          const juce::String msg = "Local: not chords. Try /chords Am F C G, "
+                                   "or in degrees, /chords ii V I.";
+          chatDisplay.appendMessage(
+              msg, colourForChatCategory(ChatFormat::Category::ServerNotice));
+          announcer.say(msg, true);
         }
       } else if (text.startsWithIgnoreCase("/topic ") ||
                  text.startsWithIgnoreCase("/kick ") ||
@@ -409,11 +411,13 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
           audioProcessor.ninjamClient.sendPrivateMessage(user, msg);
         }
       } else if (text.startsWithChar('/')) {
-        chatDisplay.insertTextAtCaret(
+        const juce::String msg =
             "Local: unknown command. Try /key, /chords, /topic, /kick, /bpm, "
-            "/bpi, /msg, "
-            "/me, or /admin <anything> to pass a command straight to the "
-            "server.\n");
+            "/bpi, /msg, /me, or /admin <anything> to pass a command straight "
+            "to the server.";
+        chatDisplay.appendMessage(
+            msg, colourForChatCategory(ChatFormat::Category::ServerNotice));
+        announcer.say(msg, true);
       } else {
         audioProcessor.ninjamClient.sendChatMessage(text);
       }
@@ -421,9 +425,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
     }
   };
   chatInput.setTitle("Chat message (" + Shortcuts::globalModifierName() + "C)");
-  chatInput.setDescription(
-      "Type a message or a command and press return to send. Shortcut: " +
-      Shortcuts::globalModifierName() + "C to focus");
+  chatInput.setDescription("Chat message (" + Shortcuts::globalModifierName() +
+                           "C)");
   addAndMakeVisible(chatInput);
 
   remoteUsersViewport.setViewedComponent(&remoteUsersContainer, false);
@@ -562,13 +565,38 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   const auto line = ChatFormat::render(
       type, username, text, audioProcessor.ninjamClient.getSelfUsername());
 
-  // juce::TextEditor keeps a colour per inserted run, so setting the colour
-  // before each insert gives per-message colour with no new widget -- and a
-  // read-only TextEditor stays the best primitive for reader navigation.
-  chatDisplay.setColour(juce::TextEditor::textColourId,
-                        colourForChatCategory(line.category));
-  chatDisplay.moveCaretToEnd();
-  chatDisplay.insertTextAtCaret(line.text + "\n");
+  chatDisplay.appendMessage(line.text, colourForChatCategory(line.category));
+
+  // Automatically announce incoming chat messages to screen readers.
+  // Messages from the local user are skipped because the user just typed and sent them.
+  switch (line.category) {
+  case ChatFormat::Category::OtherMessage:
+    announcer.say(username + ": " + text, true);
+    break;
+  case ChatFormat::Category::PrivateMessage:
+    announcer.say("Private message from " + username + ": " + text, true);
+    break;
+  case ChatFormat::Category::Action:
+    announcer.say(username + " " + text.substring(4), true);
+    break;
+  case ChatFormat::Category::Topic:
+    announcer.say("Topic: " + text, true);
+    break;
+  case ChatFormat::Category::JoinPart:
+  case ChatFormat::Category::ServerNotice:
+    announcer.say(text, true);
+    break;
+  case ChatFormat::Category::Voting:
+    announcer.say(text.startsWith("[voting system]")
+                      ? "Vote: " + text.substring(15).trim()
+                      : text,
+                  true);
+    break;
+  case ChatFormat::Category::Key:
+  case ChatFormat::Category::ChordProgression:
+  case ChatFormat::Category::SelfMessage:
+    break;
+  }
 
   // A key or a chart can arrive as chat or inside a topic, tagged, as `/key`,
   // in letters or in degrees -- and what each does to the other is decided in
@@ -617,6 +645,11 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
     break;
   }
   case RoomHarmony::Change::None:
+    if (line.category == ChatFormat::Category::Key ||
+        line.category == ChatFormat::Category::ChordProgression) {
+      announcer.say(username.isNotEmpty() ? username + ": " + text : text,
+                    true);
+    }
     break;
   }
 
@@ -1286,7 +1319,6 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   if (action == Shortcuts::Action::FocusChat) {
     if (chatInput.isEnabled() && chatInput.isShowing()) {
       chatInput.grabKeyboardFocus();
-      announcer.say("Chat message box", true);
     } else {
       announcer.say("Chat is not available until you connect", true);
     }

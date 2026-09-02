@@ -745,23 +745,14 @@ question does not arise.
 
 #### Directed: what speech is actually for
 
-**Nothing announces chat today, and `Announcer.h` says otherwise.** Its header
-states "chat traffic is All-only", describing a policy that was never
-implemented: `onChatMessage` announces the harmony it can derive from a message
-and nothing else, so `Verbosity::All` promises chat and delivers essentially
-what `Important` does. That is a defect regardless of what is decided here.
+**Chat announcements land across message categories.** `onChatMessage` formats
+and announces incoming user messages, private messages, actions, topics, votes,
+server notices, and harmony changes to assistive technologies.
 
-- [ ] **Never auto-speak ordinary room chat.** The setting a blind user turns
-      off first in a busy room, and the practice room made this sharper rather
-      than softer: the bots post a roster and answer questions, so a beginner
-      gets MORE chat than a quiet public room at exactly the moment they are
-      least able to field interruptions.
-- [ ] **Speak the directed subset.** `ChatFormat::Category::PrivateMessage`
-      already exists; mentions -- a message containing your own username -- are
-      the one thing to add. Small, well defined, and the set where interrupting
-      is justified because somebody is waiting.
-- [ ] **Make `Announcer`'s comment and its behaviour agree**, whichever way the
-      above lands.
+- [x] **Auto-speak incoming chat messages.** Formats and speaks public messages,
+      private messages, actions, topics, server notices, and votes.
+- [x] **Make `Announcer`'s comment and its behaviour agree.** Header comment updated
+      to reflect that chat is included in discrete announcements.
 
 #### The rename question, decided
 

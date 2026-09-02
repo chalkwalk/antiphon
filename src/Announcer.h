@@ -19,7 +19,7 @@ public:
   Verbosity getVerbosity() const { return verbosity; }
 
   // `important` marks the events worth interrupting for at the default level:
-  // connection, sync, tempo and votes. Chat traffic is All-only.
+  // connection, sync, tempo, votes and chat.
   void say(const juce::String &message, bool important) {
     if (verbosity == Verbosity::Off)
       return;

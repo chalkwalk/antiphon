@@ -1,0 +1,72 @@
+diff --git a/modules/juce_gui_basics/native/accessibility/juce_Accessibility_mac.mm b/modules/juce_gui_basics/native/accessibility/juce_Accessibility_mac.mm
+index 9811226260..1bb47ce8d2 100644
+--- a/modules/juce_gui_basics/native/accessibility/juce_Accessibility_mac.mm
++++ b/modules/juce_gui_basics/native/accessibility/juce_Accessibility_mac.mm
+@@ -203,7 +203,14 @@ static Holder create (AccessibilityHandler& handler)
+                         case AccessibilityRole::comboBox:      return NSAccessibilityPopUpButtonRole;
+                         case AccessibilityRole::image:         return NSAccessibilityImageRole;
+                         case AccessibilityRole::slider:        return NSAccessibilitySliderRole;
+-                        case AccessibilityRole::editableText:  return NSAccessibilityTextAreaRole;
++                        case AccessibilityRole::editableText:
++                        {
++                            if (auto* textEditor = dynamic_cast<const TextEditor*> (&handler->getComponent()))
++                                if (! textEditor->isMultiLine())
++                                    return NSAccessibilityTextFieldRole;
++
++                            return NSAccessibilityTextAreaRole;
++                        }
+                         case AccessibilityRole::menuItem:      return NSAccessibilityMenuItemRole;
+                         case AccessibilityRole::menuBar:       return NSAccessibilityMenuRole;
+                         case AccessibilityRole::table:         return NSAccessibilityOutlineRole;
+@@ -290,6 +297,32 @@ static Holder create (AccessibilityHandler& handler)
+             addMethod (@selector (accessibilityTitle),                     getAccessibilityTitle);
+             addMethod (@selector (accessibilityHelp),                      getAccessibilityHelp);
+             addMethod (@selector (setAccessibilityValue:),                 setAccessibilityValue);
++            addMethod (@selector (accessibilityPlaceholderValue), [] (id self, SEL) -> NSString*
++            {
++                if (auto* handler = getHandler (self))
++                {
++                    if (auto* textEditor = dynamic_cast<const TextEditor*> (&handler->getComponent()))
++                    {
++                        auto placeholder = textEditor->getTextToShowWhenEmpty();
++                        if (placeholder.isNotEmpty())
++                            return juceStringToNS (placeholder);
++                    }
++                }
++                return nil;
++            });
++            addMethod (@selector (accessibilityRoleDescription), [] (id self, SEL) -> NSString*
++            {
++                if (auto* handler = getHandler (self))
++                {
++                    if (handler->getRole() == AccessibilityRole::editableText)
++                    {
++                        if (auto* textEditor = dynamic_cast<const TextEditor*> (&handler->getComponent()))
++                            if (! textEditor->isMultiLine())
++                                return NSAccessibilityRoleDescription (NSAccessibilityTextFieldRole, nil);
++                    }
++                }
++                return nil;
++            });
+ 
+             addMethod (@selector (accessibilitySelectedChildren), [] (id self, SEL)
+             {
+@@ -429,7 +462,17 @@ static Holder create (AccessibilityHandler& handler)
+             addMethod (@selector (accessibilityFrameForRange:), [] (id self, SEL, NSRange range)
+             {
+                 if (auto* textInterface = getTextInterface (self))
+-                    return flippedScreenRect (makeCGRect (textInterface->getTextBounds (nsRangeToJuce (range)).getBounds()));
++                {
++                    auto bounds = textInterface->getTextBounds (nsRangeToJuce (range)).getBounds();
++                    if (bounds.isEmpty() && range.length == 0)
++                    {
++                        if (auto* handler = getHandler (self))
++                            if (auto* textEditor = dynamic_cast<const TextEditor*> (&handler->getComponent()))
++                                bounds = textEditor->localAreaToGlobal (textEditor->getCaretRectangle());
++                    }
++                    if (! bounds.isEmpty())
++                        return flippedScreenRect (makeCGRect (bounds));
++                }
+ 
+                 return NSZeroRect;
+             });

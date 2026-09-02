@@ -344,7 +344,12 @@ one through a tool that normalises newlines rewrites every line and produces an
   host kept routing to the layout it cached at load and the new bus never
   appeared. The pair adds `ChangeDetails::busLayoutChanged` and maps it to
   VST3's `kIoChanged` and CLAP's `audioPortsRescan(CLAP_AUDIO_PORTS_RESCAN_LIST)`.
-  Used by `addInputBus`/`removeLastInputBus`/`addOutputBus`/`removeLastOutputBus`.
+- **`juce-macos-textfield-accessibility.patch`** -- JUCE's macOS accessibility
+  bridge previously mapped all `AccessibilityRole::editableText` components to
+  `NSAccessibilityTextAreaRole` (`AXTextArea`), forcing VoiceOver to treat single-line
+  text inputs as multi-line text areas and breaking direct VoiceOver cursor tracking.
+  The patch makes single-line `TextEditor` components return `NSAccessibilityTextFieldRole`
+  and exposes `accessibilityPlaceholderValue` from `getTextToShowWhenEmpty()`.
 
 ---
 

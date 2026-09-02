@@ -80,8 +80,9 @@ the title bar skipped our code entirely and left the dialog unable to reopen.
 
 ## Announcements
 
-Discrete events are spoken: connecting and disconnecting, sync state changes,
-server tempo and BPI changes, votes, and players joining or leaving.
+Discrete events and chat are spoken: connecting and disconnecting, sync state changes,
+server tempo and BPI changes, votes, players joining or leaving, and incoming chat messages
+(user messages, private messages, actions, topics, and harmony updates).
 
 Continuous values are deliberately **not** spoken. Meter levels and interval
 position change tens of times a second; announcing them would interrupt the
@@ -89,9 +90,8 @@ reader constantly and make the app less usable, not more. They are available on
 demand by focusing the control.
 
 Verbosity has three settings -- **Off**, **Important only** (the default) and
-**All**. Chat traffic is only spoken at All. Repeated identical messages are
-suppressed, and a minimum gap is enforced so a burst of six joins does not
-become six interruptions.
+**All**. Repeated identical messages are suppressed, and a minimum gap is enforced
+so a burst of six joins does not become six interruptions.
 
 ## Keyboard
 
@@ -202,5 +202,6 @@ below -- most of which it never touched.
 - VU meters expose a value but there is no way to hear levels continuously
   without a reader announcing them constantly. A periodic "level check" gesture
   may be worth adding.
-- Chat history is a read-only text editor. It is navigable, but there is no
-  per-message structure a reader can jump between.
+- Chat history is an accessible read-only multi-line text area with caret
+  navigation for line-by-line reading. Providing structured per-message navigation
+  gestures remains a future enhancement.

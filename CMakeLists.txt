@@ -81,6 +81,7 @@ include(cmake/JuceSource.cmake)
 set(ANTIPHON_SUBMODULE_PATCHES
     "JUCE|patches/juce-linux-plugin-keyboard-focus.patch"
     "JUCE|patches/juce-bus-layout-change-notification.patch"
+    "JUCE|patches/juce-macos-textfield-accessibility.patch"
     "modules/clap-juce-extensions|patches/clap-bus-layout-rescan.patch")
 
 find_package(Git QUIET)
