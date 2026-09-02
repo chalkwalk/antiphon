@@ -74,19 +74,33 @@ MusicalKey::Key keyOf(const std::string &name) {
 // roster is a real thing the room says, and a test that ignored it could not
 // tell it apart from a bot answering twice.
 // The band arrives silent now, so anything about playing has to start it.
+// Started AND said so, and waiting for both is the point.
+//
+// The conductor commands every bot in one call, so the phases flip before its
+// line has crossed the server -- which means a caller that waits only for the
+// phases captures a chat snapshot with the announcement still in flight, and
+// then counts it against whatever it does next.
 bool startBand(Joiner &you, const PracticeRoom &room) {
   you.client.sendChatMessage("band play");
   return waitUntil(
-      [&] {
-        const auto phases = room.bandPhases();
-        if (phases.empty())
-          return false;
-        for (auto p : phases)
-          if (p != BandPlayState::State::Playing)
-            return false;
-        return true;
-      },
-      6000);
+             [&] {
+               const auto phases = room.bandPhases();
+               if (phases.empty())
+                 return false;
+               for (auto p : phases)
+                 if (p != BandPlayState::State::Playing)
+                   return false;
+               return true;
+             },
+             6000) &&
+         waitUntil(
+             [&] {
+               for (const auto &line : you.snapshot())
+                 if (juce::String(line).containsIgnoreCase("coming in"))
+                   return true;
+               return false;
+             },
+             6000);
 }
 
 bool waitForRoster(const Joiner &you) {
@@ -1367,7 +1381,7 @@ public:
              "the band would not start");
     }
 
-    beginTest("one bot speaks for the band, and all four still act");
+    beginTest("the conductor speaks for the band, and all four still act");
     {
       // Reported from a real room: "band stop" got four identical replies.
       // Acting is collective -- every bot ends the tune -- and only the LINE
@@ -1385,11 +1399,13 @@ public:
                  5000),
              "the band never arrived");
 
+      // `bot]` rather than `-bot]`: the line about a band command comes from
+      // the CONDUCTOR now, and a conductor is not a bandmate.
       auto botLinesSince = [&](int from) {
         juce::StringArray out;
         const auto all = you.snapshot();
         for (int i = from; i < all.size(); ++i)
-          if (all[i].startsWith("MSG|") && all[i].contains("-bot]"))
+          if (all[i].startsWith("MSG|") && all[i].contains("bot]"))
             out.add(all[i]);
         return out;
       };
@@ -1421,13 +1437,58 @@ public:
              "only the bot that spoke actually stopped");
     }
 
-    beginTest("with the band half stopped, the one that acts speaks");
+    beginTest("a command for an interval already gone is refused");
     {
-      // The mixed case, which the "same answer" rule alone gets wrong. Some
-      // bots wrap up and some say "already stopped" -- different sentences,
-      // but still one thing happening to one band. Whoever won a flat race
-      // would answer for everybody, and a silent bot winning would tell the
-      // room nothing was happening while the rest ended the tune.
+      // Late is worse than never: the interval that was asked for has been
+      // rendered, so applying it now would put the band a beat out of step
+      // with what the room already heard.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitForRoster(you), "the band never introduced itself");
+      expect(startBand(you, room), "the band would not start");
+
+      // Two back rather than one, so this cannot pass by landing exactly on a
+      // boundary while the interval turns over.
+      room.control().command(BotChat::Act::StopPlaying,
+                             room.control().currentInterval() - 2);
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(2500);
+
+      for (auto p : room.bandLatchedPhases())
+        expect(p == BandPlayState::State::Playing,
+               "a stale command was applied late, which is the split naming an "
+               "interval exists to prevent");
+
+      // And a fresh one works, so the assertion above is not passing because
+      // commands are broken outright.
+      room.control().command(BotChat::Act::StopPlaying,
+                             room.control().currentInterval() + 1);
+      expect(waitUntil(
+                 [&] {
+                   const auto ph = room.bandLatchedPhases();
+                   if (ph.empty())
+                     return false;
+                   for (auto p : ph)
+                     if (p == BandPlayState::State::Playing)
+                       return false;
+                   return true;
+                 },
+                 12000),
+             "a fresh command did not take effect either");
+    }
+
+    beginTest("with the band half stopped, the conductor says it is ending");
+    {
+      // The mixed case. Some bots wrap up and some are already silent -- but
+      // it is still one thing happening to one band, and the conductor states
+      // it because it issued the stop and can see the phases.
+      //
+      // This used to be a race the bots arbitrated by delay, with a bot that
+      // ACTED ranked above one with nothing to do, because a silent bot
+      // winning would tell the room nothing was happening while the rest
+      // ended the tune. There is no race now: one bot knows, and says.
       PracticeRoom room;
       auto cfg = testConfig("you");
       cfg.bpm = 240;
@@ -1480,10 +1541,11 @@ public:
       you.client.sendChatMessage("band stop");
       juce::MessageManager::getInstance()->runDispatchLoopUntil(2500);
 
+      // `bot]`: the answer comes from the conductor, which is not a bandmate.
       juce::StringArray replies;
       const auto all = you.snapshot();
       for (int i = before; i < all.size(); ++i)
-        if (all[i].startsWith("MSG|") && all[i].contains("-bot]"))
+        if (all[i].startsWith("MSG|") && all[i].contains("bot]"))
           replies.add(all[i]);
 
       expectEquals(replies.size(), 1,

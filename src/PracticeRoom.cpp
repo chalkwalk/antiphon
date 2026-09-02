@@ -149,7 +149,7 @@ bool PracticeRoom::start(const Config &config) {
   // Captures `this`, which outlives the conductor: `stop()` resets the
   // conductor before anything else it owns. If that order ever changes, this is
   // what breaks.
-  conductor->setRecruit([this] { return addPlayer(); });
+  conductor->setControl(&control());
   conductor->setOwner(cfg.ownerName.toStdString());
   if (!conductor->join(std::string(host()), server.port(), cfg.sampleRate))
     conductor.reset(); // A room whose leader could not join is still a room.
@@ -324,10 +324,17 @@ void PracticeRoom::reapPartedBots() {
 void PracticeRoom::onTick(int intervalIndex, int tick) {
   const auto shouldStop = [this] { return !running.load(); };
 
+  // So the conductor can name an interval relative to the one being rendered.
+  lastInterval.store(intervalIndex);
+
   if (tick == 0) {
     // Reaping once per interval, not once per tick: it takes the lock and
     // nothing about it is urgent.
     reapPartedBots();
+
+    // Before the latch, so a command that named this interval is part of what
+    // the band latches rather than arriving during it.
+    applyPendingCommand(intervalIndex);
 
     // THE DECISION POINT, and the only one for a stop. Every bot latches its
     // phase here, together, so the band wraps up and resolves as a band even
@@ -347,6 +354,55 @@ void PracticeRoom::onTick(int intervalIndex, int tick) {
   }
 
   renderScheduledBots(intervalIndex, tick, shouldStop);
+}
+
+// Recorded, and applied at the interval it names.
+//
+// A STALE command is REFUSED, not applied late. Late is worse than never: the
+// interval that was asked for has been rendered, so applying it now would put
+// the band a beat out of step with what the room already heard -- which is the
+// split naming an interval exists to prevent.
+//
+// A START is applied at once when it names the interval being played. That is
+// not an exception bolted on: `onTick` already catches a start mid-interval,
+// because waiting for the next head is an interval of silence between asking
+// and hearing with nothing musical in the gap.
+void PracticeRoom::command(BotChat::Act act, int atInterval) {
+  const int now = lastInterval.load();
+  if (atInterval < now)
+    return;
+
+  if (act == BotChat::Act::StartPlaying && atInterval == now) {
+    juce::ScopedLock sl(botsMutex);
+    for (auto &b : bots)
+      b->startPlaying();
+    return;
+  }
+
+  juce::ScopedLock sl(botsMutex);
+  pending = {act, atInterval};
+}
+
+// Anything whose interval has arrived, applied together and BEFORE the latch,
+// so the band takes the command in one pass rather than four bots learning of
+// it across four dispatches.
+void PracticeRoom::applyPendingCommand(int intervalIndex) {
+  // One lock for the whole of it. Taking it, releasing it and taking it again
+  // would let the band change between deciding to apply a command and applying
+  // it, which is the split this exists to prevent.
+  juce::ScopedLock sl(botsMutex);
+
+  if (pending.act == BotChat::Act::None || pending.atInterval > intervalIndex)
+    return;
+  const auto act = pending.act;
+  pending = {};
+
+  for (auto &b : bots) {
+    if (act == BotChat::Act::StartPlaying)
+      b->startPlaying();
+    else if (act == BotChat::Act::StopPlaying)
+      b->stopPlaying();
+  }
 }
 
 std::vector<BandPlayState::State> PracticeRoom::bandLatchedPhases() const {

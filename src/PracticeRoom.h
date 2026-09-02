@@ -3,6 +3,7 @@
 #include <BandPlayState.h>
 #include <IntervalPump.h>
 #include <PracticeBot.h>
+#include <BandControl.h>
 #include <Conductor.h>
 #include <TutorBot.h>
 #include "PracticeServer.h"
@@ -29,7 +30,12 @@
 // N+2 -- you play in N, it hears you in N+1, the soonest it can send is N+1.
 // That is the true latency of the form rather than a limitation here, and it is
 // why the echo bot's shallowest delay is two.
-class PracticeRoom {
+// Implements `BandControl` PRIVATELY: the conductor needs a clock, the band's
+// phases and a way to command them, and none of those are things a room's own
+// callers should gain. `control()` is the one door, and it exists because the
+// command rules cannot be reached through chat -- a conductor never names an
+// interval that has already gone.
+class PracticeRoom : private BandControl {
 public:
   PracticeRoom();
   ~PracticeRoom();
@@ -153,7 +159,10 @@ public:
   // to be enforced where bots are actually made, so no chat path can exceed it
   // whatever any bot decides. Whoever asks -- a tutor, a command, a future
   // arranger -- asks the room.
-  bool addPlayer();
+  bool addPlayer() override;
+
+  // The room AS the conductor sees it.
+  BandControl &control() { return *this; }
 
   // Whether the room's leader is here. A room that is running always has one;
   // this exists so a test can say so.
@@ -192,6 +201,7 @@ private:
   // The pump's callback. Ticks run several times per bot per interval:
   // tick 0 is the band's decision point and the rest are render slots.
   void onTick(int intervalIndex, int tick);
+  void applyPendingCommand(int intervalIndex);
 
   // Every bot latches the phase it will render this interval, together. The
   // band's transitions have to be simultaneous even though its renders are
@@ -262,6 +272,34 @@ private:
   // A running average of what one bot's render costs on this machine, which is
   // what decides whether a late start can still be fitted into the interval.
   std::atomic<double> avgBotRenderMs{0.0};
+
+  // BandControl. See the note on the class.
+  int currentInterval() const override { return lastInterval.load(); }
+  // The STATE MACHINE, not the latch.
+  //
+  // The latch is what a render will produce, and it lags by up to an interval
+  // -- so a band told to play a moment ago still reads as silent through it,
+  // and the conductor would answer "already stopped" to a band that is coming
+  // in. The conductor is asked what the band is DOING, which is what the state
+  // machine holds; the latch answers the different question of what is about to
+  // be heard.
+  std::vector<BandPlayState::State> phases() const override {
+    return bandPhases();
+  }
+  void command(BotChat::Act act, int atInterval) override;
+
+  // A command waiting for its interval. At most one: a second request replaces
+  // the first, because the last thing asked for is what the room wants and
+  // queueing them would play a stop somebody had already cancelled.
+  struct Pending {
+    BotChat::Act act = BotChat::Act::None;
+    int atInterval = 0;
+  };
+  Pending pending;
+
+  // The interval the pump last called back with, so the conductor can name one
+  // relative to it.
+  std::atomic<int> lastInterval{0};
 
   jambot::IntervalPump pump;
   Config cfg;

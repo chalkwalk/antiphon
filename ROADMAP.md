@@ -471,7 +471,24 @@ here; recorded so it is not "fixed" into a burst by someone tidying.
       anyone had looked. **It is back to zero**: TSan clean across every
       threaded suite, ASan clean, and the only UBSan output is the libvorbis
       line `AGENTS.md` already documents as not ours.
-- [ ] **A command reaches the band one bot at a time.** Chat is delivered to
+- [x] **A command reaches the band together now, named by interval.** Chat is
+      still delivered to each bot separately, but a band-wide play or stop no
+      longer arrives that way: the CONDUCTOR takes it, names the interval it
+      takes effect from, and the room applies it to everybody in one pass
+      before the latch. So the dispatch window this describes is closed rather
+      than narrowed -- a bot that learns of the command late still applies it
+      in the same interval as the rest, and one naming an interval already gone
+      is refused rather than applied late.
+
+      The fix this entry proposed -- "bots record a REQUESTED transition and the
+      room drains those atomically at latch time" -- is what shipped, arrived at
+      from the other end: the request is recorded by the room rather than by
+      each bot, because the conductor makes it once instead of four bots making
+      it separately.
+
+      Original entry follows.
+
+- [ ] ~~**A command reaches the band one bot at a time.**~~ Chat is delivered to
       each bot through its own client's `callAsync`, so four bots learn of a
       `stop` in four separate dispatches. The band's phase latch is taken for
       all of them in one pass, which makes the render decision uniform -- but a
@@ -1062,6 +1079,23 @@ restraint rather than conversation.
             and the roster was posted twice. It had never held -- Linux passed
             on a margin nobody had measured. Found by CI on 2026-08-22, the
             first run on a non-Linux compiler since the bots were written.
+      - [x] **DONE, and the primitive is gone rather than shared.** The
+            heading above asks for one arbitration primitive with four uses.
+            There is none, and there are no uses: the arrival roster and the
+            command confirmation are both the conductor's, the tempo vote and
+            the key acknowledgement never got built, and a single speaker needs
+            no tiebreak. `speakDelayMs`, `rankAmong`, `botsPresent`,
+            `heardAnotherBot`, `pendingBandReply`, `bandReplyTimer`,
+            `kSpeakStaggerMs` and `kIdleSpeakerPenaltyMs` are all deleted.
+
+            The idle penalty is the piece worth remembering, because it was
+            RIGHT: with the band half stopped, an idle bot answering "already
+            stopped" would tell the room nothing was happening while three bots
+            ended the tune. A delay was the only way four peers could express
+            that. The conductor states it instead, because it issued the stop
+            and can see the phases -- which is the same fact, held rather than
+            raced for.
+
       - [x] **The ARRIVAL race is gone, and by removal rather than tuning.**
             The roster and the joining instructions are the conductor's now,
             and a conductor is alone, so there is nothing left to arbitrate on
