@@ -11,6 +11,8 @@
 #include "SelectionModel.h"
 #include "ShortcutsDialog.h"
 #include "StatusReadout.h"
+#include "ChatHistoryEditor.h"
+#include "ChatInputEditor.h"
 #include "PluginProcessor.h"
 #include "RemoteUserStrip.h"
 #include <JuceHeader.h>
@@ -161,7 +163,7 @@ private:
   static constexpr int kRoomMemberLineHeight = 18;
   static constexpr int kMaxRoomMemberLines = 3;
   juce::Label roomMembersLabel;
-  juce::TextEditor chatDisplay;
+  ChatHistoryEditor chatDisplay;
 
   // The chip: one row between the chat and its input, offering an action you
   // can take about the tempo. Never acts on its own -- a vote is always a
@@ -170,7 +172,7 @@ private:
   juce::TextButton chipActionButton;
   juce::TextButton chipDismissButton;
 
-  juce::TextEditor chatInput;
+  ChatInputEditor chatInput;
 
   static juce::Colour colourForChatCategory(ChatFormat::Category c);
   void updateRoomMembers();
