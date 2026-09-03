@@ -361,25 +361,36 @@ it:
 needed = M - N
 ```
 
-evaluated at the moment the human-majority gate trips, which is the one moment
-`N` is known to be purely human (section 8 point 2). Then:
+evaluated at the moment the gate trips, which is the one moment `N` is known to
+be purely human (section 8 point 2). Then:
 
 | `needed` | What the conductor does |
 |---|---|
 | `<= 0` | nothing -- the room carried it without the band |
 | `1` | votes, and that is the whole of it |
 | `> 1` | votes, and commands `needed - 1` members to vote the same value |
-| `>` band size | casts nothing, and says so |
 
 Members are picked in roster order. Order does not matter when the count is
 exact, and a deterministic pick is one less thing to reproduce in a test.
 
-The last row is a real case, not a defensive one: at a 100% threshold a single
-human abstention puts the change out of reach, and `needed` then exceeds
-anything the band has to give. Votes that cannot reach the threshold are noise
-that expire when the timeout does, so the conductor refuses instead of casting
-them. That is the cap refusal of open question 2 arriving in a second place,
-which is an argument for answering it once, properly.
+**There is no fourth row, and an earlier draft of this section was wrong to
+have one.** It said the band could be short even unanimously -- at a 100%
+threshold, one abstention -- and gave the conductor a refusal for it. That case
+does not exist. At the moment the gate trips, `N` is `(H * t + 50) / 100` and
+the shortfall is
+
+```
+need(H + B, t) - need(H, t)   <=   B      for every t, H and B
+```
+
+which is what the gate buys: it trips only when the humans have covered their
+own share, so what remains is the band's share and the band always has exactly
+that many members. Swept for `t` 1..100, `H` 1..20, `B` 1..8 -- no case exceeds
+`B`, and the bound is tight (`t = 89, H = 5, B = 8` reaches it).
+
+What can still leave the band short is a **race, not a rule**: a human joining
+between the gate tripping and the votes landing raises `vucnt`, and `M` with it.
+That wants a re-read of the count before casting rather than a policy.
 
 **Commanded, not messaged.** The natural way to describe this is the conductor
 private-messaging the members it needs, and that is exactly right across a
