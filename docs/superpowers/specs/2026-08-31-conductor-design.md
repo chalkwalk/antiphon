@@ -339,15 +339,61 @@ carried -- delay-and-watch, the mechanism this design removed everywhere else.
 It was the right answer for peers: it casts only the votes the band's own
 presence made necessary, with no ranking and no message passing.
 
-A conductor does the same job without the timer. It knows `H`, the vote count
-and the threshold, so it can compute **exactly how many bot votes are needed**
-and command that many. Deterministic instead of raced, immediate instead of
-staggered, and the same outcome -- the band casts what its presence made
-necessary and no more.
+A conductor knows all of it at once, so it counts instead of racing.
 
-That also fits the split this design rests on: whether the gate has tripped is
-one answer about the room, so it is the conductor's; voting is an act, so it is
-the members'. Deciding is central, acting is collective -- as with play and stop.
+### How the conductor votes
+
+The vote line carries both numbers -- `N/M`, cast over threshold, parsed by
+`ChatFormat::parseVote` -- so the shortfall is arithmetic rather than a guess:
+
+```
+needed = M - N
+```
+
+evaluated at the moment the human-majority gate trips, which is the one moment
+`N` is known to be purely human (section 8 point 2). Then:
+
+| `needed` | What the conductor does |
+|---|---|
+| `<= 0` | nothing -- the room carried it without the band |
+| `1` | votes, and that is the whole of it |
+| `> 1` | votes, and commands `needed - 1` members to vote the same value |
+| `>` band size | casts nothing, and says so |
+
+Members are picked in roster order. Order does not matter when the count is
+exact, and a deterministic pick is one less thing to reproduce in a test.
+
+The last row is a real case, not a defensive one: at a 100% threshold a single
+human abstention puts the change out of reach, and `needed` then exceeds
+anything the band has to give. Votes that cannot reach the threshold are noise
+that expires sixty seconds later, so the conductor refuses instead of casting
+them. That is the cap refusal of open question 2 arriving in a second place,
+which is an argument for answering it once, properly.
+
+**Commanded, not messaged.** The natural way to describe this is the conductor
+private-messaging the members it needs, and that is exactly right across a
+process boundary -- if members ever become separate clients, `/msg` is the path
+and nothing above changes. In one process it is a `BandControl` call, because
+that interface already exists for precisely this and a chat round trip between
+two objects in the same address space would be ceremony.
+
+It is, though, the **first band command with no interval attached**. Play and
+stop name the interval they take effect from because they change what the pump
+renders; a vote is an act on the server, immediate and outside the audio
+timeline entirely. That is a genuine second shape for `BandControl::command`,
+and it should be admitted as one rather than smuggled in with `atInterval = -1`.
+
+**Expiry has to be timed, because it is not announced.** The server prints a
+leading candidate and prints the change; it never prints a failure. So "the vote
+failed" is the conductor's own sixty seconds since the last vote line for that
+candidate, with no `setting BPM to` seen. It then drops the latch and says
+nothing -- the room can see the tempo it still has, and narrating a change that
+did not happen is the chorus this design exists to avoid.
+
+That fits the split the rest of the design rests on: whether the gate has
+tripped is one answer about the room, so it is the conductor's; voting is an
+act, so it is the members'. Deciding is central, acting is collective -- as with
+play and stop.
 
 **Still not scheduled, and still wants measuring.** `ROADMAP.md` carries
 *Measure the server's vote threshold*. The mechanics above are read from the

@@ -1035,25 +1035,26 @@ restraint rather than conversation.
       others abstaining, which would leave a room of one human and four bots
       unable to change tempo at all.
 
-      What the conductor does change is how the band votes once the gate trips.
-      Section 8 point 4 has each bot wait its own delay and check whether the
-      motion has carried -- which is the delay-and-watch mechanism deleted
-      everywhere else, and the last place it is still assumed. A conductor can
-      compute how many votes are needed and command exactly that many.
- `libs/jambot/docs/BOT-CHAT.md` proposes how
-      the band votes, and the whole proposal rests on `M` as a function of the
-      number of clients -- which nothing here records. Connect a varying number
-      of clients to `scripts/testserver.sh` and read it off the vote line before
-      building any of it (`PRINCIPLES` §5).
+      What the conductor does change is how the band votes once the gate trips,
+      and it is now specified: `needed = M - N` off the vote line, the conductor
+      votes, and it commands `needed - 1` members to vote with it. That replaces
+      section 8 point 4, which had each bot wait its own delay and check on
+      waking whether the motion had carried -- the delay-and-watch mechanism
+      deleted everywhere else, and the last place it was still assumed.
+
+      What is still unmeasured is `M` itself. The whole proposal rests on it
+      being a function of the number of clients, which nothing here records.
+      Connect a varying number of clients to `scripts/testserver.sh` and read it
+      off the vote line before building any of it (`PRINCIPLES` §5).
 - [ ] **The band's vote policy.** Bots are ordinary clients, so they count
       toward the threshold, and abstaining is a vote against: four of them take
-      tempo control away from a room of three humans entirely. The rule -- vote
-      only for a candidate a majority of humans already back, never propose one,
-      staggered like the arrival roster -- is designed in `libs/jambot/docs/BOT-CHAT.md` and needs
-      no coordination between the bots: they queue behind staggered delays the
-      way they announce themselves, and each checks on waking whether the motion
-      already carried, so the band casts exactly the shortfall and stops.
-      Nothing casts a vote today.
+      tempo control away from a room of three humans entirely. The gate is
+      designed in `libs/jambot/docs/BOT-CHAT.md` section 8 -- vote only for a
+      candidate a majority of humans already back, never propose one -- and the
+      casting is the conductor's, per the section above: it reads the shortfall
+      off the vote line and commands exactly that many votes, refusing when the
+      band could not carry the change even unanimously. Nothing casts a vote
+      today.
 - [x] `src/BotAnswer.{h,cpp}`: what a bot says when asked about the room, as
       pure functions over a `Room` struct, with key and chart provenance
       (defaulted / topic / chat). Every reply is asserted not to parse as a key
