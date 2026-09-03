@@ -405,7 +405,9 @@ renders; a vote is an act on the server, immediate and outside the audio
 timeline entirely. That is a genuine second shape for `BandControl::command`,
 and it should be admitted as one rather than smuggled in with `atInterval = -1`.
 
-**Expiry has to be timed, because it is not announced.** The server prints a
+**Expiry has to be timed, because it is not announced.** (BUILT: the latch
+keeps the time it was set and the timeout the line reported, and lets go when
+that has passed. Without it the band backs a value once and never again.) The server prints a
 leading candidate and prints the change; it never prints a failure -- the tally
 is only ever recomputed when somebody votes, so an expiring vote makes no
 traffic at all. So "the vote failed" is the conductor's own timer since the last
