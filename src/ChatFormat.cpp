@@ -1,5 +1,7 @@
 #include "ChatFormat.h"
 
+#include <chalkwalk/ninjam/Voting.h>
+
 #include "Harmony.h"
 #include "MusicalKey.h"
 
@@ -86,51 +88,24 @@ bool isChordProgression(const juce::String &text) {
 }
 
 VoteState parseVote(const juce::String &text) {
+  // One parser, in `chalkwalk::ninjam::voting`, because the bots read the same
+  // sentence and a second reading of it is a second answer (`PRINCIPLES 8`).
+  // What stays here is the shape the UI wants.
+  const auto line = chalkwalk::ninjam::voting::parseLine(text.toStdString());
+
   VoteState v;
-  if (!text.startsWith("[voting system]"))
+  // A candidate of zero is not a proposal: a line we could not read shows no
+  // chip rather than a chip for nothing.
+  v.valid = line.valid && line.value > 0;
+  if (!v.valid)
     return v;
 
-  // Both formats are fixed in the server and are the only contract we have --
-  // there is no structured vote message on the wire, so this is parsing English
-  // on purpose (libninjam/libninjam server/usercon.cpp:1054, :1074,
-  // :1089, :1107):
-  //
-  //   [voting system] leading candidate: %d/%d votes for %d BPM [each vote
-  //                   expires in %ds]
-  //   [voting system] setting BPM to %d
-  //
-  // ...and the same pair for BPI.
-
-  if (text.contains("setting BPM to") || text.contains("setting BPI to")) {
-    v.valid = true;
-    v.settled = true;
-    v.isBpm = text.contains("setting BPM to");
-    const auto tail = text.fromFirstOccurrenceOf("to ", false, false);
-    v.target = tail.trim().getIntValue();
-    return v;
-  }
-
-  if (!text.contains("leading candidate:"))
-    return v;
-
-  // "3/5 votes for 137 BPM [each vote expires in 60s]"
-  const auto tail =
-      text.fromFirstOccurrenceOf("leading candidate:", false, false).trim();
-  v.votes = tail.getIntValue();
-  v.needed = tail.fromFirstOccurrenceOf("/", false, false).getIntValue();
-
-  const auto forPart =
-      tail.fromFirstOccurrenceOf("votes for ", false, false).trim();
-  v.target = forPart.getIntValue();
-  v.isBpm = forPart.containsIgnoreCase("BPM");
-
-  if (text.contains("expires in "))
-    v.timeoutSeconds =
-        text.fromFirstOccurrenceOf("expires in ", false, false).getIntValue();
-
-  // A candidate of zero is not a proposal; treat a line we could not read as
-  // not-a-vote rather than showing a chip for nothing.
-  v.valid = v.target > 0;
+  v.isBpm = line.isBpm;
+  v.target = line.value;
+  v.votes = line.votes;
+  v.needed = line.required;
+  v.timeoutSeconds = line.timeoutSeconds;
+  v.settled = line.settled;
   return v;
 }
 

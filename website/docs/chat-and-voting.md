@@ -30,12 +30,28 @@ will tell you if you lack the privilege.
 
 ## Voting
 
-Votes need a majority of the room. Antiphon shows a vote in progress as a chip
-you can click to add your vote, rather than making you type the command again.
+A vote needs a share of **everyone connected**, not a share of the people who
+voted -- so not voting counts against a change rather than staying neutral. The
+share is the server's setting, and many servers have voting switched off
+entirely, in which case you will be told so. Antiphon shows a vote in progress
+as a chip you can click to add your vote, rather than making you type the
+command again; the chip carries the count, as `2/3`.
 
 When a vote passes, the tempo changes for everyone at the next interval --
 including you. If you are in a DAW, that means matching your project tempo and
 pressing **Sync** again. See [Syncing with your DAW](./daw-sync.md).
+
+### Voting in the practice room
+
+The practice room has voting switched on, so you can try it without a stranger
+watching. The band counts toward the threshold like any other client, which
+would leave you outvoted by your own bots -- so the band backs you: once you
+have voted for something a room of just the humans present would have carried,
+it casts the rest and the change goes through.
+
+It will not start a vote, and it will not back one the people in the room have
+not backed first. In a room of two who disagree, nothing happens -- which is the
+point.
 
 ## Keys and chord progressions
 

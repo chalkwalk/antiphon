@@ -2053,6 +2053,54 @@ public:
       room.stop();
       expectEquals(room.botCount(), 0);
     }
+
+    beginTest("one player can carry a tempo vote, because the band backs it");
+    {
+      // The whole point of the vote path, end to end: a room of one human and
+      // five bots needs three votes at 50%, and the human has one. The band
+      // casts the other two only because the human already cast what a room of
+      // just them would have needed.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+      Joiner you;
+      expect(you.join(room, "you"));
+      expect(waitUntil([&] { return room.botCount() > 0; }));
+
+      you.client.sendChatMessage("!vote bpm 132");
+
+      expect(waitUntil(
+                 [&] { return room.practiceServer().bpm() == 132; }, 8000),
+             "the room never reached the tempo one player voted for");
+
+      // And the player is told, by the server, in the ordinary way.
+      expect(waitUntil([&] {
+        for (const auto &line : you.snapshot())
+          if (line.contains("setting BPM to 132"))
+            return true;
+        return false;
+      }));
+    }
+
+    beginTest("a band alone does not vote itself a tempo");
+    {
+      // Nobody human in the room at all. Whatever arrives, the band must not
+      // start backing it -- four bots agreeing is not a room deciding.
+      PracticeRoom room;
+      expect(room.start(testConfig("you")));
+      expect(waitUntil([&] { return room.botCount() > 0; }));
+
+      Joiner watcher;
+      expect(watcher.join(room, "Ghost[bass-bot]"));
+      expect(waitUntil([&] { return room.practiceServer().clientCount() > 0; }));
+
+      watcher.client.sendChatMessage("!vote bpm 150");
+
+      // Long enough for the conductor to have acted if it were going to: the
+      // vote line is dispatched on the same thread the bots hear chat on.
+      juce::Thread::sleep(600);
+      expectEquals(room.practiceServer().bpm(), 120,
+                   "the band changed the tempo with no player present");
+    }
   }
 };
 

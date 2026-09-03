@@ -444,9 +444,16 @@ ghosts out when you are not connected, and clears when you join a new session.
 | `!vote bpi 8` | Proposes an interval length change |
 | `/kick bob` | Admin only |
 
-Votes need a majority of the room. When one passes, the tempo changes for
-everyone at the next interval -- **including you**, so in a DAW you will need to
-change your project tempo again and re-Sync.
+A vote needs a share of **everyone connected**, not a share of those who voted,
+so abstaining counts against a change. The share is the server's setting, and
+many servers have voting switched off altogether. When a vote passes, the tempo
+changes for everyone at the next interval -- **including you**, so in a DAW you
+will need to change your project tempo again and re-Sync.
+
+The practice room has voting on, and the band backs you rather than outvoting
+you: once you have voted for something a room of just the humans present would
+have carried, the bots cast the rest. They never start a vote, and never back
+one the room has not backed first.
 
 Ninjam has no protocol field for a key or a chart, so both ride on chat as text
 every other client shows plainly. A chart appears above the phase bar with each

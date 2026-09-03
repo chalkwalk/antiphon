@@ -1060,21 +1060,19 @@ restraint rather than conversation.
       on carry. The arithmetic is `chalkwalk::ninjam::voting` rather than a
       third copy of a rounding rule, so a server tallying votes and a bot
       deciding whether to back one now agree by construction (`PRINCIPLES §8`).
-- [ ] **Turn practice-room voting ON.** It is off, and the reason is the item
-      below rather than the item above: a vote counts every client, so a room
-      of one player and four bots needs three votes and the player has one.
-      Switched on today, every vote in a practice room would visibly fail --
-      worse than no voting at all. It becomes one `setVoting` call the day the
-      band can cast the rest, and the tutor can explain it then.
-- [ ] **The band's vote policy.** Bots are ordinary clients, so they count
-      toward the threshold, and abstaining is a vote against: four of them take
-      tempo control away from a room of three humans entirely. The gate is
-      designed in `libs/jambot/docs/BOT-CHAT.md` section 8 -- never propose a
-      value, and top the vote up only once the humans have cast what a room of
-      just them would have needed -- and the casting is the conductor's, per the
-      section above: it reads the shortfall off the vote line and commands
-      exactly that many votes, refusing when the band could not carry the change
-      even unanimously. Nothing casts a vote today.
+- [x] **Turn practice-room voting ON.** At 50%, once the band could cast the
+      shortfall. A room of one player and five bots needs three votes and the
+      player has one; the band supplies the other two, so one player can now
+      change the tempo -- and two who disagree still cannot, which is the
+      property that makes it worth practising.
+- [x] **The band's vote policy.** Bots are ordinary clients, so they count
+      toward the threshold, and abstaining is a vote against: four of them
+      would take tempo control away from a room of three humans entirely. The
+      conductor reads `N/M` off the vote line, tops the vote up once the humans
+      have cast what a room of just them would have needed, casts its own vote
+      and commands `needed - 1` members for the rest. It never proposes a value,
+      it latches so it cannot answer its own vote, and a change of candidate
+      resets it. Designed in `libs/jambot/docs/BOT-CHAT.md` section 8.
 - [x] `src/BotAnswer.{h,cpp}`: what a bot says when asked about the room, as
       pure functions over a `Room` struct, with key and chart provenance
       (defaulted / topic / chat). Every reply is asserted not to parse as a key

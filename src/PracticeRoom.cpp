@@ -37,6 +37,16 @@ bool PracticeRoom::start(const Config &config) {
 
   if (!server.start(cfg.bpm, cfg.bpi))
     return false;
+
+  // ON, at the percentage the stock config offers as its example.
+  //
+  // A vote counts every client, so a room of one player and five bots needs
+  // three votes and the player has one. That arithmetic is why this was left
+  // off until the conductor could vote: the band now casts the shortfall once
+  // the humans present have cast what a room of just them would have needed,
+  // so one player CAN change the tempo here -- and a room of two who disagree
+  // still cannot, which is the property that makes it worth practising.
+  server.setVoting(50, chalkwalk::ninjam::voting::kDefaultTimeoutSeconds);
   server.setTopic(cfg.topic);
 
   // The same truncating arithmetic every other client on a server uses
@@ -381,6 +391,29 @@ void PracticeRoom::command(BotChat::Act act, int atInterval) {
 
   juce::ScopedLock sl(botsMutex);
   pending = {act, atInterval};
+}
+
+int PracticeRoom::castVotes(bool isBpm, int value, int count) {
+  if (count <= 0)
+    return 0;
+
+  // The conductor has already decided the room wants this; what is left is to
+  // put the votes on the wire, and each bot casts its own because a vote is a
+  // client's act and the server counts clients.
+  const juce::String line =
+      juce::String("!vote ") + (isBpm ? "bpm " : "bpi ") + juce::String(value);
+
+  juce::ScopedLock sl(botsMutex);
+  int cast = 0;
+  for (auto &b : bots) {
+    if (cast >= count)
+      break;
+    if (!b->client().isConnected())
+      continue;
+    b->client().sendChat(line.toStdString());
+    ++cast;
+  }
+  return cast;
 }
 
 // Anything whose interval has arrived, applied together and BEFORE the latch,

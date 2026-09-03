@@ -288,6 +288,7 @@ private:
     return bandPhases();
   }
   void command(BotChat::Act act, int atInterval) override;
+  int castVotes(bool isBpm, int value, int count) override;
 
   // A command waiting for its interval. At most one: a second request replaces
   // the first, because the last thing asked for is what the room wants and
