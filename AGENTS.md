@@ -223,7 +223,8 @@ ctest --test-dir build --output-on-failure
 # The band is not reachable from the plugin yet; this is how you hear it.
 ./build/tools/AntiphonPractice_artefacts/AntiphonPractice --key "D minor"
 # The room brings a tutor by default -- five bots, one of which teaches six
-# lines and then parts. --no-tutor for the four-piece.
+# lines and then stops teaching. It stays: a tutor is a conductor, and a room
+# always has one. --no-tutor for the four-piece.
 ./build/tools/AntiphonPractice_artefacts/AntiphonPractice --no-tutor
 # Offline: turn a session archive into WAV stems.
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/

@@ -93,8 +93,12 @@ Open **Browse** and press **Practice room**. The header turns violet and reads
 
 There is a fifth name in the room with no instrument. It is there to teach: it
 says six things, each one at the moment you have done the thing it is about --
-your first interval, your first key change -- and then it says so and leaves.
-You will not need to dismiss it, and it does not come back.
+your first interval, your first key change -- and then it says so and stops.
+You will not need to dismiss it, and the lessons do not come back.
+
+It stays in the room after that, because it is also the one that answers for the
+band -- who is here, what the key is, whether everyone is playing. Six lessons,
+and then it only speaks when the room does something or you ask it something.
 
 It is a real NINJAM room, not a simulation. The server runs on your own machine
 and the bots are ordinary clients on it, so everything works exactly as it does

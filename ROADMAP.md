@@ -1186,7 +1186,9 @@ restraint rather than conversation.
 - [x] `BotChat.{h,cpp}` as pure functions over what a bot knows: a snapshot in
       and an intention out, so `PracticeBot` decides nothing and the join is
       testable without a room.
-- [x] A fifth, instrument-less tutor bot that teaches six lines and then parts.
+- [x] A fifth, instrument-less tutor bot that teaches six lines and then stops.
+      It was designed to part here and does not: it is a conductor as well as a
+      tutor, so the teaching ends and the bot stays to lead.
       The players play the changes; they do not teach. `TutorBot` in
       chalkwalk-jambot, hosted here behind `PracticeRoom::Config::withTutor`,
       which is OFF by default -- a practice room is exactly where somebody

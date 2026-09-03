@@ -105,8 +105,9 @@ public:
     // already does something: a trio or a duo is a real room.
     int bandSize = 4;
 
-    // The fifth bot: no instrument, no channel, six lines and gone
-    // (`libs/jambot/docs/BOT-CHAT.md` section 7).
+    // The fifth bot: no instrument, no channel, six lines and then no more
+    // teaching (`libs/jambot/docs/BOT-CHAT.md` section 7). It stays in the
+    // room -- it is the conductor.
     //
     // ON, because a practice room is exactly where somebody meeting the
     // interval model for the first time arrives, and a tutorial nobody
