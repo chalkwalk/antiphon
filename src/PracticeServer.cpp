@@ -2,6 +2,9 @@
 
 #include "SocketWrite.h"
 
+#include <chalkwalk/ninjam/RoomConventions.h>
+#include <ctime>
+
 PracticeServer::PracticeServer() : juce::Thread("PracticeServer") {}
 
 PracticeServer::~PracticeServer() { stop(); }
@@ -52,11 +55,20 @@ int PracticeServer::bpm() const { return serverBpm.load(); }
 int PracticeServer::bpi() const { return serverBpi.load(); }
 
 void PracticeServer::setConfig(int bpmIn, int bpiIn) {
+  juce::ScopedLock sl(clientsMutex);
+  applyConfigLocked(bpmIn, bpiIn);
+}
+
+void PracticeServer::applyConfigLocked(int bpmIn, int bpiIn) {
   serverBpm = bpmIn;
   serverBpi = bpiIn;
   auto p = NinjamProtocol::buildServerConfig(bpmIn, bpiIn);
-  juce::ScopedLock sl(clientsMutex);
   broadcastExceptLocked(nullptr, 0x02, p.data(), (int)p.size());
+}
+
+void PracticeServer::setVoting(int thresholdPercent, int timeoutSeconds) {
+  voteThreshold = thresholdPercent;
+  voteTimeout = timeoutSeconds > 0 ? timeoutSeconds : 1;
 }
 
 void PracticeServer::setTopic(const juce::String &topic) {
@@ -89,6 +101,145 @@ juce::StringArray PracticeServer::connectedUsernames() const {
     if (c->authenticated)
       names.add(c->username);
   return names;
+}
+
+// ---------------------------------------------------------------------------
+// Voting
+// ---------------------------------------------------------------------------
+//
+// The arithmetic is `chalkwalk::ninjam::voting`, shared with whatever else in
+// this ecosystem has to reason about a threshold, so this file decides nothing
+// -- it counts who is here, feeds the live votes in, and says what the server
+// says. The four strings below are the server's, verbatim: they are the only
+// vote protocol there is, and `ChatFormat::parseVote` on the client side reads
+// exactly these (`docs/PROTOCOL.md`).
+
+namespace {
+
+std::int64_t nowSeconds() {
+  // Wall clock, as the reference server uses (`time(NULL)`). A vote's lifetime
+  // is measured in minutes, so the resolution is ample and the origin is only
+  // ever differenced.
+  return (std::int64_t)std::time(nullptr);
+}
+
+const char *kNotEnabled = "[voting system] Voting not enabled";
+const char *kBadParams =
+    "[voting system] !vote requires <bpm|bpi> <value> parameters";
+
+} // namespace
+
+void PracticeServer::serverSayLocked(Client *only,
+                                     const juce::String &text) {
+  // Empty username: a message from the server rather than from a player, which
+  // is how the client renders it as a notice.
+  auto p = NinjamProtocol::buildChat("MSG", {}, text.toStdString());
+  if (only != nullptr) {
+    sendTo(*only, 0xC0, p.data(), (int)p.size());
+    return;
+  }
+  broadcastExceptLocked(nullptr, 0xC0, p.data(), (int)p.size());
+}
+
+bool PracticeServer::handleVoteLocked(Client &c, const juce::String &text) {
+  auto line = text.trimStart();
+  if (!line.startsWith("!vote"))
+    return false;
+
+  if (!chalkwalk::ninjam::voting::enabled(voteThreshold.load())) {
+    serverSayLocked(&c, kNotEnabled);
+    return true;
+  }
+
+  // "!vote bpm 130" -- command, kind, value. The kind is matched on its first
+  // three characters, as the server matches it.
+  const auto rest = line.fromFirstOccurrenceOf(" ", false, false).trim();
+  const auto kind = rest.upToFirstOccurrenceOf(" ", false, false);
+  const auto valueText = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+  const int value = valueText.getIntValue();
+
+  const bool isBpm = kind.startsWith("bpm");
+  const bool isBpi = kind.startsWith("bpi");
+
+  // An out-of-range vote is answered as though the command were malformed.
+  // That is not a nicety we are copying for its own sake: it is what the
+  // server does, and a client that has been taught to expect a clearer answer
+  // here would be taught wrong (`docs/PROTOCOL.md`).
+  const bool ok =
+      valueText.isNotEmpty() &&
+      ((isBpm && chalkwalk::ninjam::conventions::isVotableBpm(value)) ||
+       (isBpi && chalkwalk::ninjam::conventions::isVotableBpi(value)));
+  if (!ok) {
+    serverSayLocked(&c, kBadParams);
+    return true;
+  }
+
+  const auto at = nowSeconds();
+  if (isBpm) {
+    c.voteBpm = value;
+    c.voteBpmAt = at;
+  } else {
+    c.voteBpi = value;
+    c.voteBpiAt = at;
+  }
+
+  announceVoteLocked(isBpm);
+  return true;
+}
+
+void PracticeServer::announceVoteLocked(bool isBpm) {
+  namespace voting = chalkwalk::ninjam::voting;
+
+  const int threshold = voteThreshold.load();
+  const int timeout = voteTimeout.load();
+  const auto now = nowSeconds();
+
+  // Everyone authenticated counts, voted or not -- which is what makes not
+  // voting a vote against. This room has no hidden users, the one exclusion
+  // the server makes.
+  int users = 0;
+  voting::Tally tally;
+  for (const auto &other : clients) {
+    if (!other->authenticated)
+      continue;
+    ++users;
+    const int value = isBpm ? other->voteBpm : other->voteBpi;
+    const auto castAt = isBpm ? other->voteBpmAt : other->voteBpiAt;
+    if (value > 0 && voting::isLive(castAt, now, timeout))
+      tally.add(value);
+  }
+
+  if (!tally.any())
+    return;
+
+  const char *what = isBpm ? "BPM" : "BPI";
+
+  if (tally.carries(users, threshold)) {
+    serverSayLocked(nullptr, juce::String("[voting system] setting ") + what +
+                                 " to " + juce::String(tally.leader()));
+
+    if (isBpm)
+      applyConfigLocked(tally.leader(), serverBpi.load());
+    else
+      applyConfigLocked(serverBpm.load(), tally.leader());
+
+    // Carrying clears the poll, so the next vote starts from nothing rather
+    // than from a majority that has already been spent.
+    for (auto &other : clients) {
+      if (isBpm)
+        other->voteBpmAt = 0;
+      else
+        other->voteBpiAt = 0;
+    }
+    return;
+  }
+
+  serverSayLocked(
+      nullptr, juce::String("[voting system] leading candidate: ") +
+                   juce::String(tally.votes()) + "/" +
+                   juce::String(voting::votesRequired(users, threshold)) +
+                   " votes for " + juce::String(tally.leader()) + " " + what +
+                   " [each vote expires in " + juce::String(timeout) + "s]");
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +625,9 @@ void PracticeServer::handleFrame(Client &c, juce::uint8 type,
       return;
 
     if (chat.type == "MSG") {
+      if (handleVoteLocked(c, juce::String(chat.p1)))
+        return;
+
       auto out =
           NinjamProtocol::buildChat("MSG", c.username.toStdString(), chat.p1);
       for (auto &other : clients) {

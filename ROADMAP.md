@@ -1055,13 +1055,17 @@ restraint rather than conversation.
       clients to `scripts/testserver.sh`, with `SetVotingThreshold` actually set,
       and check the line against the formula (`PRINCIPLES` §5). Reading a server
       is not observing one.
-- [ ] **Voting in the practice server.** `PracticeServer` has no vote path, so
-      the one thing a player can practise without a stranger's room is the one
-      thing they cannot practise. It is a small addition -- a stored vote and
-      timestamp per client, a recount, the two broadcast lines, and `setConfig`
-      on carry -- and it is where the band's gate can be tested end to end
-      instead of in arithmetic. The tutor can then explain how a vote works and
-      that the band will carry it.
+- [x] **Voting in the practice server.** A stored vote and timestamp per
+      client, a recount, the server's four lines verbatim, and a config change
+      on carry. The arithmetic is `chalkwalk::ninjam::voting` rather than a
+      third copy of a rounding rule, so a server tallying votes and a bot
+      deciding whether to back one now agree by construction (`PRINCIPLES §8`).
+- [ ] **Turn practice-room voting ON.** It is off, and the reason is the item
+      below rather than the item above: a vote counts every client, so a room
+      of one player and four bots needs three votes and the player has one.
+      Switched on today, every vote in a practice room would visibly fail --
+      worse than no voting at all. It becomes one `setVoting` call the day the
+      band can cast the rest, and the tutor can explain it then.
 - [ ] **The band's vote policy.** Bots are ordinary clients, so they count
       toward the threshold, and abstaining is a vote against: four of them take
       tempo control away from a room of three humans entirely. The gate is

@@ -1,6 +1,9 @@
 #pragma once
 
 #include "NinjamProtocol.h"
+
+#include <chalkwalk/ninjam/Voting.h>
+#include <cstdint>
 #include <JuceHeader.h>
 #include <map>
 #include <string>
@@ -42,6 +45,24 @@ public:
   int bpm() const;
   int bpi() const;
 
+  // `!vote bpm 130`, tallied as the reference server tallies it
+  // (`docs/PROTOCOL.md`, *The voting threshold*).
+  //
+  // OFF by default, as a stock server is, and that is not laziness about a
+  // default: a vote counts every client, so in a room of one player and four
+  // bots the player needs three votes and has one. Until the band can cast the
+  // other two -- `ROADMAP.md`, *The band's vote policy* -- a room with voting
+  // switched on is a room where every vote visibly fails, which teaches
+  // something worse than a room with no voting in it.
+  //
+  // The mechanism is complete and tested; what is missing is the band. On the
+  // day it votes, a practice room turns this on with one call.
+  //
+  // Percentage 1..100, or anything outside that to disable, as a server does.
+  void setVoting(int thresholdPercent, int timeoutSeconds);
+  int votingThreshold() const { return voteThreshold.load(); }
+  int votingTimeout() const { return voteTimeout.load(); }
+
   void setTopic(const juce::String &topic);
 
   // Relayed as though `from` had typed it, so the client renders it through the
@@ -73,6 +94,14 @@ private:
     // channel each one belongs to in order to honour a subscription.
     std::map<std::string, int> uploadChannel;
 
+    // One vote of each kind, with the wall-clock second it was cast, exactly
+    // as the server keeps them: a second `!vote` replaces the first and
+    // refreshes its expiry, and zero means never voted.
+    int voteBpm = 0;
+    std::int64_t voteBpmAt = 0;
+    int voteBpi = 0;
+    std::int64_t voteBpiAt = 0;
+
     // Frames arrive split across reads and coalesced across writes, so bytes
     // accumulate here until a whole frame is present.
     juce::MemoryBlock pending;
@@ -103,6 +132,13 @@ private:
   void broadcastExceptLocked(const Client *skip, juce::uint8 type,
                              const void *data, int size);
 
+  // `text` is the whole chat line, `!vote` included. Returns false if it was
+  // not a vote at all, in which case the caller relays it as ordinary chat.
+  bool handleVoteLocked(Client &c, const juce::String &text);
+  void announceVoteLocked(bool isBpm);
+  void applyConfigLocked(int bpm, int bpi);
+  void serverSayLocked(Client *only, const juce::String &text);
+
   void sendRoster(Client &to);
   void broadcastChannels(const juce::String &username,
                          const std::map<int, juce::String> &channels,
@@ -116,6 +152,10 @@ private:
   std::atomic<int> boundPort{0};
   std::atomic<int> serverBpm{120};
   std::atomic<int> serverBpi{8};
+  std::atomic<int> voteThreshold{
+      chalkwalk::ninjam::voting::kDefaultThresholdPercent};
+  std::atomic<int> voteTimeout{
+      chalkwalk::ninjam::voting::kDefaultTimeoutSeconds};
   juce::String roomTopic;
   mutable juce::CriticalSection stateMutex;
 

@@ -88,8 +88,12 @@ libs/jambot/                # SUBMODULE: chalkwalk-jambot (MIT, JUCE-free). The
                             #   now, and so do scripts/make_wordlist.py and
                             #   lexicon_gaps.py.
 libs/ninjam/                # SUBMODULE: chalkwalk-ninjam (MIT, JUCE-free). The
-                            #   wire protocol, and the room conventions in
-                            #   RoomConventions.h. Vendors its own ogg/vorbis,
+                            #   wire protocol, the room conventions in
+                            #   RoomConventions.h, and the tempo vote's
+                            #   arithmetic in Voting.h -- the rounding rule was
+                            #   about to have a third copy, and a room whose
+                            #   server and bots disagree about what carries is
+                            #   a room that argues with itself. Vendors its own ogg/vorbis,
                             #   guarded, so whichever project adds them first
                             #   wins.
 patches/*.patch             # applied to the JUCE submodule at configure time

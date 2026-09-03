@@ -66,6 +66,7 @@ public:
     runUsermaskTests();
     runChatTests();
     runConfigTests();
+    runVotingTests();
   }
 
   void runLifecycleTests() {
@@ -378,6 +379,207 @@ private:
       for (int i = 0; i < buf.getNumSamples(); ++i)
         w[i] = 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * freq *
                                (float)i / (float)sampleRate);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Voting
+  // -------------------------------------------------------------------------
+  //
+  // The arithmetic has its own tests in chalkwalk-ninjam. What is tested here
+  // is the part that only exists once a socket does: that a vote is consumed
+  // rather than relayed, that the room is told, that carrying actually moves
+  // the tempo, and that the threshold counts everybody rather than the voters.
+
+  // The vote lines are server notices, so they arrive with an empty username.
+  static bool sawVoteLine(const Member &m, const juce::String &contains) {
+    for (const auto &line : m.listener.snapshot())
+      if (line.startsWith("MSG||[voting system]") && line.contains(contains))
+        return true;
+    return false;
+  }
+
+  void runVotingTests() {
+    beginTest("a vote is consumed, not relayed as chat");
+    {
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(50, 120);
+      Member a, b;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(waitUntil([&] { return server.clientCount() == 2; }));
+
+      a.client.sendChatMessage("!vote bpm 130");
+
+      // Something must arrive, or the check below proves nothing. Which line
+      // it is depends on the threshold -- one of two carries at once at 50% --
+      // so this asks only that the room heard the voting system.
+      expect(waitUntil([&] { return sawVoteLine(b, "130"); }),
+             "the room was never told about the vote");
+
+      for (const auto &line : b.listener.snapshot())
+        expect(!line.contains("!vote bpm 130"),
+               "the command itself reached the room: " + line);
+    }
+
+    beginTest("the tally counts everyone, not just the voters");
+    {
+      // Two users at 50% need one vote; three need two. So the same single
+      // vote carries in a room of two and does not in a room of three, which
+      // is the whole of \"not voting is voting against\".
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(50, 120);
+      Member a, b, c;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(c.join(server.port(), "carol"));
+      expect(waitUntil([&] { return server.clientCount() == 3; }));
+
+      a.client.sendChatMessage("!vote bpm 130");
+      expect(waitUntil([&] { return sawVoteLine(b, "1/2 votes for 130 BPM"); }),
+             "one of three at 50% should need one more");
+      expect(server.bpm() == 100, "the tempo moved on a minority vote");
+    }
+
+    beginTest("a carried vote moves the tempo for everyone");
+    {
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(50, 120);
+      Member a, b, c;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(c.join(server.port(), "carol"));
+      expect(waitUntil([&] { return server.clientCount() == 3; }));
+
+      a.client.sendChatMessage("!vote bpm 130");
+      expect(waitUntil([&] { return sawVoteLine(c, "leading candidate"); }));
+      b.client.sendChatMessage("!vote bpm 130");
+
+      expect(waitUntil([&] { return sawVoteLine(c, "setting BPM to 130"); }),
+             "the room was never told the vote carried");
+      expect(waitUntil([&] { return server.bpm() == 130; }),
+             "the server kept the old tempo");
+      expect(waitUntil([&] { return c.listener.bpm == 130; }),
+             "a non-voter never got the new tempo");
+      expect(server.bpi() == 8, "a BPM vote changed the BPI");
+    }
+
+    beginTest("carrying clears the poll");
+    {
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(50, 120);
+      Member a, b;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(waitUntil([&] { return server.clientCount() == 2; }));
+
+      // One of two carries it at 50%, so this lands immediately.
+      a.client.sendChatMessage("!vote bpm 130");
+      expect(waitUntil([&] { return server.bpm() == 130; }));
+
+      // If the spent vote had survived, this second one would carry at once
+      // and take the tempo to 140 with a single voter behind it.
+      b.client.sendChatMessage("!vote bpm 140");
+      expect(waitUntil([&] { return server.bpm() == 140; }),
+             "a fresh majority of one should still carry at 50%");
+    }
+
+    beginTest("a vote below the threshold does not carry");
+    {
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(100, 120); // unanimity
+      Member a, b;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(waitUntil([&] { return server.clientCount() == 2; }));
+
+      a.client.sendChatMessage("!vote bpm 130");
+      expect(waitUntil([&] { return sawVoteLine(b, "1/2 votes for 130 BPM"); }));
+      expect(server.bpm() == 100);
+
+      b.client.sendChatMessage("!vote bpm 130");
+      expect(waitUntil([&] { return server.bpm() == 130; }),
+             "unanimous and still refused");
+    }
+
+    beginTest("BPI votes are a separate poll");
+    {
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(50, 120);
+      Member a, b;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(waitUntil([&] { return server.clientCount() == 2; }));
+
+      a.client.sendChatMessage("!vote bpi 16");
+      expect(waitUntil([&] { return server.bpi() == 16; }));
+      expect(server.bpm() == 100, "a BPI vote changed the BPM");
+      expect(waitUntil([&] { return b.listener.bpi == 16; }));
+    }
+
+    beginTest("an out-of-range vote is answered as a malformed one");
+    {
+      // The server does not say what was wrong with it, and neither do we --
+      // a client taught to expect a clearer answer here would be taught wrong
+      // (docs/PROTOCOL.md).
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(50, 120);
+      Member a, b;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(waitUntil([&] { return server.clientCount() == 2; }));
+
+      a.client.sendChatMessage("!vote bpm 30"); // below MIN_BPM
+      expect(waitUntil([&] { return sawVoteLine(a, "!vote requires"); }),
+             "no complaint reached the voter");
+      expect(server.bpm() == 100);
+
+      // The complaint is private: the room does not need to see it.
+      expect(!sawVoteLine(b, "!vote requires"),
+             "the complaint was broadcast to the room");
+    }
+
+    beginTest("voting can be disabled, and says so");
+    {
+      PracticeServer server;
+      expect(server.start(100, 8));
+      Member a; // no setVoting call: off is the default
+      expect(a.join(server.port(), "alice"));
+      expect(waitUntil([&] { return server.clientCount() == 1; }));
+
+      a.client.sendChatMessage("!vote bpm 130");
+      expect(waitUntil([&] { return sawVoteLine(a, "Voting not enabled"); }));
+      expect(server.bpm() == 100);
+    }
+
+    beginTest("a stale vote stops counting");
+    {
+      PracticeServer server;
+      expect(server.start(100, 8));
+      server.setVoting(100, 1); // unanimity, and a one-second memory
+      Member a, b;
+      expect(a.join(server.port(), "alice"));
+      expect(b.join(server.port(), "bob"));
+      expect(waitUntil([&] { return server.clientCount() == 2; }));
+
+      a.client.sendChatMessage("!vote bpm 130");
+      expect(waitUntil([&] { return sawVoteLine(b, "1/2 votes for 130 BPM"); }));
+
+      // Wall clock, because that is what the server keeps: the vote must fall
+      // out of the window before bob's arrives, so bob's is 1/2 and not 2/2.
+      juce::Thread::sleep(2100);
+      b.client.sendChatMessage("!vote bpm 130");
+
+      expect(waitUntil([&] { return sawVoteLine(b, "leading candidate"); }));
+      expect(server.bpm() == 100,
+             "an expired vote was still counted towards unanimity");
     }
   }
 
