@@ -1042,19 +1042,35 @@ restraint rather than conversation.
       waking whether the motion had carried -- the delay-and-watch mechanism
       deleted everywhere else, and the last place it was still assumed.
 
-      What is still unmeasured is `M` itself. The whole proposal rests on it
-      being a function of the number of clients, which nothing here records.
-      Connect a varying number of clients to `scripts/testserver.sh` and read it
-      off the vote line before building any of it (`PRINCIPLES` §5).
+      A second correction landed 2026-09-03, from reading the server rather than
+      reasoning about it. **`M` is a required vote count, not a head count** --
+      the threshold formula is substituted straight into the line -- so nothing
+      has to be inferred from it, and the gate is not a majority rule at all but
+      the server's own arithmetic on the human population. Both fixed gates
+      previously written down were wrong, in both directions. `docs/PROTOCOL.md`
+      records the server facts; `libs/jambot/docs/BOT-CHAT.md` section 8 records
+      what the band does with them.
+
+      What is left to measure is the live behaviour: connect a varying number of
+      clients to `scripts/testserver.sh`, with `SetVotingThreshold` actually set,
+      and check the line against the formula (`PRINCIPLES` §5). Reading a server
+      is not observing one.
+- [ ] **Voting in the practice server.** `PracticeServer` has no vote path, so
+      the one thing a player can practise without a stranger's room is the one
+      thing they cannot practise. It is a small addition -- a stored vote and
+      timestamp per client, a recount, the two broadcast lines, and `setConfig`
+      on carry -- and it is where the band's gate can be tested end to end
+      instead of in arithmetic. The tutor can then explain how a vote works and
+      that the band will carry it.
 - [ ] **The band's vote policy.** Bots are ordinary clients, so they count
       toward the threshold, and abstaining is a vote against: four of them take
       tempo control away from a room of three humans entirely. The gate is
-      designed in `libs/jambot/docs/BOT-CHAT.md` section 8 -- vote only for a
-      candidate a majority of humans already back, never propose one -- and the
-      casting is the conductor's, per the section above: it reads the shortfall
-      off the vote line and commands exactly that many votes, refusing when the
-      band could not carry the change even unanimously. Nothing casts a vote
-      today.
+      designed in `libs/jambot/docs/BOT-CHAT.md` section 8 -- never propose a
+      value, and top the vote up only once the humans have cast what a room of
+      just them would have needed -- and the casting is the conductor's, per the
+      section above: it reads the shortfall off the vote line and commands
+      exactly that many votes, refusing when the band could not carry the change
+      even unanimously. Nothing casts a vote today.
 - [x] `src/BotAnswer.{h,cpp}`: what a bot says when asked about the room, as
       pure functions over a `Room` struct, with key and chart provenance
       (defaulted / topic / chat). Every reply is asserted not to parse as a key

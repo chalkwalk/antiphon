@@ -325,12 +325,19 @@ abstaining leaves the room unable to change tempo at all** -- the band would be
 worse than playing alone, which is the exact failure that section exists to
 prevent.
 
-**The rule is `BOT-CHAT.md` section 8's, and it stands.** A bot never proposes a
-value, so no tempo change can originate with the band. The band moves only when
-a strict majority of the humans present already backs the leading candidate --
-`humanVotes * 2 > H` -- tested only while the band is still silent, so `N` *is*
-the human count and nothing has to be disentangled. A change of leading
-candidate resets it: the band supports a value, not the idea of changing.
+**The rule is `BOT-CHAT.md` section 8's** -- and its *shape* stands, though its
+arithmetic was corrected on 2026-09-03 once the server was actually read. A bot
+never proposes a value, so no tempo change can originate with the band. The band
+moves only when the humans present have already cast what a room of just them
+would have needed -- `humanVotes >= (H * threshold + 50) / 100`, the server's
+own line evaluated on the human population -- tested only while the band is
+still silent, so `N` *is* the human count and nothing has to be disentangled. A
+change of leading candidate resets it: the band supports a value, not the idea
+of changing.
+
+That gate replaced a strict majority, which was a guess at a formula the server
+publishes and was wrong in **33** of the swept cases, in both directions. See
+section 8; the correction matters here only in that the conductor evaluates it.
 
 **What the conductor changes is HOW the band then votes, and it is the last
 place the deleted arbitration was still assumed.** Section 8 point 4 has each
@@ -343,8 +350,12 @@ A conductor knows all of it at once, so it counts instead of racing.
 
 ### How the conductor votes
 
-The vote line carries both numbers -- `N/M`, cast over threshold, parsed by
-`ChatFormat::parseVote` -- so the shortfall is arithmetic rather than a guess:
+The vote line carries both numbers -- `N/M`, cast over **required**, parsed by
+`ChatFormat::parseVote`. `M` is a vote count, not a head count:
+`(vucnt * threshold + 50) / 100`, formatted straight into the line
+(`justinfrankel/ninjam server/usercon.cpp:1239`). So the shortfall is arithmetic
+rather than a guess, and the threshold percentage never has to be recovered for
+it:
 
 ```
 needed = M - N
@@ -366,7 +377,7 @@ exact, and a deterministic pick is one less thing to reproduce in a test.
 The last row is a real case, not a defensive one: at a 100% threshold a single
 human abstention puts the change out of reach, and `needed` then exceeds
 anything the band has to give. Votes that cannot reach the threshold are noise
-that expires sixty seconds later, so the conductor refuses instead of casting
+that expire when the timeout does, so the conductor refuses instead of casting
 them. That is the cap refusal of open question 2 arriving in a second place,
 which is an argument for answering it once, properly.
 
@@ -384,9 +395,13 @@ timeline entirely. That is a genuine second shape for `BandControl::command`,
 and it should be admitted as one rather than smuggled in with `atInterval = -1`.
 
 **Expiry has to be timed, because it is not announced.** The server prints a
-leading candidate and prints the change; it never prints a failure. So "the vote
-failed" is the conductor's own sixty seconds since the last vote line for that
-candidate, with no `setting BPM to` seen. It then drops the latch and says
+leading candidate and prints the change; it never prints a failure -- the tally
+is only ever recomputed when somebody votes, so an expiring vote makes no
+traffic at all. So "the vote failed" is the conductor's own timer since the last
+vote line for that candidate, with no `setting BPM to` seen. The duration comes
+off the line (`VoteState::timeoutSeconds`, `[each vote expires in %ds]`) and is
+**not** 60: the server's default is 120, and the 60 written down here for a year
+came from the example config. It then drops the latch and says
 nothing -- the room can see the tempo it still has, and narrating a change that
 did not happen is the chorus this design exists to avoid.
 

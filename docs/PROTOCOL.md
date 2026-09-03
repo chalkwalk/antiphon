@@ -277,6 +277,26 @@ everyone connected, whether or not they voted and whether or not they are a bot.
 `SetVotingThreshold` is a server config percentage; `example.cfg:60` shows 50,
 and notes that a value above 100 disables voting entirely.
 
+**That expression is exactly what the line reports as `M`.** The broadcast is
+`"leading candidate: %d/%d votes for %d BPM [each vote expires in %ds]"` with the
+threshold formula substituted for the second `%d` (`usercon.cpp:1239`), so `M`
+is a **required vote count, not a head count**, and a client reads the
+requirement off the room instead of predicting it. `ChatFormat::parseVote` names
+the field `needed` for that reason.
+
+The rest of the voting path, read at the same revision:
+
+| Fact | Where |
+|---|---|
+| Threshold defaults to **110**, and anything over 100 disables voting | `usercon.cpp:888`, `:1154` |
+| Timeout defaults to **120s**, and is reported in the line | `usercon.cpp:888`, `:1239` |
+| `PRIV_HIDDEN` users are excluded from `vucnt`, and from the user list | `:1201`, `:207`, `:376` |
+| Anonymous logins are granted `PRIV_VOTE` unconditionally | `ninjamsrv.cpp:230` |
+| A user has one BPM vote and one BPI vote, each with its own timestamp; re-voting replaces it | `:1170-1178` |
+| The tally is recomputed only when somebody votes -- **an expiring vote produces no traffic at all** | `:1188-1214` |
+| Carrying clears every stored vote | `:1232` |
+| `!vote` is consumed, never echoed to the room; errors go only to the sender | `:1152-1186` |
+
 Two consequences worth stating: **not voting is voting against**, since the
 denominator counts you either way; and anything Antiphon connects to a room
 counts toward it. See `libs/jambot/docs/BOT-CHAT.md` for what that means for the practice
