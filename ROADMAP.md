@@ -1556,6 +1556,27 @@ decoration to the thing that makes the rest of this audible at all.
       breathes or it does not, and the answer is audible in one render rather
       than across a section. The three items are one branch in this order --
       `performanceSeed`, phrase length inside the interval, then the form.
+- [x] **The foundation stratum.** The kit and the bass select from one shared
+      part rather than the bass deriving its figure from the kick's by
+      doubling. `BotBand::Foundation::part` and `::select`. Byte-identical,
+      proved by `AntiphonVoiceLab parity` -- 288 renders hashed before and
+      after -- rather than by the suite passing.
+
+      **This was not on the list, and the item below cannot be built without
+      it.** `figureFor(Bass)` nudged its pulse count coprime with its steps SO
+      THAT the figure would not repeat inside the interval, because a repeating
+      scaled copy of the kick is the kick again. A phrase period is exactly a
+      repeat, so it fought that rule -- and the rule was right. What was wrong
+      was deriving one figure from another: defined against the kick rather
+      than from it, the collapse stops being possible rather than being avoided
+      by coprimality.
+
+      Two corrections to `libs/jambot/docs/BOT-CHAT.md` 16.2 fell out of
+      checking it against the code. It had the bass as the complement of the
+      kick and the kit as taking the whole figure; the bass takes the whole and
+      the kit takes a subset, and the second of those is forced by the phrase
+      rather than chosen. Designed in
+      `docs/superpowers/specs/2026-09-03-foundation-stratum-and-phrases.md`.
 - [ ] **Phrase length inside the interval.** A figure whose period is a half or
       a quarter of the interval, repeated, rather than one that spans it. Seed
       chosen per voice, since a bass riff and a lead line do not want the same

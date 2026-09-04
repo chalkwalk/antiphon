@@ -87,6 +87,13 @@ libs/jambot/                # SUBMODULE: chalkwalk-jambot (MIT, JUCE-free). The
                             #   them. Corpora and BotDictionary.h live there
                             #   now, and so do scripts/make_wordlist.py and
                             #   lexicon_gaps.py.
+                            #   The band's rhythmic ground is the FOUNDATION
+                            #   stratum's shared part (BotBand::Foundation):
+                            #   the kit and the bass select from one figure
+                            #   rather than the bass deriving its own from the
+                            #   kick's. A voice attaches to a stratum; it does
+                            #   not invent a rhythm at the leaf. BOT-CHAT.md
+                            #   section 16.
 libs/ninjam/                # SUBMODULE: chalkwalk-ninjam (MIT, JUCE-free). The
                             #   wire protocol, the room conventions in
                             #   RoomConventions.h, and the tempo vote's
