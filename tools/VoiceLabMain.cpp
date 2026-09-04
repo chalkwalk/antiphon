@@ -85,6 +85,65 @@ struct Options {
   double targetLufs = -18.0;
 };
 
+// Every voice, at a spread of tempos, metres and seeds, hashed.
+//
+// The instrument for a refactor that claims to change nothing. Two runs of ONE
+// binary on ONE machine are diffed; the claim being made is exactly that, and
+// nothing wider is asserted.
+//
+// NOT a committed fixture, deliberately. libm differs between macOS, Windows
+// and Linux and -O2 may contract a multiply into an FMA on one and not
+// another, so a bit-exact expectation stored in the repository would fail in CI
+// for reasons that have nothing to do with the change under test. The permanent
+// cross-platform guard belongs at the onset level, where the values are
+// integers.
+int renderParity(const Options &o) {
+  auto key = MusicalKey::parseName(o.keyName.toStdString());
+  if (!key.valid) {
+    std::fprintf(stderr, "voicelab: parity needs a key, got \"%s\"\n",
+                 o.keyName.toRawUTF8());
+    return 1;
+  }
+
+  // FNV-1a over the raw bytes. No cryptographic claim -- it only has to change
+  // when a sample does.
+  auto hashOf = [](const std::vector<float> &v) {
+    std::uint64_t h = 1469598103934665603ull;
+    const auto *bytes = reinterpret_cast<const unsigned char *>(v.data());
+    const std::size_t n = v.size() * sizeof(float);
+    for (std::size_t i = 0; i < n; ++i) {
+      h ^= bytes[i];
+      h *= 1099511628211ull;
+    }
+    return h;
+  };
+
+  // Wide enough that a change to one voice at one metre cannot hide. The keys
+  // and the lead are here to prove they were NOT touched.
+  const int bpms[] = {90, 120, 137};
+  const int bpis[] = {8, 16};
+  const std::uint32_t seeds[] = {1u, 12345u, 99999u};
+
+  for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
+                     BotBand::Voice::Keys, BotBand::Voice::Lead})
+    for (int bpm : bpms)
+      for (int bpi : bpis)
+        for (auto seed : seeds)
+          for (int index = 0; index < 4; ++index) {
+            const auto s =
+                BotBand::defaults(key, bpm, bpi, o.sampleRate, seed);
+            // The same truncating arithmetic the interval clock uses
+            // (justinfrankel/ninjam njclient.cpp:806).
+            const int n = (int)(o.sampleRate * 60.0 / bpm) * bpi;
+            std::vector<float> buf((std::size_t)n, 0.0f);
+            BotBand::renderInterval(voice, s, index, buf.data(), n);
+            std::printf("%-6s %3d %2d %6u %d %016llx\n",
+                        BotBand::voiceName(voice), bpm, bpi, (unsigned)seed,
+                        index, (unsigned long long)hashOf(buf));
+          }
+  return 0;
+}
+
 void usage() {
   std::printf(
       "AntiphonVoiceLab -- render and measure one bot voice\n"
@@ -92,6 +151,10 @@ void usage() {
       "  AntiphonVoiceLab <voice> [options]\n"
       "\n"
       "voices: kick snare hat bass lead pad kit keys solo band\n"
+      "  parity           hash every voice over a matrix of tempo, metre and\n"
+      "                   seed -- diff two runs to prove a refactor changed\n"
+      "                   nothing. Same binary, same machine; see the note at\n"
+      "                   renderParity for why it is not a stored fixture\n"
       "  file <paths...>  measure WAVs that already exist, and with --lufs\n"
       "                   write matched copies -- for comparing renders from\n"
       "                   builds you can no longer reproduce\n"
@@ -791,7 +854,8 @@ int main(int argc, char *argv[]) {
 
   const juce::StringArray known{"kick", "snare", "hat",       "bass",
                                 "lead", "pad",   "kit",       "keys",
-                                "solo", "band",  "leadstats", "bench"};
+                                "solo", "band",  "leadstats", "bench",
+                                "parity"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();
@@ -971,6 +1035,9 @@ int main(int argc, char *argv[]) {
 
   if (o.voice == "bench")
     return benchmarkBand(o);
+
+  if (o.voice == "parity")
+    return renderParity(o);
 
   if (o.voice == "band") {
     if (o.out == juce::File())
