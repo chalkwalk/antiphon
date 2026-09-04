@@ -27,9 +27,12 @@ once this lands and the thresholds have been listened to.
 
 ## Global Constraints
 
-- **Two repositories.** `BotBand` lives in `libs/jambot` (`chalkwalk-jambot`,
-  MIT, JUCE-free). `AntiphonVoiceLab` lives in Antiphon's `tools/`. Iterate
-  with `-DCHALKWALK_JAMBOT_DIR=...`; bump the submodule before calling
+- **Three repositories, and the order matters.** Task 1 is in `libs/music`
+  (`chalkwalk-music`), Tasks 3-4 in `libs/jambot` (`chalkwalk-jambot`, MIT,
+  JUCE-free), Task 2 in Antiphon's `tools/`. Iterate with
+  `-DCHALKWALK_MUSIC_DIR=...` and `-DCHALKWALK_JAMBOT_DIR=...`; configure
+  prints `OVERRIDE` when one is in use, because the submodule SHA then no
+  longer describes the build. Bump each submodule and re-verify before calling
   anything done.
 - **ASCII only in source files.** `--` for an em dash, `->` for an arrow.
 - **2-space indent, braces on the same line, members lowerCamelCase.**
@@ -40,7 +43,7 @@ once this lands and the thresholds have been listened to.
   `music-layer-is-juce-free` ctest enforces the equivalent for
   `chalkwalk-music`; jambot's own suite links no JUCE.
 - **The audio must not change.** Every task ends with the parity check from
-  Task 1 reporting no differences. A task that changes a hash has failed, not
+  Task 2 reporting no differences. A task that changes a hash has failed, not
   discovered something.
 - **Build:** `cmake -B build-vote -DCHALKWALK_JUCE_DIR=/home/programming/.juce/JUCE`
   then `cmake --build build-vote -j $(nproc)`. The JUCE submodule is
@@ -48,7 +51,98 @@ once this lands and the thresholds have been listened to.
 
 ---
 
-### Task 1: A parity check that can prove the audio did not change
+### Task 1: Close the coverage gap under the property jambot is about to depend on
+
+**Files:**
+- Test: `libs/music/test/EuclideanTests.cpp` (`chalkwalk-music`)
+
+**Interfaces:** none; a test only.
+
+**This is not a defensive measure against a bug -- there is no bug.** Task 4
+replaces a loop that asks `accents(...)[step] > 0` with one that asks
+`Foundation::part`'s `fromKick` mark, which comes from `hit(...)`. Those are two
+functions in `chalkwalk-music` answering the same question, and the equivalence
+was measured before this plan was refined: **132,170,896 comparisons over every
+`steps` 1..64, every `pulses` 0..steps, offsets -3..steps and accent counts
+-1..pulses -- zero disagreements.**
+
+It is already pinned, transitively, by two tests that exist:
+
+- `"hit and pattern cannot disagree"` -- steps 1..32, pulses 0..steps, offsets
+  -3..3;
+- `"accents fall on onsets and nowhere else"` -- velocity is 0 exactly where
+  `pattern` is false.
+
+The gap is coverage, not truth. The accents test runs at `steps` in {8, 12, 16}
+with offset 0, and jambot's kick uses `steps = bpi`, which ranges 2..64. So the
+dependency lands just outside where it is asserted. Widen the assertion in the
+library that owns both functions rather than adding a test in jambot, which
+would be one project testing another's invariant.
+
+- [ ] **Step 1: Widen the existing accents test**
+
+In `libs/music/test/EuclideanTests.cpp`, replace the loop bounds of
+`"accents fall on onsets and nowhere else"` and add the direct equivalence:
+
+```cpp
+TEST_CASE("accents fall on onsets and nowhere else", "[euclidean][accents]") {
+  // Ranges chosen from the consumer: a kick figure's steps are the interval's
+  // beat count, which the protocol allows from 2 to 64, and a rotated figure
+  // is ordinary. `accents` and `hit` are asked the same question by different
+  // callers -- chalkwalk-jambot's kit reads velocities and its shared
+  // foundation part reads `hit` -- so their agreement is load-bearing outside
+  // this library and is asserted here, where both live.
+  for (int steps = 2; steps <= 64; ++steps)
+    for (int pulses = 1; pulses < steps; ++pulses)
+      for (int offset : {0, 1, 3, steps - 1})
+        for (int numAccents : {0, 1, pulses / 2, pulses}) {
+          const auto p = m::pattern(steps, pulses, offset);
+          const auto v = m::accents(steps, pulses, offset, numAccents);
+          REQUIRE(v.size() == p.size());
+          for (int i = 0; i < steps; ++i) {
+            const bool onset = p[static_cast<std::size_t>(i)];
+            const int vel = v[static_cast<std::size_t>(i)];
+            INFO("E(" << pulses << "," << steps << ") offset " << offset
+                      << " accents " << numAccents << " step " << i);
+            if (!onset) {
+              REQUIRE(vel == 0);
+            } else {
+              REQUIRE((vel == m::kOnsetVelocity || vel == m::kAccentedVelocity));
+            }
+            REQUIRE((vel > 0) == m::hit(i, steps, pulses, offset));
+          }
+        }
+}
+```
+
+- [ ] **Step 2: Run it, and check it is not trivially green**
+
+```bash
+cmake -S libs/music -B /tmp/cm -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build /tmp/cm -j $(nproc)
+/tmp/cm/test/chalkwalk_music_tests "[accents]"
+```
+
+Expected: passing, with an assertion count in the millions rather than the
+thousands -- the old bounds gave about 4,000 step checks and the new ones give
+far more. If the count has not grown, the loop bounds did not take.
+
+- [ ] **Step 3: Prove it has teeth**
+
+Temporarily change `accents` to set `kOnsetVelocity` on one non-onset step,
+rebuild, confirm red, revert, confirm green.
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd libs/music
+git add test/EuclideanTests.cpp
+git commit -m "Assert accents and hit agree, where a consumer now needs them to."
+```
+
+---
+
+### Task 2: A parity check that can prove the audio did not change
 
 **Files:**
 - Modify: `tools/VoiceLabMain.cpp` (Antiphon)
@@ -65,7 +159,7 @@ into FMAs on one and not another. CI builds all three, so a committed audio
 fixture would fail there for reasons that have nothing to do with this work.
 A tool compares two runs of ONE binary on ONE machine, which is exactly the
 claim being made. The permanent, cross-platform guard is the onset-level test
-in Task 3, and onsets are integers.
+in Task 4, and onsets are integers.
 
 - [ ] **Step 1: Add the subcommand**
 
@@ -150,7 +244,7 @@ git commit -m "Add a parity render, so a refactor can prove it changed nothing."
 
 ---
 
-### Task 2: Make the foundation's onsets a named thing
+### Task 3: Make the foundation's onsets a named thing
 
 **Files:**
 - Modify: `libs/jambot/src/BotBand.h`
@@ -158,8 +252,8 @@ git commit -m "Add a parity render, so a refactor can prove it changed nothing."
 - Test: `libs/jambot/test/BotBandTests.cpp`
 
 **Interfaces:**
-- Produces: `BotBand::Foundation::Onset`, `BotBand::Foundation::onsets(const
-  Settings &)`. Task 3 consumes both.
+- Produces: `BotBand::Foundation::Onset`, `BotBand::Foundation::part(const
+  Settings &)`. Task 4 consumes both.
 
 A pure extraction. The loop moves out of `renderBass` and nothing else changes.
 
@@ -353,7 +447,7 @@ git commit -m "Name the foundation's onsets, so two members can share them."
 
 ---
 
-### Task 3: The kit selects from the part
+### Task 4: The kit selects from the part
 
 **Files:**
 - Modify: `libs/jambot/src/BotBand.h`
@@ -361,7 +455,7 @@ git commit -m "Name the foundation's onsets, so two members can share them."
 - Test: `libs/jambot/test/BotBandTests.cpp`
 
 **Interfaces:**
-- Consumes: `Foundation::Part`, `Foundation::Onset` from Task 2.
+- Consumes: `Foundation::Part`, `Foundation::Onset` from Task 3.
 - Produces: `Foundation::Selection`, `Foundation::select(const Part &,
   Selection)`.
 
@@ -495,45 +589,18 @@ diff /tmp/parity-before.txt /tmp/parity-after.txt && echo "IDENTICAL"
 
 Expected: PASSED, and `IDENTICAL`.
 
-**If the drums differ, there are exactly two candidates, and the second is the
-likely one.**
+**If the drums differ, there is exactly one candidate left.** The coarse-grid
+mapping: the part marks a kick at fine step `k * stepsPerBeat`, so dividing back
+must land on exactly `k`. Print both step sequences and compare rather than
+adjusting the baseline.
 
-The coarse-grid mapping: the part marks a kick at fine step `k * stepsPerBeat`,
-so dividing back must land on exactly `k`.
-
-More likely: **`accents()` and `hit()` must agree about what a hit is.** The old
-loop walked every coarse step and played where `kickVel[step] > 0`; the new one
-walks where `Foundation::part` marked `fromKick`, which comes from
-`chalkwalk::music::hit(...)`. Those are two different functions in
-`chalkwalk-music` answering the same question, and this task silently depends on
-them agreeing. Assert it directly rather than inferring it from the parity diff:
-
-```cpp
-    beginTest("accents and hit agree about where the kick lands");
-    {
-      // The kit's velocities come from accents() and the shared part's marks
-      // come from hit(). Nothing has ever required them to agree before.
-      for (std::uint32_t seed = 1; seed <= 40; ++seed)
-        for (int bpi : {8, 16}) {
-          const auto s = settingsFor("C major", 120, bpi, seed);
-          const auto kick = BotBand::figureFor(BotBand::Voice::Drums, s);
-          const auto vel = chalkwalk::music::accents(kick.steps, kick.pulses,
-                                                    kick.rotation, kick.accents);
-          for (int k = 0; k < kick.steps; ++k)
-            expectEquals(vel[(size_t)k] > 0,
-                         chalkwalk::music::hit(k, kick.steps, kick.pulses,
-                                               kick.rotation),
-                         "disagreement at step " + std::to_string(k) +
-                             " seed " + std::to_string(seed));
-        }
-    }
-```
-
-Add this test BEFORE step 5, and run it before touching `renderDrums`. If it
-fails, stop: the kit's onsets and the part's marks are not the same set, and
-the extraction needs the part to carry the velocity rather than the mark. That
-is a real possibility and finding it here costs one test; finding it through a
-parity diff costs an afternoon.
+An earlier draft of this plan named a second candidate -- that `accents()` and
+`hit()` might disagree about where a kick lands -- and made this task contingent
+on it. **They do not disagree**, over 132,170,896 measured cases, and Task 1
+widened the library's own assertion to cover the range this code uses. The
+contingency is removed rather than left in as a hedge: a plan that guards
+against a condition somebody has actually measured to be impossible teaches its
+reader to distrust the measurement.
 
 - [ ] **Step 7: Prove the new test has teeth**
 
@@ -550,7 +617,7 @@ git commit -m "Let the kit select from the ground the bass plays."
 
 ---
 
-### Task 4: Correct the design docs the code just contradicted
+### Task 5: Correct the design docs the code just contradicted
 
 **Files:**
 - Modify: `libs/jambot/docs/BOT-CHAT.md` (section 16.2)
@@ -642,6 +709,6 @@ section 7 answered by listening rather than by argument:
    interval;
 3. whether the fraction fallback should align to bar lines.
 
-`AntiphonVoiceLab band --seed N` and the `parity` mode added in Task 1 are the
+`AntiphonVoiceLab band --seed N` and the `parity` mode added in Task 2 are the
 instruments for all three -- and there the parity diff is expected to be
 non-empty, which is the point of having proved it empty here first.
