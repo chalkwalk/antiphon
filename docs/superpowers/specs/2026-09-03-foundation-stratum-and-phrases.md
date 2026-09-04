@@ -71,22 +71,32 @@ with four admissible policies:
 
 | policy | takes | example |
 |---|---|---|
-| `Whole` | the entire part | -- |
+| `Whole` | the entire part | bass |
 | `Subset` | a marked or chosen few | kit (the kick onsets) |
-| `Union` | the first's onsets plus its own | bass |
 | `Complement` | only where the first is not | perc (16.2 role 7) |
 
-**Role 1 needs the same widening, for a different reason.** 16.2 has the kit
-select "the whole figure". It cannot, once the part is at the bass's
-resolution: the part then contains the bass's own onsets, and a kit playing
-every one of them would be playing the bass line on a drum. The kit takes the
-kick-marked `Subset`.
+**The primacy inverts, and that is the amendment.** 16.2 reads as though the
+kit's figure is the part and the bass relates to it. It is the other way round:
+the foundation's full part is the FINEST rhythmic ground -- the union of the
+kick's onsets and the bass's own figure -- and the **kick is the strong subset
+of it that a drum plays**. The bass takes the whole.
 
-That is forced by section 4.2 rather than chosen. The phrase period applies to
-the shared part, and the riff is mostly made of the bass's own onsets -- so a
-part coarse enough for the kit to play whole is a part in which the riff does
-not repeat. The resolution has to be fine and the kit's selection has to be
-partial.
+So both cited roles were wrong, and in opposite directions. Role 2 said the
+bass is a complement; it takes the whole. Role 1 said the kit takes the whole
+figure; it takes a subset. There is no `Union` policy -- union is how the part
+is FORMED, not how a member selects from it, and an earlier draft of this spec
+confused the two.
+
+**Role 1's correction is forced by section 4.2 rather than chosen.** The phrase
+period applies to the shared part, and the riff is mostly made of the bass's
+own onsets -- so a part coarse enough for the kit to play whole is a part in
+which the riff does not repeat. The resolution has to be fine, and the kit's
+selection therefore has to be partial.
+
+The rule survives all of it, because it was always about intent:
+
+> A member's figure is a function of the shared part, never an independent
+> idea.
 
 This is not a cosmetic change. The refactor's entire verification plan is
 byte-identical output at N=4, and under "complement" that is unreachable --
@@ -114,7 +124,7 @@ Members then select:
 | member | policy | takes |
 |---|---|---|
 | kit | `Subset` | the kick-marked onsets, at the coarse grid, with `accents()` velocities as now |
-| bass | `Union` | the whole part |
+| bass | `Whole` | the entire part |
 
 `renderBass` already computes exactly this union, so no arithmetic moves.
 
