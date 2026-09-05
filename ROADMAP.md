@@ -1535,7 +1535,7 @@ decoration to the thing that makes the rest of this audible at all.
       oversight: there are no sections until there is a form, so
       `Hold::Section` folds to `Hold::Session` and that is the true statement.
 
-- [ ] **The performance seeds are session-held too, and nobody noticed.** Found
+- [x] **The performance seeds are session-held too, and nobody noticed.** Found
       while classifying: the per-hit jitter, the per-note drift and the
       velocity variation all seed from `saltedSeed(voice, seed) + step`, with
       no interval term at all -- so **every interval is jittered identically**
@@ -1577,7 +1577,7 @@ decoration to the thing that makes the rest of this audible at all.
       the kit takes a subset, and the second of those is forced by the phrase
       rather than chosen. Designed in
       `docs/superpowers/specs/2026-09-03-foundation-stratum-and-phrases.md`.
-- [ ] **Phrase length inside the interval.** A figure whose period is a half or
+- [x] **Phrase length inside the interval.** A figure whose period is a half or
       a quarter of the interval, repeated, rather than one that spans it. Seed
       chosen per voice, since a bass riff and a lead line do not want the same
       answer -- and the bass figure is already nudged AWAY from repeating
@@ -1593,6 +1593,38 @@ decoration to the thing that makes the rest of this audible at all.
       puts no two identical intervals next to each other, so
       `test/BotBandTests.cpp` stays green on its own terms while
       `performanceSeed` is proved out on something smaller than AABA.
+
+      **Landed 2026-09-04, with `performanceSeed`, as one commit.**
+      `Foundation::phraseSteps` takes the period from the chart's own repeat
+      where it has one and from a seed-chosen divisor where it does not -- which
+      with the default `I V vi IV` is every room, since that progression does
+      not repeat inside itself. Designed in
+      `docs/superpowers/specs/2026-09-03-foundation-stratum-and-phrases.md`.
+
+      **Two numbers here came from measuring rather than deciding, and both
+      changed the code.**
+
+      *The floor is a bar, not a beat.* Written as a beat first, which reads as
+      reasonable: over 200 seeds at bpi 32, one seed in six then chose a phrase
+      of ONE BEAT repeated thirty-two times, which is a metronome. With the bar
+      floor the choices are the whole interval, a half and a quarter -- evenly
+      spread at 68/63/69 over 200 seeds, and identical at bpi 8, 16 and 32.
+
+      *A phrase need not span whole bars.* Forcing that is free on an even
+      chart -- no metre loses a phrase at 2, 4, 6 or 8 bars -- and ruinous on an
+      odd one: it leaves nothing but the whole interval in **68%** of metres at
+      three bars, **81%** at five, **87%** at seven, swept over bpi 2..32. So a
+      player who typed a three-bar progression would silently lose the feature
+      entirely. The unaligned case is not a fault either: a bar-and-a-half
+      phrase over three bars repeats twice per cycle and lands right at the
+      cycle boundary, and the bass takes its pitch from whatever chord is under
+      it. That answers the last of the spec's three open questions, and it did
+      not need ears.
+
+      **The interlock now rests on the performance rather than on the hats.**
+      Two consecutive drum intervals differ because `performanceSeed` carries
+      an interval term, not because the hat pattern rotates -- which is the
+      precondition *Phrases that return* was waiting for.
 - [ ] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
       interval, so a phrase is a thing the listener can recognise coming back
       rather than a fresh roll each time. The table and the section length come

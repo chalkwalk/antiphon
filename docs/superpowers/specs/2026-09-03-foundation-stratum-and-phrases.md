@@ -275,29 +275,47 @@ player does over a progression.
 
 ---
 
-## 7. Open questions
+## 7. Open questions -- ALL THREE ANSWERED, and none of them by ear
 
-1. **How many common tones is "enough"** before the pitch repeats literally
-   rather than adapting per onset. This wants ears and `AntiphonVoiceLab`
-   rather than a number chosen now -- the same way the lead's contour weight
-   was measured at 2 rather than argued to.
-2. **Whether the seed's multiple of `p` should be bounded by the interval.** A
-   chart with `p` equal to the interval can only take multiple 1; a chart with
-   `p` of two bars at `bpi` 16 could take 1 or 2. The bound is arithmetic; what
-   is open is whether a phrase longer than the interval means anything before
-   the form exists.
-3. **Whether the fraction fallback should align to bars.** A `1/2` phrase in an
-   interval whose chart has three bars does not land on a bar line, and it is
-   not obvious whether that is a fault or a syncopation.
+Kept with their answers rather than deleted, because what closed each one is
+more useful than the answer.
+
+1. **How many common tones is "enough"** before the pitch repeats literally.
+   **It does not arise here.** The question assumed the repeat carries absolute
+   pitches that might clash with a chord they were not written over. It does
+   not: `renderBass` picks root, octave or the chord's own fifth and adds it to
+   the CURRENT chord's root, so the material is already relative to the harmony
+   and repeating the CHOICE is correct by construction. The question returns
+   when the LEAD gets a phrase, because a lead line is absolute MIDI chosen
+   against a contour.
+2. **Whether the seed's multiple should be bounded by the interval.** Arithmetic:
+   the period must divide the part so tiling is exact, and there is no form yet
+   for a longer phrase to mean anything against.
+3. **Whether the fraction fallback should align to bars.** **No, and it was
+   measured rather than heard.** Forcing alignment is free on an even chart
+   and ruinous on an odd one -- it leaves nothing but the whole interval in 68%
+   of metres at three bars, 81% at five and 87% at seven, over bpi 2..32. A
+   player typing a three-bar progression would lose phrases entirely and
+   silently. The unaligned case is not a fault: a bar-and-a-half phrase over
+   three bars repeats twice per cycle and lands right at the cycle boundary.
+
+**One question that was NOT on this list turned out to matter more than any of
+them.** How short may a phrase be? Written as "at least a beat", which sounds
+reasonable and gave one seed in six a one-beat phrase repeated thirty-two times
+at bpi 32 -- a metronome. The floor is a BAR. It was caught by rendering the
+distribution before writing a note of audio, which is the cheaper half of
+`PRINCIPLES §5`: measure the decision, not only the output.
 
 ---
 
-## 8. Order of work
+## 8. Order of work -- BOTH LANDED
 
-1. Foundation stratum, byte-identical, proved by rendering. Amend
-   `BOT-CHAT.md` 16.2 in the same change.
-2. `performanceSeed` and the phrase period, together. Audible; judged in
-   `AntiphonVoiceLab` before the thresholds in section 7 are fixed.
+1. **Foundation stratum**, byte-identical, proved by rendering -- 2026-09-03.
+   `BOT-CHAT.md` 16.2 amended in the same change.
+2. **`performanceSeed` and the phrase period**, together -- 2026-09-04.
 
 The form, deviation and the remaining strata follow in `ROADMAP.md`'s order and
-are not part of this.
+are not part of this. *Phrases that return* is now unblocked: it was third
+because it is the first thing that can put two identical intervals side by
+side, and that is only safe once the performance varies between them, which it
+now does.
