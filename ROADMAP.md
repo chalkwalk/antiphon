@@ -1755,17 +1755,21 @@ decoration to the thing that makes the rest of this audible at all.
       genre as a continuum, which wants far more timbres than anyone will
       hand-roll.
 
-      **The bank is `MuseScore_General.sf3`, MIT**, about 36 MB, with a
-      documented lineage -- FluidR3 by Frank Wen, mono conversion by Michael
-      Cowgill, adapted by S. Christian Collins. **Not GeneralUser GS**, whose
-      own documentation says its author cannot be sure where all the samples
-      originated; permissive to use is not the same as sound to ship. See
-      `libs/jambot/docs/SOURCES.md`.
+      **The bank is GeneralUser GS v2.0.3, and that was decided for Lockstep
+      rather than here** -- 261 presets, 13 drum kits, shipped as SF3 at q0.8,
+      about 10 MB, chosen by ear over a converted ladder. Its caveats belong in
+      the shipped licence file: permissive but not OSI/DFSG-free, and the
+      author cannot fully vouch for every sample's origin, the samples having
+      been freely available before formal CC0 assignment existed. Bundled data,
+      not linked code. It wants FluidLite specifically, because it leans on
+      modulators that TSF gets wrong. See `libs/jambot/docs/SOURCES.md`, and
+      `seq_play`'s roadmap for the measurements.
 
       **The whole bank, not a trimmed one.** Trimming served a consumer with a
       fixed instrument list; a band whose style is a point in a parameter space
-      wants all of it. `chalkwalk-soundfont` keeps the trim script for
-      consumers that do need one.
+      wants all of it -- and 261 presets is the raw material genre-as-continuum
+      needs. `chalkwalk-soundfont` keeps the trim script for consumers that do
+      need one.
 
       **Deprecating the synthesis is NOT decided by this.** Landing GM first
       means the choice can be made by listening to both, which is the only way
