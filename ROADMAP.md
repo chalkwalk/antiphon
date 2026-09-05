@@ -1755,8 +1755,10 @@ decoration to the thing that makes the rest of this audible at all.
       genre as a continuum, which wants far more timbres than anyone will
       hand-roll.
 
-      **The bank is GeneralUser GS v2.0.3, and that was decided for Lockstep
-      rather than here** -- 261 presets, 13 drum kits, shipped as SF3 at q0.8,
+      **The bank is bundled in `chalkwalk-soundfont`, which Antiphon already
+      has as a submodule via that library** -- `CHALKWALK_SOUNDFONT_BANK` is
+      the path, and there is nothing to fetch or install. GeneralUser GS
+      v2.0.3, decided for Lockstep rather than here -- 261 presets, 13 drum kits, shipped as SF3 at q0.8,
       about 10 MB, chosen by ear over a converted ladder. Its caveats belong in
       the shipped licence file: permissive but not OSI/DFSG-free, and the
       author cannot fully vouch for every sample's origin, the samples having
