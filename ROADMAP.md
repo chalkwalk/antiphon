@@ -1637,10 +1637,45 @@ decoration to the thing that makes the rest of this audible at all.
       between them. It is also what finally makes `Hold::Section` mean
       something -- today it folds to `Hold::Session` because there are no
       sections.
+
+      **A RETURN IS ONLY A RETURN IF THE HARMONY STAYED.** Raised 2026-09-04,
+      before any of this is built, because it is cheap to write down now and
+      expensive to discover later.
+
+      The constraint above says the FORM must not vary the harmony. That is
+      about the sections; it says nothing about the harmony changing underneath
+      them from outside, and it can: `settings.key` and `settings.chart` are
+      mutated in place whenever somebody types a key or a chart
+      (`PracticeBot.cpp`, `applyKey`/`applyChart`). So an A at interval 4 and
+      an A at interval 8, with a `/chords` between them, would be the same
+      figure over different harmony -- which is not a phrase coming back, it is
+      a phrase being reused. A listener has nothing to recognise.
+
+      So **a key or chart change resets the form origin**, exactly as
+      `BandPlayState` going Silent -> Playing does in the item below. New
+      harmony, new statement, starting from A. That also keeps `Hold::Section`
+      honest: a section is a stretch of one harmony, and a section seed that
+      outlived a chart change would be holding a decision about music that no
+      longer exists.
+
+      **This does not touch the phrase INSIDE an interval**, which reads the
+      chart live at every step and therefore adapts by construction -- that is
+      why a within-interval repeat may cross a chord change and an
+      across-interval one may not.
+
+      **One overlap is inherent and no reset fixes it.** The room hears the
+      band an interval late, so a chart typed during interval N is one the
+      listener is playing over while still hearing the band's interval N-1,
+      built on the old chart. That is the interval delay rather than the form,
+      it lasts exactly one interval, and it is true today with no form at all.
 - [ ] **Starting a tune starts the form.** `BandPlayState` going from Silent to
       Playing should reset the form origin, or the band comes in mid-structure
       -- which is not what "start playing" means. The play states already exist;
       this is where they meet the form.
+
+      **A key or chart change resets it too**, for the reason under *Phrases
+      that return*: a figure returning over harmony that has moved is not a
+      return. Same mechanism, two triggers, and they want writing once.
 - [ ] **A shared intensity curve.** One deterministic arc over a section, read
       by every voice and mapped to its own parameters: hats thicken, the bass
       gets busier, the keys add extensions, the lead climbs. Tension and release
