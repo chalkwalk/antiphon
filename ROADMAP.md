@@ -1625,7 +1625,7 @@ decoration to the thing that makes the rest of this audible at all.
       Two consecutive drum intervals differ because `performanceSeed` carries
       an interval term, not because the hat pattern rotates -- which is the
       precondition *Phrases that return* was waiting for.
-- [ ] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
+- [x] **Phrases that return.** A form table -- AABA, ABAC, AAAB -- indexed by
       interval, so a phrase is a thing the listener can recognise coming back
       rather than a fresh roll each time. The table and the section length come
       from the room seed, so `shake` changes the shape of the music and not just
@@ -1663,19 +1663,52 @@ decoration to the thing that makes the rest of this audible at all.
       why a within-interval repeat may cross a chord change and an
       across-interval one may not.
 
+      **LANDED 2026-09-05 for the kit and the bass, and WITHDRAWN for the
+      lead.** `Form` decides the letter; a letter is a density transformation
+      of the session's own figures, so B is this tune at a different weight
+      rather than a different tune. Section length is a duration converted by
+      the metre, never one interval -- at one, the boundary a listener hears is
+      a whole section out of step with the one they are playing over.
+
+      **The lead is the honest failure here, and its three measurements are
+      worth more than the feature would have been.** Section-holding its
+      contour was tried three times and withdrawn:
+
+      1. A whole section rendered as ONE LINE REPEATED -- nothing in
+         `leadLineFrom` depends on the interval index except the contour, and
+         `carryIn` is derived by re-rendering the previous interval.
+      2. Displacing the rhythm fixed that and the seams leapt: a held shape
+         restarting every interval means Rise into Rise ends high and begins
+         low. Mean seam motion 3.29 -> 4.25 semitones, against 4.00 for
+         disabling the note carry entirely.
+      3. Spanning the arc across the section fixed the seam and flattened the
+         line: each interval covers 1/n of the arc, and 15.5% of moves in Bb
+         Lydian repeated the note.
+
+      What a solo needs is an arc over the section AND motion inside the
+      interval, at once. That is melodic design rather than wiring, and it is
+      its own item now rather than a loose end.
+- [ ] **A form for the LEAD.** The three failures above are the specification:
+      whatever holds the shape across a section must not repeat a line, must
+      not restart the shape at every seam, and must not flatten the motion
+      inside an interval. `test/BotBandTests.cpp` keeps the test that caught
+      the first, still pointed at the section, so the next attempt fails there
+      rather than by ear.
+
       **One overlap is inherent and no reset fixes it.** The room hears the
       band an interval late, so a chart typed during interval N is one the
       listener is playing over while still hearing the band's interval N-1,
       built on the old chart. That is the interval delay rather than the form,
       it lasts exactly one interval, and it is true today with no form at all.
-- [ ] **Starting a tune starts the form.** `BandPlayState` going from Silent to
-      Playing should reset the form origin, or the band comes in mid-structure
-      -- which is not what "start playing" means. The play states already exist;
-      this is where they meet the form.
+- [x] **Starting a tune starts the form**, and so do a key change, a chart
+      change and a **tempo or metre change** -- four triggers, one mechanism,
+      `Settings::formOrigin`. The fourth is a consequence of the section length
+      being a duration: a carried `!vote bpm` would otherwise strand the band
+      part way through a section of a length that no longer exists.
 
-      **A key or chart change resets it too**, for the reason under *Phrases
-      that return*: a figure returning over harmony that has moved is not a
-      return. Same mechanism, two triggers, and they want writing once.
+      None of the four has an interval index of its own -- they all arrive off
+      the pump -- so the bot remembers the last interval rendered and resets to
+      the NEXT one. The interval being rendered already has its letter.
 - [ ] **A shared intensity curve.** One deterministic arc over a section, read
       by every voice and mapped to its own parameters: hats thicken, the bass
       gets busier, the keys add extensions, the lead climbs. Tension and release
@@ -1684,8 +1717,10 @@ decoration to the thing that makes the rest of this audible at all.
       per-voice threshold from its salted seed so the drop-outs never coincide,
       and a floor that guarantees somebody is always playing. Sparse stretches
       and dense ones, rather than everyone stopping at once.
-- [ ] **Turnarounds mark the form.** The drums already fill every fourth
-      interval; make that the section boundary rather than a fixed count.
+- [x] **Turnarounds mark the form.** The fill lands on the last interval of a
+      section rather than every fourth. Four was a fixed guess at the phrase
+      length a listener hears whether or not anyone intended one; it is the
+      actual one now.
 - [ ] Deviation, so the form does not become its own kind of stale: an
       occasional departure whose likelihood grows the longer a phrase has
       repeated. With the seed split this has a natural home -- the departure is
