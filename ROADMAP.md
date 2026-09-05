@@ -1709,6 +1709,67 @@ decoration to the thing that makes the rest of this audible at all.
       None of the four has an interval index of its own -- they all arrive off
       the pump -- so the bot remembers the last interval rendered and resets to
       the NEXT one. The interval being rendered already has its letter.
+- [ ] **The conductor is the ear.** The band is deaf by construction -- an
+      unsubscribed client never causes the server to send it an interval, so it
+      never allocates one -- and that is why a room of bots costs one client's
+      worth of buffers rather than five. Subscribing all of them to hear the
+      room would give that up five times over.
+
+      **So exactly one bot listens, and it is the one with no instrument.** The
+      conductor has no channel and no audio; it is the member with the capacity
+      to spare, and it is already the one that holds facts about the room and
+      speaks for the band. It subscribes to the HUMAN channels only --
+      `BotNames::looksLikeBot` already knows which -- because a band listening
+      to itself is a feedback loop with extra steps.
+
+      What it produces is a handful of plain numbers, per
+      `libs/jambot/docs/PRINCIPLES.md` `JAMBOT §11`: density, register centre
+      and spread, how active, how syncopated, where the energy sits. Those
+      reach the band through `BandControl`, the way a vote does -- the
+      conductor decides, the members act. They **bias** existing decisions and
+      never replace them: a pulse count, a register, whether to rest, the
+      ceiling on prominence.
+
+      **One tension to resolve deliberately, not silently.** `JAMBOT §6` says
+      the same seed plays the same music, and a band that reacts to you breaks
+      that as stated. The principle wants scoping rather than dropping:
+      deterministic *given the room's inputs*, where a reading joins the key and
+      the chart as an input. Same seed and same reading, same music -- which is
+      still testable, because a reading can be handed to the band by a test.
+
+      The reading is a whole interval old and that is fine: it describes
+      interval N and biases N+1, which is heard in N+2. `JAMBOT §4` only
+      forbids needing to perceive a boundary sooner than an interval, and this
+      needs to perceive nothing at all.
+- [ ] **General MIDI instruments, as the development sound.** `BotVoice.h` is
+      1595 lines of hand-rolled synthesis and `BotDsp.h` another 615 -- a THIRD
+      implementation, parallel to `chalkwalk-physical`, which exists with
+      waveguides, modal resonators and exciters and which `chalkwalk-jambot`
+      does not depend on. Only the primitives ever moved to `chalkwalk-dsp`.
+
+      **The argument is measurement hygiene rather than taste.** With
+      hand-rolled voices you cannot tell whether a part sounds wrong or its
+      timbre does. On a known Acoustic Bass patch, a bass line that sounds
+      wrong IS wrong -- which is what makes the interesting work (themes and
+      their variations, drifting prominence) judgeable at all. It also unblocks
+      genre as a continuum, which wants far more timbres than anyone will
+      hand-roll.
+
+      **The bank is `MuseScore_General.sf3`, MIT**, about 36 MB, with a
+      documented lineage -- FluidR3 by Frank Wen, mono conversion by Michael
+      Cowgill, adapted by S. Christian Collins. **Not GeneralUser GS**, whose
+      own documentation says its author cannot be sure where all the samples
+      originated; permissive to use is not the same as sound to ship. See
+      `libs/jambot/docs/SOURCES.md`.
+
+      **The whole bank, not a trimmed one.** Trimming served a consumer with a
+      fixed instrument list; a band whose style is a point in a parameter space
+      wants all of it. `chalkwalk-soundfont` keeps the trim script for
+      consumers that do need one.
+
+      **Deprecating the synthesis is NOT decided by this.** Landing GM first
+      means the choice can be made by listening to both, which is the only way
+      it should be made.
 - [ ] **A shared intensity curve.** One deterministic arc over a section, read
       by every voice and mapped to its own parameters: hats thicken, the bass
       gets busier, the keys add extensions, the lead climbs. Tension and release
