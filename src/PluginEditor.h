@@ -92,6 +92,9 @@ private:
   bool handleShortcut(const juce::KeyPress &);
   juce::Component::SafePointer<juce::Component> keyListenerHost;
   juce::String lastAnnouncedSyncState;
+  // The offer the chip last spoke, empty when it is hidden; updateTempoChip
+  // runs at 30 Hz and only a changed offer is worth interrupting for.
+  juce::String lastAnnouncedChip;
   int lastAnnouncedBpm = 0, lastAnnouncedBpi = 0;
   bool lastAnnouncedConnected = false;
 
@@ -178,6 +181,12 @@ private:
   void updateRoomMembers();
   void updateTempoChip();
   void setChipVisible(bool shouldShow);
+  // Every chip offer goes through here, so the button's accessible title
+  // cannot be left naming the offer before it.
+  void showChip(const juce::String &offer, const juce::String &action,
+                const juce::String &actionTitle,
+                const juce::String &actionDescription,
+                const juce::String &offerKey = {});
 
   // The chart row appears only when there is a chart, so an idle header keeps
   // the height it has always had.

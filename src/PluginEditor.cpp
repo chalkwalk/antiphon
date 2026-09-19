@@ -1601,12 +1601,42 @@ int AntiphonEditor::headerHeight() const {
 }
 
 void AntiphonEditor::setChipVisible(bool shouldShow) {
+  if (!shouldShow)
+    lastAnnouncedChip.clear();
   if (chipLabel.isVisible() == shouldShow)
     return;
   chipLabel.setVisible(shouldShow);
   chipActionButton.setVisible(shouldShow);
   chipDismissButton.setVisible(shouldShow);
   resized();
+}
+
+void AntiphonEditor::showChip(const juce::String &offer,
+                              const juce::String &action,
+                              const juce::String &actionTitle,
+                              const juce::String &actionDescription,
+                              const juce::String &offerKey) {
+  chipLabel.setText(offer, juce::dontSendNotification);
+  chipLabel.setTitle(offer);
+  chipActionButton.setButtonText(action);
+  // setButtonText does not touch the accessible title, and JUCE's button
+  // handler has no getTitle() of its own -- so a non-empty title set once
+  // outranks the visible text forever, and the one button this chip reuses for
+  // three different offers would be announced as whichever it was built for.
+  chipActionButton.setTitle(actionTitle);
+  chipActionButton.setDescription(actionDescription);
+  setChipVisible(true);
+
+  // The chip is the only surface that appears without being asked for, so a
+  // reader user meets it by accident or not at all. Speak both halves: the
+  // offer and the button, because they are separate controls reached
+  // separately. Important, not chat-class: the default verbosity is
+  // Important-only, so the quiet class would leave this silent for everyone.
+  const juce::String key = offerKey.isEmpty() ? offer : offerKey;
+  if (key != lastAnnouncedChip) {
+    lastAnnouncedChip = key;
+    announcer.say(offer + ". " + actionDescription, true);
+  }
 }
 
 void AntiphonEditor::updateTempoChip() {
@@ -1622,16 +1652,15 @@ void AntiphonEditor::updateTempoChip() {
   // started one, and offering a competing proposal would split the vote.
   if (pendingVote.valid) {
     chipDawBpm = 0;
-    juce::String t = "Vote: " + juce::String(pendingVote.target) + " " +
-                     (pendingVote.isBpm ? "BPM" : "BPI");
+    const juce::String base = "Vote: " + juce::String(pendingVote.target) +
+                              " " + (pendingVote.isBpm ? "BPM" : "BPI");
+    juce::String t = base;
     if (pendingVote.needed > 0)
       t += "  (" + juce::String(pendingVote.votes) + "/" +
            juce::String(pendingVote.needed) + ")";
-    chipLabel.setText(t, juce::dontSendNotification);
-    chipLabel.setTitle(t);
-    chipActionButton.setButtonText("Vote");
-    chipActionButton.setDescription("Add your vote for " + t);
-    setChipVisible(true);
+    // Keyed on the proposal rather than on the text: the tally ticks up while
+    // the same vote is running, and that is not a new thing to interrupt for.
+    showChip(t, "Vote", "Cast vote", "Add your vote for " + t, base);
     return;
   }
 
@@ -1643,12 +1672,9 @@ void AntiphonEditor::updateTempoChip() {
     chipDawBpm = 0;
     const juce::String t =
         "These chords look like " + MusicalKey::displayName(keyFromChords.key);
-    chipLabel.setText(t, juce::dontSendNotification);
-    chipLabel.setTitle(t);
-    chipActionButton.setButtonText("Set key");
-    chipActionButton.setDescription("Tell the room the key is " +
-                                    MusicalKey::displayName(keyFromChords.key));
-    setChipVisible(true);
+    showChip(t, "Set key", "Set the room key",
+             "Tell the room the key is " +
+                 MusicalKey::displayName(keyFromChords.key));
     return;
   }
 
@@ -1666,12 +1692,9 @@ void AntiphonEditor::updateTempoChip() {
   if (worthProposing) {
     chipDawBpm = hostBpm;
     const juce::String t = "Your DAW is at " + juce::String(hostBpm) + " BPM";
-    chipLabel.setText(t, juce::dontSendNotification);
-    chipLabel.setTitle(t);
-    chipActionButton.setButtonText("Propose");
-    chipActionButton.setDescription("Vote to change the server tempo to " +
-                                    juce::String(hostBpm) + " BPM");
-    setChipVisible(true);
+    showChip(t, "Propose", "Propose this tempo",
+             "Vote to change the server tempo to " + juce::String(hostBpm) +
+                 " BPM");
     return;
   }
 
