@@ -30,6 +30,88 @@ public:
       : juce::UnitTest("AccessibilityAudit", "AccessibilityAudit") {}
 
   void runTest() override {
+    beginTest("a spoken name that contradicts the visible one is caught");
+    {
+      // WCAG 2.5.3, and the defect that prompted the rule: one chip button
+      // reused for three offers kept the accessible title it was built with,
+      // so it read "Set key" and announced "Cast vote". Both strings are
+      // present and informative, which is why every other rule here passed it.
+      Node root;
+      root.name = "Editor";
+      auto bad = control("Cast vote", "juce::TextButton");
+      bad.visibleLabel = "Set key";
+      root.children.push_back(bad);
+
+      const auto found = run(root);
+      expectEquals(countOf(found, Issue::NameHidesLabel), 1);
+    }
+
+    beginTest("a name may say MORE than the label, which is the point");
+    {
+      // The annotation this project relies on -- the shortcut appended to the
+      // title so tabbing teaches it -- must not read as a defect.
+      Node root;
+      root.name = "Editor";
+      for (auto pair : {std::make_pair("Sync (Ctrl S)", "Sync"),
+                        std::make_pair("Cast vote", "Vote"),
+                        std::make_pair("Connect (Ctrl O)", "Connect..."),
+                        std::make_pair("Stop the transport", "Stop")}) {
+        auto c = control(pair.first, "juce::TextButton");
+        c.visibleLabel = pair.second;
+        root.children.push_back(c);
+      }
+
+      expectEquals(countOf(run(root), Issue::NameHidesLabel), 0,
+                   "an enriched name was reported as contradicting its label");
+    }
+
+    beginTest("a glyph is not a label, so nothing has to contain it");
+    {
+      // "+" announced as "Add channel" and "M" as "Mute (M)" are correct and
+      // deliberate. Requiring the glyph in the spoken name would forbid the
+      // thing that makes those buttons usable at all.
+      Node root;
+      root.name = "Editor";
+      for (auto pair : {std::make_pair("Add channel", "+"),
+                        std::make_pair("Mute (M)", "M"),
+                        std::make_pair("Transmit (X)", "TX"),
+                        std::make_pair("Close", "X")}) {
+        auto c = control(pair.first, "juce::TextButton");
+        c.visibleLabel = pair.second;
+        root.children.push_back(c);
+      }
+
+      expectEquals(countOf(run(root), Issue::NameHidesLabel), 0,
+                   "a glyph was held to the label-in-name rule");
+    }
+
+    beginTest("coverage notices a control that only changed what it SAYS");
+    {
+      // The blind spot in the state-reached check. A chip wearing a second
+      // face has the same component count, the same keyboard reach and the
+      // same shape -- so a shape-only comparison calls that state unreached
+      // and throws its verdict away. The only kind of control whose name can
+      // go stale is the kind that is reused, so this is precisely the case
+      // that must not be discarded.
+      Node before;
+      before.name = "Editor";
+      before.children.push_back(control("Cast vote", "juce::TextButton"));
+
+      Node after;
+      after.name = "Editor";
+      after.children.push_back(control("Set key for the room",
+                                       "juce::TextButton"));
+
+      Coverage a, b;
+      measure(before, a);
+      measure(after, b);
+
+      expectEquals(a.nodes, b.nodes);
+      expectEquals(a.focusable, b.focusable);
+      expect(a.spoken != b.spoken,
+             "two trees saying different things fingerprinted the same");
+    }
+
     beginTest("an unnamed control says which one it is");
     {
       // The whole difficulty with MISSING NAME is that the thing with no name

@@ -1672,7 +1672,9 @@ void AntiphonEditor::updateTempoChip() {
     chipDawBpm = 0;
     const juce::String t =
         "These chords look like " + MusicalKey::displayName(keyFromChords.key);
-    showChip(t, "Set key", "Set the room key",
+    // The accessible title has to CONTAIN the visible label, not merely mean
+    // the same thing: somebody driving this by voice says what they can see.
+    showChip(t, "Set key", "Set key for the room",
              "Tell the room the key is " +
                  MusicalKey::displayName(keyFromChords.key));
     return;

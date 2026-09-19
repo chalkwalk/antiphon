@@ -48,6 +48,12 @@ void walk(const Node &node, const juce::String &path,
              "a sibling already announces as \"" + child.name + "\""});
       }
 
+      if (!nameContainsLabel(child.name, child.visibleLabel)) {
+        out.push_back({Issue::NameHidesLabel, childPath,
+                       "reads \"" + child.visibleLabel +
+                           "\" but announces \"" + child.name + "\""});
+      }
+
       if (child.description.trim().isEmpty() &&
           !isUninformativeName(child.name)) {
         out.push_back(
@@ -80,12 +86,31 @@ juce::String describe(Issue issue) {
     return "DUPLICATE NAME";
   case Issue::MissingDescription:
     return "NO DESCRIPTION";
+  case Issue::NameHidesLabel:
+    return "NAME HIDES LABEL";
   }
   return "UNKNOWN";
 }
 
+namespace {
+// FNV-1a. Any stable hash would do; this one is four lines and has no
+// dependency, and the value is only ever compared with another run of itself.
+void mixInto(std::uint64_t &h, const juce::String &s) {
+  for (auto c : s) {
+    h ^= (std::uint64_t)(unsigned)c;
+    h *= 1099511628211ULL;
+  }
+  h ^= 0x2Fu; // a separator, so "ab"+"c" and "a"+"bc" do not collide
+  h *= 1099511628211ULL;
+}
+} // namespace
+
 void measure(const Node &root, Coverage &out) {
   ++out.nodes;
+  if (out.spoken == 0)
+    out.spoken = 14695981039346656037ULL;
+  mixInto(out.spoken, root.name);
+  mixInto(out.spoken, root.description);
   if (root.focusable)
     ++out.focusable;
   if (root.ignored)
@@ -106,12 +131,14 @@ juce::String format(const std::vector<Finding> &findings) {
   if (findings.empty())
     return "Accessibility audit: no issues found.\n";
 
-  int names = 0, dupes = 0, descs = 0;
+  int names = 0, dupes = 0, descs = 0, hidden = 0;
   for (const auto &f : findings) {
     if (f.issue == Issue::MissingName)
       ++names;
     else if (f.issue == Issue::DuplicateName)
       ++dupes;
+    else if (f.issue == Issue::NameHidesLabel)
+      ++hidden;
     else
       ++descs;
   }
@@ -119,7 +146,7 @@ juce::String format(const std::vector<Finding> &findings) {
   juce::String s;
   s << "Accessibility audit: " << (int)findings.size() << " issue(s) -- "
     << names << " unnamed, " << dupes << " ambiguous, " << descs
-    << " undescribed.\n\n";
+    << " undescribed, " << hidden << " misnamed.\n\n";
   for (const auto &f : findings)
     s << "  [" << describe(f.issue) << "] " << f.path << "\n      " << f.detail
       << "\n";

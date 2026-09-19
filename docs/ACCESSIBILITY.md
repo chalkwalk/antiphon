@@ -146,7 +146,8 @@ a reader-based check would pass vacuously while the annotations rotted. So the
 coverage is checked mechanically instead.
 
 `AccessibilityAudit` walks the component tree and reports controls that a reader
-would announce as nothing, or as the same thing as their neighbour:
+would announce as nothing, as the same thing as their neighbour, or as
+something other than what they say on screen:
 
 - **MISSING NAME** -- unnamed, or named something useless when spoken alone
   (a bare `M` or `+`).
@@ -154,6 +155,14 @@ would announce as nothing, or as the same thing as their neighbour:
   apart. The same name in *different* containers is fine: every strip has a
   Mute, and the strip is the context.
 - **NO DESCRIPTION** -- reachable and named, but nothing explains what it does.
+- **NAME HIDES LABEL** -- the spoken name does not contain the visible one, so
+  the two disagree and only one of them is ever heard. WCAG 2.5.3; it also
+  breaks voice control, where somebody says the words they can see.
+
+  A name may say *more* than its label -- "Sync" announced as "Sync (Ctrl S)"
+  is the whole point of the annotation. What it must not do is say something
+  *else*. Glyph labels are exempt: "+" announced as "Add channel" is correct,
+  and an icon is not a label.
 
 `Ctrl+Alt+A` writes a report to the desktop, covering the editor and the connect
 dialog when it is open. The report states what it examined -- roots, components,
@@ -164,9 +173,27 @@ the dialog was in.
 Two layers check it. The rules are unit-tested headlessly
 (`test/AccessibilityAuditTests.cpp`) against a synthetic tree. The **real
 component tree** is checked by the `AntiphonAudit` target, which links the
-plugin's own library, drives the genuine editor through five states, and exits
+plugin's own library, drives the genuine editor through eight states, and exits
 with the finding count -- so `ctest` fails the build when a control arrives
 without a name. See `test/README.md`.
+
+**A state is only banked if it was actually reached**, and what counts as
+reached includes what the tree SAYS rather than only how big it is. A control
+re-purposed in place -- the tempo chip wears three faces on one button -- has
+the same component count, the same keyboard reach and the same shape in every
+one of them. Comparing only shape discarded that state as unreached, which
+meant the one kind of control whose name can go stale was also the one kind
+never audited.
+
+**What the audit reads is not always what a reader reads**, and that was a
+defect in the instrument rather than in the UI. It used to record
+`Component::getTitle()` as the name. JUCE's Label handler returns
+`label.getText()` unconditionally, so `setTitle` on a Label is dead code and
+the audit was grading a string no user could ever hear -- `dawOnlyNote` read
+"DAW only" on screen while carrying the title "Plugin only", and reader and
+audit were each satisfied by different text. The tree now resolves the name the
+way JUCE's handlers do. Asking the handler itself would be better and is not
+available: it returns null without a window handle, which is always, here.
 
 **What the audit does not tell you** is whether the result is pleasant to use.
 It cannot judge whether a description is helpful, whether the tab order feels

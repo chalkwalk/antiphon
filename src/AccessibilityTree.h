@@ -27,9 +27,45 @@ inline juce::String classNameOf(const juce::Component &c) {
   return juce::String(typeid(c).name());
 }
 
+// What the READER will announce, and what a sighted user reads, resolved the
+// way JUCE's own handlers resolve them.
+//
+// Asking `getAccessibilityHandler()` would be the ground truth and cannot be
+// used: it returns null whenever `getWindowHandle()` is null, which is always
+// here -- the audit runs headless, off the desktop, on a platform with no
+// accessibility backend at all. So the rules are reproduced rather than
+// queried, and there are only two that differ from the default.
+//
+// A LABEL never announces its title. `LabelAccessibilityHandler::getTitle()`
+// returns `label.getText()` unconditionally, so `setTitle` on a Label is dead
+// code -- and an audit reading `getTitle()` was grading a string no user could
+// ever hear. `dawOnlyNote` reads "DAW only" on screen and carried the title
+// "Plugin only", and both the audit and the reader were satisfied, separately,
+// by different text.
+//
+// A BUTTON announces its title when it has one and its text otherwise
+// (`ButtonAccessibilityHandler` does not override `getTitle`, so the component
+// title wins). That is what let one chip button announce "Cast vote" while
+// reading "Set key".
+inline void resolveAccessibleText(const juce::Component &c, Node &n) {
+  if (const auto *label = dynamic_cast<const juce::Label *>(&c)) {
+    n.visibleLabel = label->getText();
+    n.name = label->getText();
+    return;
+  }
+
+  if (const auto *button = dynamic_cast<const juce::Button *>(&c)) {
+    n.visibleLabel = button->getButtonText();
+    n.name = c.getTitle().isNotEmpty() ? c.getTitle() : button->getButtonText();
+    return;
+  }
+
+  n.name = c.getTitle();
+}
+
 inline Node buildAuditTree(const juce::Component &c) {
   Node n;
-  n.name = c.getTitle();
+  resolveAccessibleText(c, n);
   n.description = c.getDescription();
   n.kind = classNameOf(c);
   n.locator = c.getName();

@@ -221,6 +221,23 @@ int main() {
 
     results.push_back(auditState("a chart announced in chat", {editor}));
 
+    // A vote in progress, which is the chip wearing its THIRD face.
+    //
+    // The chip multiplexes one button across three offers and a vote outranks
+    // the key suggestion above, so this is the only way to walk that branch --
+    // and it is the branch whose accessible title said "Cast vote" for all
+    // three. An audited surface is not the same as an audited control when the
+    // control is reused.
+    //
+    // The wording is the server's and is the only contract it offers; there is
+    // no structured vote message on the wire.
+    server.sendChat("MSG", "", "[voting system] leading candidate: 3/5 votes "
+                              "for 137 BPM [each vote expires in 60s]");
+    pump(400);
+    settle(*editor);
+
+    results.push_back(auditState("a vote in progress", {editor}));
+
     // Traced line by line: the audit has hung somewhere in this teardown on CI
     // and every call in it is meant to be bounded, so the next hang needs to
     // name the one that is not. See ROADMAP.md.
@@ -252,11 +269,17 @@ int main() {
   // exist -- a chip appearing, say -- has the same tree with two more stops in
   // it. Counting only nodes would call that state unreached when it is the
   // whole point of it.
+  //
+  // And what the tree SAYS is part of it too, because the finest difference
+  // that matters is a control re-purposed without moving: the chip wears three
+  // faces on one button, and every one of them has the same shape. Comparing
+  // only shape threw that state away as unreached, which is how a re-purposed
+  // control -- the only kind whose name can go stale -- stayed unaudited.
   for (size_t i = 1; i < results.size(); ++i) {
     const auto &now = results[i].coverage;
     const auto &before = results[i - 1].coverage;
     if (now.nodes == before.nodes && now.roots == before.roots &&
-        now.focusable == before.focusable) {
+        now.focusable == before.focusable && now.spoken == before.spoken) {
       std::fprintf(stderr,
                    "audit: state '%s' examined the same %d component(s) as "
                    "'%s' -- it was never reached\n",
