@@ -768,8 +768,25 @@ server notices, and harmony changes to assistive technologies.
 
 - [x] **Auto-speak incoming chat messages.** Formats and speaks public messages,
       private messages, actions, topics, server notices, and votes.
-- [x] **Make `Announcer`'s comment and its behaviour agree.** Header comment updated
-      to reflect that chat is included in discrete announcements.
+- [x] **Make `Announcer`'s comment and its behaviour agree.** Header comment
+      updated to reflect that chat is included in discrete announcements.
+- [x] **Give it a volume knob, because it did not have one.** The finding under
+      the comment was larger than the comment: `Verbosity` had three levels and
+      one reachable one. Nothing called `setVerbosity`, and all fifty `say()`
+      call sites passed `important = true`, so the quiet tier was unreachable
+      and the parameter was decoration. `Ctrl+Alt+V` cycles it now, and it
+      persists with the plugin state rather than the window.
+
+      **The axis is not importance, it is whether you asked.** Everything said
+      in response to a keystroke is important by construction -- suppressing it
+      leaves the keystroke unconfirmed -- so the only things with a quiet tier
+      to fall to are the ones arriving unasked: ordinary room chat, joins,
+      parts, server notices. Private messages and votes stay important because
+      they are aimed at you.
+
+      The default is unchanged at All, deliberately. A screen reader user built
+      these announcements and used them in a real jam; what was missing was a
+      way to turn them DOWN, not a different opinion about where they start.
 
 #### The rename question, decided
 
@@ -783,6 +800,34 @@ gesture if a bot said something about it.
 
 - [ ] Carry that decision back to *The band's two names* and close its
       checkbox, once anything here ships.
+
+#### What the volume knob did to the earcon argument
+
+**The ambient layer already exists and is louder than this section assumed.**
+Every incoming chat line, every join and every part is spoken -- and until
+`Ctrl+Alt+V` there was no way to reduce it. The practice room generates chat,
+so somebody meeting the interval model for the first time got the most speech
+of anybody.
+
+That cuts both ways at once, which is why it is worth writing down rather than
+resolving from the armchair.
+
+**For a tone**: set the new control to *Important only* and joins, parts and
+room chat go silent ENTIRELY. There is no middle setting, and there cannot be
+one made of speech -- a quieter sentence is still a sentence. Knowing somebody
+left without being told in words is exactly what an earcon is for, and the
+setting now creates the gap one would fill.
+
+**Against**: the reason speech felt unbearable was never that speech is the
+wrong carrier. It was that it was all-or-nothing. That is now fixed, for the
+cost of one shortcut, with no new vocabulary to learn and nothing to
+user-test. It may be the whole answer.
+
+- [ ] **Ask before building.** With the control in his hands the question is
+      answerable from use rather than imagination: *set it to Important only
+      for a session -- did you miss knowing who came and went, and would a
+      short tone have covered it?* A no closes `CueVoice` permanently, which is
+      worth more than a yes.
 
 #### The caveat that outranks all of the above
 

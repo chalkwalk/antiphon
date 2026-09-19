@@ -111,6 +111,7 @@ route to its action -- each control can also be tabbed to and pressed.
 | `Cmd+Option+P` / `Ctrl+Alt+P` | Start a practice room and join it |
 | `Cmd+Option+M` / `Ctrl+Alt+M` | Toggle Mute All local channels |
 | `Cmd+Option+H` / `Ctrl+Alt+H` or `?` | Open Keyboard Shortcuts Help dialog |
+| `Cmd+Option+V` / `Ctrl+Alt+V` | Cycle spoken announcements: all, important only, off |
 | `Cmd+Option+A` / `Ctrl+Alt+A` | Write an accessibility audit report to the desktop |
 | `Cmd+Option+Shift+T` / `Ctrl+Alt+Shift+T` | Toggle Transmit retroactively for current interval |
 | `Cmd+Option+L` / `Ctrl+Alt+L` | Focus Local Channels section |
@@ -138,6 +139,29 @@ that is not pressed.
 announcement, and says so when the write fails. It is the one action with no
 other visible effect, so "it worked" and "nothing happened" were
 indistinguishable.
+
+## How much it says
+
+Everything the app says in response to a keystroke is spoken at every setting
+above Off, because it is the answer to something you just did and suppressing
+it would leave the keystroke unconfirmed. The setting is about what arrives
+UNASKED.
+
+- **All** (the default) -- the room as well: every chat line, every join and
+  part, every server notice. This is what the plugin has always done.
+- **Important only** -- what is aimed at you or wants a decision: private
+  messages, votes, the tempo chip, connection and sync changes, and every
+  response to your own keystrokes.
+- **Off** -- nothing. The confirmation of turning it off is spoken before it
+  takes effect, because a control whose confirmation is the thing it suppresses
+  is one nobody can tell they have used.
+
+The default is deliberately unchanged. A screen reader user built the
+announcements and used them in a real jam; what was missing was a way to turn
+them DOWN, not a different opinion about where they should start.
+
+It persists with the plugin state rather than with the window, so closing the
+editor does not undo it.
 
 ## The audit
 

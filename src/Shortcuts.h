@@ -36,6 +36,7 @@ enum class Action {
   StartPracticeRoom,      // Ctrl+Alt+P
   ToggleMuteAll,          // Ctrl+Alt+M
   AnnounceShortcutsHelp,  // Ctrl+Alt+H or '?'
+  CycleSpeech,            // Ctrl+Alt+V
   FocusLocalSection,      // Ctrl+Alt+L
   FocusRemoteSection,     // Ctrl+Alt+R
   SelectNextLocalChannel, // Alt+Right / Ctrl+Alt+Right
@@ -155,6 +156,8 @@ inline Action match(int keyCode, bool ctrlDown, bool altDown,
       return Action::ToggleMuteAll;
     case 'H':
       return Action::AnnounceShortcutsHelp;
+    case 'V':
+      return Action::CycleSpeech;
     case 'L':
       return Action::FocusLocalSection;
     case 'R':

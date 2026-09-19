@@ -10,6 +10,14 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
     : AudioProcessorEditor(&p), audioProcessor(p) {
   audioProcessor.ninjamClient.addListener(this);
 
+  // Restored before anything can speak. The editor is destroyed with the
+  // window, so the setting lives on the processor; without this, closing the
+  // plugin window silently undoes the one control a reader user has over how
+  // much the app talks.
+  announcer.setVerbosity(
+      (Announcer::Verbosity)juce::jlimit(0, 2,
+                                         audioProcessor.announceVerbosity.load()));
+
   // The embedded typeface, on JUCE's DEFAULT look-and-feel. It cannot ride on
   // customLookAndFeel below: a Font naming no typeface -- which is all of ours
   // -- resolves through the default look, never the component's.
@@ -567,24 +575,31 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
 
   chatDisplay.appendMessage(line.text, colourForChatCategory(line.category));
 
-  // Automatically announce incoming chat messages to screen readers.
-  // Messages from the local user are skipped because the user just typed and sent them.
+  // Incoming chat is spoken, because a reader user cannot glance at it.
+  // Messages from the local user are skipped: they just typed them.
+  //
+  // What splits `important` from the rest here is not how interesting a line
+  // is -- it is whether it was AIMED at you. A private message and a vote are
+  // addressed to you and actionable; the room's ordinary traffic, its joins
+  // and parts and its server notices, are the background of a busy room and
+  // are the first thing anybody turns down. Both tiers speak at the default
+  // setting, so this changes nothing until somebody asks it to.
   switch (line.category) {
   case ChatFormat::Category::OtherMessage:
-    announcer.say(username + ": " + text, true);
+    announcer.say(username + ": " + text, false);
     break;
   case ChatFormat::Category::PrivateMessage:
     announcer.say("Private message from " + username + ": " + text, true);
     break;
   case ChatFormat::Category::Action:
-    announcer.say(username + " " + text.substring(4), true);
+    announcer.say(username + " " + text.substring(4), false);
     break;
   case ChatFormat::Category::Topic:
-    announcer.say("Topic: " + text, true);
+    announcer.say("Topic: " + text, false);
     break;
   case ChatFormat::Category::JoinPart:
   case ChatFormat::Category::ServerNotice:
-    announcer.say(text, true);
+    announcer.say(text, false);
     break;
   case ChatFormat::Category::Voting:
     announcer.say(text.startsWith("[voting system]")
@@ -1405,6 +1420,20 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
         anyMuted = true;
     }
     announcer.sayToggle("", "mute all", anyMuted);
+    return true;
+  }
+
+  if (action == Shortcuts::Action::CycleSpeech) {
+    // All -> Important -> Off -> All. The announcement of the new setting is
+    // made at the OLD one where it has to be -- a reader told "announcements
+    // off" by a channel that has just been switched off would hear nothing,
+    // and a control whose confirmation is the thing it suppresses is a control
+    // nobody can verify they have used.
+    const int next = (audioProcessor.announceVerbosity.load() + 2) % 3;
+    const auto v = (Announcer::Verbosity)next;
+    announcer.say("Announcements: " + Announcer::verbosityName(v), true);
+    audioProcessor.announceVerbosity.store(next);
+    announcer.setVerbosity(v);
     return true;
   }
 

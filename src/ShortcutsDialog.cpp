@@ -50,6 +50,7 @@ void ShortcutsDialog::populateShortcuts() {
   shortcuts.add({mod + "P", "Start a practice room and join it"});
   shortcuts.add({mod + "M", "Toggle Mute All local channels"});
   shortcuts.add({mod + "H or ?", "Open Keyboard Shortcuts Help dialog"});
+  shortcuts.add({mod + "V", "Cycle spoken announcements: all, important, off"});
   shortcuts.add({mod + "A", "Write Accessibility Audit report to desktop"});
   shortcuts.add(
       {mod + "Shift+T", "Toggle Transmit retroactively for current interval"});

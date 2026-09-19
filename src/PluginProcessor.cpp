@@ -795,6 +795,7 @@ void AntiphonAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
   xml.setAttribute("metronome", metronomeEnabled.load());
   xml.setAttribute("metronomeVol", (double)metronomeVolume.load());
   xml.setAttribute("chatVisible", chatVisible.load());
+  xml.setAttribute("speech", announceVerbosity.load());
   xml.setAttribute("lastHost", lastHost);
   xml.setAttribute("lastPort", lastPort);
   xml.setAttribute("lastUsername", lastUsername);
@@ -833,6 +834,8 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
     return;
 
   chatVisible.store(xml->getBoolAttribute("chatVisible", true));
+  announceVerbosity.store(
+      juce::jlimit(0, 2, xml->getIntAttribute("speech", 2)));
   metronomeVolume.store((float)xml->getDoubleAttribute("metronomeVol", 1.0));
   metronomeEnabled.store(xml->getBoolAttribute("metronome", isStandaloneApp()));
   lastHost = xml->getStringAttribute("lastHost", "ninbot.com");

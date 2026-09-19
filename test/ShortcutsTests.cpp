@@ -19,6 +19,7 @@ public:
       expect(Shortcuts::match('O', true, true) == A::OpenConnect);
       expect(Shortcuts::match('M', true, true) == A::ToggleMuteAll);
       expect(Shortcuts::match('H', true, true) == A::AnnounceShortcutsHelp);
+      expect(Shortcuts::match('V', true, true) == A::CycleSpeech);
       expect(Shortcuts::match('L', true, true) == A::FocusLocalSection);
       expect(Shortcuts::match('R', true, true) == A::FocusRemoteSection);
     }
@@ -31,6 +32,7 @@ public:
       expect(Shortcuts::match('s', true, true) == A::ArmSync);
       expect(Shortcuts::match('o', true, true) == A::OpenConnect);
       expect(Shortcuts::match('m', true, true) == A::ToggleMuteAll);
+      expect(Shortcuts::match('v', true, true) == A::CycleSpeech);
     }
 
     beginTest("a control character is never the key code");

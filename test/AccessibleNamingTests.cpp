@@ -11,6 +11,35 @@ public:
       : juce::UnitTest("AccessibleNaming", "AccessibleNaming") {}
 
   void runTest() override {
+    beginTest("turning speech off still says so");
+    {
+      // The one announcement that cannot be made at the setting it announces.
+      // A reader told "Announcements: Off" by a channel already switched off
+      // hears nothing at all, and a control whose confirmation is the thing it
+      // suppresses is one nobody can tell they have used.
+      Announcer a;
+      a.setVerbosity(Announcer::Verbosity::Off);
+      expect(Announcer::verbosityName(Announcer::Verbosity::Off) == "Off");
+      expect(Announcer::verbosityName(Announcer::Verbosity::Important) ==
+             "Important only");
+      expect(Announcer::verbosityName(Announcer::Verbosity::All) == "All");
+    }
+
+    beginTest("the quiet tier is what a busy room fills with");
+    {
+      // `important` does not mean "interesting", it means "aimed at you".
+      // Everything the app says in response to a keystroke is important by
+      // construction; the room's background -- ordinary chat, joins, parts,
+      // server notices -- is what somebody turns down first, and the only
+      // thing that HAS a quiet tier to be turned down to.
+      Announcer a;
+      a.setVerbosity(Announcer::Verbosity::Important);
+      expect(a.getVerbosity() == Announcer::Verbosity::Important);
+
+      a.setVerbosity(Announcer::Verbosity::All);
+      expect(a.getVerbosity() == Announcer::Verbosity::All);
+    }
+
     beginTest("a control adopts the label attached to it");
     {
       juce::Component root;

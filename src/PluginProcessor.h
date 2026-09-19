@@ -300,6 +300,17 @@ public:
   std::atomic<bool> testToneEnabled{false};
   std::atomic<bool> chatVisible{true};
 
+  // How much the app says out loud, as Announcer::Verbosity. Lives here rather
+  // than in the editor because the editor is destroyed with the window and a
+  // setting somebody chose must not be one they choose again every time.
+  //
+  // Defaults to All, which is what the app already did: every incoming chat
+  // line, every join and part. That was built and used by a screen reader
+  // user, so it is not a default to quietly change -- what was missing was the
+  // ability to turn it DOWN, not a different opinion about where it should
+  // start.
+  std::atomic<int> announceVerbosity{2};
+
   // Flash state (written audio thread, decayed + read UI thread)
   std::atomic<float> intervalFlashIntensity{0.0f};
   std::atomic<float> beatFlashIntensity{0.0f};
