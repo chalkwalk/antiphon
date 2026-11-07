@@ -58,7 +58,7 @@ public:
 
   // The room's new BPI took effect at this playhead position.
   void onBpiChangeAt(double ppqBoundary) {
-    anchor = ppqBoundary - loopOffset;
+    anchor = ppqBoundary + loopOffset; // so musicalPpq(ppqBoundary) == 0
   }
 
   Move observe(double ppqStart, double prevEndPpq, bool looping,

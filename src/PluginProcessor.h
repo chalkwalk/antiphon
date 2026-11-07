@@ -406,8 +406,9 @@ private:
   void timerCallback() override;
   void adoptReaper(std::function<void *(const char *)> resolve);
   std::unique_ptr<juce::VST3ClientExtensions> vst3Extensions;
-  bool followWasConnected = false;
-  int followSeenTempoChanges = 0;
+  FollowTrigger followTrigger;
+  // This connection's room config has arrived (message thread only).
+  bool roomConfigSeen = false;
   bool hasConnectedSinceLastAttempt{false};
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AntiphonAudioProcessor)
 };

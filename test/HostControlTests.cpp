@@ -94,6 +94,21 @@ public:
       expect(!f.onJoin(h, 110, 95.0));
     }
 
+    beginTest("a join is followed only once the room's tempo has arrived");
+    {
+      FollowTrigger t;
+      // Connected, but the server's config is still in flight: the stored
+      // tempo is the previous room's, so nothing is followed yet.
+      expect(t.update(true, false, 0) == FollowTrigger::Event::None);
+      expect(t.update(true, true, 0) == FollowTrigger::Event::Joined);
+      expect(t.update(true, true, 0) == FollowTrigger::Event::None);
+      expect(t.update(true, true, 1) == FollowTrigger::Event::TempoApplied);
+      // Leaving and rejoining waits for the new room's config again.
+      expect(t.update(false, false, 1) == FollowTrigger::Event::None);
+      expect(t.update(true, false, 1) == FollowTrigger::Event::None);
+      expect(t.update(true, true, 2) == FollowTrigger::Event::Joined);
+    }
+
     beginTest("a zero room tempo is never sent");
     {
       FakeHost h;

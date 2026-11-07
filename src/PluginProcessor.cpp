@@ -50,14 +50,12 @@ void AntiphonAudioProcessor::setFollowRoomTempo(bool on) {
 }
 
 void AntiphonAudioProcessor::timerCallback() {
-  const bool connected = ninjamClient.isConnected();
-  const int changes = gridTempoChangeCount.load(std::memory_order_relaxed);
-  const bool joined = connected && !followWasConnected;
-  const bool changed = connected && changes != followSeenTempoChanges;
-  followWasConnected = connected;
-  followSeenTempoChanges = changes;
-  if (hostControl == nullptr || !(joined || changed))
+  const auto event = followTrigger.update(
+      ninjamClient.isConnected(), roomConfigSeen,
+      gridTempoChangeCount.load(std::memory_order_relaxed));
+  if (hostControl == nullptr || event == FollowTrigger::Event::None)
     return;
+  const bool joined = event == FollowTrigger::Event::Joined;
   const int room = internalBpm.load();
   const double daw = publishedHostBpm.load(std::memory_order_relaxed);
   const bool set = joined ? tempoFollow.onJoin(*hostControl, room, daw)
@@ -273,6 +271,16 @@ void AntiphonAudioProcessor::prepareToPlay(double sampleRate,
 
   intervalClock.prepare(sampleRate);
   intervalClock.setTempo(internalBpm.load(), internalBpi.load());
+  // A host may re-prepare mid-jam (a sample-rate or block-size change). On a
+  // counted clock the position lives only here, so keep it -- in beats, which
+  // survive a rate change -- rather than snapping to beat 1 against a room
+  // still playing. Synced, the playhead re-derives it anyway. The capture
+  // ring may have been resized, so the next block rejoins: it empties the ring
+  // and pads to where the grid is, exactly as a join does.
+  if (lastGrid == ClockModel::GridSource::OwnClock ||
+      lastGrid == ClockModel::GridSource::StandaloneOwn)
+    intervalClock.seekToBeats(lastPhaseBeats);
+  wasInJam = false;
   metronomeVoice.prepare(sampleRate);
   cueVoice.prepare(sampleRate);
   metronomeScratch.setSize(1, juce::jmax(samplesPerBlock, 1));
@@ -670,6 +678,9 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     if (phaseResetPending.exchange(false)) {
       intervalClock.reset();
       metronomeVoice.reset();
+      // A BPI vote's re-anchor belongs to the room that voted it; the next
+      // room's downbeat is the DAW's bar 1 again.
+      playheadPosition.reset();
       intervalFlashIntensity.store(0.0f);
       beatFlashIntensity.store(0.0f);
     }
@@ -797,7 +808,11 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       }
       captureSilence(fill.padAfter);
     }
-    if (clock.inJam && jumped)
+    // Starting a counted clock from nothing starts at beat 1 (above), so the
+    // room's playback starts there too, not where it was left when stopped.
+    const bool startedFromNothing =
+        counted && lastGrid == GridSource::None;
+    if (clock.inJam && (jumped || startedFromNothing))
       ninjamClient.seekPlayback(targetSamples);
     if (jumped) {
       metronomeVoice.reset();
@@ -1170,6 +1185,7 @@ void AntiphonAudioProcessor::onDisconnected(const juce::String &error) {
   connectionStatus =
       error.isEmpty() ? "Disconnected" : "Disconnected: " + error;
   phaseResetPending.store(true);
+  roomConfigSeen = false;
 
   // Leaving a practice room shuts it. The band has grace timers for a player
   // whose connection blipped, but those are for a room that outlives the
@@ -1181,6 +1197,7 @@ void AntiphonAudioProcessor::onDisconnected(const juce::String &error) {
 void AntiphonAudioProcessor::onServerConfig(int bpm, int bpi) {
   internalBpm.store(bpm);
   internalBpi.store(bpi);
+  roomConfigSeen = true;
 }
 
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {

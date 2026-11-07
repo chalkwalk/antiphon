@@ -45,6 +45,7 @@ public:
   using GetSetLoopTimeRange = void (*)(bool isSet, bool isLoop, double *start,
                                        double *end, bool allowAutoSeek);
   using TimeMapQNToTime = double (*)(double qn);
+  using GetSetRepeat = int (*)(int val); // -1 query, 0 off, 1 on, 2 toggle
 
   bool resolve(const ReaperResolver &r) {
     setBpm = reinterpret_cast<SetCurrentBPM>(r("SetCurrentBPM"));
@@ -52,6 +53,7 @@ public:
     playState = reinterpret_cast<GetPlayState>(r("GetPlayState"));
     loopRange = reinterpret_cast<GetSetLoopTimeRange>(r("GetSet_LoopTimeRange"));
     qnToTime = reinterpret_cast<TimeMapQNToTime>(r("TimeMap_QNToTime"));
+    repeat = reinterpret_cast<GetSetRepeat>(r("GetSetRepeat"));
     return setBpm != nullptr && playButton != nullptr && playState != nullptr;
   }
 
@@ -81,6 +83,9 @@ public:
     double start = qnToTime(startPpq);
     double end = qnToTime(endPpq);
     loopRange(true, true, &start, &end, false);
+    // The loop points alone do not loop: Reaper's repeat is a separate switch.
+    if (repeat != nullptr)
+      repeat(1);
     return true;
   }
 
@@ -90,6 +95,7 @@ private:
   GetPlayState playState = nullptr;
   GetSetLoopTimeRange loopRange = nullptr;
   TimeMapQNToTime qnToTime = nullptr;
+  GetSetRepeat repeat = nullptr;
 };
 
 class ReaperVst3Extensions final : public juce::VST3ClientExtensions {

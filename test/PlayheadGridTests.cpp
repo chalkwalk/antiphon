@@ -84,6 +84,20 @@ public:
           HostGrid::phaseBeatsAt(p.musicalPpq(50.0), 12), 6.0, 1e-9);
     }
 
+    beginTest("a BPI change after a loop wrap re-anchors on the boundary");
+    {
+      // A one-interval loop (Loop one interval), wrapped once, then the room
+      // votes BPI 16 -> 12. The boundary is at raw ppq 16 (musical 32).
+      PlayheadGrid::Position p;
+      p.reset();
+      expect(p.observe(0.0, 16.0, true, 0.0, 16.0) == Move::LoopWrap);
+      p.onBpiChangeAt(16.0);
+      expectWithinAbsoluteError(
+          HostGrid::phaseBeatsAt(p.musicalPpq(16.0), 12), 0.0, 1e-9);
+      expectWithinAbsoluteError(
+          HostGrid::phaseBeatsAt(p.musicalPpq(19.0), 12), 3.0, 1e-9);
+    }
+
     beginTest("a forward jump pads the hole and keeps the interval open");
     {
       const auto f = PlayheadGrid::fillForJump(1000, 5000, 10000);
