@@ -21,6 +21,7 @@ target_sources(NinjamTests
         MetronomeVoiceTests.cpp
         GainUtilsTests.cpp
         SyncStateTests.cpp
+        ClockModelTests.cpp
         AudioDeviceStartupTests.cpp
         ShortcutsTests.cpp
         AccessibilityAuditTests.cpp
@@ -32,6 +33,7 @@ target_sources(NinjamTests
         StemRenderTests.cpp
         RunGateTests.cpp
         HostGridTests.cpp
+        PlayheadGridTests.cpp
         GainRampTests.cpp
         TransmitSpansTests.cpp
         FakeNinjamServer.cpp
