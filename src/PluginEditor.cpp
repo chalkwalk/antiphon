@@ -315,6 +315,41 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       "Level of the metronome click in decibels");
   addAndMakeVisible(metronomeVolumeSlider);
 
+  cueToggle.setButtonText("DAW-stopped tone");
+  cueToggle.setTitle("DAW-stopped tone");
+  cueToggle.setDescription(
+      "A short high tone once an interval while the DAW is stopped and the "
+      "room plays on");
+  cueToggle.setTooltip(
+      "When the DAW stops under a synced jam, the room keeps playing on "
+      "Antiphon's clock. This tone repeats once an interval until you press "
+      "play or choose Antiphon's clock, so you cannot miss it. Only you hear "
+      "it.");
+  cueToggle.setToggleState(audioProcessor.cueEnabled.load(),
+                           juce::dontSendNotification);
+  cueToggle.onClick = [this]() {
+    audioProcessor.cueEnabled.store(cueToggle.getToggleState());
+  };
+  cueToggle.setRepaintsOnMouseActivity(true);
+  addChildComponent(cueToggle);
+
+  cueVolumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+  cueVolumeSlider.setRange(GainUtils::kMinDb, GainUtils::kMaxDb,
+                           GainUtils::kStepDb);
+  cueVolumeSlider.setValue(GainUtils::gainToDb(audioProcessor.cueVolume.load()),
+                           juce::dontSendNotification);
+  cueVolumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+  cueVolumeSlider.textFromValueFunction =
+      metronomeVolumeSlider.textFromValueFunction;
+  cueVolumeSlider.setTooltip("DAW-stopped tone volume in dB: -inf to +6");
+  cueVolumeSlider.onValueChange = [this]() {
+    audioProcessor.cueVolume.store(
+        GainUtils::dbToGain(cueVolumeSlider.getValue()));
+  };
+  cueVolumeSlider.setTitle("DAW-stopped tone volume");
+  cueVolumeSlider.setDescription("Level of the DAW-stopped tone in decibels");
+  addChildComponent(cueVolumeSlider);
+
   chatToggle.setButtonText("Chat");
   chatToggle.setToggleState(audioProcessor.chatVisible.load(),
                             juce::dontSendNotification);
@@ -1141,6 +1176,11 @@ void AntiphonEditor::resized() {
       loopIntervalButton->setVisible(true);
       loopIntervalButton->setBounds(row.removeFromLeft(130).reduced(0, 4));
     }
+    cueVolumeSlider.setVisible(true);
+    cueVolumeSlider.setBounds(row.removeFromRight(60).reduced(0, 6));
+    row.removeFromRight(4);
+    cueToggle.setVisible(true);
+    cueToggle.setBounds(row.removeFromRight(140).reduced(0, 4));
   }
 
   // Laid out from both ends rather than left to right. Consuming only from the

@@ -19,6 +19,7 @@ target_sources(NinjamTests
     PRIVATE
         TestMain.cpp
         MetronomeVoiceTests.cpp
+        CueVoiceTests.cpp
         GainUtilsTests.cpp
         ClockModelTests.cpp
         HostControlTests.cpp

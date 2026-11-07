@@ -7,6 +7,7 @@
 #include "IntervalProbe.h"
 #include "PlayheadGrid.h"
 #include "TransmitSpans.h"
+#include "CueVoice.h"
 #include "MetronomeVoice.h"
 #include "NinjamClient.h"
 #include "PracticeRoom.h"
@@ -259,6 +260,11 @@ public:
   // published phase below rather than touching the clock.
   IntervalClock intervalClock;
   MetronomeVoice metronomeVoice;
+  // The DAW-stopped cue (CueVoice.h). Armed only when the DAW stopped under a
+  // synced jam: the one surprise worth repeating. Audio thread only.
+  CueVoice cueVoice;
+  bool cueArmed = false;
+  ClockModel::State cueLastState = ClockModel::State::Disconnected;
   std::vector<IntervalClock::Event> clockEvents; // reused, never reallocated
   juce::AudioBuffer<float> metronomeScratch;
   // Copy of every input channel taken before the output is cleared or mixed
@@ -338,6 +344,8 @@ public:
 
   // Debug / Integration Testing Features
   std::atomic<bool> metronomeEnabled{true};
+  std::atomic<bool> cueEnabled{true};     // persisted as "cue"
+  std::atomic<float> cueVolume{0.5f};     // persisted as "cueVolume"
   std::atomic<float> metronomeVolume{1.0f};
   std::atomic<bool> lastConnectFailed{false};
   std::atomic<bool> saveTxEnabled{false};
@@ -371,6 +379,9 @@ private:
   // advanced exactly once per sample regardless of channel count.
   void renderMetronome(juce::AudioBuffer<float> &buffer, int startSample,
                        int count, float gain, int totalNumOutputChannels);
+  // The same, for the DAW-stopped cue, at cueVolume.
+  void renderCue(juce::AudioBuffer<float> &buffer, int startSample, int count,
+                 int totalNumOutputChannels);
 
   // Overwrites every input bus with a 440 Hz sine plus a full-scale one-sample
   // impulse at the top of each interval. The impulse's offset within an

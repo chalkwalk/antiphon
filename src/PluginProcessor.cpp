@@ -274,6 +274,7 @@ void AntiphonAudioProcessor::prepareToPlay(double sampleRate,
   intervalClock.prepare(sampleRate);
   intervalClock.setTempo(internalBpm.load(), internalBpi.load());
   metronomeVoice.prepare(sampleRate);
+  cueVoice.prepare(sampleRate);
   metronomeScratch.setSize(1, juce::jmax(samplesPerBlock, 1));
 
   // Sized here so processBlock never allocates. Generous on channels so that
@@ -402,6 +403,22 @@ void AntiphonAudioProcessor::renderMetronome(juce::AudioBuffer<float> &buffer,
   metronomeScratch.clear(0, 0, count);
   metronomeVoice.render(metronomeScratch.getWritePointer(0), count, gain);
 
+  for (int ch = 0; ch < std::min(2, totalNumOutputChannels); ++ch)
+    buffer.addFrom(ch, startSample, metronomeScratch, 0, 0, count);
+}
+
+void AntiphonAudioProcessor::renderCue(juce::AudioBuffer<float> &buffer,
+                                       int startSample, int count,
+                                       int totalNumOutputChannels) {
+  // Not gated on cueEnabled: a cue already sounding finishes rather than
+  // being cut off mid-tone when the toggle is pressed.
+  const float gain = cueVolume.load(std::memory_order_relaxed);
+  if (count <= 0 || gain <= 0.0f || !cueVoice.isActive())
+    return;
+  if (metronomeScratch.getNumSamples() < count)
+    return;
+  metronomeScratch.clear(0, 0, count);
+  cueVoice.render(metronomeScratch.getWritePointer(0), count, gain);
   for (int ch = 0; ch < std::min(2, totalNumOutputChannels); ++ch)
     buffer.addFrom(ch, startSample, metronomeScratch, 0, 0, count);
 }
@@ -680,6 +697,11 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
     clock = clockMachine.update(clockIn);
     publishedClockState.store((int)clock.state, std::memory_order_relaxed);
+    if (clock.state != ClockModel::State::NotSyncedDawStopped)
+      cueArmed = false;
+    else if (cueLastState == ClockModel::State::Synced)
+      cueArmed = true;
+    cueLastState = clock.state;
 
     using ClockModel::GridSource;
     const GridSource grid = clock.grid;
@@ -838,6 +860,33 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
 
       renderMetronome(buffer, renderedTo, ns - renderedTo, metroGain,
                       totalNumOutputChannels);
+
+      // The DAW-stopped cue: once an interval, at beat 0.5 of Antiphon's
+      // clock -- deliberately off the beat, so it is never heard as the click.
+      // Mixed here, after the input was captured, so it is never transmitted.
+      if (cueArmed && cueEnabled.load(std::memory_order_relaxed)) {
+        const double from = lastPhaseBeats;
+        const double to = intervalClock.phaseBeats();
+        const double bps =
+            HostGrid::beatsPerSample(intervalClock.getBpm(), sampleRate);
+        double ahead = -1.0; // beats from block start to beat 0.5
+        if (to >= from) {
+          if (from < 0.5 && to >= 0.5)
+            ahead = 0.5 - from;
+        } else if (to >= 0.5) {
+          ahead = (double)intervalClock.getBpi() - from + 0.5;
+        }
+        if (ahead >= 0.0 && bps > 0.0) {
+          const int at = juce::jlimit(0, ns - 1, (int)(ahead / bps));
+          renderCue(buffer, 0, at, totalNumOutputChannels);
+          cueVoice.trigger();
+          renderCue(buffer, at, ns - at, totalNumOutputChannels);
+        } else {
+          renderCue(buffer, 0, ns, totalNumOutputChannels);
+        }
+      } else {
+        renderCue(buffer, 0, ns, totalNumOutputChannels);
+      }
     }
 
     // The phase bar reads the same grid the click does -- it is the thing you
@@ -965,6 +1014,8 @@ void AntiphonAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
   juce::XmlElement xml("NinjamState");
   xml.setAttribute("metronome", metronomeEnabled.load());
   xml.setAttribute("metronomeVol", (double)metronomeVolume.load());
+  xml.setAttribute("cue", cueEnabled.load());
+  xml.setAttribute("cueVolume", (double)cueVolume.load());
   xml.setAttribute("chatVisible", chatVisible.load());
   xml.setAttribute("speech", announceVerbosity.load());
   xml.setAttribute("followRoomTempo", tempoFollow.enabled);
@@ -1011,6 +1062,8 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
   setFollowRoomTempo(xml->getBoolAttribute("followRoomTempo", true));
   metronomeVolume.store((float)xml->getDoubleAttribute("metronomeVol", 1.0));
   metronomeEnabled.store(xml->getBoolAttribute("metronome", isStandaloneApp()));
+  cueEnabled.store(xml->getBoolAttribute("cue", true));
+  cueVolume.store((float)xml->getDoubleAttribute("cueVolume", 0.5));
   lastHost = xml->getStringAttribute("lastHost", "ninbot.com");
   lastPort = xml->getIntAttribute("lastPort", 2049);
   lastUsername = xml->getStringAttribute("lastUsername", "");

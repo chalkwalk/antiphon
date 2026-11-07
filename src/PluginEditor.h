@@ -139,6 +139,11 @@ private:
 
   juce::ToggleButton metronomeToggle;
   juce::Slider metronomeVolumeSlider;
+  // The DAW-stopped cue's switch and level (CueVoice.h). On the clock row,
+  // because it is about the clock, and plugin only: the standalone is never
+  // synced, so the state the cue marks cannot happen there.
+  juce::ToggleButton cueToggle;
+  juce::Slider cueVolumeSlider;
   // Records the jam as a Ninjam archive that antiphon-stems turns into WAV
   // stems. Replaces the Save Tx / Save Rx pair, which were debug dumps of the
   // mix rather than a per-player archive, and which nobody could get stems out
