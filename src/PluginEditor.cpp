@@ -136,7 +136,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       "transport -- the interval grid begins on that downbeat. The timeline "
       "position is deliberately ignored, so this works in clip/session view "
       "as well as with a loop.");
-  syncButton.onClick = [this]() { audioProcessor.clockMode.store(0); };
+  syncButton.onClick = [this]() { runSyncNow(); };
   syncButton.setRepaintsOnMouseActivity(true);
   syncButton.setTitle("Sync (" + Shortcuts::globalModifierName() + "S)");
   syncButton.setDescription("Lock the interval grid to the next start of the "
@@ -886,14 +886,16 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   } else {
     // Driven by the clock model rather than re-derived here, so the text
     // and the audio gating can never disagree about what is happening.
-    // (Interim wording: SyncAnnouncements replaces it.)
     const auto sync =
         (ClockModel::State)audioProcessor.publishedClockState.load();
     if (connected && sync != ClockModel::State::Disconnected) {
-      juce::Colour c = sync == ClockModel::State::Synced
-                           ? juce::Colours::lightgreen
-                           : juce::Colours::orange;
-      juce::String msg = ClockModel::stateName(sync);
+      using ClockModel::State;
+      const juce::Colour c =
+          (sync == State::Synced || sync == State::AntiphonClock)
+              ? juce::Colours::lightgreen
+              : sync == State::Stopped ? juce::Colours::yellow
+                                       : juce::Colours::orange;
+      const juce::String msg = SyncAnnouncements::headerText(sync, syncContext());
       g.setColour(c);
       g.drawFittedText(msg, row3, juce::Justification::centredLeft, 1);
     } else {
@@ -1323,7 +1325,7 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   }
 
   if (action == Shortcuts::Action::ArmSync) {
-    audioProcessor.clockMode.store(0);
+    runSyncNow();
     return true;
   }
 
@@ -1875,12 +1877,65 @@ void AntiphonEditor::relayoutChannelArea() {
   updateSelectionHighlights();
 }
 
+void AntiphonEditor::runSyncNow() {
+  if (!audioProcessor.ninjamClient.isConnected()) {
+    announcer.say("Not connected.", true);
+    return;
+  }
+  if (audioProcessor.isStandaloneApp()) {
+    announcer.say(SyncAnnouncements::status(
+                      (ClockModel::State)audioProcessor.publishedClockState.load(),
+                      syncContext()),
+                  true);
+    return;
+  }
+  const auto plan = SyncAnnouncements::syncNow(
+      (ClockModel::Mode)audioProcessor.clockMode.load(), syncContext());
+  if (plan.selectSynced)
+    audioProcessor.clockMode.store((int)ClockModel::Mode::SyncedToDaw);
+  auto *host = audioProcessor.hostControl.get();
+  bool acted = plan.selectSynced;
+  if (plan.setTempo && host != nullptr &&
+      host->setTempo((double)audioProcessor.internalBpm.load())) {
+    audioProcessor.hostTempoSetCount.fetch_add(1);
+    acted = true;
+  }
+  if (plan.pressPlay && host != nullptr && !host->isPlaying())
+    acted = host->play() || acted;
+  if (plan.say.isNotEmpty())
+    announcer.say(plan.say, true);
+  else if (!acted)
+    announcer.say("Antiphon could not change the DAW. " +
+                      SyncAnnouncements::headerText(
+                          (ClockModel::State)
+                              audioProcessor.publishedClockState.load(),
+                          syncContext()),
+                  true);
+}
+
+SyncAnnouncements::Context AntiphonEditor::syncContext() const {
+  SyncAnnouncements::Context c;
+  c.place = audioProcessor.inPracticeRoom() ? juce::String("the practice room")
+                                            : audioProcessor.lastHost;
+  c.players = remoteUserStrips.size();
+  // The ROOM's tempo, not the grid's: synced, the grid runs at the DAW's.
+  c.roomBpm = audioProcessor.internalBpm.load();
+  c.bpi = audioProcessor.internalBpi.load();
+  c.dawBpm = audioProcessor.publishedHostBpm.load();
+  c.dawPlaying = audioProcessor.publishedHostPlaying.load();
+  c.dawHasPosition =
+      (ClockModel::State)audioProcessor.publishedClockState.load() !=
+      ClockModel::State::NotSyncedNoPosition;
+  c.beat = (int)audioProcessor.publishedPhaseBeats.load() + 1;
+  c.reaper = audioProcessor.hostControl != nullptr;
+  c.reaperFollows = c.reaper && audioProcessor.tempoFollow.enabled;
+  return c;
+}
+
 bool AntiphonEditor::updateStatusReadout() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
   const auto sync = (ClockModel::State)audioProcessor.publishedClockState.load();
-  // The running tempo, so the spoken status and the drawn one agree.
-  const int bpm = audioProcessor.publishedActiveBpm.load();
-  const int bpi = audioProcessor.publishedActiveBpi.load();
+  const auto ctx = syncContext();
 
   juce::String s;
   if (!connected) {
@@ -1888,20 +1943,7 @@ bool AntiphonEditor::updateStatusReadout() {
             ? "Not connected. The last connection attempt failed."
             : "Not connected.";
   } else {
-    // A practice room is named rather than addressed. "Connected to
-    // 127.0.0.1" is true and useless, and it is the one thing a reader needs
-    // to know that a viewer gets from the header tint.
-    if (audioProcessor.inPracticeRoom())
-      s << "In the practice room with "
-        << audioProcessor.practiceRoom.botCount() << " bots. ";
-    else
-      s << "Connected to " << audioProcessor.lastHost << " as "
-        << (audioProcessor.lastUsername.isNotEmpty()
-                ? audioProcessor.lastUsername
-                : juce::String("anonymous"))
-        << ". ";
-    s << bpm << " BPM, " << bpi << " beats per interval. ";
-
+    s = SyncAnnouncements::status(sync, ctx) + " ";
     // The key and the chart belong in the spoken status because they are drawn
     // in the header: a reader should get what a viewer gets. The chord SOUNDING
     // is deliberately not here -- it changes several times a bar, and reading
@@ -1911,37 +1953,113 @@ bool AntiphonEditor::updateStatusReadout() {
     if (showsChartRow()) {
       s << "Chords " << Harmony::chartText(sessionChart, sessionKey) << ". ";
     }
-
-    s << (audioProcessor.isStandaloneApp()
-              ? juce::String("Running.")
-              : juce::String(ClockModel::stateName(sync)) + ".");
+    s = s.trimEnd();
   }
-  const bool statusChanged = s != statusReadout.getStatus();
-  statusReadout.setStatus(s);
+  // The beat moves several times a second; the readout must not, or a reader
+  // sitting on it is told the same thing over and over.
+  const juce::String stable =
+      s.replace(", " + SyncAnnouncements::beatText(ctx), "");
+  const bool statusChanged = stable != statusReadout.getStatus();
+  statusReadout.setStatus(stable);
 
-  // Announce only the transitions, never the steady state -- this runs 30 times
-  // a second.
   if (connected != lastAnnouncedConnected) {
     lastAnnouncedConnected = connected;
-    announcer.say(connected ? "Connected" : "Disconnected", true);
-  }
-  if (connected && (bpm != lastAnnouncedBpm || bpi != lastAnnouncedBpi)) {
-    const bool first = lastAnnouncedBpm == 0;
-    lastAnnouncedBpm = bpm;
-    lastAnnouncedBpi = bpi;
-    if (!first)
-      announcer.say("Tempo now " + juce::String(bpm) + " BPM, " +
-                        juce::String(bpi) + " beats per interval",
-                    true);
-  }
-  if (connected && !audioProcessor.isStandaloneApp()) {
-    const juce::String syncText = ClockModel::stateName(sync);
-    if (syncText != lastAnnouncedSyncState) {
-      lastAnnouncedSyncState = syncText;
-      announcer.say(syncText, true);
+    if (connected) {
+      joinPending = true;
+      joinAtMs = juce::Time::getMillisecondCounter();
+      joinTempoSets = audioProcessor.hostTempoSetCount.load();
+      seenResyncCount = audioProcessor.resyncCount.load();
+    } else {
+      announcer.say("Disconnected", true);
     }
   }
+  updateSyncAnnouncements(connected, sync, ctx);
   return statusChanged;
+}
+
+// Every sync sentence goes through here, one at a time (SyncAnnouncements.h).
+// A change is said once it has held for kAnnounceHoldMs, so a tempo ramp that
+// passes through the room's tempo does not chatter -- except a resync to the
+// playhead, which is the answer to something you just did and is said at once.
+void AntiphonEditor::updateSyncAnnouncements(
+    bool connected, ClockModel::State state,
+    const SyncAnnouncements::Context &ctx) {
+  using ClockModel::State;
+  const auto now = juce::Time::getMillisecondCounter();
+  const auto hold = (juce::uint32)ClockModel::kAnnounceHoldMs;
+
+  if (!connected) {
+    joinPending = false;
+    tempoChangePending = false;
+    announcedClockState = State::Disconnected;
+    pendingClockState = State::Disconnected;
+    lastAnnouncedBpm = lastAnnouncedBpi = 0;
+    return;
+  }
+
+  if (ctx.roomBpm != lastAnnouncedBpm || ctx.bpi != lastAnnouncedBpi) {
+    if (!joinPending && lastAnnouncedBpm != 0) {
+      tempoChangePending = true;
+      tempoChangeAtMs = now;
+      tempoChangeSets = audioProcessor.hostTempoSetCount.load();
+      tempoPrevBpm = lastAnnouncedBpm;
+      tempoPrevBpi = lastAnnouncedBpi;
+    }
+    lastAnnouncedBpm = ctx.roomBpm;
+    lastAnnouncedBpi = ctx.bpi;
+  }
+
+  if (joinPending) {
+    // Long enough for the server's tempo to arrive and Reaper to follow it.
+    if (now - joinAtMs < kJoinSettleMs)
+      return;
+    auto c = ctx;
+    c.reaperSetTempo = audioProcessor.hostTempoSetCount.load() != joinTempoSets;
+    announcer.say(SyncAnnouncements::onJoin(state, c), true);
+    joinPending = false;
+    announcedClockState = pendingClockState = state;
+    seenResyncCount = audioProcessor.resyncCount.load();
+    return;
+  }
+
+  if (tempoChangePending) {
+    if (now - tempoChangeAtMs < hold)
+      return;
+    auto c = ctx;
+    c.prevRoomBpm = tempoPrevBpm;
+    c.prevBpi = tempoPrevBpi;
+    c.reaperSetTempo =
+        audioProcessor.hostTempoSetCount.load() != tempoChangeSets;
+    announcer.say(SyncAnnouncements::onRoomTempoChange(state, c), true);
+    tempoChangePending = false;
+    announcedClockState = pendingClockState = state;
+    return;
+  }
+
+  const int resyncs = audioProcessor.resyncCount.load();
+  const bool resynced = resyncs != seenResyncCount;
+  seenResyncCount = resyncs;
+  if (resynced && state == State::Synced && announcedClockState != State::Synced) {
+    announcer.say(
+        SyncAnnouncements::onTransition(announcedClockState, state, ctx), true);
+    announcedClockState = pendingClockState = state;
+    return;
+  }
+
+  if (state == announcedClockState) {
+    pendingClockState = state;
+    return;
+  }
+  if (state != pendingClockState) {
+    pendingClockState = state;
+    pendingSinceMs = now;
+    return;
+  }
+  if (now - pendingSinceMs < hold)
+    return;
+  announcer.say(SyncAnnouncements::onTransition(announcedClockState, state, ctx),
+                true);
+  announcedClockState = state;
 }
 
 void AntiphonEditor::timerCallback() {

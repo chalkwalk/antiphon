@@ -8,6 +8,7 @@
 #include "MusicalKey.h"
 #include "Announcer.h"
 #include "Shortcuts.h"
+#include "SyncAnnouncements.h"
 #include "SelectionModel.h"
 #include "ShortcutsDialog.h"
 #include "StatusReadout.h"
@@ -91,7 +92,25 @@ private:
   // other.
   bool handleShortcut(const juce::KeyPress &);
   juce::Component::SafePointer<juce::Component> keyListenerHost;
-  juce::String lastAnnouncedSyncState;
+  // Sync announcements (SyncAnnouncements.h): what was last said, and what
+  // is waiting to be said once it has held.
+  SyncAnnouncements::Context syncContext() const;
+  // Ctrl+Alt+S: whatever comes next, from anywhere.
+  void runSyncNow();
+  void updateSyncAnnouncements(bool connected, ClockModel::State state,
+                               const SyncAnnouncements::Context &ctx);
+  static constexpr juce::uint32 kJoinSettleMs = 1000;
+  bool joinPending = false;
+  juce::uint32 joinAtMs = 0;
+  int joinTempoSets = 0;
+  bool tempoChangePending = false;
+  juce::uint32 tempoChangeAtMs = 0;
+  int tempoChangeSets = 0;
+  int tempoPrevBpm = 0, tempoPrevBpi = 0;
+  ClockModel::State announcedClockState = ClockModel::State::Disconnected;
+  ClockModel::State pendingClockState = ClockModel::State::Disconnected;
+  juce::uint32 pendingSinceMs = 0;
+  int seenResyncCount = 0;
   // The offer the chip last spoke, empty when it is hidden; updateTempoChip
   // runs at 30 Hz and only a changed offer is worth interrupting for.
   juce::String lastAnnouncedChip;

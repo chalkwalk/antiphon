@@ -22,6 +22,7 @@ target_sources(NinjamTests
         GainUtilsTests.cpp
         ClockModelTests.cpp
         HostControlTests.cpp
+        SyncAnnouncementsTests.cpp
         AudioDeviceStartupTests.cpp
         ShortcutsTests.cpp
         AccessibilityAuditTests.cpp
