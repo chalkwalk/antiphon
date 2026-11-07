@@ -62,7 +62,10 @@ Shortcuts are on `Cmd+Option` (macOS) and `Ctrl+Alt` (Windows/Linux) for global 
 
 | Shortcut (macOS / Win+Linux) | Action |
 |---|---|
-| `Cmd+Option+S` / `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
+| `Cmd+Option+S` / `Ctrl+Alt+S` | Sync now: whatever gets you synced from where you are, or what you must do |
+| `Cmd+Option+I` / `Ctrl+Alt+I` | Say the status: room, tempo, players, and whether you are synced |
+| `Cmd+Option+F` / `Ctrl+Alt+F` | Switch the clock: Synced to DAW, or Antiphon's clock |
+| `Cmd+Option+G` / `Ctrl+Alt+G` | Play or stop Antiphon's clock |
 | `Cmd+Option+C` / `Ctrl+Alt+C` | Focus the chat message box |
 | `Cmd+Option+O` / `Ctrl+Alt+O` | Open Server Browser / Connect dialog |
 | `Cmd+Option+P` / `Ctrl+Alt+P` | Start a practice room and join it |

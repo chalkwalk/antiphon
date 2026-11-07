@@ -18,7 +18,7 @@ Or run the binary directly, optionally filtering by test-suite name:
 ```
 
 Suites: `Sha1`, `VorbisCodec`, `NinjamProtocol`, `IntervalClock`,
-`MetronomeVoice`, `SyncState`, `AudioDeviceStartup`, `Shortcuts`, `ChannelMix`,
+`MetronomeVoice`, `ClockModel`, `PlayheadGrid`, `SyncAnnouncements`, `CueVoice`, `AudioDeviceStartup`, `Shortcuts`, `ChannelMix`,
 `GainUtils`,
 `AccessibilityAudit`, `ReferenceFixtures`, `LoopbackProtocol`,
 `AudioLoopback`, `RealServer`.
@@ -37,7 +37,10 @@ Pure logic, no I/O.
 | `IntervalClock` | Interval length constant over 200 intervals; event positions independent of block size; exactly `bpi` beats per interval; no drift over an hour; tempo changes take effect at a boundary. |
 | `MetronomeVoice` | Click pitch, and that it is independent of tempo and sample rate. |
 | `AudioDeviceStartup` | The standalone device-open policy: that a finished probe beats the clock, that the budget expiring is a timeout, and that a wedged probe returning late cannot resurrect startup. |
-| `SyncState` | The five-state DAW sync machine: that several transitions can land in one call, that a stop/start never re-phases without a request, that standalone runs straight to `Running`. |
+| `ClockModel` | Synced or not: each row of the state table, the grid each state runs on, that a jump is flagged on exactly the update that enters Synced, and the invariants over every input combination (in the jam only when connected). |
+| `PlayheadGrid` | Loop wraps are continuous time, other moves are jumps, a BPI change re-anchors, and the padding a jump needs. |
+| `SyncAnnouncements` | Every sentence, word for word against the spec's table, and ASCII. |
+| `CueVoice` | The DAW-stopped tone: pitch by measurement at 44.1 and 48 kHz, under -60 dB within 150 ms, silent after. |
 | `ChannelMix` | Mono sums and halves rather than discarding a side; pan law; that mute and solo never reach the transmitted signal. |
 | `GainUtils` | dB<->linear round-trip, the -inf floor, meter release as a rate in dB/s independent of block size. |
 | `AccessibilityAudit` | The MISSING NAME / DUPLICATE NAME / NO DESCRIPTION rules, against a synthetic tree -- the real UI cannot be compiled into this target. |

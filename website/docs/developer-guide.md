@@ -29,7 +29,7 @@ Both must pass. The audit's exit code is the number of accessibility findings.
 The load-bearing decision is that **testable logic lives outside
 `PluginProcessor`**, which cannot be compiled into the test target at all -- it
 needs the `JucePlugin_*` defines that only `juce_add_plugin` supplies. That is
-why `IntervalClock`, `MetronomeVoice`, `SyncState`, `ChannelMix`, `GainUtils`
+why `IntervalClock`, `MetronomeVoice`, `ClockModel`, `ChannelMix`, `GainUtils`
 and the accessibility audit rules exist as separate JUCE-light modules, with
 `processBlock` as a thin caller.
 

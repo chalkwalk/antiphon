@@ -50,8 +50,9 @@ as a chip you can click to add your vote, rather than making you type the
 command again; the chip carries the count, as `2/3`.
 
 When a vote passes, the tempo changes for everyone at the next interval --
-including you. If you are in a DAW, that means matching your project tempo and
-pressing **Sync** again. See [Syncing with your DAW](./daw-sync.md).
+including you. Reaper follows it; in another DAW you are told the new tempo,
+and you hear the room unsynced until you set it. See
+[Syncing with your DAW](./daw-sync.md).
 
 ### Voting in the practice room
 

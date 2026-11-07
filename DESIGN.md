@@ -97,7 +97,7 @@ far were in this table's blind spots, so it is worth knowing cold.
 
 | Thread | What it does |
 |---|---|
-| **Audio** (`processBlock`) | Reads host sync (BPM/PPQ/playing), snapshots the input buses, drives `SyncState` and `IntervalClock`, synthesises the metronome click, mixes the local monitor path, captures local audio into each channel's ring buffer, detects interval boundaries, and mixes decoded remote streams into the output via `getDecodedAudio`. At an interval boundary it fires `callAsync` to hand the captured audio off. |
+| **Audio** (`processBlock`) | Reads host sync (BPM/PPQ/playing), snapshots the input buses, drives `ClockModel` and `IntervalClock`, synthesises the metronome click, mixes the local monitor path, captures local audio into each channel's ring buffer, detects interval boundaries, and mixes decoded remote streams into the output via `getDecodedAudio`. At an interval boundary it fires `callAsync` to hand the captured audio off. |
 | **`NinjamClient`** (`run()`, a `juce::Thread`) | Socket read loop, keep-alive every 3 s, `handleMessage` dispatch, Ogg decode of incoming `WRITE` chunks. All listener callbacks are bounced to the message thread. |
 | **Message thread** | `onConnected`, `onServerConfig`, `onChatMessage`, and `processCapturedAudio` -- encoding is deliberately *off* the audio thread. |
 | **UI timer** (30 Hz) | `timerCallback`: syncs remote player strips against `getRemoteUsers()`, relayouts the elastic channel area, updates toolbar enable states and the status readout, repaints. |
@@ -183,51 +183,46 @@ otherwise ignores it entirely. Network jitter must never move the playback clock
 
 ---
 
-## 4.1 What is running: the transport, the jam, and practice
+## 4.1 What is running: the clock, the jam, and practice
 
-Three questions that used to be one condition. `syncState.isRunning()` gated both
-whether the interval clock advanced and whether we were in the jam, and
-`SyncState` reports `Disconnected` whenever there is no server -- so offline the
-clock, the metronome, the phase bar and capture all stopped together.
+One rule, from `docs/superpowers/specs/2026-11-06-sync-and-tempo-design.md`:
+**you are synced or you are not, never something between, and you are always
+told which.** `ClockModel` (`src/ClockModel.h`) is that rule as a pure function
+of the inputs each block, and its header carries the whole table. In short:
 
-`RunGate` (`src/RunGate.h`) separates them, in one sentence: **a transport drives
-the grid; the connection decides what happens to the audio.**
-
-| | Grid runs when | Transmit | Practice |
-|---|---|---|---|
-| **Plugin** | host transport playing | connected + synced + playing | offline + playing |
-| **Standalone** | local transport playing | connected + playing | offline + playing |
+| Clock | DAW | State | Grid | In the jam |
+|---|---|---|---|---|
+| Synced to DAW | playing, position, tempo matches | `Synced` | the playhead | yes |
+| Synced to DAW | playing, tempo differs | `NotSyncedTempo` | own clock | yes |
+| Synced to DAW | stopped | `NotSyncedDawStopped` | own clock | yes |
+| Synced to DAW | no playhead position | `NotSyncedNoPosition` | own clock | yes |
+| Antiphon's clock | Play on | `AntiphonClock` | own clock | yes |
+| Antiphon's clock | Play off | `Stopped` | none | no |
 
 Consequences worth knowing:
 
-- **The grid runs whenever the transport does**, connected or not, so Antiphon
-  works as a plain BPI-aware metronome on its own. The metronome defaults off in
-  the plugin, so no DAW project starts clicking unexpectedly.
-- **The standalone has its own transport.** Connecting starts it, so joining a
-  room behaves as it always did; it can then be stopped. **Sync stays DAW-only**,
-  and now for a stated reason: in the plugin you do not control the transport
-  from here, so you arm and wait for the edge; in the standalone pressing play
-  *is* the edge.
-- **`SyncState::Running` deliberately survives a transport stop**, so an
-  accidental stop never re-phases a jam. "In step" and "playing right now" are
-  therefore different questions, and `inJam` is the conjunction.
-- **Offline in a host, the host's timeline owns the grid outright.** See
-  `HostGrid.h` and section 4.2. In the standalone, where there is no external
-  timeline, the grid still starts on the transport edge -- `processBlock` takes
-  that edge itself, because `SyncState` reports `Disconnected` with no server
-  and so never fires. Connected, the edge stays SyncState's: there the phase
-  belongs to the room.
+- **Not synced is not silent.** Every "not synced" state keeps the room playing
+  on Antiphon's own clock at the room's tempo, and your live audio keeps going
+  out. The old machine had five in-between states in which a player heard
+  nothing and was told nothing useful; that is what this replaces. Silence is
+  reserved for the one state that asks for it.
+- **Each join starts synced.** Going unsynced is a deliberate act: choosing
+  Antiphon's clock in the Clock group. The standalone has no DAW, so it is
+  always on its own clock, and connecting starts its transport.
+- **Leaving the playhead is not a jump.** When the DAW stops or the tempo
+  moves, the counted clock carries on from the phase the playhead had reached.
+  Starting from nothing starts at beat 1.
+- **Disconnected, nothing changed:** in a host the offline grid follows the
+  DAW (section 4.2), and the standalone has its own transport.
 
 This is safe because **Ninjam's absolute interval phase is free**: every client
 plays each received interval starting at its own downbeat, so phase offsets
 between clients cancel out per listener. That is the same fact that makes the
-local metronome the sole authority (`PRINCIPLES §9`). A locally started grid
-cannot desync us from the room.
+local metronome the sole authority (`PRINCIPLES §9`).
 
-`computeRunGate` carries the invariant `!(inJam && echoOn)` -- transmitting and
-practising can never both be live, because one requires a connection and the
-other requires none. That is a safety property, so it is asserted over every
-input combination in `test/RunGateTests.cpp` rather than assumed;
+Transmitting and practising can never both be live, since one needs a
+connection and the other needs none. That is a safety property, so
+`test/ClockModelTests.cpp` asserts it over every input combination;
 `PluginProcessor` cannot be compiled into the test target, so if it were not
 tested there it would not be tested at all.
 
@@ -272,57 +267,62 @@ there as before. `IntervalClock` still holds the BPI and is still what
 `splitAtIntervalStarts` and the metronome consume, because `HostGrid` emits the
 same event type in the same order.
 
+**Connected and synced, the playhead owns the grid too.** `PlayheadGrid`
+(`src/PlayheadGrid.h`) turns the host's PPQ into a musical position: following
+the playhead through a loop wrap is continuous time, and any other move is a
+jump. A jump closes the interval being captured, pads it with silence to full
+length so the room still gets a whole interval, and seeks playback to the new
+position, so a resume from an earlier bar lands on the room's bars rather than
+drifting. A BPI change re-anchors the position at the boundary where it lands,
+so the new interval length continues from there instead of jumping.
+`IntervalClock::seekToBeats` keeps the counted clock at the playhead's
+position every block, which is what makes falling back to the own clock need
+nothing more than carrying on.
+
 ---
 
 ## 5. Sync to the host
 
-`SyncState` (`src/SyncState.h`) is a five-state machine, pure and JUCE-free so
-its transitions can be tested directly.
+Synced needs three things from the DAW: it is playing, it reports a playhead
+position, and its tempo is the room's within `ClockModel::kTempoTolerance`
+(0.001 BPM). "Close" is not synced: 110.3 against 110 is a quarter of a percent
+per interval, and every boundary glitches. A player who is not synced is told
+why and what would fix it, in one sentence (`src/SyncAnnouncements.h`, whose
+tests hold it to the spec's table word for word).
 
-```
-Disconnected -> TempoMismatch -> ReadyToSync -> WaitingForPlay -> Running
-```
+**Ctrl+Alt+S, Sync now,** does whatever comes next from wherever you are:
+selects Synced to DAW, sets the tempo where it can, presses play where it can,
+and otherwise says what you must do. Ctrl+Alt+I says the status.
 
-| State | Meaning | Shown as |
-|---|---|---|
-| `Disconnected` | Not on a server | "Not connected" |
-| `TempoMismatch` | Connected, DAW is at a different BPM | "DAW tempo does not match the server -- change it to continue" |
-| `ReadyToSync` | Tempo agrees; waiting for the user to press **Sync** | "Tempo matches. Press Sync, then start the DAW transport." |
-| `WaitingForPlay` | Armed; waiting for the transport-start edge | "Press play in the DAW to join the jam" |
-| `Running` | In step, transmitting and playing | "In sync" |
-
-`update()` returns `true` on exactly the transport-start edge it was armed for,
-and that return value is what resets the interval clock.
-
-**Why transport start and not the timeline.** The reference client integrates
-with REAPER's timeline and loop points. A generic plugin cannot do that, and it
-would be the wrong model anyway: in a session/clip view the timeline advances but
-is musically meaningless, and jogging the playhead during a live jam is not a
-real use case. Locking to transport start covers both common setups -- clip
-launching, and a loop sized to the interval -- without needing to know anything
-about the timeline. This is `fence #6`.
-
-**Why an explicit Sync button.** Re-phasing mid-jam cuts the interval being
-transmitted short, which other players hear as a glitch, so it must only ever
-happen when asked for. The state machine is deliberately re-armable from
-`Running`, but only on request -- an accidental transport stop/start never
-re-phases a jam in progress.
+**Reaper, and nobody else's DAW.** `HostControl` (`src/HostControl.h`) is the
+interface; `ReaperBridge` implements it through Reaper's own plugin API, found
+through the CLAP extension `cockos.reaper_extension` or VST3's
+`IReaperHostApplication`. With it, Antiphon sets Reaper's tempo to the room's on
+join and whenever the room changes it (unless *Reaper follows room tempo* is
+off), presses play for Sync now, and offers *Loop one interval*. Every other
+host is only ever read. While Antiphon is setting Reaper's tempo the DAW lags by
+one message-thread hop, which is not a desync: a 250 ms grace keeps that from
+being announced as one. See `NON-GOALS.md` fence #7.
 
 **Three details that are easy to get wrong:**
 
-- Transitions are written as *sequential steps*, not a switch, so several can
-  happen in one call. A Sync press arriving in the same block as the tempo
-  starting to match would otherwise be dropped and the button would feel dead.
-- Tempo is compared at whole-BPM resolution, because the server only carries an
-  integer.
-- Standalone has no transport (`hasTransport` false) and runs straight to
-  `Running` on connect. This is detected with `isStandaloneApp()` -- a runtime
+- A state is announced only once it has held for `kAnnounceHoldMs` (500 ms),
+  so a tempo ramp passing through the room's tempo does not chatter. The join
+  sentence waits a full second, for the server's tempo and Reaper's to land.
+- An action that causes a transition says nothing itself; the transition says
+  where you landed. `Announcer` drops a second sentence inside 400 ms, and two
+  sentences in one instant is exactly how the join warning used to be lost.
+- The standalone is detected with `isStandaloneApp()` -- a runtime
   `wrapperType` check, **never** the `JucePlugin_Build_Standalone` macro, which
   is a project-level flag that is true in every format and once compiled the
   whole DAW sync flow out of the plugin.
 
-Transmission and remote playback are gated on `syncState.isRunning()`, not
-merely on being connected, so a jam can never start out of phase with the DAW.
+**The DAW-stopped cue.** The one state a screen reader user must not miss is
+the DAW stopping under a synced jam: the room carries on without them. A
+sentence says so once; `CueVoice` (1568 Hz, 120 ms) then repeats once an
+interval, off the beat, until the state ends. It is mixed after the input is
+captured, as the metronome is, so it is never transmitted.
+
 Local passthrough is gated on nothing (`PRINCIPLES §3`).
 
 ---
@@ -446,7 +446,7 @@ the phase bar, remote strips, routing to separate output buses, chat, DAW sync,
 recording and stems all work exactly as they do on `ninbot.com`, because they
 are working on a real connection to real clients sending real intervals. There
 is no practice branch through the audio path to keep honest, and no invariant
-needed to contain it: the room rides `RunGate::inJam` like any other.
+needed to contain it: the room rides `ClockModel`'s `inJam` like any other.
 
 **It is a destination, not a mode.** You reach it from the connect dialog, beside
 the server list, and you leave it by disconnecting. That siting is deliberate:
@@ -803,7 +803,7 @@ unavailable.
 
 **The standalone and the plugin are allowed to diverge**, because they can do
 different things. Local channels and buses exist so a DAW can route tracks in
-and record stems out, and **Sync** locks our interval grid to the DAW transport;
+and record stems out, and the **Clock** group syncs our interval grid to the DAW;
 none of that has a counterpart in the standalone. Those controls stay visible
 there -- the shape of the app should not change under you -- but disabled,
 prefixed by a "DAW only" note, with the reason in each tooltip and accessible
@@ -902,7 +902,11 @@ Per `PRINCIPLES §12`, state is announced by colour and motion before text.
 
 Connect/Disconnect, then compact labelled groups `Channel:[+]`,
 `Input bus:[+][-]`, `Output bus:[+][-]`, then the metronome toggle and its volume
-slider, then Save Tx / Save Rx / Test Tone (debug), then Sync and Chat.
+slider, then Record / Test Tone (debug), then Chat. In the plugin a second row
+above it holds the clock: the **Clock** radio group (Synced to DAW / Antiphon's
+clock), **Play**, and under Reaper only *Reaper follows room tempo* and *Loop
+one interval*; at its right, the DAW-stopped tone's switch and level. The
+standalone has Play in the toolbar instead, where the plugin's buses are.
 
 Channel count and bus count are managed **independently**: adding a channel does
 not add a bus, and removing a bus reroutes anything using it to bus 1.
@@ -1012,7 +1016,7 @@ Two structural decisions worth knowing:
   added to **both** `src/CMakeLists.txt` and `test/CMakeLists.txt`.
 - **`PluginProcessor.cpp` and the UI cannot be compiled into the test target**
   at all -- they need the `JucePlugin_*` defines. This is the whole reason
-  `IntervalClock`, `MetronomeVoice`, `ChannelMix`, `SyncState`, `GainUtils` and
+  `IntervalClock`, `MetronomeVoice`, `ChannelMix`, `ClockModel`, `GainUtils` and
   the `AccessibilityAudit` rules exist as separate modules (`PRINCIPLES §7`).
   Logic left in `PluginProcessor` is logic that can never be tested.
 

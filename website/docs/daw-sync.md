@@ -6,59 +6,63 @@ sidebar_position: 5
 
 # Syncing with your DAW
 
-A NINJAM room has a tempo, and so does your project. They have to agree, and the
-plugin cannot make that happen by itself.
+You are either **synced** to your DAW or **not synced** -- never something in
+between -- and Antiphon always tells you which, in words a screen reader
+speaks and in the header.
 
-## Matching tempo, then syncing
+## Getting synced
 
 1. Insert Antiphon on your **master bus**.
-2. Connect. The header turns amber and tells you the tempo does not match.
-3. **Set your DAW project tempo to the server's BPM**, shown in the header.
-4. The warning clears. The status now reads *"Tempo matches. Press Sync, then
-   start the DAW transport."*
-5. Click **Sync**.
-6. **Start your DAW transport.** The plugin locks the interval grid to that
-   moment.
-7. You are in -- header navy, phase bar moving, transmitting and receiving.
+2. Connect. Antiphon says what it found in one sentence: the room's tempo, and
+   whether you are synced.
+3. **Match the tempo**, exactly. In Reaper, Antiphon sets it for you. In any
+   other DAW, set your project tempo to the room's BPM: "close" is not synced.
+4. **Press play in your DAW.** Antiphon follows your playhead, so the room's
+   intervals land on your bars, and a loop in your project stays on them.
 
-## Why can the plugin not just set the tempo?
+Press `Ctrl+Alt+S` at any point and Antiphon does the next step for you where
+it can, or tells you what it is. `Ctrl+Alt+I` says where you stand.
 
-Because there is no reliable, host-agnostic way for a plugin to set a DAW's
-tempo. One other NINJAM client does it by sending OSC to localhost, which works
-for one DAW in one configuration and is a support burden disguised as a feature.
+## Not synced is not silent
 
-So Antiphon shows you a warning that clears itself when you match, and leaves
-the tempo to you. If a standard for this ever appears, the decision gets
-revisited.
+Until you are synced -- wrong tempo, DAW stopped, a DAW that reports no
+position -- the room plays on Antiphon's own clock at the room's tempo, and
+your live audio still goes out. You hear the jam and the jam hears you; only
+your DAW is out of step with it, and you are told why.
 
-## Why is Sync a separate button?
+## When your DAW stops mid-jam
 
-Because re-syncing mid-jam cuts short the interval you are currently
-transmitting, and everyone else hears that as a glitch.
+The room keeps playing on Antiphon's clock. The header says so, a screen
+reader hears it once, and a short high tone repeats once an interval until you
+press play again -- so a stray key that stopped the transport cannot leave you
+out without knowing. Press play from any bar and you are synced on the
+playhead.
 
-Sync only ever happens when you ask for it. An accidental stop and start of your
-transport will not re-phase a jam in progress. If you *do* want to re-sync --
-you moved something, you want to realign -- press Sync again and restart the
-transport.
+## When the room changes tempo
 
-Note that Antiphon locks to the **transport start**, not to a position on the
-timeline. In a clip-launching session the timeline advances but is musically
-meaningless, and jogging the playhead mid-jam is not a real use case.
-Transport-start covers both common setups without needing to know anything about
-your arrangement.
+A passed vote changes the tempo for everyone at the next interval. **Reaper
+follows it** (turn off *Reaper follows room tempo* if you would rather it did
+not). In any other DAW you are told the new tempo and that you are not synced
+until you set it -- you keep hearing the room meanwhile.
+
+## Why only Reaper?
+
+Because Reaper is the one DAW that lets a plugin set its tempo, press play and
+set the loop, through its own API, under both CLAP and VST3. There is no
+host-agnostic way to do it, so every other DAW is only ever read.
+
+## Antiphon's clock
+
+For session or clip view, or a DAW you are not playing from, choose
+**Antiphon's clock** in the Clock group (`Ctrl+Alt+F`) and use **Play**
+(`Ctrl+Alt+G`). The jam then ignores your DAW entirely. It is the only way to be
+unsynced on purpose, and each new join starts synced again.
 
 :::tip
-Set your DAW's loop to exactly one interval's length. Then the jam and the
-session agree about where "one" is, and everything you record lands on a bar
-line.
+Set your DAW's loop to exactly one interval's length -- in Reaper, **Loop one
+interval** does it. Then the loop and the jam agree about where "one" is, and
+everything you record lands on a bar line.
 :::
-
-## When the room votes to change tempo
-
-A passed vote changes the tempo for everyone at the next interval -- **including
-you**. In a DAW that means changing your project tempo again and pressing Sync
-again. There is no way around this; the room moved, and your session has to
-follow.
 
 ## Practising alone
 

@@ -181,7 +181,7 @@ is a dropout waiting for the wrong moment.
 
 **Consequence.** Logic that the audio thread needs lives in JUCE-free,
 unit-tested modules: `IntervalClock`, `MetronomeVoice`, `ChannelMix`,
-`SyncState`, `GainUtils`, `IntervalProbe`. `processBlock` is a thin caller over
+`ClockModel`, `GainUtils`, `IntervalProbe`. `processBlock` is a thin caller over
 them. This is not stylistic -- `PluginProcessor.cpp` **cannot** be compiled into
 the test target at all (it needs the `JucePlugin_*` defines), so logic left
 there is logic that can never be tested.

@@ -221,6 +221,29 @@ each with its own fader, pan, mute, solo, Recv and output bus. (#13)
 
 ## User interface
 
+### Synced or not (2026-11-06)
+
+A screen reader user joined a room whose tempo his DAW did not match and was
+told to vote for his own tempo; when the room changed tempo he thought it had
+stopped. Both were the same fault: the old `SyncState` had five in-between
+states, an armed Sync button and a transport-start edge, and in most of them
+a player heard nothing and was told nothing useful. Design:
+`docs/superpowers/specs/2026-11-06-sync-and-tempo-design.md`.
+
+- **`ClockModel`** replaces `SyncState` and `RunGate`: synced or not, never
+  between. Not synced keeps the room playing on Antiphon's clock.
+- **`PlayheadGrid`**: synced, the interval position comes from the playhead,
+  through loop wraps; a jump pads the interval and seeks playback.
+- **`HostControl` / `ReaperBridge`**: Reaper follows the room's tempo, and Sync
+  now can press play and set the loop. No other DAW is touched.
+- **`SyncAnnouncements`**: one sentence per event, held to the spec's table.
+- **The Clock group, Play, Ctrl+Alt+S/I/F/G**, and the "Your DAW is at N BPM --
+  Propose" chip removed.
+- **`CueVoice`**: a tone once an interval while the DAW is stopped under a
+  synced jam.
+- **Chat keeps its keys**: focus stays after sending, is drawn, and its loss to
+  the DAW is said.
+
 ### Vertical strip redesign and elastic layout
 
 Vertical 90 px channel strips with rotary pan, vertical fader and flanking VU

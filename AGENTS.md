@@ -118,7 +118,13 @@ src/
   IntervalClock.{h,cpp}     # sample-exact beat/interval grid; njclient.cpp:806
   HostGrid.h                # offline: the grid derived from the host's PPQ
   MetronomeVoice.{h,cpp}    # one-shot click, 880/660/440 Hz
-  SyncState.h               # 5-state DAW sync machine (transport start, not timeline)
+  ClockModel.h              # synced, or not: the state table every block decides
+  PlayheadGrid.h            # the playhead as a musical position; wraps vs jumps
+  SyncAnnouncements.h       # every sentence said about sync, held to the spec
+  HostControl.h             # what a DAW lets us drive; TempoFollow's rule
+  ReaperBridge.{h,cpp}      # HostControl through Reaper's API. PLUGIN TARGET
+                            #   ONLY -- needs the VST3 SDK headers
+  CueVoice.h                # the DAW-stopped tone, 1568 Hz, never transmitted
   Shortcuts.h               # Ctrl+Alt shortcut mapping; matches key code, not text
   AudioDeviceStartup.h      # 4-state standalone device-open policy, with a budget
   ChannelMix.h              # mono/pan/gain: one home for three rules that drifted
@@ -378,7 +384,7 @@ reading past a buffer. Assume your change has the same failure mode.
 | Wire format, parsing, message building | `test/NinjamProtocolTests.cpp` | Add the message to the **truncation sweep** in `runTruncationTests()`, not just a happy-path case. |
 | Beat/interval timing | `test/IntervalClockTests.cpp` | Sweep bpm x bpi x sample rate x block size. A bug that only shows at 44.1 kHz or block size 61 is the normal case, not the exotic one. |
 | Click synthesis | `test/MetronomeVoiceTests.cpp` | Assert measured pitch, never the formula. |
-| DAW sync transitions | `test/SyncStateTests.cpp` | `SyncState` is pure; drive it directly. |
+| Sync states and grid choice | `test/ClockModelTests.cpp` | `ClockModel` is pure; drive it directly. Playhead wraps and jumps: `test/PlayheadGridTests.cpp`. What is said: `test/SyncAnnouncementsTests.cpp`, word for word. |
 | Standalone audio-device startup | `test/AudioDeviceStartupTests.cpp` | `AudioDeviceStartup` is pure. `StandaloneApp.cpp` around it cannot be compiled into the test target -- it needs the `JucePlugin_*` defines, same as `PluginProcessor`. |
 | Mono/pan/gain rules | `test/ChannelMixTests.cpp` | |
 | dB scales, meter ballistics | `test/GainUtilsTests.cpp` | |
@@ -407,7 +413,7 @@ reading past a buffer. Assume your change has the same failure mode.
   comment at the top of `test/CMakeLists.txt`.
 - **Keep testable logic out of `PluginProcessor`.** It cannot be compiled into
   the test target at all (it needs `JucePlugin_*` defines). That is the whole
-  reason `IntervalClock`, `MetronomeVoice`, `SyncState`, `ChannelMix`,
+  reason `IntervalClock`, `MetronomeVoice`, `ClockModel`, `ChannelMix`,
   `GainUtils` and the `AccessibilityAudit` rules exist as separate modules. New
   audio-thread logic belongs in a module like those, with `processBlock` as a
   thin caller.

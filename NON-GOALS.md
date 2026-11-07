@@ -42,13 +42,13 @@ same desire that fits.
 | 3 | **Replacing the DAW's mixer or recorder** | Every standalone client ships its own mixer, meters, recorder and effects | §2 | Per-channel **output bus routing**: each remote channel goes to a stereo bus of your choosing, so the DAW records the jam as stems and processes them with plugins you already own. Per-channel **input bus routing** does the same on the way in. |
 | 4 | **Hosting a Ninjam server** | `ninjamsrv` is a short build away, and "why not both" is a natural question | §2 | The **server browser** (live room list from ninbot.com) and a private-server host/port field. Running a server is a separate job with a separate operational story; `scripts/testserver.sh` drives one for testing and that is the extent of it. |
 | 5 | **Wrapping `NJClient`** | The obvious shortcut -- a decade of proven correctness, available as a library | §6 | First-party protocol, SHA1 and Ogg/Vorbis layers, **differentially tested against `NJClient`** (`docs/PARITY.md`). We get the correctness by measurement rather than by inheritance, and we do not get WDL, a GPLv2 dependency in the audio path, or an architecture built around owning an audio device. |
-| 6 | **Timeline / loop-point integration** | The reference client integrates with REAPER's timeline and loop points | §1, §2 | Lock to the **transport start** instead, armed explicitly with the Sync button. In a session/clip view the timeline advances but is musically meaningless, and jogging the playhead during a live jam is not a real use case. Transport-start covers both common setups -- clip launching and a loop sized to the interval -- without knowing anything about the timeline. |
-| 7 | **Pushing tempo into the DAW** | `abNinjam` sends `/tempo/raw {bpm}` over OSC when the server tempo changes | §10 | The **BPM mismatch warning**, which clears itself when you match the tempo manually. There is no host-agnostic way for a plugin to set the DAW's tempo; the OSC route works for one DAW with one configuration and would be a support burden disguised as a feature. Parked in `ROADMAP.md`, not planned. |
+| 6 | **Timeline / loop-point integration** -- *withdrawn 2026-11-06* | The reference client integrates with REAPER's timeline and loop points | §1, §2 | **No longer a fence.** Synced, the interval grid is derived from the DAW's playhead (`DESIGN.md` §4.2), so a tempo-synced synth or a loop in the DAW lands on the room's bars and a pause that resumes elsewhere lands correctly. The argument for refusing it -- that session view makes the timeline meaningless -- is met by the Clock group's *Antiphon's clock*, a deliberate choice rather than a default. The transport-start lock it offered instead left players in states where they heard nothing and were told nothing useful (`docs/superpowers/specs/2026-11-06-sync-and-tempo-design.md`). Kept here, numbered, so `fence #6` still resolves. |
+| 7 | **Pushing tempo into any DAW but Reaper** | `abNinjam` sends `/tempo/raw {bpm}` over OSC when the server tempo changes | §10 | **Reaper only**, through Reaper's own plugin API (`DESIGN.md` §5): it is reachable from inside a plugin under both CLAP and VST3, with no configuration, and *Reaper follows room tempo* turns it off. Every other DAW is only ever read, and a mismatch is announced as "not synced" with the tempo to set. There is still no host-agnostic way for a plugin to set the DAW's tempo; the OSC route works for one DAW with one configuration and would be a support burden disguised as a feature. |
 | 8 | **MIDI or other non-audio channels** | "It's a jam plugin, why not send notes" | §10 | Nothing. Ninjam channels carry Ogg audio; a MIDI channel would be an invention only Antiphon users could hear (see the second fence). Play the notes and transmit the audio. |
 | 9 | **A social layer** -- accounts, profiles, presence, friend lists, session history | Every modern collaboration tool has one | §2 | The server's own user list and chat, which is what the protocol provides and what every other client shows. Identity on a Ninjam server is a username and, at most, a password. |
 | 10 | **Codecs other than Ogg Vorbis** | Opus is better; the fourCC field looks like an extension point | §10 | `OGGv` only, which is what every client decodes. The fourCC field is an extension point *for the server to route opaquely*, not a codec negotiation -- there is no handshake in which we could agree on Opus, so a room with one Antiphon user would simply be a room where one person is silent. |
 | 11 | **A "zero-latency" or low-latency jam mode** | The recurring first reaction to Ninjam | §1 | Local passthrough is **already** undelayed (§3) -- you hear yourself live. Everyone else is one interval late because that is what Ninjam is. A mode that shortened the interval toward zero would be a different, worse, and much harder protocol. |
-| 12 | **Feature parity with the reference client** | It is the reference; surely we should match it | §2, §4 | Parity where it is *observable by other players* -- the wire format, the interval grid, the default gains -- and nothing more. `docs/PARITY.md` is about interoperability, not feature count. The reference client's local recording, its licence-agreement flow and its REAPER integration are all things we deliberately do not have. |
+| 12 | **Feature parity with the reference client** | It is the reference; surely we should match it | §2, §4 | Parity where it is *observable by other players* -- the wire format, the interval grid, the default gains -- and nothing more. `docs/PARITY.md` is about interoperability, not feature count. The reference client's local recording and its licence-agreement flow are things we deliberately do not have. Its REAPER integration we now share in part -- tempo, play and the loop, through the same API (`fence #7`) -- because it serves the jam, not because the reference has it. |
 
 ## Notes on the close calls
 
@@ -76,9 +76,9 @@ plugin has nowhere to go there, and `disableNonMainBuses()` turns the extra buse
 off. That is a real limitation, stated rather than papered over: multi-channel
 transmit and stem recording are reasons to reach for the plugin.
 
-The other visible difference is sync. Standalone has no transport to lock to, so
-`SyncState` runs straight to `Running` on connect and the Sync button is a plugin
-concept (`DESIGN.md` §5).
+The other visible difference is the clock. Standalone has no DAW to sync to, so
+it is always on Antiphon's own clock, connecting starts its transport, and the
+Clock group is a plugin concept (`DESIGN.md` §4.1).
 
 Where the two genuinely conflict, the plugin still wins -- but "the standalone
 does not matter" is no longer an argument.
@@ -115,13 +115,16 @@ move out to it. While that work is in flight this repository will briefly hold
 more server than it ships, which is the condition this note exists to keep
 legible.
 
-**Tempo push (#7) is parked, not condemned.** Unlike the others this is a fence
-about *mechanism*, not desire: wanting the DAW to follow the server tempo is
-entirely reasonable, and the mismatch warning is a workaround, not a solution.
-If a host-agnostic route appears -- a standard the plugin formats agree on -- the
-fence comes down. Until then, `abNinjam`'s localhost-OSC approach is documented
-in `docs/references/abNinjam.md` and remains what someone should copy if they
-want it for their own setup.
+**Tempo push (#7) came down for one DAW, and why only one.** It was always a
+fence about *mechanism*, not desire: wanting the DAW to follow the server tempo
+is entirely reasonable. Reaper offers the mechanism -- its own API, reachable
+from inside a plugin under CLAP and VST3 with nothing to configure -- so under
+Reaper the fence is gone. Every other host still offers nothing a plugin can
+use, so there the fence stands: a mismatch is announced as "not synced", with
+the tempo to set. If a host-agnostic route appears -- a standard the plugin
+formats agree on -- it comes down for everyone. `abNinjam`'s localhost-OSC
+approach is documented in `docs/references/abNinjam.md` for anyone who wants it
+for their own setup.
 
 ---
 

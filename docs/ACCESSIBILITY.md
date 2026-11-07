@@ -93,6 +93,34 @@ Verbosity has three settings -- **Off**, **Important only** (the default) and
 **All**. Repeated identical messages are suppressed, and a minimum gap is enforced
 so a burst of six joins does not become six interruptions.
 
+## Synced or not, said
+
+The sync model was redesigned around a screen reader user
+(`docs/superpowers/specs/2026-11-06-sync-and-tempo-design.md`). Joining at the
+wrong tempo used to read as "vote for your tempo", and a room tempo change as
+the room stopping; both were in-between states that said nothing useful, and
+the join warning was a second sentence that `Announcer`'s 400 ms gap dropped.
+Now:
+
+- **One sentence per event**, composed whole (`src/SyncAnnouncements.h`): on
+  joining, on a room tempo change, and when you become synced or stop being.
+  Each says whether you are synced and, if not, what would sync you. A state
+  must hold for half a second before it is spoken, so a tempo ramp does not
+  chatter.
+- **The Clock group** is a radio pair inside a container whose role is
+  *group*, so it is heard as one choice: "Synced to DAW, 1 of 2". The arrow keys
+  move the selection. While disconnected it says "Applies while connected".
+- **Play keeps its name.** Its toggle state says whether it is playing; a name
+  that flipped between Play and Stop was announced as a different control.
+- **The DAW-stopped tone** repeats once an interval while the DAW is stopped
+  under a synced jam, because a sentence said once is easy to miss and this is
+  the state where missing it leaves you out of the room.
+- **Chat says when your keys leave it**: "Keys now go to the DAW", because the
+  next key may start the transport.
+
+Unverified with a screen reader in a host as of 2026-11-06; the walk-through is
+owed (`ROADMAP.md`, *Active focus*).
+
 ## Keyboard
 
 Everything is reachable by Tab and operable from the keyboard. Tab order is:
@@ -105,7 +133,10 @@ route to its action -- each control can also be tabbed to and pressed.
 
 | Shortcut (macOS / Win+Linux) | Action |
 |---|---|
-| `Cmd+Option+S` / `Ctrl+Alt+S` | Arm Sync (then start the DAW transport) |
+| `Cmd+Option+S` / `Ctrl+Alt+S` | Sync now: whatever gets you synced from where you are, or what you must do |
+| `Cmd+Option+I` / `Ctrl+Alt+I` | Say the status: room, tempo, players, and whether you are synced |
+| `Cmd+Option+F` / `Ctrl+Alt+F` | Switch the clock: Synced to DAW, or Antiphon's clock |
+| `Cmd+Option+G` / `Ctrl+Alt+G` | Play or stop Antiphon's clock |
 | `Cmd+Option+C` / `Ctrl+Alt+C` | Focus the chat message box |
 | `Cmd+Option+O` / `Ctrl+Alt+O` | Open Server Browser / Connect dialog |
 | `Cmd+Option+P` / `Ctrl+Alt+P` | Start a practice room and join it |

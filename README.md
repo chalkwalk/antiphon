@@ -314,19 +314,32 @@ reconnects, they come back on the bus you put them on.
 | **Input bus: [+] [-]** | Adds or removes a plugin input bus. |
 | **Output bus: [+] [-]** | Adds or removes a stereo output bus, for stems. |
 | **Metronome** + slider | The click, and its volume. Off by default in a DAW, on in standalone. |
-| **Sync** | Arms tempo sync to your DAW transport. See below. |
 | **Chat** | Show or hide the chat panel. |
+| **Play** | Standalone: the transport. Starts and stops the interval clock. |
 | **Test Tone**, **Save Tx Audio**, **Save Rx Audio** | Diagnostics. Test Tone transmits a known signal instead of your input; the Save toggles dump what you sent and received to your desktop as `.ogg` and `.wav`. |
 
 Channels and buses are **independent**: adding a channel does not add a bus, and
 several channels can share one.
+
+### Clock row (plugin, above the toolbar)
+
+| Control | Does |
+|---|---|
+| **Clock: Synced to DAW / Antiphon's clock** | Where the jam's time comes from. Synced follows your DAW's playhead -- the default, and what you want almost always. Antiphon's clock ignores the DAW, for session view or a DAW you are not playing from. Each join starts synced. |
+| **Play** | Plays the jam on Antiphon's clock. Disabled while synced, when the DAW's own transport plays. |
+| **Reaper follows room tempo** | Reaper only. Antiphon sets Reaper's tempo to the room's when you join and whenever the room changes it. |
+| **Loop one interval** | Reaper only. Sets Reaper's loop to the interval playing now. |
+| **DAW-stopped tone** + slider | A short high tone once an interval while your DAW is stopped and the room plays on. Only you hear it. |
 
 ### Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl+Alt+C` | Focus the chat message box |
-| `Ctrl+Alt+S` | Arm Sync |
+| `Ctrl+Alt+S` | Sync now: does whatever gets you synced from where you are, or says what you must do |
+| `Ctrl+Alt+I` | Say the status: the room, its tempo, and whether you are synced |
+| `Ctrl+Alt+F` | Switch the clock between Synced to DAW and Antiphon's clock |
+| `Ctrl+Alt+G` | Play or stop Antiphon's clock |
 | `Ctrl+Alt+A` | Write an accessibility audit report to the desktop |
 
 Everything is also reachable by Tab. These use `Ctrl+Alt` to stay clear of what
@@ -357,32 +370,36 @@ No DAW required -- an interface, an instrument, and a room.
 
 ### 2. Jamming from your DAW
 
-This is what Antiphon is for, and it takes one extra step: getting your DAW's
-clock and NINJAM's clock to agree.
+This is what Antiphon is for. You are either **synced** to your DAW or **not
+synced**, never something between, and Antiphon always tells you which.
 
 1. Insert Antiphon on your **master bus**.
-2. Connect as above. The header will turn amber and tell you the tempo does not
-   match.
-3. **Set your DAW project tempo to the server's BPM**, shown in the header. The
-   plugin cannot set it for you -- there is no way for a plugin to do that
-   reliably across hosts.
-4. The warning clears. The status now says *"Tempo matches. Press Sync, then
-   start the DAW transport."*
-5. Click **Sync**.
-6. **Start your DAW transport.** The plugin locks the interval grid to that
-   moment.
-7. You are in. Header navy, phase bar moving, transmitting and receiving.
+2. Connect as above. Antiphon says what it found in one sentence: the room's
+   tempo, and whether you are synced.
+3. **Match the tempo.** In Reaper, Antiphon sets it for you. In any other DAW,
+   set your project tempo to the room's BPM, exactly: "close" is not synced.
+4. **Press play in your DAW.** Antiphon follows your playhead, so the room's
+   intervals land on your bars.
+5. You are in: "Synced to your DAW, beat 5 of 16."
 
-**Why the extra button?** Because re-syncing mid-jam cuts short the interval you
-are currently transmitting, and everyone else hears that as a glitch. Sync only
-ever happens when you ask for it -- an accidental stop and start of your
-transport will not re-phase a jam in progress.
+**Until you are synced you can still hear the room.** Joining at the wrong
+tempo, or with the DAW stopped, the room plays on Antiphon's own clock and your
+live audio goes out; you are told what would sync you. `Ctrl+Alt+S` does the
+next step for you where it can.
 
-If you *do* want to re-sync (you moved something, you want to realign), press
-Sync again and restart the transport.
+**If your DAW stops mid-jam,** the room keeps playing on Antiphon's clock, the
+header says so, and a short tone repeats once an interval so you cannot miss
+it. Press play again -- from any bar -- and you are synced on the playhead.
 
-A tip: set your DAW's loop to exactly one interval's length. Then the jam and the
-session agree about where "one" is.
+**When the room votes a new tempo,** Reaper follows it. In another DAW you are
+told the new tempo, and that you are not synced until you set it.
+
+**Session view, or a DAW you are not playing from:** choose *Antiphon's clock*
+in the Clock group, and use Play. That is the only way to be unsynced on
+purpose, and the next join starts synced again.
+
+A tip: set your DAW's loop to exactly one interval (in Reaper, **Loop one
+interval** does it). Then the loop and the jam agree about where "one" is.
 
 ### 3. Recording the jam as stems
 

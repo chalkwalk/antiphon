@@ -22,6 +22,13 @@ argument is not restated here, and nothing below depends on having read it.
 
 ## Active focus
 
+*(2026-11-06)* **Synced or not** has landed: the Sync button and its five
+in-between states are gone, the grid follows the DAW's playhead when synced,
+the room keeps playing on Antiphon's clock when not, and Reaper follows the
+room's tempo. `docs/COMPLETED.md`, *Synced or not*. Still owed: the manual walk
+through it in Reaper and Bitwig, and the parity measurement under the new
+playhead grid (`docs/PARITY.md`).
+
 *(2026-08-30)*
 
 The client works, and it has now been used by somebody other than its author.
@@ -741,11 +748,15 @@ arbitrary:
 - **Rate limited**, exactly as `Announcer` already does for speech. Six players
   arriving is one event.
 
-- [ ] **`CueVoice`, beside `MetronomeVoice`.** The same shape and the same test
+- [x] **`CueVoice`, beside `MetronomeVoice`.** The same shape and the same test
       layer -- one-shot, JUCE-free, pitch asserted by measurement rather than
-      by formula. Three to start: arrival, departure, message.
+      by formula. It shipped 2026-11-06 with ONE cue, not these three: the DAW
+      stopping under a synced jam (`DESIGN.md` §5), which a player must not
+      miss and a sentence said once does not cover. Arrival, departure and
+      message are still open, and still wait on the question below.
 - [ ] **Its own enable and its own level**, like the metronome's. Defaulting on
-      in the standalone.
+      in the standalone. *The DAW-stopped tone has both, on the plugin's clock
+      row; a cue for players coming and going would need its own pair.*
 - [ ] **Panned to the player it is about**, once the rest works. It answers
       "who left" with no speech at all, and the pan is already in the strip.
       Second iteration; start mono and prove the idea first.
