@@ -9,6 +9,18 @@ sidebar_position: 6
 The chat panel is on the right, and can be hidden with the **Chat** button. It
 ghosts out when you are not connected, and clears when you join a new session.
 
+While the message box has your keys, its outline turns teal and **Typing to
+chat** shows above it. Sending a message keeps you there, so the next thing
+you type is the next message. If the keys leave Antiphon for your DAW,
+Antiphon says "Keys now go to the DAW", because the next key you press may
+start or stop the transport.
+
+:::tip Reaper
+A plugin window does not get every key by default: Reaper keeps some, the space
+bar among them, even while you are typing in chat. In the FX window's menu,
+turn on **Send all keyboard input to plugin**.
+:::
+
 Chat is how a NINJAM room organises itself. There is no other social layer --
 no accounts, no profiles, no presence beyond the user list the server provides.
 Identity on a NINJAM server is a username and, at most, a password.

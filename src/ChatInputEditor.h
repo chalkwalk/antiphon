@@ -23,6 +23,23 @@ public:
     return std::make_unique<ChatInputAccessibilityHandler>(*this);
   }
 
+  // Told when the field gains or loses focus, so the window can show where
+  // keys are going and say when they stop coming here.
+  std::function<void(bool focused, FocusChangeType cause)> onFocusChange;
+
+  void focusGained(FocusChangeType cause) override {
+    juce::TextEditor::focusGained(cause);
+    if (onFocusChange)
+      onFocusChange(true, cause);
+  }
+
+  void focusLost(FocusChangeType cause) override {
+    juce::TextEditor::focusLost(cause);
+    repaint(); // the focused outline
+    if (onFocusChange)
+      onFocusChange(false, cause);
+  }
+
 private:
   class ChatInputAccessibilityHandler final
       : public juce::AccessibilityHandler {

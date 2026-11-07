@@ -232,6 +232,15 @@ void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
 void AntiphonLookAndFeel::drawTextEditorOutline(juce::Graphics &g, int width,
                                                 int height,
                                                 juce::TextEditor &textEditor) {
+  // Focus drawn in the accent, and thicker: where your keys are going is the
+  // one thing a text field must never leave in doubt. Typing into the DAW
+  // while believing you are in chat starts and stops the transport.
+  if (textEditor.isEnabled() && !textEditor.isReadOnly() &&
+      textEditor.hasKeyboardFocus(true)) {
+    g.setColour(juce::Colour(AntiphonTheme::kAccent));
+    g.drawRoundedRectangle(1.0f, 1.0f, width - 2.0f, height - 2.0f, 3.0f, 2.0f);
+    return;
+  }
   g.setColour(textEditor.findColour(juce::TextEditor::outlineColourId));
   g.drawRoundedRectangle(0.5f, 0.5f, width - 1.0f, height - 1.0f, 3.0f, 1.0f);
 }

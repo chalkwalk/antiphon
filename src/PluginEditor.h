@@ -224,6 +224,10 @@ private:
   juce::TextButton chipDismissButton;
 
   ChatInputEditor chatInput;
+  // "Typing to chat", shown while the field has focus. Decorative to a reader:
+  // the field's own focus is what is announced.
+  juce::Label chatTypingLabel;
+  void onChatFocusChange(bool focused);
 
   static juce::Colour colourForChatCategory(ChatFormat::Category c);
   void updateRoomMembers();

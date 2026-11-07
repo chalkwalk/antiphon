@@ -523,7 +523,21 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       }
       chatInput.clear();
     }
+    // Sending must not leave the keys somewhere else: the next thing typed is
+    // the next message, not a transport command to the DAW.
+    chatInput.grabKeyboardFocus();
   };
+  chatInput.onFocusChange = [this](bool focused, FocusChangeType) {
+    onChatFocusChange(focused);
+  };
+  chatTypingLabel.setText("Typing to chat", juce::dontSendNotification);
+  chatTypingLabel.setJustificationType(juce::Justification::centredRight);
+  chatTypingLabel.setFont(juce::FontOptions(11.0f));
+  chatTypingLabel.setColour(juce::Label::textColourId,
+                            juce::Colour(AntiphonTheme::kAccent));
+  chatTypingLabel.setAccessible(false);
+  chatTypingLabel.setInterceptsMouseClicks(false, false);
+  addChildComponent(chatTypingLabel);
   chatInput.setTitle("Chat message (" + Shortcuts::globalModifierName() + "C)");
   chatInput.setDescription("Chat message (" + Shortcuts::globalModifierName() +
                            "C)");
@@ -543,6 +557,26 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   applyHostContextToControls();
   setChatConnectedState(audioProcessor.ninjamClient.isConnected());
   startTimerHz(30);
+}
+
+void AntiphonEditor::onChatFocusChange(bool focused) {
+  chatTypingLabel.setVisible(focused && chatInput.isShowing());
+  if (focused || audioProcessor.isStandaloneApp())
+    return;
+  // Losing the field to another control in this window is ordinary
+  // navigation, and the reader names where focus went. Losing it to the DAW
+  // is the trap: the next key typed is a transport command. Checked a moment
+  // later, once focus has landed somewhere.
+  juce::Component::SafePointer<AntiphonEditor> self(this);
+  juce::Timer::callAfterDelay(100, [self]() {
+    if (self == nullptr || self->chatInput.hasKeyboardFocus(false))
+      return;
+    // JUCE clears the focused component when its window loses focus to
+    // another, and the DAW's windows are not ours -- so nothing focused means
+    // the keys left Antiphon. Our own dialogs keep it set.
+    if (juce::Component::getCurrentlyFocusedComponent() == nullptr)
+      self->announcer.say("Keys now go to the DAW", true);
+  });
 }
 
 void AntiphonEditor::refreshTransportButton() {
@@ -1261,7 +1295,9 @@ void AntiphonEditor::resized() {
     auto rightPanel = area.removeFromRight(320);
     area.removeFromRight(10);
     chatInput.setBounds(rightPanel.removeFromBottom(24));
-    rightPanel.removeFromBottom(6);
+    // Always reserved, so the history does not jump when the label appears.
+    chatTypingLabel.setBounds(rightPanel.removeFromBottom(14));
+    rightPanel.removeFromBottom(2);
 
     // The chip sits between the history and the input: close to the thing it
     // is about, and in the tab order right before where you would reply.
@@ -1285,6 +1321,7 @@ void AntiphonEditor::resized() {
   } else {
     chatDisplay.setVisible(false);
     chatInput.setVisible(false);
+    chatTypingLabel.setVisible(false);
     roomMembersLabel.setVisible(false);
     setChipVisible(false);
   }

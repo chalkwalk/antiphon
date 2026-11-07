@@ -431,6 +431,17 @@ down without turning your voice down.
 The chat panel is on the right and can be hidden with the **Chat** button. It
 ghosts out when you are not connected, and clears when you join a new session.
 
+While the message box has your keys, its outline turns teal and **Typing to
+chat** shows above it. Sending a message keeps you there, so the next thing
+you type is the next message. If the keys leave Antiphon for the DAW -- you
+clicked the arrange view, say -- Antiphon says "Keys now go to the DAW",
+because the next key you press may start or stop the transport.
+
+**In Reaper,** a plugin window does not get every key by default: Reaper keeps
+some, the space bar among them, even while you are typing in chat. In the FX
+window's menu, turn on **Send all keyboard input to plugin**, and Reaper leaves
+them to Antiphon while its window has focus.
+
 | You type | Does |
 |---|---|
 | `hello` | Says hello to the room |
