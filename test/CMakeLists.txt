@@ -21,6 +21,7 @@ target_sources(NinjamTests
         MetronomeVoiceTests.cpp
         GainUtilsTests.cpp
         ClockModelTests.cpp
+        HostControlTests.cpp
         AudioDeviceStartupTests.cpp
         ShortcutsTests.cpp
         AccessibilityAuditTests.cpp

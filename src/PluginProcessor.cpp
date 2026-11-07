@@ -2,6 +2,7 @@
 #include "HostGrid.h"
 #include "ChannelMix.h"
 #include "PluginEditor.h"
+#include "ReaperBridge.h"
 
 AntiphonAudioProcessor::AntiphonAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -25,9 +26,49 @@ AntiphonAudioProcessor::AntiphonAudioProcessor()
   publishLocalChannels();
   if (!isStandaloneApp())
     metronomeEnabled = false;
+
+  // Reaper's API, if this is Reaper. CLAP offers it now, while the host
+  // pointer is set for the constructor; VST3 offers it once JUCE hands the
+  // extensions object the host application.
+  adoptReaper(reaperResolverFromClapExtension(
+      getExtension("cockos.reaper_extension")));
+  vst3Extensions = makeReaperVst3Extensions(
+      [this](ReaperResolver r) { adoptReaper(std::move(r)); });
+  startTimerHz(30);
+}
+
+void AntiphonAudioProcessor::adoptReaper(ReaperResolver resolve) {
+  if (hostControl != nullptr || !resolve)
+    return;
+  hostControl = makeReaperBridge(std::move(resolve));
+  hostFollowsTempo.store(hostControl != nullptr && tempoFollow.enabled);
+}
+
+void AntiphonAudioProcessor::setFollowRoomTempo(bool on) {
+  tempoFollow.enabled = on;
+  hostFollowsTempo.store(hostControl != nullptr && on);
+}
+
+void AntiphonAudioProcessor::timerCallback() {
+  const bool connected = ninjamClient.isConnected();
+  const int changes = gridTempoChangeCount.load(std::memory_order_relaxed);
+  const bool joined = connected && !followWasConnected;
+  const bool changed = connected && changes != followSeenTempoChanges;
+  followWasConnected = connected;
+  followSeenTempoChanges = changes;
+  if (hostControl == nullptr || !(joined || changed))
+    return;
+  const int room = internalBpm.load();
+  const double daw = publishedHostBpm.load(std::memory_order_relaxed);
+  const bool set = joined ? tempoFollow.onJoin(*hostControl, room, daw)
+                          : tempoFollow.onGridTempoApplied(*hostControl, room,
+                                                           daw);
+  if (set)
+    hostTempoSetCount.fetch_add(1);
 }
 
 AntiphonAudioProcessor::~AntiphonAudioProcessor() {
+  stopTimer();
   ninjamClient.removeListener(this);
   // Before the client goes: the room holds bot clients of its own, and they
   // must be torn down while there is still a message thread to do it on.
@@ -818,8 +859,13 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     lastBlockEndValid = fromHost;
     lastGrid = grid;
     if (intervalClock.getBpm() != lastClockBpm) {
-      if (lastClockBpm != 0)
+      if (lastClockBpm != 0) {
         gridTempoChangeCount.fetch_add(1, std::memory_order_relaxed);
+        // The DAW is about to be told; until it is, it is not out of step.
+        if (hostFollowsTempo.load(std::memory_order_relaxed))
+          roomTempoChangedMs.store(juce::Time::getMillisecondCounter() | 1u,
+                                   std::memory_order_relaxed);
+      }
       lastClockBpm = intervalClock.getBpm();
     }
     // Published together with the phase they belong to, so the UI can never
@@ -917,6 +963,7 @@ void AntiphonAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
   xml.setAttribute("metronomeVol", (double)metronomeVolume.load());
   xml.setAttribute("chatVisible", chatVisible.load());
   xml.setAttribute("speech", announceVerbosity.load());
+  xml.setAttribute("followRoomTempo", tempoFollow.enabled);
   xml.setAttribute("lastHost", lastHost);
   xml.setAttribute("lastPort", lastPort);
   xml.setAttribute("lastUsername", lastUsername);
@@ -957,6 +1004,7 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
   chatVisible.store(xml->getBoolAttribute("chatVisible", true));
   announceVerbosity.store(
       juce::jlimit(0, 2, xml->getIntAttribute("speech", 2)));
+  setFollowRoomTempo(xml->getBoolAttribute("followRoomTempo", true));
   metronomeVolume.store((float)xml->getDoubleAttribute("metronomeVol", 1.0));
   metronomeEnabled.store(xml->getBoolAttribute("metronome", isStandaloneApp()));
   lastHost = xml->getStringAttribute("lastHost", "ninbot.com");
@@ -1051,6 +1099,8 @@ void AntiphonAudioProcessor::onConnected() {
   // button that did not exist before today.
   if (isStandaloneApp())
     localTransportPlaying.store(true);
+  else
+    clockMode.store((int)ClockModel::Mode::SyncedToDaw); // every join is synced
   hasConnectedSinceLastAttempt = true;
   lastConnectFailed.store(false);
   sendChannelInfoToServer();

@@ -3,6 +3,7 @@
 #include "GainRamp.h"
 #include "IntervalClock.h"
 #include "ClockModel.h"
+#include "HostControl.h"
 #include "IntervalProbe.h"
 #include "PlayheadGrid.h"
 #include "TransmitSpans.h"
@@ -10,13 +11,17 @@
 #include "NinjamClient.h"
 #include "PracticeRoom.h"
 #include <JuceHeader.h>
+#include <clap-juce-extensions/clap-juce-extensions.h>
 #include <array>
 #include <map>
 #include <memory>
 #include <vector>
 
-class AntiphonAudioProcessor : public juce::AudioProcessor,
-                               public NinjamClientListener {
+class AntiphonAudioProcessor
+    : public juce::AudioProcessor,
+      public NinjamClientListener,
+      public clap_juce_extensions::clap_juce_audio_processor_capabilities,
+      private juce::Timer {
 public:
   struct LocalChannel {
     juce::String name{"Instrument"};
@@ -281,6 +286,21 @@ public:
   std::atomic<double> publishedHostBpm{0.0};
   std::atomic<bool> publishedHostPlaying{false};
 
+  // Reaper, and only Reaper, lets a plugin set its tempo and press its play
+  // button (HostControl.h). Null in every other host. Message thread only.
+  std::unique_ptr<HostControl> hostControl;
+  TempoFollow tempoFollow; // .enabled persisted as "followRoomTempo"
+  // Set when hostControl exists and follows the room, so the audio thread
+  // can open the grace period at the moment it applies a new tempo.
+  std::atomic<bool> hostFollowsTempo{false};
+  // Bumped each time Antiphon set the DAW's tempo itself, so the UI can say so.
+  std::atomic<int> hostTempoSetCount{0};
+  void setFollowRoomTempo(bool on);
+
+  juce::VST3ClientExtensions *getVST3ClientExtensions() override {
+    return vst3Extensions.get();
+  }
+
   // Antiphon's own transport: the standalone's only one, and the plugin's Play
   // on Antiphon's clock. In the standalone, connecting turns it on, so nobody
   // joins a room to silence.
@@ -366,6 +386,14 @@ private:
   ninjam::IntervalProbe testProbe;
 
   std::atomic<bool> phaseResetPending{false};
+
+  // Watches for the moments the DAW's tempo should follow the room's: joining,
+  // and the grid applying a room tempo change. Message thread.
+  void timerCallback() override;
+  void adoptReaper(std::function<void *(const char *)> resolve);
+  std::unique_ptr<juce::VST3ClientExtensions> vst3Extensions;
+  bool followWasConnected = false;
+  int followSeenTempoChanges = 0;
   bool hasConnectedSinceLastAttempt{false};
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AntiphonAudioProcessor)
 };

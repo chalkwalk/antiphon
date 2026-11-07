@@ -20,6 +20,7 @@ required -- but that constraint binds anyone who re-generates or subsets them.
 | **JUCE** | `JUCE/` (submodule) | AGPLv3 or commercial | Patched at configure time from `patches/`; see `AGENTS.md`. |
 | **libogg / libvorbis** | `modules/ogg`, `modules/vorbis` (submodules) | BSD-style (Xiph) | Ogg/Vorbis encode and decode. |
 | **clap-juce-extensions** | `modules/clap-juce-extensions` (submodule) | MIT | CLAP plugin format support. |
+| **REAPER SDK declarations** | `src/ReaperBridge.cpp` | zlib (Cockos) | The `reaper_plugin_info_t` layout and the `IReaperHostApplication` interface and IID, reproduced from <https://github.com/justinfrankel/reaper-sdk> (`reaper_plugin.h`, `reaper_vst3_interfaces.h`; the same copies JUCE ships in `examples/Plugins/extern/`). Only the parts we call; marked as altered where they were. Function signatures from `Plugins/reaper_python.py`, which REAPER ships. Plugin target only. |
 
 ## Data
 

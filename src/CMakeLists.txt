@@ -50,6 +50,7 @@ juce_add_binary_data(antiphon_fonts
 target_sources(Antiphon
     PRIVATE
         PluginProcessor.cpp
+        ReaperBridge.cpp
         StandaloneApp.cpp
         PluginEditor.cpp
         NinjamClient.cpp
@@ -96,6 +97,9 @@ target_link_libraries(Antiphon
         # implementation detail -- anything that includes the processor needs
         # them on its include path too.
         chalkwalk::jambot
+        # PUBLIC for the same reason: the processor is a CLAP capabilities
+        # class, which is how it reaches Reaper's API under CLAP.
+        clap_juce_extensions
         juce::juce_recommended_config_flags)
 
 # Make sure JUCE finds headers
