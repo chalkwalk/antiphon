@@ -601,6 +601,47 @@ against us live at 48 kHz, in one host, on one platform, in one format.
 
 ---
 
+### A listener bot, as a companion repository
+
+*(Idea, 2026-11-06. Not designed yet.)* A bot that joins a room as one user,
+receives the jam, and serves it to any number of people in a browser, so a
+jam can be listened to from a link, perhaps from GitHub Pages. **Not part of
+Antiphon:** a companion for any Ninjam server, in a repository of its own
+beside chalkwalk-jambot, built on chalkwalk-ninjam.
+
+Why the bot is also the web proxy: a browser cannot open the TCP connection
+Ninjam needs, but it can talk WebSocket to the bot, which holds the one real
+connection. That costs the room one user slot however many listen, and the bot
+is not an open relay to arbitrary servers. Listeners are an interval behind
+already, so buffering is free.
+
+The shape so far, all open:
+
+- **Audio.** Either mix on the bot and stream one ordinary stream (an
+  `<audio>` element, accessible for free; everyone hears one mix), or forward
+  each player's Vorbis intervals and mix in the browser (own mix, needs a wasm
+  Vorbis decoder where the browser lacks one). The first is the listen-only
+  version done properly; start there.
+- **Chat, delegated.** Many listeners speak as the bot's one user, each line
+  annotated with who sent it (`listeners: [alice] nice groove`). Needs
+  per-listener rate limits, muting one listener, and an off switch the room's
+  players can use -- anonymous web users otherwise spam the room through it.
+- **Votes by quorum.** Listeners together hold one vote, cast only when enough
+  connected listeners agree, using the arithmetic already in chalkwalk-ninjam's
+  `Voting.h` -- the audience gets a voice without outvoting the players.
+- **Etiquette.** Broadcasting a jam beyond the room is a consent question: the
+  bot says what it is and how many are listening when it joins, and leaves when
+  asked.
+
+- [ ] **Look for prior art first.** A quick search (2026-11-06) found no
+      open-source Ninjam-to-web listener. Leads still to check: ninbot.com,
+      which publishes session recordings and may stream; `ninjamsrv`'s own
+      session archive, which already writes every interval; the NINJAM forum;
+      and BHSPitMonkey/ninjam-js, a JS client that needs Electron or a Chrome
+      App for raw TCP (not a web page). Groups that stream today seem to use
+      OBS. If something good exists, contribute to it rather than start over.
+- [ ] Design it (brainstorm -> spec), in its own repository.
+
 ## User experience
 
 ### Standalone as a first-class use case
