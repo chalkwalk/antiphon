@@ -145,12 +145,36 @@ private:
   // of.
   juce::ToggleButton recordToggle;
   juce::ToggleButton testToneToggle;
-  juce::TextButton syncButton;
-  // Standalone only. The plugin locks to the host transport; the standalone had
-  // none, so it gets its own. Sync stays DAW-only for a reason worth stating:
-  // in the plugin you do not control the transport from here so you arm and
-  // wait for the edge, while here pressing play IS the edge.
+  // The clock (ClockModel.h): synced to the DAW, or Antiphon's own. A radio
+  // pair inside a container a screen reader announces as one group, so the
+  // choice is heard as a choice. Plugin only -- the standalone has no DAW.
+  struct ClockGroup : juce::Component {
+    std::unique_ptr<juce::AccessibilityHandler>
+    createAccessibilityHandler() override {
+      return std::make_unique<juce::AccessibilityHandler>(
+          *this, juce::AccessibilityRole::group);
+    }
+    bool keyPressed(const juce::KeyPress &k) override;
+    std::function<void(int)> onArrow; // -1 or +1
+  };
+  ClockGroup clockGroup;
+  juce::Label clockLabel;
+  juce::ToggleButton syncedToDawButton;
+  juce::ToggleButton antiphonClockButton;
+  void selectClockMode(ClockModel::Mode m);
+  void refreshClockControls();
+  // Reaper only, created when hostControl exists. The host never changes
+  // within a session, so nothing appears or disappears mid-use.
+  std::unique_ptr<juce::ToggleButton> followTempoToggle;
+  std::unique_ptr<juce::TextButton> loopIntervalButton;
+  void loopOneInterval();
+  bool hasClockRow() const { return !audioProcessor.isStandaloneApp(); }
+  // Play: Antiphon's own clock. The standalone's only transport; in the plugin
+  // it takes you off the DAW's clock, so it is disabled while synced. Its name
+  // never changes -- the toggle state says whether it is playing -- because a
+  // name that flips between Play and Stop is announced as a different control.
   juce::TextButton transportButton;
+  void toggleAntiphonPlay();
   juce::ToggleButton chatToggle;
 
   // Compact toolbar groups: "Channel: [+]"  "Input bus: [+][-]"  "Output bus: [+][-]"
@@ -238,8 +262,6 @@ private:
 
   int dismissedVoteTarget = 0;
   bool dismissedVoteIsBpm = true;
-  int dismissedDawBpm = 0;
-  int chipDawBpm = 0; // non-zero when the chip is offering a DAW tempo
   juce::String lastRoomMembersText;
   // How many lines the room list currently needs, so resized() can give it the
   // height rather than cramming every player into one.

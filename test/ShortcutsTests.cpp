@@ -15,7 +15,10 @@ public:
     {
       expect(Shortcuts::match('A', true, true) == A::WriteAudit);
       expect(Shortcuts::match('C', true, true) == A::FocusChat);
-      expect(Shortcuts::match('S', true, true) == A::ArmSync);
+      expect(Shortcuts::match('S', true, true) == A::SyncNow);
+      expect(Shortcuts::match('I', true, true) == A::SayStatus);
+      expect(Shortcuts::match('G', true, true) == A::ToggleAntiphonPlay);
+      expect(Shortcuts::match('F', true, true) == A::ToggleClockMode);
       expect(Shortcuts::match('O', true, true) == A::OpenConnect);
       expect(Shortcuts::match('M', true, true) == A::ToggleMuteAll);
       expect(Shortcuts::match('H', true, true) == A::AnnounceShortcutsHelp);
@@ -29,7 +32,10 @@ public:
       expect(Shortcuts::match('a', true, true) == A::WriteAudit,
              "lower case must resolve identically");
       expect(Shortcuts::match('c', true, true) == A::FocusChat);
-      expect(Shortcuts::match('s', true, true) == A::ArmSync);
+      expect(Shortcuts::match('s', true, true) == A::SyncNow);
+      expect(Shortcuts::match('i', true, true) == A::SayStatus);
+      expect(Shortcuts::match('g', true, true) == A::ToggleAntiphonPlay);
+      expect(Shortcuts::match('f', true, true) == A::ToggleClockMode);
       expect(Shortcuts::match('o', true, true) == A::OpenConnect);
       expect(Shortcuts::match('m', true, true) == A::ToggleMuteAll);
       expect(Shortcuts::match('v', true, true) == A::CycleSpeech);
@@ -109,7 +115,7 @@ public:
       expect(Shortcuts::match('C', false, true, false, false, false, false,
                               false, false, true) == A::FocusChat);
       expect(Shortcuts::match('S', false, true, false, false, false, false,
-                              false, false, true) == A::ArmSync);
+                              false, false, true) == A::SyncNow);
       expect(Shortcuts::match('O', false, true, false, false, false, false,
                               false, false, true) == A::OpenConnect);
       expect(Shortcuts::match('M', false, true, false, false, false, false,

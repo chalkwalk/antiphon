@@ -44,7 +44,10 @@ void ShortcutsDialog::populateShortcuts() {
 #endif
 
   shortcuts.clear();
-  shortcuts.add({mod + "S", "Arm Sync (then start DAW transport)"});
+  shortcuts.add({mod + "S", "Sync now: does whatever syncing needs next"});
+  shortcuts.add({mod + "I", "Say status: connection, tempo and sync"});
+  shortcuts.add({mod + "F", "Clock: synced to DAW, or Antiphon's clock"});
+  shortcuts.add({mod + "G", "Play or stop Antiphon's clock"});
   shortcuts.add({mod + "C", "Focus Chat message box"});
   shortcuts.add({mod + "O", "Open Connect / Server Browser dialog"});
   shortcuts.add({mod + "P", "Start a practice room and join it"});

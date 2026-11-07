@@ -849,6 +849,10 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         fromHost ? HostGrid::phaseBeatsAt(gridPpqAtBlockEnd, intervalClock.getBpi())
                  : intervalClock.phaseBeats();
     publishedPhaseBeats.store((float)lastPhaseBeats);
+    publishedIntervalStartPpq.store(grid == GridSource::Playhead
+                                        ? ppqAtBlockEnd - lastPhaseBeats
+                                        : -1.0,
+                                    std::memory_order_relaxed);
     // Synced, the counted clock is kept at the playhead's position. That keeps
     // a room tempo change pending until the playhead grid's boundary (setTempo
     // applies at once only at an interval start), and it means leaving the

@@ -238,6 +238,34 @@ int main() {
 
     results.push_back(auditState("a vote in progress", {editor}));
 
+    // The clock's three faces (ClockModel.h). Nothing runs processBlock here,
+    // so the state the audio thread would publish is published by hand; the
+    // editor reads only that, which is what makes the surface reachable.
+    // Each changes what the header says and which of Play and the Clock radio
+    // pair is live.
+    processor.publishedHostBpm.store(95.0);
+    processor.publishedHostPlaying.store(true);
+    processor.publishedClockState.store(
+        (int)ClockModel::State::NotSyncedTempo);
+    pump(300);
+    settle(*editor);
+    results.push_back(auditState("not synced, tempo mismatch", {editor}));
+
+    processor.publishedHostBpm.store(120.0);
+    processor.publishedHostPlaying.store(false);
+    processor.publishedClockState.store(
+        (int)ClockModel::State::NotSyncedDawStopped);
+    pump(300);
+    settle(*editor);
+    results.push_back(auditState("DAW stopped while synced", {editor}));
+
+    processor.clockMode.store((int)ClockModel::Mode::AntiphonClock);
+    processor.localTransportPlaying.store(true);
+    processor.publishedClockState.store((int)ClockModel::State::AntiphonClock);
+    pump(300);
+    settle(*editor);
+    results.push_back(auditState("Antiphon's clock", {editor}));
+
     // Traced line by line: the audit has hung somewhere in this teardown on CI
     // and every call in it is meant to be bounded, so the next hang needs to
     // name the one that is not. See ROADMAP.md.

@@ -130,29 +130,92 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       "Debug: replace all local input with a timing probe");
   addAndMakeVisible(testToneToggle);
 
-  syncButton.setButtonText("Sync");
-  syncButton.setTooltip(
-      "Lock the jam to your DAW transport. Press this, then start the "
-      "transport -- the interval grid begins on that downbeat. The timeline "
-      "position is deliberately ignored, so this works in clip/session view "
-      "as well as with a loop.");
-  syncButton.onClick = [this]() { runSyncNow(); };
-  syncButton.setRepaintsOnMouseActivity(true);
-  syncButton.setTitle("Sync (" + Shortcuts::globalModifierName() + "S)");
-  syncButton.setDescription("Lock the interval grid to the next start of the "
-                            "DAW transport. Shortcut: " +
-                            Shortcuts::globalModifierName() + "S");
-  addAndMakeVisible(syncButton);
-
-  transportButton.onClick = [this]() {
-    const bool playing = !audioProcessor.localTransportPlaying.load();
-    audioProcessor.localTransportPlaying.store(playing);
-    refreshTransportButton();
-    announcer.say(playing ? "Transport running" : "Transport stopped", true);
+  // The clock: two radio buttons in a group, then Play. See ClockModel.h.
+  clockLabel.setText("Clock:", juce::dontSendNotification);
+  clockLabel.setJustificationType(juce::Justification::centredRight);
+  clockLabel.setColour(juce::Label::textColourId,
+                       juce::Colours::lightgrey);
+  clockGroup.addAndMakeVisible(clockLabel);
+  clockGroup.setTitle("Clock");
+  clockGroup.setFocusContainerType(
+      juce::Component::FocusContainerType::focusContainer);
+  const juce::String mod = Shortcuts::globalModifierName();
+  syncedToDawButton.setButtonText("Synced to DAW");
+  syncedToDawButton.setTitle("Synced to DAW");
+  syncedToDawButton.setTooltip(
+      "The jam follows your DAW's playhead: its tempo, its position, its play "
+      "and stop. The default, and what almost everyone wants.\n" +
+      mod + "S syncs from wherever you are; " + mod + "F switches clocks.");
+  antiphonClockButton.setButtonText("Antiphon's clock");
+  antiphonClockButton.setTitle("Antiphon's clock");
+  antiphonClockButton.setTooltip(
+      "The jam runs on Antiphon's own clock and ignores the DAW: for session "
+      "view, or a DAW you are not playing from. Play starts and stops it.");
+  for (auto *b : {&syncedToDawButton, &antiphonClockButton}) {
+    b->setRadioGroupId(0xC10C, juce::dontSendNotification);
+    b->setClickingTogglesState(false);
+    b->setRepaintsOnMouseActivity(true);
+    clockGroup.addAndMakeVisible(*b);
+  }
+  syncedToDawButton.onClick = [this]() {
+    selectClockMode(ClockModel::Mode::SyncedToDaw);
   };
+  antiphonClockButton.onClick = [this]() {
+    selectClockMode(ClockModel::Mode::AntiphonClock);
+  };
+  clockGroup.onArrow = [this](int) {
+    // Two choices: either arrow goes to the other one, and selects it, which
+    // is how a radio group behaves everywhere else.
+    const bool synced = audioProcessor.clockMode.load() ==
+                        (int)ClockModel::Mode::SyncedToDaw;
+    auto &next = synced ? antiphonClockButton : syncedToDawButton;
+    if (!next.isEnabled())
+      return;
+    next.grabKeyboardFocus();
+    selectClockMode(synced ? ClockModel::Mode::AntiphonClock
+                           : ClockModel::Mode::SyncedToDaw);
+  };
+  addChildComponent(clockGroup);
+
+  if (audioProcessor.hostControl != nullptr) {
+    followTempoToggle = std::make_unique<juce::ToggleButton>(
+        "Reaper follows room tempo");
+    followTempoToggle->setTitle("Reaper follows room tempo");
+    followTempoToggle->setDescription(
+        "When the room's tempo changes, Antiphon sets Reaper's to match");
+    followTempoToggle->setTooltip(
+        "Antiphon sets Reaper's project tempo to the room's when you join and "
+        "whenever the room changes it, so you stay synced. Turn it off to keep "
+        "your project's tempo; you then hear the room unsynced until it "
+        "matches.");
+    followTempoToggle->setToggleState(audioProcessor.tempoFollow.enabled,
+                                      juce::dontSendNotification);
+    followTempoToggle->onClick = [this]() {
+      audioProcessor.setFollowRoomTempo(followTempoToggle->getToggleState());
+    };
+    followTempoToggle->setRepaintsOnMouseActivity(true);
+    addChildComponent(*followTempoToggle);
+
+    loopIntervalButton = std::make_unique<juce::TextButton>("Loop one interval");
+    loopIntervalButton->setTitle("Loop one interval");
+    loopIntervalButton->setDescription(
+        "Set Reaper's loop to the interval playing now");
+    loopIntervalButton->setTooltip(
+        "Sets Reaper's loop to exactly one interval, starting at the one "
+        "playing now, so a looped project stays on the room's grid.");
+    loopIntervalButton->onClick = [this]() { loopOneInterval(); };
+    loopIntervalButton->setRepaintsOnMouseActivity(true);
+    addChildComponent(*loopIntervalButton);
+  }
+
+  transportButton.setButtonText("Play");
+  transportButton.setTitle("Play");
+  transportButton.setToggleable(true);
+  transportButton.onClick = [this]() { toggleAntiphonPlay(); };
   transportButton.setRepaintsOnMouseActivity(true);
-  addChildComponent(transportButton);
+  addAndMakeVisible(transportButton);
   refreshTransportButton();
+  refreshClockControls();
 
   // Compact toolbar groups
   channelGroupLabel.setText("Channel:", juce::dontSendNotification);
@@ -294,11 +357,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   chipActionButton.onClick = [this]() {
     // A vote is only ever sent from here -- never as a side effect of the DAW
     // tempo changing.
-    if (chipDawBpm > 0) {
-      audioProcessor.ninjamClient.sendChatMessage("!vote bpm " +
-                                                  juce::String(chipDawBpm));
-      dismissedDawBpm = chipDawBpm;
-    } else if (pendingVote.valid) {
+    if (pendingVote.valid) {
       audioProcessor.ninjamClient.sendChatMessage(
           juce::String("!vote ") + (pendingVote.isBpm ? "bpm " : "bpi ") +
           juce::String(pendingVote.target));
@@ -320,9 +379,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   chipDismissButton.setTitle("Dismiss");
   chipDismissButton.setDescription("Hide this prompt until the value changes");
   chipDismissButton.onClick = [this]() {
-    if (chipDawBpm > 0) {
-      dismissedDawBpm = chipDawBpm;
-    } else if (pendingVote.valid) {
+    if (pendingVote.valid) {
       dismissedVoteTarget = pendingVote.target;
       dismissedVoteIsBpm = pendingVote.isBpm;
       pendingVote = {};
@@ -455,17 +512,137 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
 
 void AntiphonEditor::refreshTransportButton() {
   const bool playing = audioProcessor.localTransportPlaying.load();
-  transportButton.setButtonText(playing ? "Stop" : "Play");
   transportButton.setToggleState(playing, juce::dontSendNotification);
-  transportButton.setTitle(playing ? "Stop the transport"
-                                   : "Start the transport");
-  transportButton.setDescription(
-      playing ? "Stop the interval clock, the metronome and transmission"
-              : "Start the interval clock, so the metronome runs and, when "
-                "connected, audio is transmitted");
+  const bool plugin = !audioProcessor.isStandaloneApp();
+  const bool synced = audioProcessor.clockMode.load() ==
+                      (int)ClockModel::Mode::SyncedToDaw;
+  // Synced, the DAW's transport is the one that plays; Play would only take
+  // you off it. Disabled, with the reason, rather than quietly switching.
+  const bool enabled = !(plugin && synced);
+  transportButton.setEnabled(enabled);
+  juce::String d = playing ? "Playing on Antiphon's clock"
+                           : "Stopped. Starts Antiphon's clock";
+  if (!enabled)
+    d = "Follows the DAW transport while synced";
+  transportButton.setDescription(d + ". Shortcut: " +
+                                 Shortcuts::globalModifierName() + "G");
   transportButton.setTooltip(
-      "The standalone's own transport. It drives the interval grid the way the "
-      "DAW transport does in the plugin.\nConnecting starts it for you.");
+      plugin ? "Plays the jam on Antiphon's own clock, away from the DAW. "
+               "Disabled while synced: the DAW's transport plays then."
+             : "The standalone's own transport. It drives the interval grid "
+               "the way the DAW transport does in the plugin.\nConnecting "
+               "starts it for you.");
+}
+
+void AntiphonEditor::refreshClockControls() {
+  if (!hasClockRow())
+    return;
+  const bool connected = audioProcessor.ninjamClient.isConnected();
+  const bool synced = audioProcessor.clockMode.load() ==
+                      (int)ClockModel::Mode::SyncedToDaw;
+  syncedToDawButton.setToggleState(synced, juce::dontSendNotification);
+  antiphonClockButton.setToggleState(!synced, juce::dontSendNotification);
+  // Each join starts synced (onConnected), so a choice made offline would be
+  // overwritten the moment it mattered. Say so instead of accepting it.
+  const juce::String why = connected ? juce::String() : ". Applies while connected";
+  syncedToDawButton.setEnabled(connected);
+  antiphonClockButton.setEnabled(connected);
+  syncedToDawButton.setDescription("1 of 2" + why);
+  antiphonClockButton.setDescription("2 of 2" + why);
+  clockGroup.setDescription(connected ? juce::String()
+                                      : juce::String("Applies while connected"));
+  if (loopIntervalButton != nullptr)
+    loopIntervalButton->setEnabled(
+        connected && audioProcessor.publishedIntervalStartPpq.load() >= 0.0);
+  if (followTempoToggle != nullptr)
+    followTempoToggle->setToggleState(audioProcessor.tempoFollow.enabled,
+                                      juce::dontSendNotification);
+}
+
+void AntiphonEditor::selectClockMode(ClockModel::Mode m) {
+  if (!audioProcessor.ninjamClient.isConnected()) {
+    announcer.say("The clock applies while connected.", true);
+    refreshClockControls();
+    return;
+  }
+  // Leaving the DAW keeps playing: the jam carries on from where it was, on
+  // Antiphon's clock, rather than stopping under you.
+  if (m == ClockModel::Mode::AntiphonClock &&
+      audioProcessor.clockMode.load() != (int)m)
+    audioProcessor.localTransportPlaying.store(true);
+  audioProcessor.clockMode.store((int)m);
+  refreshClockControls();
+  // Nothing is said here: the state changes, and the transition says where you
+  // landed (SyncAnnouncements::onTransition).
+}
+
+void AntiphonEditor::toggleAntiphonPlay() {
+  const bool plugin = !audioProcessor.isStandaloneApp();
+  const bool connected = audioProcessor.ninjamClient.isConnected();
+  if (plugin && !connected) {
+    announcer.say("Play applies while connected.", true);
+    return;
+  }
+  if (plugin && audioProcessor.clockMode.load() ==
+                    (int)ClockModel::Mode::SyncedToDaw) {
+    // The shortcut reaches here even while the button is disabled. It means
+    // "play on Antiphon's clock", and selecting that clock already plays.
+    selectClockMode(ClockModel::Mode::AntiphonClock);
+    return;
+  }
+  const bool playing = !audioProcessor.localTransportPlaying.load();
+  audioProcessor.localTransportPlaying.store(playing);
+  refreshTransportButton();
+  // Connected, the clock's transition is announced; offline nothing else is.
+  if (!connected)
+    announcer.say(playing ? "Playing" : "Stopped", true);
+}
+
+void AntiphonEditor::loopOneInterval() {
+  auto *host = audioProcessor.hostControl.get();
+  const double start = audioProcessor.publishedIntervalStartPpq.load();
+  const int bpi = audioProcessor.internalBpi.load();
+  if (host == nullptr || start < 0.0 || bpi <= 0) {
+    announcer.say("Antiphon can set the loop only while synced to Reaper "
+                  "and playing.",
+                  true);
+    return;
+  }
+  if (!host->setLoopBeats(start, start + bpi)) {
+    announcer.say("Reaper did not accept the loop.", true);
+    return;
+  }
+  // Bars as Reaper numbers them, assuming 4/4 -- the meter is not something
+  // the host tells a plugin -- so this is beats when the interval is not
+  // whole bars.
+  if (bpi % 4 == 0) {
+    const int first = (int)std::lround(start / 4.0) + 1;
+    announcer.say("Reaper loop set to one interval, bars " +
+                      juce::String(first) + " to " +
+                      juce::String(first + bpi / 4 - 1) + ".",
+                  true);
+  } else {
+    const int first = (int)std::lround(start) + 1;
+    announcer.say("Reaper loop set to one interval, beats " +
+                      juce::String(first) + " to " +
+                      juce::String(first + bpi - 1) + ".",
+                  true);
+  }
+}
+
+bool AntiphonEditor::ClockGroup::keyPressed(const juce::KeyPress &k) {
+  if (k.getModifiers().isAnyModifierKeyDown() || !onArrow)
+    return false;
+  const int code = k.getKeyCode();
+  if (code == juce::KeyPress::leftKey || code == juce::KeyPress::upKey) {
+    onArrow(-1);
+    return true;
+  }
+  if (code == juce::KeyPress::rightKey || code == juce::KeyPress::downKey) {
+    onArrow(+1);
+    return true;
+  }
+  return false;
 }
 
 void AntiphonEditor::applyHostContextToControls() {
@@ -504,7 +681,7 @@ void AntiphonEditor::applyHostContextToControls() {
   const juce::String why = "Available when Antiphon runs as a plugin in a DAW";
 
   for (auto *b : {&addChannelButton, &addInBusButton, &removeInBusButton,
-                  &addOutBusButton, &removeOutBusButton, &syncButton}) {
+                  &addOutBusButton, &removeOutBusButton}) {
     b->setEnabled(false);
     b->setTooltip(why);
     // The reason belongs in the accessible description too: a reader that only
@@ -523,9 +700,6 @@ void AntiphonEditor::applyHostContextToControls() {
   channelGroupLabel.setText("Ch:", juce::dontSendNotification);
   inputBusGroupLabel.setText("In:", juce::dontSendNotification);
   outputBusGroupLabel.setText("Out:", juce::dontSendNotification);
-
-  // The standalone gets a transport of its own where the plugin has Sync.
-  transportButton.setVisible(true);
 
   dawOnlyNote.setVisible(true);
   dawOnlyNote.setTitle("Plugin only");
@@ -943,6 +1117,32 @@ void AntiphonEditor::resized() {
   auto toolbar = area.removeFromBottom(28);
   area.removeFromBottom(10); // spacer above toolbar
 
+  // The clock row, above the toolbar: the plugin's choice of clock, Play, and
+  // what Reaper lets Antiphon do. Its own row because the toolbar has no room
+  // for it at the minimum width, and because it is one subject.
+  if (hasClockRow()) {
+    auto row = area.removeFromBottom(28);
+    area.removeFromBottom(6);
+    clockGroup.setVisible(true);
+    clockGroup.setBounds(row.removeFromLeft(320));
+    auto g = clockGroup.getLocalBounds();
+    clockLabel.setBounds(g.removeFromLeft(48));
+    g.removeFromLeft(4);
+    syncedToDawButton.setBounds(g.removeFromLeft(126).reduced(0, 4));
+    g.removeFromLeft(4);
+    antiphonClockButton.setBounds(g.removeFromLeft(136).reduced(0, 4));
+    row.removeFromLeft(6);
+    transportButton.setBounds(row.removeFromLeft(52).reduced(0, 4));
+    if (followTempoToggle != nullptr) {
+      row.removeFromLeft(16);
+      followTempoToggle->setVisible(true);
+      followTempoToggle->setBounds(row.removeFromLeft(190).reduced(0, 4));
+      row.removeFromLeft(6);
+      loopIntervalButton->setVisible(true);
+      loopIntervalButton->setBounds(row.removeFromLeft(130).reduced(0, 4));
+    }
+  }
+
   // Laid out from both ends rather than left to right. Consuming only from the
   // left made the last controls run off the window -- "Save Tx Audio" was drawn
   // outside its own 60 px button -- and the failure was invisible until you
@@ -981,11 +1181,10 @@ void AntiphonEditor::resized() {
   // visible, so asking the label would silently give it no bounds.
   // The transport comes first and is a live control, so the note must not
   // prefix it -- it belongs to the inert run that follows.
-  if (standalone)
+  if (standalone) {
     transportButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
-  else
-    syncButton.setBounds(toolbar.removeFromLeft(52).reduced(0, 4));
-  toolbar.removeFromLeft(10);
+    toolbar.removeFromLeft(10);
+  }
 
   if (standalone) {
     dawOnlyNote.setBounds(toolbar.removeFromLeft(66));
@@ -1324,8 +1523,34 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
     return true;
   }
 
-  if (action == Shortcuts::Action::ArmSync) {
+  if (action == Shortcuts::Action::SyncNow) {
     runSyncNow();
+    return true;
+  }
+
+  if (action == Shortcuts::Action::SayStatus) {
+    announcer.say(
+        SyncAnnouncements::status(
+            (ClockModel::State)audioProcessor.publishedClockState.load(),
+            syncContext()),
+        true);
+    return true;
+  }
+
+  if (action == Shortcuts::Action::ToggleAntiphonPlay) {
+    toggleAntiphonPlay();
+    return true;
+  }
+
+  if (action == Shortcuts::Action::ToggleClockMode) {
+    if (!hasClockRow()) {
+      announcer.say("The standalone has only Antiphon's clock.", true);
+      return true;
+    }
+    selectClockMode(audioProcessor.clockMode.load() ==
+                            (int)ClockModel::Mode::SyncedToDaw
+                        ? ClockModel::Mode::AntiphonClock
+                        : ClockModel::Mode::SyncedToDaw);
     return true;
   }
 
@@ -1651,7 +1876,6 @@ void AntiphonEditor::updateTempoChip() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
   if (!connected) {
     pendingVote = {};
-    chipDawBpm = 0;
     setChipVisible(false);
     return;
   }
@@ -1659,7 +1883,6 @@ void AntiphonEditor::updateTempoChip() {
   // A server vote in progress outranks our own suggestion: someone has already
   // started one, and offering a competing proposal would split the vote.
   if (pendingVote.valid) {
-    chipDawBpm = 0;
     const juce::String base = "Vote: " + juce::String(pendingVote.target) +
                               " " + (pendingVote.isBpm ? "BPM" : "BPI");
     juce::String t = base;
@@ -1673,11 +1896,9 @@ void AntiphonEditor::updateTempoChip() {
   }
 
   // Then a key the chords imply but nobody has declared. Below a live vote,
-  // because a vote is a decision in progress and this is only an observation;
-  // above the DAW tempo, because it is about the music rather than the setup.
+  // because a vote is a decision in progress and this is only an observation.
   if (keyFromChords.confident && keyFromChords.key != sessionKey &&
       keyFromChords.key != dismissedKeyGuess) {
-    chipDawBpm = 0;
     const juce::String t =
         "These chords look like " + MusicalKey::displayName(keyFromChords.key);
     // The accessible title has to CONTAIN the visible label, not merely mean
@@ -1688,27 +1909,9 @@ void AntiphonEditor::updateTempoChip() {
     return;
   }
 
-  // Otherwise: the DAW is at a different tempo from the server. This only
-  // offers the vote -- changing your DAW tempo never casts one.
-  const int serverBpm = audioProcessor.publishedActiveBpm.load();
-  const int hostBpm = (int)std::lround(audioProcessor.hostBpm);
-  // A tempo the server would refuse is not worth offering: an out-of-range
-  // `!vote` is answered with a complaint about the command's parameters, which
-  // tells a player nothing about the real problem. A DAW at 30 BPM is ordinary.
-  const bool worthProposing =
-      !audioProcessor.isStandaloneApp() && hostBpm > 0 && serverBpm > 0 &&
-      hostBpm != serverBpm && hostBpm != dismissedDawBpm &&
-      ChatFormat::isVotableBpm(hostBpm);
-  if (worthProposing) {
-    chipDawBpm = hostBpm;
-    const juce::String t = "Your DAW is at " + juce::String(hostBpm) + " BPM";
-    showChip(t, "Propose", "Propose this tempo",
-             "Vote to change the server tempo to " + juce::String(hostBpm) +
-                 " BPM");
-    return;
-  }
-
-  chipDawBpm = 0;
+  // A DAW at a different tempo is not offered as a vote: it read as the room
+  // asking you to vote, when the problem was your DAW. The sync status says
+  // what to do about that instead (SyncAnnouncements.h).
   setChipVisible(false);
 }
 
@@ -1778,13 +1981,17 @@ void AntiphonEditor::updateToolbarStates() {
   // longer running is the UI telling a lie about the one thing users most
   // want to be sure of.
 
+  // Connecting starts the standalone's transport, so Play follows the
+  // processor rather than its last click.
+  refreshTransportButton();
+
   // Everything below is DAW-only and was settled once by
   // applyHostContextToControls(). Re-enabling it here every timer tick would
   // quietly undo that.
   if (audioProcessor.isStandaloneApp())
     return;
 
-  syncButton.setEnabled(audioProcessor.ninjamClient.isConnected());
+  refreshClockControls();
 
   // Under AU the bus buttons were disabled once, with their reason, by
   // applyHostContextToControls(). Re-enabling them on a tick would undo that

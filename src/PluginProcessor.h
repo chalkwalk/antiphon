@@ -309,6 +309,9 @@ public:
 
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
+  // Where the current interval began, in the host's own beats, while synced to
+  // the playhead; negative otherwise. "Loop one interval" loops it.
+  std::atomic<double> publishedIntervalStartPpq{-1.0};
   // Counts intervals since the clock was reset, so a press can be matched to
   // the interval it happened in.
   std::atomic<juce::int64> publishedIntervalIndex{0};

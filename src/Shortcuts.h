@@ -29,7 +29,10 @@ inline juce::String globalModifierName() {
 enum class Action {
   None,
   FocusChat,              // Ctrl+Alt+C
-  ArmSync,                // Ctrl+Alt+S
+  SyncNow,                // Ctrl+Alt+S
+  SayStatus,              // Ctrl+Alt+I
+  ToggleAntiphonPlay,     // Ctrl+Alt+G -- not Enter: 0x0D is a control char
+  ToggleClockMode,        // Ctrl+Alt+F
   WriteAudit,             // Ctrl+Alt+A
   RetroactiveTransmit,    // Ctrl+Alt+Shift+T
   OpenConnect,            // Ctrl+Alt+O
@@ -147,7 +150,13 @@ inline Action match(int keyCode, bool ctrlDown, bool altDown,
     case 'C':
       return Action::FocusChat;
     case 'S':
-      return Action::ArmSync;
+      return Action::SyncNow;
+    case 'I':
+      return Action::SayStatus;
+    case 'G':
+      return Action::ToggleAntiphonPlay;
+    case 'F':
+      return Action::ToggleClockMode;
     case 'O':
       return Action::OpenConnect;
     case 'P':
