@@ -20,7 +20,6 @@ target_sources(NinjamTests
         TestMain.cpp
         MetronomeVoiceTests.cpp
         GainUtilsTests.cpp
-        SyncStateTests.cpp
         ClockModelTests.cpp
         AudioDeviceStartupTests.cpp
         ShortcutsTests.cpp
@@ -31,7 +30,6 @@ target_sources(NinjamTests
         LeadLineTests.cpp
         ClipsortLogTests.cpp
         StemRenderTests.cpp
-        RunGateTests.cpp
         HostGridTests.cpp
         PlayheadGridTests.cpp
         GainRampTests.cpp

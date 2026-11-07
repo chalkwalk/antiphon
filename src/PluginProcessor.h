@@ -2,9 +2,9 @@
 
 #include "GainRamp.h"
 #include "IntervalClock.h"
-#include "RunGate.h"
+#include "ClockModel.h"
 #include "IntervalProbe.h"
-#include "SyncState.h"
+#include "PlayheadGrid.h"
 #include "TransmitSpans.h"
 #include "MetronomeVoice.h"
 #include "NinjamClient.h"
@@ -224,8 +224,24 @@ public:
   // timeline to lock to and the free-running clock is all there is.
   bool hostHasPpq = false;
   bool hostIsPlaying = false;
-  // Audio thread only: the edge that starts the offline grid at zero.
-  bool gridWasRunning = false;
+  bool hostLooping = false;
+  double hostLoopStartPpq = 0.0;
+  double hostLoopEndPpq = 0.0;
+  // Audio thread only: which grid ran last block, so a change of source can
+  // continue the position rather than restart it.
+  ClockModel::GridSource lastGrid = ClockModel::GridSource::None;
+  // Audio thread only: where the playhead was at the end of the last block, to
+  // tell a loop wrap or a jump from ordinary playing.
+  double lastBlockEndPpq = 0.0;
+  bool lastBlockEndValid = false;
+  // Audio thread only: the interval position at the end of the last block.
+  double lastPhaseBeats = 0.0;
+  // Audio thread only: samples captured into the interval being built. Every
+  // upload is full length, so a jump pads it rather than leaving it short.
+  int samplesCapturedThisInterval = 0;
+  // Audio thread only: the room BPM the grid ran at last block.
+  int lastClockBpm = 0;
+  PlayheadGrid::Position playheadPosition;
   // Audio thread only: the edge that joins a room, so the transmit ring can be
   // emptied of anything captured before it.
   bool wasInJam = false;
@@ -245,25 +261,31 @@ public:
   juce::AudioBuffer<float> inputSnapshot;
   std::vector<IntervalClock::BlockSegment> captureSegments;
 
-  // DAW sync. We lock the interval grid to the transport START rather than the
-  // timeline: a clip/session view advances a timeline that is musically
-  // meaningless, and jogging during a live jam is not a real use case.
-  SyncState syncState;                    // audio thread only
-  std::atomic<int> publishedSyncState{0}; // SyncState::State, for the UI
-  std::atomic<bool> syncRequested{false}; // set by the Sync button
+  // Synced to the DAW, or not -- see ClockModel.h. The machine is the audio
+  // thread's; the mode is the player's choice, written by the UI, and starts
+  // as Synced to DAW on every join rather than being saved with the project.
+  ClockModel::Machine clockMachine;            // audio thread only
+  std::atomic<int> clockMode{0};               // ClockModel::Mode
+  std::atomic<int> publishedClockState{0};     // ClockModel::State, for the UI
+  // Bumped every time the position is re-taken from the playhead (entering
+  // Synced, or a jump while synced), so the UI can say where you landed.
+  std::atomic<int> resyncCount{0};
+  // Bumped when the grid applies a new room BPM, which is when a host that
+  // follows the room's tempo should be told.
+  std::atomic<int> gridTempoChangeCount{0};
+  // Millisecond counter at the last room tempo change Antiphon is setting in
+  // the DAW itself; the DAW lags by a message-thread hop, which is not a desync.
+  std::atomic<juce::uint32> roomTempoChangedMs{0};
+  static constexpr juce::uint32 kTempoGraceMs = 250;
+  // Published for the UI, which must not read the audio thread's doubles.
+  std::atomic<double> publishedHostBpm{0.0};
+  std::atomic<bool> publishedHostPlaying{false};
 
-  void requestSync() { syncRequested.store(true); }
-
-  // The standalone's own transport. The plugin uses the host's; the standalone
-  // had none, so its grid ran purely on being connected and there was nothing
-  // to start or stop. Connecting turns it on, so existing behaviour is
-  // unchanged and nobody joins a room to silence.
+  // Antiphon's own transport: the standalone's only one, and the plugin's Play
+  // on Antiphon's clock. In the standalone, connecting turns it on, so nobody
+  // joins a room to silence.
   std::atomic<bool> localTransportPlaying{false};
 
-  // Whichever transport applies to this build.
-  bool transportIsPlaying() const {
-    return isStandaloneApp() ? localTransportPlaying.load() : hostIsPlaying;
-  }
 
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
@@ -336,6 +358,9 @@ private:
   // every local channel's ring. Called once per segment of a block so that a
   // transmitted interval ends on the exact sample, not on a block boundary.
   void captureInputRange(int startSample, int count);
+  // Zeros into every channel's transmit ring: the hole a forward jump tears in
+  // an interval, or the padding that keeps an upload full length.
+  void captureSilence(int count);
 
   int64_t testToneSample = 0;
   ninjam::IntervalProbe testProbe;

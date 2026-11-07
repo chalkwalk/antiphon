@@ -160,6 +160,13 @@ public:
                             int channelIndex, bool mono);
   void getDecodedAudio(juce::AudioBuffer<float> &buffer);
 
+  // Audio thread only. Moves every playing interval to `samplePos` within it,
+  // for a jump to the DAW's playhead: the room's interval is played from the
+  // matching point rather than restarted, so you are on their beat at once. A
+  // slot with nothing playing stays silent -- a jump never brings back an
+  // interval already played.
+  void seekPlayback(int samplePos);
+
   // Whether a channel is subscribed to the moment it is first seen. Set before
   // connecting.
   //

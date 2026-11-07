@@ -269,9 +269,33 @@ void AntiphonAudioProcessor::injectTestTone(int numSamples) {
   testToneSample += numSamples;
 }
 
+void AntiphonAudioProcessor::captureSilence(int count) {
+  if (count <= 0)
+    return;
+  samplesCapturedThisInterval += count;
+  const int numChannels = audioChannelCount.load(std::memory_order_acquire);
+  for (int ci = 0; ci < numChannels; ++ci) {
+    auto &lc = *audioChannels[(std::size_t)ci];
+    if (lc.fifo.getFreeSpace() < count)
+      continue;
+    auto &spans = lc.spans[(std::size_t)lc.writeSpanIndex.load()];
+    spans.setStateAt(lc.fifo.getNumReady(), lc.xmitEnabled.load());
+    int s1, n1, s2, n2;
+    lc.fifo.prepareToWrite(count, s1, n1, s2, n2);
+    for (int ch = 0; ch < 2; ++ch) {
+      if (n1 > 0)
+        lc.ring.clear(ch, s1, n1);
+      if (n2 > 0)
+        lc.ring.clear(ch, s2, n2);
+    }
+    lc.fifo.finishedWrite(n1 + n2);
+  }
+}
+
 void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
   if (count <= 0)
     return;
+  samplesCapturedThisInterval += count;
 
   const int numInBuses = getBusCount(true);
   const int numChannels = audioChannelCount.load(std::memory_order_acquire);
@@ -382,8 +406,15 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       hostHasPpq = info->getPpqPosition().hasValue();
       if (hostHasPpq)
         hostPpqPosition = *info->getPpqPosition();
+      hostLooping = info->getIsLooping();
+      if (auto loop = info->getLoopPoints()) {
+        hostLoopStartPpq = loop->ppqStart;
+        hostLoopEndPpq = loop->ppqEnd;
+      }
     }
   }
+  publishedHostBpm.store(hostBpm, std::memory_order_relaxed);
+  publishedHostPlaying.store(hostIsPlaying, std::memory_order_relaxed);
 
   // 2. Snapshot every input channel before anything overwrites it.
   //    JUCE aliases input and output buses in the same buffer, so clearing the
@@ -489,12 +520,13 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // is a PRINCIPLES 7 violation in its own right -- but it fires once per
   // interval rather than per block, and removing it means the redesign tracked
   // as *Lock-free TX handoff* in ROADMAP.md. The lock is gone; the post is not.
-  auto fireCaptureLambdas = [this](const RunGate &postGate) {
+  auto fireCaptureLambdas = [this](bool postInJamNow) {
     // inJam is read HERE and captured by value. Re-reading it inside the
     // lambda would let a connection landing between the boundary and the
     // message thread's turn transmit an interval that was captured offline.
     // as it plays, which is what lets a one-interval tap exist.
-    const bool postInJam = postGate.inJam;
+    const bool postInJam = postInJamNow;
+    samplesCapturedThisInterval = 0;
 
     const int numChannels = audioChannelCount.load(std::memory_order_acquire);
     for (int ci = 0; ci < numChannels; ++ci) {
@@ -558,8 +590,8 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // otherwise yank the interval clock mid-interval and discard seconds of
   // un-played audio.
   // Declared out here because the remote mix below sits outside the clock
-  // block; assigned inside, once SyncState has been updated for this block.
-  RunGate gate;
+  // block; assigned inside, once the clock model has decided this block.
+  ClockModel::Outputs clock;
 
   double sampleRate = getSampleRate();
   if (sampleRate > 0.0) {
@@ -584,97 +616,164 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       beatFlashIntensity.store(0.0f);
     }
 
-    // Sync state: decides whether we are actually in the jam, and resets the
-    // interval clock on the transport-start edge we were armed for.
-    SyncState::Inputs si;
-    si.connected = ninjamClient.isConnected();
-    si.transportPlaying = hostIsPlaying;
-    si.syncRequested = syncRequested.exchange(false);
-    si.hasTransport = !isStandaloneApp() && getPlayHead() != nullptr;
-    // Compare at whole-BPM resolution; the server only carries an integer.
-    si.tempoMatches =
-        !si.hasTransport || (int)std::lround(hostBpm) == internalBpm.load();
-
-    if (syncState.update(si)) {
-      intervalClock.reset();
-      metronomeVoice.reset();
+    // Synced to the DAW, or not (ClockModel.h). Recomputed every block from
+    // live state, so a connection landing or dropping takes effect at once.
+    const bool connected = ninjamClient.isConnected();
+    const bool standalone = isStandaloneApp();
+    ClockModel::Inputs clockIn;
+    clockIn.connected = connected;
+    clockIn.standalone = standalone;
+    clockIn.mode = (ClockModel::Mode)clockMode.load(std::memory_order_relaxed);
+    clockIn.antiphonPlaying =
+        localTransportPlaying.load(std::memory_order_relaxed);
+    clockIn.dawPlaying = hostIsPlaying;
+    clockIn.dawHasPosition =
+        !standalone && getPlayHead() != nullptr && hostHasPpq;
+    clockIn.dawBpm = hostBpm;
+    clockIn.roomBpm = intervalClock.getBpm();
+    {
+      const auto stamp = roomTempoChangedMs.load(std::memory_order_relaxed);
+      clockIn.inTempoGrace =
+          stamp != 0 &&
+          juce::Time::getMillisecondCounter() - stamp < kTempoGraceMs;
     }
-    publishedSyncState.store((int)syncState.get());
+    clock = clockMachine.update(clockIn);
+    publishedClockState.store((int)clock.state, std::memory_order_relaxed);
 
-    // Three separate questions, which used to be one. See RunGate.h: the
-    // transport drives the grid, the connection decides what happens to the
-    // audio. Recomputed every block from live state, so a connection landing or
-    // dropping takes effect immediately without anything having to remember.
-    gate = computeRunGate(ninjamClient.isConnected(), syncState.isRunning(),
-                          transportIsPlaying());
+    using ClockModel::GridSource;
+    const GridSource grid = clock.grid;
+    const bool gridRunning = grid != GridSource::None;
+    const bool fromHost =
+        grid == GridSource::Playhead || grid == GridSource::HostOffline;
 
-    // Offline in a host, the host's timeline owns the grid outright.
-    //
-    // Connected, it cannot: matching njclient's truncated interval to the
-    // sample is what keeps us aligned with everyone else in the room, and the
-    // local metronome is the sole authority for swaps (PRINCIPLES 9). Offline
-    // there is nobody to be aligned with and two error terms pulling us off
-    // the DAW's grid -- an integer tempo against the host's fractional one,
-    // worth seconds over a take, and the truncation, worth milliseconds. See
-    // HostGrid.h. Deriving every answer from the reported position leaves
-    // nothing to accumulate, and follows tempo automation and loop jumps for
-    // free.
-    const bool useHostGrid = !si.connected && si.hasTransport && hostHasPpq;
+    const double hostBeatsPerSample =
+        HostGrid::beatsPerSample(hostBpm, sampleRate);
 
-    // Free-running only: with the host grid there is no accumulator to zero,
-    // and the downbeat is the host's bar rather than wherever play was pressed
-    // -- which is what makes a practice recording drop straight onto the DAW's
-    // timeline. In the standalone our clock *is* the timeline, so the edge is
-    // still the right place to start it.
-    if (gate.gridRunning && !gridWasRunning && !si.connected && !useHostGrid) {
-      intervalClock.reset();
-      metronomeVoice.reset();
+    // Where the playhead is, as the grid reads it. Following it through a
+    // loop wrap is continuous time; any other move is a jump (PlayheadGrid.h).
+    bool jumped = clock.jumpToPlayhead;
+    if (grid == GridSource::Playhead) {
+      if (clock.jumpToPlayhead)
+        playheadPosition.observe(hostPpqPosition, hostPpqPosition, false, 0, 0);
+      else if (lastBlockEndValid &&
+               playheadPosition.observe(hostPpqPosition, lastBlockEndPpq,
+                                        hostLooping, hostLoopStartPpq,
+                                        hostLoopEndPpq) ==
+                   PlayheadGrid::Move::Jump)
+        jumped = true;
     }
-    gridWasRunning = gate.gridRunning;
+    const double gridPpq = grid == GridSource::Playhead
+                               ? playheadPosition.musicalPpq(hostPpqPosition)
+                               : hostPpqPosition;
+
+    // The counted clock picks up where another grid left off, so leaving the
+    // playhead (the DAW stopped, or the tempo moved) is not a jump. Starting
+    // from nothing starts at beat 1.
+    const bool counted =
+        grid == GridSource::OwnClock || grid == GridSource::StandaloneOwn;
+    if (counted && grid != lastGrid) {
+      if (lastGrid == GridSource::None) {
+        intervalClock.reset();
+        metronomeVoice.reset();
+      } else if (lastGrid != GridSource::OwnClock &&
+                 lastGrid != GridSource::StandaloneOwn) {
+        intervalClock.seekToBeats(lastPhaseBeats);
+      }
+    }
+    // With the host driving, IntervalClock is never advanced -- so it never
+    // reaches an interval start, and setTempo only applies a change there.
+    // Offline nobody is aligned with us, so a change may land at once. Synced,
+    // it lands at the playhead grid's next boundary, below.
+    if (grid == GridSource::HostOffline)
+      intervalClock.reset();
+
+    const int activeBpi = intervalClock.getBpi();
+    const int intervalLen = intervalClock.samplesPerInterval();
+    auto phaseNow = [&]() -> double {
+      return fromHost ? HostGrid::phaseBeatsAt(gridPpq, activeBpi)
+                      : intervalClock.phaseBeats();
+    };
+    auto phaseToSamples = [&](double beats) -> int {
+      return activeBpi > 0 ? (int)std::llround(beats / (double)activeBpi *
+                                               (double)intervalLen)
+                           : 0;
+    };
 
     // Joining a room discards whatever is already in the transmit ring.
     //
     // Capture runs for practice as well as for the jam, so while practice is
     // on the transmit ring is being filled too -- it is simply never posted.
     // If a connection lands mid-interval, the very next boundary would post an
-    // interval whose first half was played before you joined. It is your own
-    // than a leak, but "the room's first interval of you is partly from before
-    // you arrived" is not behaviour anyone would choose.
-    if (gate.inJam && !wasInJam) {
+    // interval whose first half was played before you joined. The ring is
+    // emptied, then padded with silence up to where the grid is, so the room's
+    // first interval of you is full length and starts on its downbeat.
+    const int targetSamples = phaseToSamples(phaseNow());
+    bool closedAtJump = false;
+    if (clock.inJam && !wasInJam) {
       const int n = audioChannelCount.load(std::memory_order_acquire);
-      for (int ci = 0; ci < n; ++ci) {
-        auto *lc = audioChannels[(std::size_t)ci];
+      for (int ch = 0; ch < n; ++ch) {
+        auto *lc = audioChannels[(std::size_t)ch];
         lc->fifo.reset();
         lc->spans[(std::size_t)lc->writeSpanIndex.load()].beginInterval(
             lc->xmitEnabled.load());
       }
+      samplesCapturedThisInterval = 0;
+      captureSilence(targetSamples);
+    } else if (clock.inJam && jumped) {
+      // A jump to the playhead mid-jam: the upload stays full length and
+      // everything after the jump lands at the right point in the bar.
+      const auto fill = PlayheadGrid::fillForJump(samplesCapturedThisInterval,
+                                                  targetSamples, intervalLen);
+      captureSilence(fill.padBeforeClose);
+      closedAtJump = fill.closeInterval;
+      if (fill.closeInterval) {
+        publishedIntervalIndex.fetch_add(1);
+        fireCaptureLambdas(clock.inJam);
+        ninjamClient.swapIntervalBuffers();
+        ninjamClient.diagSwaps.fetch_add(1);
+      }
+      captureSilence(fill.padAfter);
     }
-    wasInJam = gate.inJam;
-
-    // With the host driving, IntervalClock is never advanced -- so it never
-    // reaches an interval start, and setTempo only applies a change there. A
-    // BPI change would sit pending for the rest of the session. Resetting it
-    // every block keeps it at a boundary so the change lands; it is O(1)
-    // unless the tempo actually moved.
-    if (useHostGrid)
-      intervalClock.reset();
+    if (clock.inJam && jumped)
+      ninjamClient.seekPlayback(targetSamples);
+    if (jumped) {
+      metronomeVoice.reset();
+      resyncCount.fetch_add(1, std::memory_order_relaxed);
+    }
+    wasInJam = clock.inJam;
 
     // The grid actually in force this block, whichever owns it.
-    const int activeBpi = intervalClock.getBpi();
     const double activeBpm =
-        useHostGrid ? hostBpm : (double)intervalClock.getBpm();
-    const double hostBeatsPerSample =
-        HostGrid::beatsPerSample(hostBpm, sampleRate);
+        fromHost ? hostBpm : (double)intervalClock.getBpm();
     const double ppqAtBlockEnd =
         hostPpqPosition + (double)ns * hostBeatsPerSample;
 
-    if (gate.gridRunning) {
+    if (gridRunning) {
       clockEvents.clear();
-      if (useHostGrid)
-        HostGrid::advance(hostPpqPosition, hostBeatsPerSample, activeBpi, ns,
+      if (fromHost)
+        HostGrid::advance(gridPpq, hostBeatsPerSample, activeBpi, ns,
                           clockEvents);
       else
         intervalClock.advance(ns, clockEvents);
+
+      // Synced, a room tempo or BPI change lands at the playhead grid's
+      // boundary: the counted clock is brought to a boundary so the pending
+      // change applies, and the position is re-anchored there so a new BPI
+      // continues seamlessly rather than jumping (PlayheadGrid.h).
+      if (grid == GridSource::Playhead &&
+          (internalBpm.load() != intervalClock.getBpm() ||
+           internalBpi.load() != intervalClock.getBpi())) {
+        for (const auto &e : clockEvents) {
+          if (e.type != IntervalClock::Event::Type::IntervalStart)
+            continue;
+          const bool bpiChanges = internalBpi.load() != intervalClock.getBpi();
+          intervalClock.reset();
+          if (bpiChanges)
+            playheadPosition.onBpiChangeAt(
+                hostPpqPosition + (double)e.sampleOffset * hostBeatsPerSample);
+          break;
+        }
+      }
 
       const float metroGain =
           metronomeEnabled.load() ? metronomeVolume.load() : 0.0f;
@@ -703,9 +802,26 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // The phase bar reads the same grid the click does -- it is the thing you
     // check the click against, so the two disagreeing is worse than either
     // being wrong.
-    publishedPhaseBeats.store(
-        (float)(useHostGrid ? HostGrid::phaseBeatsAt(ppqAtBlockEnd, activeBpi)
-                            : intervalClock.phaseBeats()));
+    const double gridPpqAtBlockEnd =
+        gridPpq + (double)ns * hostBeatsPerSample;
+    lastPhaseBeats =
+        fromHost ? HostGrid::phaseBeatsAt(gridPpqAtBlockEnd, intervalClock.getBpi())
+                 : intervalClock.phaseBeats();
+    publishedPhaseBeats.store((float)lastPhaseBeats);
+    // Synced, the counted clock is kept at the playhead's position. That keeps
+    // a room tempo change pending until the playhead grid's boundary (setTempo
+    // applies at once only at an interval start), and it means leaving the
+    // playhead needs nothing more than carrying on.
+    if (grid == GridSource::Playhead)
+      intervalClock.seekToBeats(lastPhaseBeats);
+    lastBlockEndPpq = ppqAtBlockEnd;
+    lastBlockEndValid = fromHost;
+    lastGrid = grid;
+    if (intervalClock.getBpm() != lastClockBpm) {
+      if (lastClockBpm != 0)
+        gridTempoChangeCount.fetch_add(1, std::memory_order_relaxed);
+      lastClockBpm = intervalClock.getBpm();
+    }
     // Published together with the phase they belong to, so the UI can never
     // divide this interval's progress by the next interval's length. Offline
     // in a host the tempo shown is the host's, because that is the one the
@@ -721,17 +837,22 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // rounds every transmitted interval up to a multiple of the block size --
     // measured against the reference client as roughly +1.3 ms of stretch at
     // each interval seam (work item #27).
-    if (gate.inJam) {
+    if (clock.inJam) {
       IntervalClock::splitAtIntervalStarts(clockEvents, ns, captureSegments);
       for (const auto &seg : captureSegments) {
         if (seg.count > 0) {
           captureInputRange(seg.start, seg.count);
         }
+        // A jump that already closed the interval at this block's first
+        // sample must not close it a second time, empty.
+        if (seg.closesInterval && closedAtJump && seg.start == 0 &&
+            seg.count == 0)
+          continue;
         if (seg.closesInterval) {
           publishedIntervalIndex.fetch_add(1);
-          // The gate is captured by value at post time inside this call.
-          fireCaptureLambdas(gate);
-          if (gate.inJam) {
+          // inJam is captured by value at post time inside this call.
+          fireCaptureLambdas(clock.inJam);
+          if (clock.inJam) {
             ninjamClient.swapIntervalBuffers();
             ninjamClient.diagSwaps.fetch_add(1);
             ninjamClient.intervalBeginSignal.store(false);
@@ -742,8 +863,8 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   }
 
   // 7. Remote audio mix. Gated on being in the jam rather than merely
-  // connected, so a stopped transport stops everything together.
-  if (gate.inJam)
+  // connected: silent only on Antiphon's clock with Play off (ClockModel.h).
+  if (clock.inJam)
     ninjamClient.getDecodedAudio(buffer);
 }
 

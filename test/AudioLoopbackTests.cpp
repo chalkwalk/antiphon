@@ -187,6 +187,78 @@ public:
              "mono source did not produce equal channels");
     }
 
+    beginTest("seekPlayback lands mid-interval, on the room's beat");
+    {
+      // A jump to the playhead mid-interval must play the room's interval
+      // from the matching point, not restart it: the first half of this
+      // interval is silence and the second half a tone, so only a real seek
+      // makes the first block after it loud.
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+      const int len = s.intervalSamples;
+      auto pcm = makeSineBuffer(len, 440.0, 48000.0, 0.5f);
+      for (int ch = 0; ch < 2; ++ch)
+        pcm.clear(ch, 0, len / 2);
+      expect(s.sendInterval(pcm));
+
+      s.client.swapIntervalBuffers();
+      s.client.seekPlayback(len / 2 + 4096);
+      juce::AudioBuffer<float> block(2, 4096);
+      block.clear();
+      s.client.getDecodedAudio(block);
+      const double rms = TestSignal::rms(block.getReadPointer(0), 4096);
+      expect(rms > 0.2, "after the seek the tone should sound at once, rms " +
+                            juce::String(rms, 4));
+    }
+
+    beginTest("an interval padded with silence after a jump arrives full length "
+              "with its audio in place");
+    {
+      // fillForJump pads the head of the interval that starts after a
+      // backward jump. Silence is what Vorbis compresses hardest, and a quiet
+      // interval is the case that decodes late; the padding must still come
+      // back as exactly one interval, with the playing where it was put.
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+      const int len = s.intervalSamples;
+      const int pad = 20000;
+      auto pcm = makeSineBuffer(len, 440.0, 48000.0, 0.5f);
+      for (int ch = 0; ch < 2; ++ch)
+        pcm.clear(ch, 0, pad);
+      expect(s.sendInterval(pcm));
+      expectEquals(s.client.diagLastIntervalSamples.load(), len,
+                   "decoded length");
+      auto out = s.render(len);
+      const double head = TestSignal::rms(out.getReadPointer(0), pad - 2048);
+      const double tail =
+          TestSignal::rms(out.getReadPointer(0) + pad + 2048, len - pad - 4096);
+      expect(head < 1.0e-3, "the padded head is silent, rms " +
+                                juce::String(head, 5));
+      expect(tail > 0.2, "the tone is after the pad, rms " +
+                             juce::String(tail, 4));
+    }
+
+    beginTest("a seek with no interval to play is silent, never a replay");
+    {
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+      const int len = s.intervalSamples;
+      expect(s.sendInterval(makeSineBuffer(len, 440.0, 48000.0, 0.5f)));
+      s.render(len); // plays it out
+
+      s.client.swapIntervalBuffers(); // nothing new has arrived
+      s.client.seekPlayback(len / 2);
+      juce::AudioBuffer<float> block(2, 4096);
+      block.clear();
+      s.client.getDecodedAudio(block);
+      const double rms = TestSignal::rms(block.getReadPointer(0), 4096);
+      expect(rms < 1.0e-5, "the previous interval must not come back, rms " +
+                               juce::String(rms, 6));
+    }
+
     beginTest("volume, mute and solo behave independently");
     {
       AudioSession s;

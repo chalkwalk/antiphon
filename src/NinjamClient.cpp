@@ -1519,6 +1519,19 @@ void NinjamClient::mixSlotRange(int first, int last,
   }
 }
 
+void NinjamClient::seekPlayback(int samplePos) {
+  if (samplePos < 0)
+    samplePos = 0;
+  for (auto &slot : streamSlots) {
+    if (slot.state.load(std::memory_order_acquire) != StreamSlot::kLive ||
+        slot.current == nullptr)
+      continue;
+    // Past what has been decoded so far is fine: the mixer reads only up to
+    // writePos and plays silence until the decode catches up.
+    slot.readPos = std::min(samplePos, slot.current->buffer.getNumSamples());
+  }
+}
+
 void NinjamClient::getDecodedAudio(juce::AudioBuffer<float> &buffer) {
   mixSlotRange(0, kMaxStreams, buffer);
 

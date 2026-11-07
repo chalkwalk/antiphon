@@ -136,7 +136,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       "transport -- the interval grid begins on that downbeat. The timeline "
       "position is deliberately ignored, so this works in clip/session view "
       "as well as with a loop.");
-  syncButton.onClick = [this]() { audioProcessor.requestSync(); };
+  syncButton.onClick = [this]() { audioProcessor.clockMode.store(0); };
   syncButton.setRepaintsOnMouseActivity(true);
   syncButton.setTitle("Sync (" + Shortcuts::globalModifierName() + "S)");
   syncButton.setDescription("Lock the interval grid to the next start of the "
@@ -884,34 +884,16 @@ void AntiphonEditor::paint(juce::Graphics &g) {
             " / " + juce::String(audioProcessor.publishedActiveBpi.load()),
         row3, juce::Justification::centredLeft, 1);
   } else {
-    // Driven by the sync state machine rather than re-derived here, so the text
+    // Driven by the clock model rather than re-derived here, so the text
     // and the audio gating can never disagree about what is happening.
+    // (Interim wording: SyncAnnouncements replaces it.)
     const auto sync =
-        (SyncState::State)audioProcessor.publishedSyncState.load();
-    if (connected && sync != SyncState::State::Disconnected) {
-      juce::Colour c = juce::Colours::grey;
-      juce::String msg = SyncState::describe(sync);
-      switch (sync) {
-      case SyncState::State::TempoMismatch:
-        c = juce::Colours::orange;
-        msg = "DAW tempo does not match - set the DAW to " +
-              juce::String(audioProcessor.internalBpm.load()) + " BPM";
-        break;
-      case SyncState::State::ReadyToSync:
-        c = juce::Colours::yellow;
-        msg = "Tempo matches - press Sync to arm";
-        break;
-      case SyncState::State::WaitingForPlay:
-        c = juce::Colours::yellow;
-        msg = "Armed - start the DAW transport to join";
-        break;
-      case SyncState::State::Running:
-        c = juce::Colours::lightgreen;
-        msg = "In sync";
-        break;
-      default:
-        break;
-      }
+        (ClockModel::State)audioProcessor.publishedClockState.load();
+    if (connected && sync != ClockModel::State::Disconnected) {
+      juce::Colour c = sync == ClockModel::State::Synced
+                           ? juce::Colours::lightgreen
+                           : juce::Colours::orange;
+      juce::String msg = ClockModel::stateName(sync);
       g.setColour(c);
       g.drawFittedText(msg, row3, juce::Justification::centredLeft, 1);
     } else {
@@ -1341,12 +1323,7 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   }
 
   if (action == Shortcuts::Action::ArmSync) {
-    if (syncButton.isEnabled()) {
-      audioProcessor.requestSync();
-      announcer.say("Sync armed. Start the DAW transport to join.", true);
-    } else {
-      announcer.say("Sync is not available yet", true);
-    }
+    audioProcessor.clockMode.store(0);
     return true;
   }
 
@@ -1805,10 +1782,7 @@ void AntiphonEditor::updateToolbarStates() {
   if (audioProcessor.isStandaloneApp())
     return;
 
-  const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
-  syncButton.setEnabled(sync == SyncState::State::ReadyToSync ||
-                        sync == SyncState::State::WaitingForPlay ||
-                        sync == SyncState::State::Running);
+  syncButton.setEnabled(audioProcessor.ninjamClient.isConnected());
 
   // Under AU the bus buttons were disabled once, with their reason, by
   // applyHostContextToControls(). Re-enabling them on a tick would undo that
@@ -1903,7 +1877,7 @@ void AntiphonEditor::relayoutChannelArea() {
 
 bool AntiphonEditor::updateStatusReadout() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
-  const auto sync = (SyncState::State)audioProcessor.publishedSyncState.load();
+  const auto sync = (ClockModel::State)audioProcessor.publishedClockState.load();
   // The running tempo, so the spoken status and the drawn one agree.
   const int bpm = audioProcessor.publishedActiveBpm.load();
   const int bpi = audioProcessor.publishedActiveBpi.load();
@@ -1940,7 +1914,7 @@ bool AntiphonEditor::updateStatusReadout() {
 
     s << (audioProcessor.isStandaloneApp()
               ? juce::String("Running.")
-              : juce::String(SyncState::describe(sync)) + ".");
+              : juce::String(ClockModel::stateName(sync)) + ".");
   }
   const bool statusChanged = s != statusReadout.getStatus();
   statusReadout.setStatus(s);
@@ -1961,7 +1935,7 @@ bool AntiphonEditor::updateStatusReadout() {
                     true);
   }
   if (connected && !audioProcessor.isStandaloneApp()) {
-    const juce::String syncText = SyncState::describe(sync);
+    const juce::String syncText = ClockModel::stateName(sync);
     if (syncText != lastAnnouncedSyncState) {
       lastAnnouncedSyncState = syncText;
       announcer.say(syncText, true);
