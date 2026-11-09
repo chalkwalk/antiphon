@@ -27,6 +27,7 @@ target_sources(NinjamTests
         AudioDeviceStartupTests.cpp
         ShortcutsTests.cpp
         AccessibilityAuditTests.cpp
+        ChatEntryTests.cpp
         ChatFormatTests.cpp
         KeyTagTests.cpp
         SharedContractTests.cpp

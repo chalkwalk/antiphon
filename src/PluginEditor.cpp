@@ -520,12 +520,25 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
       } else {
         audioProcessor.ninjamClient.sendChatMessage(text);
       }
+      chatInput.rememberSent(text);
       chatInput.clear();
     }
     // Sending must not leave the keys somewhere else: the next thing typed is
     // the next message, not a transport command to the DAW.
     chatInput.grabKeyboardFocus();
   };
+  chatInput.namesForCompletion = [this] {
+    juce::StringArray names;
+    const auto self =
+        ChatEntry::typedName(audioProcessor.ninjamClient.getSelfUsername());
+    for (const auto &m : audioProcessor.ninjamClient.getRoomMembers()) {
+      const auto n = ChatEntry::typedName(m.username);
+      if (n.isNotEmpty() && n != self)
+        names.addIfNotAlreadyThere(n);
+    }
+    return names;
+  };
+  chatInput.onSpeak = [this](const juce::String &s) { announcer.say(s, true); };
   chatInput.onFocusChange = [this](bool focused, FocusChangeType) {
     onChatFocusChange(focused);
   };

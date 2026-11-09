@@ -15,6 +15,15 @@ you type is the next message. If the keys leave Antiphon for your DAW,
 Antiphon says "Keys now go to the DAW", because the next key you press may
 start or stop the transport.
 
+**In the message box,** Up and Down step back and forward through what you
+have sent, and Down past the newest gives back what you were typing. Tab
+completes the name you have started -- a bot's or a player's -- with a colon
+after it when it starts the message, which is how you address someone. If
+several names fit, Tab completes as far as they agree and says which. Both
+say what they put in the box, for a screen reader. Tab only completes when
+the word before the cursor starts somebody's name; otherwise it moves on to
+the next control as usual, and Shift+Tab always does.
+
 :::tip Reaper
 A plugin window does not get every key by default: Reaper keeps some, the space
 bar among them, even while you are typing in chat. In the FX window's menu,

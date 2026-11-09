@@ -1364,9 +1364,16 @@ restraint rather than conversation.
       so the band can be heard and talked to before any of it is reachable from
       the plugin. Cheap because the room was designed as a destination rather
       than a mode -- there was nothing to integrate, only something to start.
-- [ ] **Chat entry affordances**: cursor up/down through sent-message history,
+- [x] **Chat entry affordances**: cursor up/down through sent-message history,
       and tab completion of usernames. Addressing a bot means typing its name,
       so completion is not a convenience here -- it is most of the friction.
+      Shipped 2026-11-09: `src/ChatEntry.h` (pure; `test/ChatEntryTests.cpp`),
+      wired in `ChatInputEditor`. Tab completes only when the word before the
+      caret starts a name -- otherwise it moves focus, so the field never traps
+      a keyboard user -- and completes to the name a bot answers to ("Ravo",
+      not "Ravo[keys-bot]"). Both gestures say what they put in the field.
+      Driven by hand under Xvfb against a practice room: "ra" Tab gave
+      "Ravo: ", Ravo answered, Up recalled it, Tab from empty left the field.
 - [x] **Wire the addressing half.** `BotAddress::classify` is called from
       `PracticeBot::handleAddressed` (`src/PracticeBot.cpp:637`), so *who was
       asked* is decided by the measured recogniser. `withoutAddress` strips the

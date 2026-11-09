@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "ChatEntry.h"
+
 // A single-line editable text editor with an accessibility handler designed
 // specifically for screen readers (VoiceOver, NVDA, JAWS), mirroring the
 // architecture of ChatHistoryEditor.
@@ -27,6 +29,48 @@ public:
   // keys are going and say when they stop coming here.
   std::function<void(bool focused, FocusChangeType cause)> onFocusChange;
 
+  // Up and Down walk what was sent; Tab completes a name (ChatEntry). Text set
+  // from code is not reliably read out by a screen reader, so what the field
+  // now says is handed to `onSpeak` as well.
+  std::function<juce::StringArray()> namesForCompletion;
+  std::function<void(const juce::String &)> onSpeak;
+
+  void rememberSent(const juce::String &text) { history.add(text); }
+
+  bool keyPressed(const juce::KeyPress &key) override {
+    const auto mods = key.getModifiers();
+    const bool plain =
+        !mods.isCtrlDown() && !mods.isAltDown() && !mods.isCommandDown();
+    if (plain && !mods.isShiftDown()) {
+      const int code = key.getKeyCode();
+      if (code == juce::KeyPress::upKey || code == juce::KeyPress::downKey) {
+        const auto recalled = code == juce::KeyPress::upKey
+                                  ? history.older(getText())
+                                  : history.newer();
+        if (recalled.has_value()) {
+          setText(*recalled, false);
+          moveCaretToEnd();
+          speak(recalled->isEmpty() ? juce::String("Empty") : *recalled);
+          return true;
+        }
+      } else if (code == juce::KeyPress::tabKey && namesForCompletion) {
+        // Only when there is a name to complete: otherwise Tab moves focus as
+        // it always does, so a keyboard user is never trapped in the field.
+        const auto c = ChatEntry::completeName(getText(), getCaretPosition(),
+                                               namesForCompletion());
+        if (c.applies) {
+          setText(c.text, false);
+          setCaretPosition(c.caret);
+          speak(c.candidates.size() == 1
+                    ? c.candidates[0]
+                    : c.candidates.joinIntoString(", ", 0, 8));
+          return true;
+        }
+      }
+    }
+    return juce::TextEditor::keyPressed(key);
+  }
+
   void focusGained(FocusChangeType cause) override {
     juce::TextEditor::focusGained(cause);
     if (onFocusChange)
@@ -41,6 +85,13 @@ public:
   }
 
 private:
+  ChatEntry::History history;
+
+  void speak(const juce::String &s) const {
+    if (onSpeak)
+      onSpeak(s);
+  }
+
   class ChatInputAccessibilityHandler final
       : public juce::AccessibilityHandler {
   public:

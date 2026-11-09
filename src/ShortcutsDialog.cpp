@@ -72,6 +72,8 @@ void ShortcutsDialog::populateShortcuts() {
   add("X (local active)", "Toggle Transmit for selected local channel");
   add("Up / Down / + / -", "Nudge volume for selected channel (+/- 1 dB)");
   add("Left / Right", "Adjust panning for selected channel");
+  add("Up / Down (in chat box)", "Previous / next message you sent");
+  add("Tab (in chat box)", "Complete the name you have started");
   table.updateContent();
 }
 
