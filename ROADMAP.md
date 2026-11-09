@@ -603,7 +603,9 @@ against us live at 48 kHz, in one host, on one platform, in one format.
 
 ### A listener bot, as a companion repository
 
-*(Idea, 2026-11-06. Not designed yet.)* A bot that joins a room as one user,
+*(Idea, 2026-11-06; designed 2026-11-08 in its own repository,
+**ninjam-balcony** -- local for now, `docs/DESIGN.md` there -- which supersedes
+the sketch below where they differ.)* A bot that joins a room as one user,
 receives the jam, and serves it to any number of people in a browser, so a
 jam can be listened to from a link, perhaps from GitHub Pages. **Not part of
 Antiphon:** a companion for any Ninjam server, in a repository of its own
@@ -626,9 +628,11 @@ The shape so far, all open:
   annotated with who sent it (`listeners: [alice] nice groove`). Needs
   per-listener rate limits, muting one listener, and an off switch the room's
   players can use -- anonymous web users otherwise spam the room through it.
-- **Votes by quorum.** Listeners together hold one vote, cast only when enough
-  connected listeners agree, using the arithmetic already in chalkwalk-ninjam's
-  `Voting.h` -- the audience gets a voice without outvoting the players.
+- **Votes, neutrally.** Listeners do not vote. The bot never changes an
+  outcome: it adds a supporting vote only when the humans alone would pass it,
+  using chalkwalk-ninjam's `Voting.h`, as the jambots do -- or, on a server we
+  configure, logs in with the `H` privilege, which `ninjamsrv` leaves out of
+  the count.
 - **Etiquette.** Broadcasting a jam beyond the room is a consent question: the
   bot says what it is and how many are listening when it joins, and leaves when
   asked.
@@ -640,7 +644,9 @@ The shape so far, all open:
       and BHSPitMonkey/ninjam-js, a JS client that needs Electron or a Chrome
       App for raw TCP (not a web page). Groups that stream today seem to use
       OBS. If something good exists, contribute to it rather than start over.
-- [ ] Design it (brainstorm -> spec), in its own repository.
+- [x] Design it (brainstorm -> spec): the design above, 2026-11-08.
+- [x] Its own repository: ninjam-balcony (local; to GitHub later).
+- [ ] A plan and the build, there.
 
 ## User experience
 
