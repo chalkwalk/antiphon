@@ -378,7 +378,8 @@ int main(int argc, char *argv[]) {
   juce::StringPairArray metadata;
   {
     juce::int64 frame = 0;
-    int lastBpm = 0, lastBpi = 0;
+    int lastBpm = 0;
+    int lastBpi = 0;
     int cueCount = 0;
     int firstBpm = 0;
     juce::int64 totalBeats = 0;

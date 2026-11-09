@@ -330,7 +330,10 @@ void AntiphonAudioProcessor::captureSilence(int count) {
       continue;
     auto &spans = lc.spans[(std::size_t)lc.writeSpanIndex.load()];
     spans.setStateAt(lc.fifo.getNumReady(), lc.xmitEnabled.load());
-    int s1, n1, s2, n2;
+    int s1;
+    int n1;
+    int s2;
+    int n2;
     lc.fifo.prepareToWrite(count, s1, n1, s2, n2);
     for (int ch = 0; ch < 2; ++ch) {
       if (n1 > 0)
@@ -385,7 +388,10 @@ void AntiphonAudioProcessor::captureInputRange(int startSample, int count) {
     auto &spans = lc.spans[(std::size_t)lc.writeSpanIndex.load()];
     spans.setStateAt(lc.fifo.getNumReady(), lc.xmitEnabled.load());
 
-    int s1, n1, s2, n2;
+    int s1;
+    int n1;
+    int s2;
+    int n2;
     lc.fifo.prepareToWrite(count, s1, n1, s2, n2);
     if (n1 > 0)
       ChannelMix::write(lc.ring.getWritePointer(0, s1),
@@ -620,11 +626,14 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         // channel outlives the processor's audio path, and the lambda already
         // captures `this`, so it cannot outlive the processor either.
         juce::MessageManager::callAsync([this, lc, length, ci, mono, handoff,
-                                         rampSamples, postInJam]() {
+                                         rampSamples]() {
           if (!lc->isValid.load())
             return;
           juce::AudioBuffer<float> buf(2, length);
-          int s1, n1, s2, n2;
+          int s1;
+          int n1;
+          int s2;
+          int n2;
           lc->fifo.prepareToRead(length, s1, n1, s2, n2);
           for (int ch = 0; ch < 2; ++ch) {
             if (n1 > 0)
@@ -641,8 +650,7 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
           // memcpy and a ramp; the Vorbis pass below it is a few hundred
           // milliseconds, and doing it on the message thread froze the UI once
           // an interval. See NinjamClient::enqueueCapturedAudio.
-          if (postInJam)
-            ninjamClient.enqueueCapturedAudio(std::move(buf), length, ci, mono);
+          ninjamClient.enqueueCapturedAudio(std::move(buf), length, ci, mono);
         });
       } else {
         lc->fifo.reset();

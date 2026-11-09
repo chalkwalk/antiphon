@@ -181,8 +181,8 @@ private:
       // both it and the device manager it is holding: destroying either would
       // block, and closing a device that never opened is not meaningful.
       // Leaking them is the price of staying usable.
-      probe.release();
-      deviceManager.release();
+      (void)probe.release();
+      (void)deviceManager.release();
       deviceManager = std::make_unique<juce::AudioDeviceManager>();
       showTrouble(AudioDeviceStartup::describe(startup.get()));
       break;

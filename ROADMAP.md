@@ -3052,9 +3052,24 @@ which is exactly the right type for a signed protocol byte; the
 because the loop starts at `ceil(ppqStart)`; the `dangling-else` in
 `RemoteChannelRow.cpp` binds as the indentation says it does.
 
-- [ ] Work down the 142, largest categories first: 21 `bugprone-narrowing-conversions`
-      (worth real attention -- this is sample arithmetic), 18 `readability-use-std-min-max`,
-      16 `readability-isolate-declaration`, 12 `readability-avoid-const-params-in-decls`.
+**Re-measured 2026-11-09: the CI count had never been a count.** The advisory
+step configured a tree without building it, so no generated `JuceHeader.h`
+existed, every translation unit failed to parse, and the log said `findings: 0`
+(fixed in the workflow, which now also warns when a unit fails). And the header
+filter matched `libs/*/src/` as well, counting the submodules' headers as ours
+(now excluded in `.clang-tidy`). Measured with clang-tidy 21 locally -- a Ninja
+tree with only the `JuceLibraryCode/*.h` targets built, `run-clang-tidy -j 4`
+over `src/*.cpp tools/*.cpp`, unique `file:line:col` findings -- it was 308,
+of which 140 were the submodules' and **168** ours. The first batch took it to
+**125**: the bugprone ones with an answer (a redundant `postInJam` re-check,
+deliberate leaks marked `(void)`, explicit int-to-float casts, `default:` on the
+two shortcut switches) and the mechanical `use-std-min-max` and
+`isolate-declaration`, with the full suite and the audit green after.
+
+- [ ] Work down the remaining 125. The largest category is now
+      `modernize-use-designated-initializers` (34) -- a style decision, not a
+      cleanup, so it waits on one; then `use-integer-sign-comparison` (9),
+      `container-contains` (8), `qualified-auto` (7).
 - [ ] Brace the `dangling-else` anyway. It is not a bug and it is one line.
 - [ ] When the count reaches zero, set `WarningsAsErrors: '*'` in `.clang-tidy`
       and drop `continue-on-error` from the CI step. Both halves in one commit.

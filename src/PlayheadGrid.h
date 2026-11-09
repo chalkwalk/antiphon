@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 
 // The interval position, read from the DAW's playhead while synced.
@@ -92,12 +93,10 @@ inline JumpFill fillForJump(int captured, int target, int len) {
   JumpFill f;
   if (len <= 0)
     return f;
-  if (target < 0)
-    target = 0;
+  target = std::max(target, 0);
   if (target >= len)
     target = len - 1;
-  if (captured > len)
-    captured = len;
+  captured = std::min(captured, len);
 
   if (target >= captured) {
     // Forward (or no move): silence over the hole, the interval stays open.

@@ -95,7 +95,9 @@ Session parse(const juce::String &logText) {
     const auto verb = readToken(line, pos);
 
     if (verb == "interval") {
-      int n = 0, bpm = 0, bpi = 0;
+      int n = 0;
+      int bpm = 0;
+      int bpi = 0;
       if (!readInt(readToken(line, pos), n) ||
           !readInt(readToken(line, pos), bpm) ||
           !readInt(readToken(line, pos), bpi)) {

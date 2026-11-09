@@ -69,7 +69,8 @@ public:
   void paint(juce::Graphics &g) override {
     juce::Slider::paint(g);
 
-    const int y = 0, h = getHeight();
+    const int y = 0;
+    const int h = getHeight();
     const float xLo = (float)getPositionOfValue(lo);
     const float xHi = (float)getPositionOfValue(hi);
 
@@ -303,7 +304,8 @@ public:
       BotBand::Voice voice = BotBand::Voice::Keys;
       bool solo = false;
       juce::String keyName;
-      int bpm = 120, bpi = 8;
+      int bpm = 120;
+      int bpi = 8;
       std::uint32_t seed = 1;
 
       {
@@ -686,7 +688,8 @@ private:
       // Half the shipped width beyond each end. Not below zero when the
       // shipped range was not: a negative level or decay time is not a sound
       // to go looking for, where a negative detune is.
-      double outerLo = knob.range->lo, outerHi = knob.range->hi;
+      double outerLo = knob.range->lo;
+      double outerHi = knob.range->hi;
       if (i < shippedKnobs.size() && shippedKnobs[i].range != nullptr) {
         const auto &sr = *shippedKnobs[i].range;
         const double span = sr.hi - sr.lo;

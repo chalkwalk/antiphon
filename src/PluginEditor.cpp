@@ -2105,7 +2105,8 @@ void AntiphonEditor::relayoutChannelArea() {
   int remote_hard = panel_w - local_hard;
 
   // Elastic four-case split
-  int local_w, remote_w;
+  int local_w;
+  int remote_w;
   if (local_need <= local_hard && remote_need <= remote_hard) {
     local_w = local_hard;
     remote_w = remote_hard;

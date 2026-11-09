@@ -350,7 +350,8 @@ void renderVoice(const Options &o, BotBand::Voice voice,
   left.clear();
   right.clear();
   for (int interval = 0; interval < intervalCount(o); ++interval) {
-    std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
+    std::vector<float> l((size_t)n, 0.0f);
+    std::vector<float> r((size_t)n, 0.0f);
     BotBand::renderInterval(voice, settings, interval, phaseAt(o, interval),
                             l.data(), r.data(), n);
     if (!BotBand::isStereo(voice))
@@ -379,7 +380,8 @@ int benchmarkBand(const Options &o) {
   std::printf("bench  %d bpm  %d bpi  %.2f s per interval  %d intervals each\n",
               o.bpm, o.bpi, intervalSeconds, reps);
 
-  std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
+  std::vector<float> l((size_t)n, 0.0f);
+  std::vector<float> r((size_t)n, 0.0f);
   double total = 0.0;
 
   for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
@@ -437,7 +439,8 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
   mixR.clear();
   for (int interval = 0; interval < intervalCount(o); ++interval) {
     const auto phase = phaseAt(o, interval);
-    std::vector<float> accL, accR;
+    std::vector<float> accL;
+    std::vector<float> accR;
     for (auto voice : {BotBand::Voice::Drums, BotBand::Voice::Bass,
                        BotBand::Voice::Keys, BotBand::Voice::Lead}) {
       // The seed still advances for skipped voices, so --only renders exactly
@@ -458,7 +461,8 @@ void renderBandStereo(const Options &o, std::vector<float> &mixL,
         accR.assign((size_t)n, 0.0f);
       }
 
-      std::vector<float> l((size_t)n, 0.0f), r((size_t)n, 0.0f);
+      std::vector<float> l((size_t)n, 0.0f);
+      std::vector<float> r((size_t)n, 0.0f);
       BotBand::renderInterval(voice, settings, interval, phase, l.data(),
                               r.data(), n);
       if (!BotBand::isStereo(voice))
@@ -676,7 +680,8 @@ int measureFile(const Options &o, const juce::File &input) {
   buf.clear();
   reader->read(&buf, 0, n, 0, true, channels > 1);
 
-  std::vector<float> left((size_t)n), right((size_t)n);
+  std::vector<float> left((size_t)n);
+  std::vector<float> right((size_t)n);
   for (int i = 0; i < n; ++i) {
     left[(size_t)i] = buf.getSample(0, i);
     right[(size_t)i] = channels > 1 ? buf.getSample(1, i) : buf.getSample(0, i);
@@ -875,23 +880,30 @@ int main(int argc, char *argv[]) {
     if (!key.valid)
       key = MusicalKey::parseName("C major");
 
-    int notes = 0, rests = 0, moves = 0;
+    int notes = 0;
+    int rests = 0;
+    int moves = 0;
     long long totalMotion = 0;
     int biggest = 0;
     std::array<int, 64> hist{};
-    int reversals = 0, continuations = 0;
+    int reversals = 0;
+    int continuations = 0;
     // A repeated note over a chord that CHANGED is a common tone -- the same
     // pitch re-heard as a new colour, which is a melodic device. A repeated
     // note over the same chord is just standing still. The cost table cannot
     // tell them apart, so count them apart.
-    int repeatSameChord = 0, repeatNewChord = 0;
-    int stepSameChord = 0, stepNewChord = 0;
+    int repeatSameChord = 0;
+    int repeatNewChord = 0;
+    int stepSameChord = 0;
+    int stepNewChord = 0;
     // How much of the space between two onsets the note actually fills. Under
     // the old rule this was always 1.0 except for a colour note; the shared
     // duration model gives a downbeat more room than an off-beat, which is
     // articulation rather than note choice and is worth seeing separately.
-    long long fillGap = 0, fillHeld = 0;
-    int shortened = 0, sounded = 0;
+    long long fillGap = 0;
+    long long fillHeld = 0;
+    int shortened = 0;
+    int sounded = 0;
 
     const int seeds = juce::jmax(1, o.repeats);
     for (int sd = 0; sd < seeds; ++sd) {
@@ -903,7 +915,10 @@ int main(int argc, char *argv[]) {
       // last note of one and the first of the next is a real melodic move and
       // is counted as one.
       const auto layout = Harmony::layoutChart(s.chart, s.bpi);
-      int last = -1, lastMove = 0, lastChordRoot = -999, lastChordTones = -1;
+      int last = -1;
+      int lastMove = 0;
+      int lastChordRoot = -999;
+      int lastChordTones = -1;
       for (int interval = 0; interval < o.bars; ++interval) {
         int step = -1;
         for (int n : BotBand::leadLine(s, interval)) {
@@ -985,7 +1000,9 @@ int main(int argc, char *argv[]) {
       std::printf("  mean |interval|   %.2f semitones\n",
                   (double)totalMotion / moves);
       std::printf("  largest           %d\n", biggest);
-      int stepwise = 0, leaps = 0, wide = 0;
+      int stepwise = 0;
+      int leaps = 0;
+      int wide = 0;
       for (size_t d = 0; d < hist.size(); ++d) {
         if (d <= 2)
           stepwise += hist[d];
@@ -1042,7 +1059,8 @@ int main(int argc, char *argv[]) {
       o.out = juce::File::getCurrentWorkingDirectory().getChildFile("band.wav");
     std::printf("band  %s  %d bpm  %d bpi  seed %u\n", o.keyName.toRawUTF8(),
                 o.bpm, o.bpi, (unsigned)o.seed);
-    std::vector<float> mix, mixR;
+    std::vector<float> mix;
+    std::vector<float> mixR;
     renderBandStereo(o, mix, mixR);
     matchLoudness(o, mix, &mixR);
     report("band (mixed)", mix, o.sampleRate, &mixR);
@@ -1128,7 +1146,8 @@ int main(int argc, char *argv[]) {
                   patch.envAmount, 1000.0 * patch.attackSeconds, patch.drive);
     }
 
-    std::vector<float> l, r;
+    std::vector<float> l;
+    std::vector<float> r;
     renderVoice(o, isKeys ? BotBand::Voice::Keys : BotBand::Voice::Drums, l, r);
     matchLoudness(o, l, &r);
     report(isKeys ? "keys (with chorus)" : "kit (with room)", l, o.sampleRate,

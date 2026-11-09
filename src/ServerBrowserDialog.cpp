@@ -77,7 +77,8 @@ ServerBrowserDialog::ServerBrowserDialog() : table("Servers", this) {
     if (port <= 0)
       port = 2049;
     juce::String nick = usernameInput.getText().trim();
-    juce::String user, pass;
+    juce::String user;
+    juce::String pass;
     if (anonymousToggle.getToggleState()) {
       user = (nick.isEmpty() || nick.startsWithIgnoreCase("anonymous"))
                  ? (nick.isEmpty() ? "anonymous" : nick)
@@ -358,7 +359,9 @@ juce::Component *ServerBrowserDialog::refreshComponentForCell(
   }
 
   const auto &s = servers.getReference(rowNumber);
-  juce::String text, title, desc;
+  juce::String text;
+  juce::String title;
+  juce::String desc;
   switch (columnId) {
   case 1:
     text = s.host + ":" + juce::String(s.port);

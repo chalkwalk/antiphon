@@ -156,8 +156,9 @@ private:
 
   void onChatMessage(const juce::String &type, const juce::String &username,
                      const juce::String &text) override {
-    const auto t = type.toStdString(), u = username.toStdString(),
-               m = text.toStdString();
+    const auto t = type.toStdString();
+    const auto u = username.toStdString();
+    const auto m = text.toStdString();
     each([&](auto *l) { l->onChatMessage(t, u, m); });
   }
 

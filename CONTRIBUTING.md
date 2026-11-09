@@ -62,7 +62,7 @@ and buffer size, plus what the server and the other players were.
 
 ## 4. Coding standards
 
-- **C++17**, with `juce::` types preferred over `std::` where both exist.
+- **C++20** (the `libs/` submodules stay C++17), with `juce::` types preferred over `std::` where both exist.
 - **`clang-format` is enforced, at a pinned version.** The configuration is
   `.clang-format` in the root; CI fails on unformatted code. Run
   `clang-format -i` on what you touched, not on files you did not.

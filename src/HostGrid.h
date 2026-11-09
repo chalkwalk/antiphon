@@ -2,6 +2,7 @@
 
 #include "IntervalClock.h"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -89,10 +90,8 @@ inline void advance(double ppqStart, double beatsPerSampleValue, int bpi,
   // the beats a block can possibly contain.
   for (; (double)beat < ppqEnd - kBeatEpsilon; ++beat) {
     int offset = (int)((((double)beat - ppqStart) / beatsPerSampleValue) + 0.5);
-    if (offset < 0)
-      offset = 0;
-    if (offset > numSamples - 1)
-      offset = numSamples - 1;
+    offset = std::max(offset, 0);
+    offset = std::min(offset, numSamples - 1);
 
     const int beatInInterval = (int)(((beat % bpi) + bpi) % bpi);
     if (beatInInterval == 0)

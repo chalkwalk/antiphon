@@ -103,6 +103,8 @@ inline Action match(int keyCode, bool ctrlDown, bool altDown,
         return Action::SelectRemoteUser8;
       case 9:
         return Action::SelectRemoteUser9;
+      default: // unreachable: the guard above admits 1-9 only
+        break;
       }
     } else {
       switch (num) {
@@ -124,6 +126,8 @@ inline Action match(int keyCode, bool ctrlDown, bool altDown,
         return Action::SelectLocalChannel8;
       case 9:
         return Action::SelectLocalChannel9;
+      default:
+        break;
       }
     }
   }

@@ -37,4 +37,7 @@ Checks: >
 
 WarningsAsErrors: ''
 HeaderFilterRegex: '^.*/(src|test|tools)/[^/]*\.h$'
+# The submodules have src/ directories too, and their headers are their own
+# repositories' business, not this backlog's.
+ExcludeHeaderFilterRegex: '.*/libs/.*'
 ...

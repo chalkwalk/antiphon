@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "GainRamp.h"
 
 // Where transmit was on within one interval, recorded as the points at which it
@@ -48,8 +50,7 @@ public:
   // way, so nothing is lost but the change does not register until the next
   // interval.
   bool setStateAt(int samplePos, bool on) {
-    if (samplePos < 0)
-      samplePos = 0;
+    samplePos = std::max(samplePos, 0);
     if (on == stateAtEnd())
       return true; // nothing changed
 

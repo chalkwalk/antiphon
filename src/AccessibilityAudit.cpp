@@ -131,7 +131,10 @@ juce::String format(const std::vector<Finding> &findings) {
   if (findings.empty())
     return "Accessibility audit: no issues found.\n";
 
-  int names = 0, dupes = 0, descs = 0, hidden = 0;
+  int names = 0;
+  int dupes = 0;
+  int descs = 0;
+  int hidden = 0;
   for (const auto &f : findings) {
     if (f.issue == Issue::MissingName)
       ++names;

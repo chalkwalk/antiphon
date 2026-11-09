@@ -64,7 +64,8 @@ inline int placeClip(const float *interleaved, int numFrames, int numChannels,
   if (n <= 0)
     return 0;
 
-  juce::LagrangeInterpolator interpL, interpR;
+  juce::LagrangeInterpolator interpL;
+  juce::LagrangeInterpolator interpR;
   interpL.process(ratio, srcL.data(), left, n);
   interpR.process(ratio, srcR.data(), right, n);
   return n;

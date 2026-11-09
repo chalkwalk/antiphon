@@ -1,4 +1,6 @@
 #include "NinjamClient.h"
+
+#include <algorithm>
 #include "ChannelMix.h"
 #include "NinjamProtocol.h"
 
@@ -378,7 +380,8 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
     serverBpm = cfg.bpm;
     serverBpi = cfg.bpi;
 
-    const int bpm = cfg.bpm, bpi = cfg.bpi;
+    const int bpm = cfg.bpm;
+    const int bpi = cfg.bpi;
     callAsyncIfAlive([this, bpm, bpi]() {
       listeners.call(&NinjamClientListener::onServerConfig, bpm, bpi);
     });
@@ -596,7 +599,8 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
                   int numOut =
                       std::min((int)((double)toCopy / speedRatio), remain);
                   if (numOut > 0) {
-                    juce::HeapBlock<float> srcBuf(toCopy), dstBuf(numOut);
+                    juce::HeapBlock<float> srcBuf(toCopy);
+                    juce::HeapBlock<float> dstBuf(numOut);
                     for (int ch = 0; ch < std::min(2, out_nch); ++ch) {
                       for (int s = 0; s < toCopy; ++s)
                         srcBuf[s] = decodedBlock[s * out_nch + ch];
@@ -652,7 +656,8 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
               listeners.call(&NinjamClientListener::onIntervalReceived,
                              pd.username, pd.channelIndex, l, r, frames);
           }
-          int bpm = serverBpm, bpi = serverBpi;
+          int bpm = serverBpm;
+          int bpi = serverBpi;
           if (bpm > 0 && bpi > 0)
             diagLastIntervalExpected.store(
                 (int)(sampleRate * 60.0 / bpm * bpi));
@@ -1429,7 +1434,7 @@ void NinjamClient::mixSlotRange(int first, int last,
                 slot.fadeOut->buffer.getReadPointer(ch, slot.fadeOutPos);
             float *dst = buffer.getWritePointer(dstCh);
             for (int s = 0; s < fadeCopy; ++s) {
-              float g = (float)(slot.fadeRemaining - s) / slot.fadeTotal;
+              float g = (float)(slot.fadeRemaining - s) / (float)slot.fadeTotal;
               dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
             }
           }
@@ -1448,7 +1453,7 @@ void NinjamClient::mixSlotRange(int first, int last,
                     slot.current->buffer.getReadPointer(ch, slot.readPos);
                 float *dst = buffer.getWritePointer(dstCh);
                 for (int s = 0; s < newFadeCopy; ++s) {
-                  float g = (float)(elapsed + s) / slot.fadeTotal;
+                  float g = (float)(elapsed + s) / (float)slot.fadeTotal;
                   dst[s] += src[s] * chGain * g * slot.muteRamp.gainAt(s);
                 }
               }
@@ -1520,8 +1525,7 @@ void NinjamClient::mixSlotRange(int first, int last,
 }
 
 void NinjamClient::seekPlayback(int samplePos) {
-  if (samplePos < 0)
-    samplePos = 0;
+  samplePos = std::max(samplePos, 0);
   for (auto &slot : streamSlots) {
     if (slot.state.load(std::memory_order_acquire) != StreamSlot::kLive ||
         slot.current == nullptr)
