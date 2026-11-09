@@ -186,8 +186,16 @@ jobs:
           clang-format --dry-run -Werror \
             src/*.cpp src/*.h test/*.cpp test/*.h tools/*.cpp
 
+      # Configure alone is not enough: every JuceHeader.h, and the fonts'
+      # binary-data header, is generated at BUILD time. Without them each
+      # translation unit stops at "'JuceHeader.h' file not found", and that is
+      # what this step reported as "findings: 0" from at least September to
+      # November 2026. Only those headers are built, not the code.
       - name: Configure (for the compile database)
-        run: cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        run: |
+          cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          ninja -C build $(ninja -C build -t targets all \
+            | grep -oE '^[^/:][^:]*JuceLibraryCode/[A-Za-z]+\.h' | sort -u)
 
       # Advisory, deliberately. See ROADMAP.md, "Clear the clang-tidy backlog":
       # 142 findings at adoption. This becomes blocking -- with
@@ -198,3 +206,8 @@ jobs:
         run: |
           clang-tidy -p build --quiet src/*.cpp tools/*.cpp 2>&1 | tee tidy.log
           echo "findings: $(grep -cE 'warning:|error:' tidy.log || true)"
+          # A count from a run that could not parse the code is not a count.
+          failed=$(grep -c '^Error while processing' tidy.log || true)
+          if [ "$failed" -gt 0 ]; then
+            echo "::warning::clang-tidy could not process $failed translation unit(s); the count above is not the backlog"
+          fi
