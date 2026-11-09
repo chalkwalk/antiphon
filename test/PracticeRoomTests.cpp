@@ -559,7 +559,22 @@ public:
       // one landing just after a head waits nearly a whole interval before it
       // is even latched: at 120/8 that is 4 s of waiting plus two 4 s ending
       // intervals, and the band is silent some time inside the fourth.
-      juce::MessageManager::getInstance()->runDispatchLoopUntil(14000);
+      //
+      // Waited for, not slept: the bound is when to give up, not when to look.
+      // A sanitiser slows the renders enough that the ending lands late, and a
+      // fixed look at 14 s then reported a band still going that was merely
+      // behind (TimingBounds.h).
+      const bool silent = waitUntil(
+          [&] {
+            const auto phases = room.bandLatchedPhases();
+            if (phases.empty())
+              return false;
+            for (auto p : phases)
+              if (p != BandPlayState::State::Silent)
+                return false;
+            return true;
+          },
+          timingbounds::kDistorted ? 120000 : 14000);
       watching = false;
       watcher.join();
 
@@ -567,11 +582,7 @@ public:
       expect(!diverged.load(),
              "the band's bots were in different play states -- the decision is "
              "being taken per render again, not once for the band");
-
-      const auto finalPhases = room.bandLatchedPhases();
-      for (auto p : finalPhases)
-        expect(p == BandPlayState::State::Silent,
-               "a bot was still going after the ending");
+      expect(silent, "a bot was still going after the ending");
     }
 
     beginTest("the band's compute is spread across the interval, not stacked");
@@ -1415,7 +1426,14 @@ public:
 
       const int before = you.snapshot().size();
       you.client.sendChatMessage("band stop");
-      juce::MessageManager::getInstance()->runDispatchLoopUntil(2500);
+
+      // The first reply is waited for; the window after it is where a chorus
+      // would show. A fixed 2.5 s did both at once, so a reply that was merely
+      // slow counted as no reply at all.
+      expect(waitUntil([&] { return botLinesSince(before).size() > 0; },
+                       timingbounds::kDistorted ? 30000 : 5000),
+             "nobody answered the band command");
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(1500);
 
       const auto replies = botLinesSince(before);
       expectEquals(replies.size(), 1,
