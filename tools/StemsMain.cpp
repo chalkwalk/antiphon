@@ -58,10 +58,9 @@ struct DecodedClip {
   bool ok = false;
 };
 
-DecodedClip decodeClip(const juce::File &file) {
+DecodedClip decodeBytes(const juce::MemoryBlock &raw) {
   DecodedClip out;
-  juce::MemoryBlock raw;
-  if (!file.loadFileAsData(raw) || raw.getSize() == 0)
+  if (raw.getSize() == 0)
     return out;
 
   VorbisDecoder decoder;
@@ -79,6 +78,13 @@ DecodedClip decodeClip(const juce::File &file) {
 
   out.ok = out.sampleRate > 0;
   return out;
+}
+
+DecodedClip decodeClip(const juce::File &file) {
+  juce::MemoryBlock raw;
+  if (!file.loadFileAsData(raw))
+    return {};
+  return decodeBytes(raw);
 }
 
 // One archive directory: the server rotates every half hour and restarts
@@ -162,6 +168,123 @@ void warnIfNotConsecutive(const std::vector<juce::File> &dirs) {
   }
 }
 
+// What a server streaming the room to listeners would have to do at every
+// interval boundary, and nowhere else: interval delivery is all-or-nothing, so
+// nothing can be decoded early (ROADMAP.md, "Can one machine mix a room in the
+// gap?"). Clip bytes are read from disk before the clock starts -- a server
+// would already hold them -- and everything after is timed: decode, resample
+// to the output rate, sum, and a 128 kbit/s stereo Vorbis encode, the same
+// encoder and bitrate a client transmits with. A listener server would use
+// Opus; Vorbis is the cost this tree can measure.
+template <typename ByStem, typename Tempos>
+int runBench(const ByStem &byStem, const Tempos &tempoByInterval,
+             double outRate, int stack) {
+  std::map<int, std::vector<juce::File>> filesAt;
+  for (const auto &[key, intervals] : byStem) {
+    juce::ignoreUnused(key);
+    for (const auto &[at, located] : intervals)
+      filesAt[at].push_back(
+          located.dir.getChildFile(ClipsortLog::clipPath(located.clip.guid)));
+  }
+
+  std::vector<double> fractions;
+  std::vector<int> channelCounts;
+  double worst = 0.0;
+  double worstSeconds = 0.0;
+  int worstAt = 0;
+  double totalSeconds = 0.0;
+  std::vector<float> mixL;
+  std::vector<float> mixR;
+  std::vector<float> clipL;
+  std::vector<float> clipR;
+  std::vector<float> interleaved;
+
+  for (const auto &[at, files] : filesAt) {
+    const auto tempo = tempoByInterval.find(at);
+    if (tempo == tempoByInterval.end())
+      continue;
+    const int frames = ClipsortLog::intervalSamples(
+        tempo->second.first, tempo->second.second, outRate);
+    if (frames <= 0)
+      continue;
+
+    std::vector<juce::MemoryBlock> raw;
+    for (const auto &f : files) {
+      juce::MemoryBlock block;
+      if (f.loadFileAsData(block) && block.getSize() > 0)
+        for (int k = 0; k < stack; ++k)
+          raw.push_back(block);
+    }
+    mixL.assign((std::size_t)frames, 0.0f);
+    mixR.assign((std::size_t)frames, 0.0f);
+    clipL.resize((std::size_t)frames);
+    clipR.resize((std::size_t)frames);
+    interleaved.resize((std::size_t)frames * 2);
+
+    const auto t0 = juce::Time::getHighResolutionTicks();
+    for (const auto &bytes : raw) {
+      const auto d = decodeBytes(bytes);
+      if (!d.ok)
+        continue;
+      std::ranges::fill(clipL, 0.0f);
+      std::ranges::fill(clipR, 0.0f);
+      StemRender::placeClip(d.interleaved.data(),
+                            (int)d.interleaved.size() / d.numChannels,
+                            d.numChannels, (double)d.sampleRate, clipL.data(),
+                            clipR.data(), frames, outRate);
+      for (int i = 0; i < frames; ++i) {
+        mixL[(std::size_t)i] += clipL[(std::size_t)i];
+        mixR[(std::size_t)i] += clipR[(std::size_t)i];
+      }
+    }
+    for (int i = 0; i < frames; ++i) {
+      interleaved[(std::size_t)i * 2] = mixL[(std::size_t)i];
+      interleaved[(std::size_t)i * 2 + 1] = mixR[(std::size_t)i];
+    }
+    VorbisEncoder encoder((int)outRate, 2, 128, at);
+    encoder.encode(interleaved.data(), frames);
+    encoder.encode(nullptr, 0);
+    while (encoder.available() > 0)
+      encoder.advance(encoder.available());
+    const double seconds = juce::Time::highResolutionTicksToSeconds(
+        juce::Time::getHighResolutionTicks() - t0);
+
+    const double fraction = seconds / ((double)frames / outRate);
+    fractions.push_back(fraction);
+    channelCounts.push_back((int)raw.size());
+    totalSeconds += seconds;
+    if (fraction > worst) {
+      worst = fraction;
+      worstSeconds = seconds;
+      worstAt = at;
+    }
+  }
+
+  if (fractions.empty()) {
+    std::cerr << "No intervals with clips to time.\n";
+    return 2;
+  }
+  auto sortedF = fractions;
+  std::ranges::sort(sortedF);
+  auto sortedC = channelCounts;
+  std::ranges::sort(sortedC);
+  const auto pick = [](const auto &v, double q) {
+    return v[(std::size_t)((double)(v.size() - 1) * q)];
+  };
+  std::cout << "Timed " << fractions.size() << " intervals at "
+            << juce::String(outRate, 0) << " Hz: channels per interval median "
+            << pick(sortedC, 0.5) << ", max " << sortedC.back() << ".\n"
+            << "Decode + mix + encode, as a fraction of the interval:\n"
+            << "  median " << juce::String(pick(sortedF, 0.5) * 100.0, 2)
+            << "%, 95th " << juce::String(pick(sortedF, 0.95) * 100.0, 2)
+            << "%, worst " << juce::String(worst * 100.0, 2) << "% (interval "
+            << worstAt << ", " << juce::roundToInt(worstSeconds * 1000.0)
+            << " ms)\n"
+            << "  " << juce::String(totalSeconds, 2) << " s of work in total, "
+            << "one thread.\n";
+  return 0;
+}
+
 int usage() {
   std::cout
       << "antiphon-stems -- Ninjam session archive to WAV stems\n\n"
@@ -182,7 +305,16 @@ int usage() {
          "and\n"
          "                 carries no bit depth; 16 is all the decode "
          "justifies,\n"
-         "                 and 24 costs 50% more disk for no more detail.\n";
+         "                 and 24 costs 50% more disk for no more detail.\n"
+         "  --bench        write nothing; time what a listener server would "
+         "do\n"
+         "                 at each boundary -- decode every channel of the\n"
+         "                 interval, mix, encode one stereo stream -- and "
+         "report\n"
+         "                 it as a fraction of the interval.\n"
+         "  --stack <n>    with --bench: decode each clip n times, to stand "
+         "in\n"
+         "                 for a room n times the size of the one recorded.\n";
   return 1;
 }
 
@@ -202,6 +334,8 @@ int main(int argc, char *argv[]) {
   // loudest clips of a real session: no sample exceeded 0.573, so there is no
   // overshoot for the wider integer range to protect either.
   int bitDepth = 16;
+  bool bench = false;
+  int benchStack = 1;
 
   for (int i = 1; i < argc; ++i) {
     const juce::String arg(argv[i]);
@@ -211,6 +345,10 @@ int main(int argc, char *argv[]) {
       requestedRate = juce::String(argv[++i]).getDoubleValue();
     else if (arg == "--bits" && i + 1 < argc)
       bitDepth = juce::String(argv[++i]).getIntValue();
+    else if (arg == "--bench")
+      bench = true;
+    else if (arg == "--stack" && i + 1 < argc)
+      benchStack = juce::jmax(1, juce::String(argv[++i]).getIntValue());
     else if (arg.startsWith("-"))
       return usage();
     else
@@ -322,6 +460,9 @@ int main(int argc, char *argv[]) {
   }
   if (outRate <= 0.0)
     outRate = 48000.0;
+
+  if (bench)
+    return runBench(byStem, tempoByInterval, outRate, benchStack);
 
   const juce::File outDir =
       outArg.isNotEmpty()

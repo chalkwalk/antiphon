@@ -245,6 +245,10 @@ ctest --test-dir build --output-on-failure
 ./build/tools/AntiphonPractice_artefacts/AntiphonPractice --no-tutor
 # Offline: turn a session archive into WAV stems.
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/
+# What a listener server would spend at each boundary: decode every channel of
+# an interval, mix, encode -- as a fraction of the interval. --stack n stands in
+# for a room n times the size. ROADMAP "Can one machine mix a room in the gap?"
+./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> --bench --stack 11
 # Tuning the band's synthesis: render one voice and measure it. The numbers it
 # prints come from chalkwalk::dsp::measure, which is what the unit tests assert
 # against, so tuning by ear and setting a threshold use one instrument.

@@ -375,18 +375,44 @@ needs a method (`PRINCIPLES §5`), and this file already carries a withdrawn CPU
 estimate taken on a build with no optimiser in it. The same trap is open here,
 on a slower machine.
 
-- [ ] Decode a realistic room's worth of channels for one interval, mix them,
+- [x] Decode a realistic room's worth of channels for one interval, mix them,
       and encode one stereo stream. Time it as a whole, on an optimised build,
       at a real bpm/bpi rather than a convenient one.
+      `antiphon-stems <session> --bench [--stack n]` does exactly that over every
+      interval of a real archive: clip bytes read before the clock starts,
+      then decode, resample, sum and a 128 kbit/s stereo Vorbis encode, timed
+      together, one thread. `--stack n` decodes each clip n times to stand in
+      for a bigger room than the recorded one.
 - [ ] On the machine that would have to do it -- a Raspberry Pi -- and not only
       on a development machine, since that is the number that decides whether a
-      Pi is the right host at all.
-- [ ] Report it as a fraction of the interval, which is the unit that matters:
+      Pi is the right host at all. **The host is now the Oracle A1 VM**
+      (`ninjam-balcony/docs/DESIGN.md`: 2 Arm cores, beside `ninjamsrv`), so
+      that is where to run it -- which means building Antiphon there, a thing
+      to agree first since the VM is the live room's.
+- [x] Report it as a fraction of the interval, which is the unit that matters:
       the budget is the gap at the boundary, and what is left over is the margin
       before listeners slip to two intervals behind.
+      **2026-11-09, development machine** (Ryzen 9 5900HX, RelWithDebInfo at
+      -O2, load ~1.4, one thread), the 2025-08-06 improv jam at 100 bpm / 16
+      bpi, 690 intervals of 9.6 s:
+
+      | Room | Channels per interval | Median | 95th | Worst |
+      |---|---|---|---|---|
+      | as recorded | median 2, max 3 | 1.29% | 1.41% | 1.51% (120 ms) |
+      | `--stack 5` | median 10, max 15 | 2.25% | 2.89% | 2.97% |
+      | `--stack 11` | median 22, max 33 | 3.77% | 5.48% | 6.25% (600 ms) |
+
+      About 15 ms of decode per channel per interval, and a fixed ~90 ms for
+      the encode. Decoding is per channel and parallel; the encode is not.
 - [ ] Say what the answer means either way. A comfortable number makes the
       server worth planning; a bad one changes the design rather than the
       schedule -- mixing would have to move off the boundary, or off the Pi.
+      **On this machine, comfortable:** a 33-channel room costs 0.6 s at the
+      boundary -- listeners hear the mix at most that much after the interval
+      turns, which is well inside one interval and needs no redesign. Whether
+      that holds on two Arm cores is the open checkbox above, and it is the
+      number that decides; this one only says the design is not wrong on its
+      face.
 
 ### Multi-channel differential test
 
