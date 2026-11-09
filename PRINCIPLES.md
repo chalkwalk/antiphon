@@ -186,9 +186,11 @@ them. This is not stylistic -- `PluginProcessor.cpp` **cannot** be compiled into
 the test target at all (it needs the `JucePlugin_*` defines), so logic left
 there is logic that can never be tested.
 
-Two known violations are tracked in `ROADMAP.md` under *Audio-thread hygiene*
-(`getDecodedAudio` takes `downloadMutex`; the Save Tx/Rx toggles do file I/O).
-Do not add to that list.
+One known violation remains, tracked in `ROADMAP.md` as *Lock-free TX handoff*:
+the `callAsync` at each interval boundary. (Save Rx does file I/O on the audio
+thread while it is switched on, deliberately -- it captures the mix as the audio
+thread sees it.) The rest of the list is closed (`docs/COMPLETED.md`,
+*Audio-thread hygiene*). Do not add to it.
 
 ## 8. One definition, shared
 

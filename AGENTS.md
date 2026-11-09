@@ -381,20 +381,24 @@ reading past a buffer. Assume your change has the same failure mode.
 
 | Change touches | Write | Notes |
 |---|---|---|
-| Wire format, parsing, message building | `test/NinjamProtocolTests.cpp` | Add the message to the **truncation sweep** in `runTruncationTests()`, not just a happy-path case. |
-| Beat/interval timing | `test/IntervalClockTests.cpp` | Sweep bpm x bpi x sample rate x block size. A bug that only shows at 44.1 kHz or block size 61 is the normal case, not the exotic one. |
+| Wire format, parsing, message building | `libs/ninjam/test/NinjamProtocolTests.cpp` (chalkwalk-ninjam) | Add the message to the **truncation sweep** in `runTruncationTests()`, not just a happy-path case. |
+| Beat/interval timing | `libs/ninjam/test/IntervalClockTests.cpp` (chalkwalk-ninjam) | Sweep bpm x bpi x sample rate x block size. A bug that only shows at 44.1 kHz or block size 61 is the normal case, not the exotic one. |
 | Click synthesis | `test/MetronomeVoiceTests.cpp` | Assert measured pitch, never the formula. |
 | Sync states and grid choice | `test/ClockModelTests.cpp` | `ClockModel` is pure; drive it directly. Playhead wraps and jumps: `test/PlayheadGridTests.cpp`. What is said: `test/SyncAnnouncementsTests.cpp`, word for word. |
 | Standalone audio-device startup | `test/AudioDeviceStartupTests.cpp` | `AudioDeviceStartup` is pure. `StandaloneApp.cpp` around it cannot be compiled into the test target -- it needs the `JucePlugin_*` defines, same as `PluginProcessor`. |
-| Mono/pan/gain rules | `test/ChannelMixTests.cpp` | |
+| Mono/pan/gain rules | `libs/ninjam/test/ChannelMixTests.cpp` (chalkwalk-ninjam) | |
 | dB scales, meter ballistics | `test/GainUtilsTests.cpp` | |
-| Encode/decode | `test/VorbisCodecTests.cpp` | Always test at 44.1 **and** 48 kHz. |
+| Encode/decode | `libs/ninjam/test/VorbisCodecTests.cpp` (chalkwalk-ninjam) | Always test at 44.1 **and** 48 kHz. |
 | Anything crossing the socket | `test/LoopbackTests.cpp` | `FakeNinjamServer` needs no production changes -- point the client at `127.0.0.1`. |
 | Mixing, routing, playback delay | `test/AudioLoopbackTests.cpp` | Drives the real path end to end. |
 | Accessibility naming rules | `test/AccessibilityAuditTests.cpp` | Synthetic node tree; the real UI cannot be compiled into the test target. |
 | A new control, or a new UI state | `test/AuditMain.cpp` | The `AntiphonAudit` target links the plugin's own library and audits the **real** editor across five states. Add a state when you add a surface -- an unaudited state is how the connect dialog stayed unchecked for its whole life. |
 | What a bot understands or says | **`chalkwalk-jambot`, not here** | The bots left. Corpora, suites and the generator scripts went with them; iterate there with `-DCHALKWALK_JAMBOT_DIR=...` and bump the submodule when done. |
 | Server-visible behaviour | `test/RealServerTests.cpp` | Opt-in via `NINJAM_TEST_SERVER`; keep the default suite hermetic. |
+
+The rows marked chalkwalk-ninjam test code that lives in that submodule: change
+them there, against a working checkout with `-DCHALKWALK_NINJAM_DIR=...`, and
+bump the submodule. Its suite runs in our ctest as `chalkwalk_ninjam`.
 
 ### Rules that are easy to get wrong
 

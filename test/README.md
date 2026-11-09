@@ -17,11 +17,22 @@ Or run the binary directly, optionally filtering by test-suite name:
 ./build/test/NinjamTests_artefacts/NinjamTests Loopback Audio  # several
 ```
 
-Suites: `Sha1`, `VorbisCodec`, `NinjamProtocol`, `IntervalClock`,
-`MetronomeVoice`, `ClockModel`, `PlayheadGrid`, `SyncAnnouncements`, `CueVoice`, `AudioDeviceStartup`, `Shortcuts`, `ChannelMix`,
-`GainUtils`,
-`AccessibilityAudit`, `ReferenceFixtures`, `LoopbackProtocol`,
-`AudioLoopback`, `RealServer`.
+Suites in `NinjamTests`: `AccessibilityAudit`, `AudioDeviceStartup`,
+`AudioLoopback`, `ChatFormat`, `ClipsortLog`, `ClockModel`, `CueVoice`,
+`GainRamp`, `GainUtils`, `HostControl`, `HostGrid`, `KeyTag`, `LeadLine`,
+`LoopbackProtocol`, `MetronomeVoice`, `PlayheadGrid`, `PracticeRoom`,
+`PracticeServer`, `RealServer`, `ReferenceFixtures`, `SharedContract`,
+`Shortcuts`, `StemRender`, `SyncAnnouncements`, `TransmitSpans`.
+`AccessibleNaming` runs in `AntiphonAudit` instead (below).
+
+**The wire format, the codec and the clock are not here.** `Sha1`,
+`VorbisCodec`, `NinjamProtocol` (with its truncation sweep), `IntervalClock`
+and `ChannelMix` moved with their code to chalkwalk-ninjam, whose Catch2 suite
+is `libs/ninjam/test/` and runs in our ctest as `chalkwalk_ninjam`. The same
+goes for `chalkwalk_music`, `chalkwalk_dsp` and `chalkwalk_jambot`: every
+submodule's suite runs here, so a submodule bump is verified rather than
+assumed. Change those tests in the library, with `-DCHALKWALK_NINJAM_DIR=...`
+(see `AGENTS.md`).
 
 ---
 
@@ -31,25 +42,32 @@ Pure logic, no I/O.
 
 | Suite | What it pins |
 |---|---|
-| `Sha1` | FIPS 180-1 vectors; incremental `add` equals monolithic at every split point (the auth path depends on this). |
-| `VorbisCodec` | Encoder honours its constructed sample rate; round-trip level and pitch; frame count; mono; truncated and garbage input. |
-| `NinjamProtocol` | Message layouts byte for byte; little-endian fields; auth hash against goldens from an independent SHA1; **every parser fed every truncation of every message**. |
-| `IntervalClock` | Interval length constant over 200 intervals; event positions independent of block size; exactly `bpi` beats per interval; no drift over an hour; tempo changes take effect at a boundary. |
 | `MetronomeVoice` | Click pitch, and that it is independent of tempo and sample rate. |
 | `AudioDeviceStartup` | The standalone device-open policy: that a finished probe beats the clock, that the budget expiring is a timeout, and that a wedged probe returning late cannot resurrect startup. |
 | `ClockModel` | Synced or not: each row of the state table, the grid each state runs on, that a jump is flagged on exactly the update that enters Synced, and the invariants over every input combination (in the jam only when connected). |
 | `PlayheadGrid` | Loop wraps are continuous time, other moves are jumps, a BPI change re-anchors, and the padding a jump needs. |
 | `SyncAnnouncements` | Every sentence, word for word against the spec's table, and ASCII. |
 | `CueVoice` | The DAW-stopped tone: pitch by measurement at 44.1 and 48 kHz, under -60 dB within 150 ms, silent after. |
-| `ChannelMix` | Mono sums and halves rather than discarding a side; pan law; that mute and solo never reach the transmitted signal. |
 | `GainUtils` | dB<->linear round-trip, the -inf floor, meter release as a rate in dB/s independent of block size. |
 | `AccessibilityAudit` | The MISSING NAME / DUPLICATE NAME / NO DESCRIPTION rules, against a synthetic tree -- the real UI cannot be compiled into this target. |
 | `ReferenceFixtures` | Our parsers and builders against wire captures taken from the reference client. |
+| `GainRamp` | A ramp reaches its target and stays; 5 ms at the session rate; muting a full-scale tone never steps more than a hair. |
+| `TransmitSpans` | Where transmit was on within an interval, and the rhythm of repeated toggles, applied with ramped edges. |
+| `HostGrid` | The grid derived from the host's PPQ: no drift over a long take, every beat exactly once, beat 0 after an interval start. |
+| `HostControl` | What TempoFollow does to the DAW: nothing at the room's tempo, the room's tempo once otherwise, never when off. |
+| `ChatFormat` | Server notices, your own lines, actions, private messages, topic and joins rendered as distinct things. |
+| `KeyTag` | The key tag in chat: only the tagged form, wherever it sits; a malformed tag yields no key, not a wrong one. |
+| `ClipsortLog` | The session archive's manifest: clips belong to the interval above them, tempo per clip, bad lines counted and skipped. |
+| `StemRender` | One clip into one interval: short leaves silence, long is truncated, mono feeds both sides. |
+| `LeadLine` | Mode to brightness and scale, chord tones as pitch classes, and the lead's onsets against its figure. |
+| `SharedContract` | The chalkwalk-dsp primitives as this repository relies on them (polyBLEP, Hermite). |
 
 ### Running the parser tests under a sanitiser
 
 The truncation sweeps only have teeth under ASan -- without it, a read past the
-end of a `MemoryBlock` usually succeeds silently.
+end of a `MemoryBlock` usually succeeds silently. They live in chalkwalk-ninjam
+now; a sanitiser build compiles the submodules with the same flags, so
+`ctest --test-dir build-asan -R chalkwalk_ninjam` runs them under it.
 
 ```
 cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug \
@@ -77,7 +95,11 @@ keep-alive cadence, malformed-input survival, and reconnect hygiene.
 `AudioLoopback` pushes real audio all the way round -- `processCapturedAudio` ->
 socket -> echo -> `handleMessage` -> `swapIntervalBuffers` -> `getDecodedAudio`
 -- at 44.1, 48 and 96 kHz, and checks pitch, level, interval length, the
-one-interval delay, mixer controls, and output-bus routing.
+one-interval delay, mixer controls, output-bus routing, and that an interval
+running short fades out rather than cutting.
+
+`PracticeServer` and `PracticeRoom` run the practice room for real: a loopback
+server, and the band in it, driven over the same socket path a player uses.
 
 Assertions are statistical (RMS, zero-crossing rate), never sample-by-sample:
 Vorbis is lossy and has codec delay.

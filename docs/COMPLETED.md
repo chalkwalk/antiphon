@@ -47,8 +47,8 @@ those numbers, so they are mapped here. **New work is named, not numbered**
 | #25 | Video support *(parked)* |
 | #26 | OSC tempo sync *(parked)* |
 | #27 | Capture alignment at the interval boundary *(**withdrawn** -- below)* |
-| #28 | Audio-thread hygiene *(open)* |
-| #29 | Destructor race in NinjamClient *(open, as "Client shutdown race")* |
+| #28 | Audio-thread hygiene |
+| #29 | Destructor race in NinjamClient *(as "Client shutdown race")* |
 | #30 | Underrun tail |
 
 ---
@@ -85,6 +85,31 @@ result at every split point. (#18)
 Replaced WDL's `vorbisencdec.h` with `VorbisCodec.{h,cpp}`, wrapping libogg and
 libvorbis directly behind a pimpl so their types stay out of the header. Removed
 the last codec dependency on vendored third-party code. (#19)
+
+### Client shutdown race
+
+Shipped. The socket now has exactly one owner: the network thread creates it,
+uses it and closes it, and `disconnectFromServer` signals rather than reaching
+in.
+
+- [x] `disconnectFromServer` no longer touches the socket. It used to call
+      `close()` to interrupt a blocking read, while `run()` closed it as well on
+      the way out -- both writing the socket's own members, since
+      `StreamingSocket::close()` clears its `hostName`. A real race, not a false
+      positive: the fd could in principle be reused between the two closes.
+- [x] `readFull` waits with a timeout instead of blocking for a whole message.
+      The blocking form only re-checked `threadShouldExit` between reads, so a
+      peer that sent half a message and stalled held the thread until the socket
+      gave up -- which is what made the external close look necessary in the
+      first place. Signalling is now enough.
+- [x] Confirmed under TSan: **0 warnings**, down from 29. Restoring the external
+      close brings all 29 back, so the fix is the fix rather than a change of
+      timing.
+
+**The baseline is now zero, in both sanitisers.** Any TSan warning is a
+regression, and so is any ASan error. The only remaining sanitiser output is
+four UBSan lines from inside vendored libvorbis (`bitwise.c`, `floor1.c`,
+`psy.c`), which is not ours and is documented as ignorable in `AGENTS.md`.
 
 ---
 
@@ -191,6 +216,147 @@ ran out on a block boundary, and a late interval that resumes ramps back in.
 Tested in `AudioLoopbackTests` with a deliberately truncated interval at two
 block alignments, each proven red first (a 0.50 and a 0.42 step against the
 sine's own 0.029); TSan clean. The late-resume ramp has no automated test.
+
+### Audio-thread hygiene
+
+Two paths violate `PRINCIPLES §7` (the audio thread does not allocate, lock,
+block or log). Both are known, both are small, and both are the kind of defect
+that appears as an unreproducible dropout in someone else's DAW.
+
+- [x] `getDecodedAudio` takes `downloadMutex` on the audio thread. The RX path is
+      otherwise lock-light -- the network thread publishes progress with an
+      atomic `writePos` -- so the lock is protecting the *container*, not the
+      audio. Replace with a structure the audio thread can traverse without
+      blocking.
+      - [x] **The dangerous half is gone.** The network thread used to hold this
+            lock across the whole Vorbis decode and resample of a WRITE chunk --
+            milliseconds -- while the audio thread blocked on it every block.
+            The lock now covers the map lookup only. Safe because
+            `guidToInterval` is mutated solely by the network thread and the
+            audio thread never reads it.
+      - [x] Removed the data race that narrowing exposed: the decode called
+            `AudioBuffer::getWritePointer`, which writes `isClear`, while the
+            audio thread's `addFrom` read it. The lock had been hiding it.
+            Write pointers are now taken once before the interval is shared.
+            Confirmed with TSan: the warning disappeared, and the only races
+            left are the known shutdown one below.
+      - [x] **The lock is gone.** `channelStreams` (a `std::map` walked under
+            the lock) is now `streamSlots`, a fixed array of 64 slots that are
+            never created or destroyed while the client lives, so the audio
+            thread walks all of them without blocking and can never see a
+            half-built or freed entry.
+
+            `SpscRing` (`src/SpscRing.h`) carries ownership in a circle so that
+            freeing never lands on the audio thread:
+
+              ready:   network -> audio   "here is a decoded interval"
+              retired: audio -> network   "done with this one, free it"
+
+            The retire direction is the load-bearing half -- dropping the last
+            reference to a `DecodedInterval` frees a multi-megabyte buffer, and
+            that must not happen inside the callback. `retired` is sized above
+            `ready.capacity() + 2` (the most the audio thread can hold, being
+            `current` and `fadeOut`), so handing an interval back can never
+            fail and the audio thread is never stuck holding one.
+
+            State is split by owner. Playback cursors are audio-thread only;
+            volume, pan, mute, solo and output bus are atomics the UI writes and
+            the audio thread reads; `peakLevel` is an atomic the audio thread
+            writes and the UI reads -- it had been a plain float shared between
+            them, a race in every build that ever ran. `remoteUsers` stays a
+            locked map for the UI, under `usersMutex`, which the audio thread
+            never takes. The audio thread never touches a `juce::String`.
+
+            Slot lifecycle is Free -> Live -> Draining -> Free. The network
+            thread claims and marks draining; only the audio thread publishes
+            kFree, because only it knows when it has let go. On disconnect the
+            slots are marked draining rather than freed, since the audio thread
+            may be mid-block inside them.
+
+            Verified: full suite green, and TSan reports zero races in the RX
+            path over 81 864 assertions -- the only warnings left are the known
+            shutdown race below. `AudioLoopbackTests` cycles a channel out and
+            back 80 times, more than there are slots, so it fails unless
+            released slots are genuinely reclaimed; confirmed by breaking the
+            hand-back and watching it go red.
+- [x] `setSaveTx` / `setSaveRx` are called from `processBlock` on **every block**
+      and do file I/O on the toggling call. Move the toggle handling off the
+      audio thread entirely; the audio thread should only ever see a flag.
+      Now applied from the message thread when the toggle changes
+      (`applyDebugCaptureSettings`); `processBlock` no longer mentions them.
+- [x] **Re-audit of `processBlock`, 2026-08-08.** Four findings; three fixed
+      here, one deferred to a tracked work area. The result, so the list stays
+      authoritative:
+
+      - [x] **`localChannelMutex` was taken three times per block** -- the
+            monitor mix, `captureInputRange` and `fireCaptureLambdas`. This was
+            worse than the RX lock, because of what held the other end: the
+            editor's 30 Hz timer holds it while *constructing channel strips*,
+            `addLocalChannel` held it across a 30-second ring allocation (about
+            11 MB at 96 kHz), and `setStateInformation` holds it while parsing
+            XML. The audio thread could block on any of those.
+
+            Fixed the same way as the RX path. `localChannels` stays a locked
+            `std::vector` for the UI; the audio thread walks `audioChannels`, a
+            fixed array of raw pointers published by `publishLocalChannels()`
+            with a release store on the count. Safe without a lock because a
+            `LocalChannel` is never destroyed while the processor lives:
+            removing one moves it to `spareLocalChannels` and shrinks the count,
+            and a later add takes it back out. A recycled channel never resizes
+            its own ring -- only `prepareToPlay` does, which the host does not
+            run concurrently with `processBlock`.
+      - [x] **`getDecodedAudio` took `rxFileMutex` on every block**, even with
+            Save Rx off, and `isSavingRx` was a plain `bool` written by the
+            message thread while the audio thread read it. Now an atomic checked
+            before the lock is considered, so the normal path takes no lock at
+            all. The file write itself stays on the audio thread when the toggle
+            is on: writing the mix as the audio thread sees it is the whole
+            point of the toggle, and it is never on in ordinary use.
+      - [x] **`clockEvents` and `captureSegments` cannot outgrow their
+            reserves.** Checked rather than assumed: `clockEvents` reserves at
+            least 64 events, and exceeding it needs 63 beats inside one block --
+            about 1.5 million samples at 120 bpm and 48 kHz. `captureSegments`
+            reserves 8 against one segment per interval boundary crossed. Both
+            are safe by orders of magnitude, and no change was made.
+      - [ ] **`MessageManager::callAsync` still fires from the audio thread** at
+            each interval boundary in `fireCaptureLambdas`. It is a `new`, a
+            lock, an array append and a `write()` syscall
+            (`juce_Messaging_linux.cpp:72`). Once per interval rather than per
+            block, and removing it means the redesign already tracked below as
+            *Lock-free TX handoff* -- so it is recorded there, not fixed here.
+            The lock around it is gone; the post is not.
+
+### Transmit gating is per interval, not per sample
+
+`xmitEnabled` is read once, at the interval boundary, while `captureInputRange`
+fills the ring unconditionally. So the flag decides all-or-nothing for a whole
+interval, and toggling within one has no effect except through its final state:
+
+- ends **on** at the boundary: the *entire* interval is sent, including every
+  stretch where TX was off -- audio you may never have meant to share;
+- ends **off**: the whole interval is dropped, including the part recorded
+  while TX was on.
+
+Agreed behaviour: TX gates the audio, the interval boundary gates the
+transmission. Anything TX was off for becomes silence, the interval keeps its
+exact length, and an interval with TX off throughout sends nothing at all --
+which is what happens today and is what the reference client does for a
+non-broadcasting channel. The protocol has no objection: an interval is just an
+Ogg stream of N samples, and Vorbis encodes silence almost for free.
+
+- [x] `ChannelMix::write` takes a `transmitting` flag and writes silence rather
+      than input when it is false. The gate went there, not into
+      `captureInputRange`, because `PluginProcessor` cannot be compiled into the
+      test target -- logic left in it is untestable by construction.
+- [x] An interval is sent when transmit was on for *any* part of it, tracked by
+      `LocalChannel::txActiveThisInterval`. Reading `xmitEnabled` at the
+      boundary instead would discard an interval you played most of and then
+      switched off during. An interval you were silent for throughout still
+      sends nothing, which is what the reference client does for a channel that
+      is not broadcasting.
+- [x] Tested in `ChannelMixTests.cpp`, block by block with the flag changing --
+      the same shape as `processBlock` across an interval. Proven to have teeth
+      by ignoring the gate and watching 28 assertions go red.
 
 ---
 

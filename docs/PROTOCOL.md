@@ -198,7 +198,8 @@ vote the server will refuse.
 legal on the server and neither can be voted for -- and they persist across a
 reconnect, so every client has to follow a room to values it could never have
 proposed. **Never validate incoming `SERVER_CONFIG_CHANGE_NOTIFY` against the
-vote range**; `test/NinjamProtocolTests.cpp` asserts we do not.
+vote range**; chalkwalk-ninjam's `test/NinjamProtocolTests.cpp` asserts we do
+not.
 
 **The reference client does not validate incoming config at all.**
 `NJClient::updateBPMinfo` (`justinfrankel/ninjam njclient.cpp:725-732`) stores
@@ -322,8 +323,8 @@ Everything goes through `NinjamProtocol::Reader`, a bounds-checked cursor.
 
 ### Testing requirement
 
-Any change here goes into the **truncation sweep** in
-`test/NinjamProtocolTests.cpp` `runTruncationTests()` -- every parser is fed
+Any change here goes into the **truncation sweep** in chalkwalk-ninjam's
+`test/NinjamProtocolTests.cpp` `runTruncationTests()` (`libs/ninjam/` here) -- every parser is fed
 every truncation of every message -- not just a happy-path case. And it gets an
 ASan run: without a sanitiser, a read past the end of a `MemoryBlock` usually
 succeeds silently. Build instructions are in `test/README.md`; ignore UBSan
