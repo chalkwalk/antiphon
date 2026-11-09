@@ -200,14 +200,14 @@ Honest gaps, so nobody reads more into this than it supports:
   crosses a multiple of the BPI (`DESIGN.md` §4.2), so a transmitted interval
   is the true length rounded at each end -- at 137/11 @ 48 kHz, 231240 or
   231241 samples -- where the counted clock, and the reference client, send a
-  constant truncated 231240. Reasoned harmless, not measured: each receiver
-  plays an interval from its own downbeat (`PRINCIPLES §9`), so a sample's
-  difference in length is absorbed at the boundary rather than accumulated.
-  The counted clock still truncates verbatim whenever it runs (not synced,
-  Antiphon's clock, the standalone). The measurement owed: a real `ninjamsrv`
-  archive (`scripts/testserver.sh`) with Antiphon synced in a host at 110/16
-  and 137/11, at 44.1 and 48 kHz, lengths read with
-  `scripts/analyze_archive.py`, including an interval cut by a pause and a
-  resume elsewhere, which should arrive padded to full length. The harness that
-  linked `NJClient` is gone, and Antiphon synced needs a host with a playhead,
-  so this waits on a manual session.
+  constant truncated 231240. Not measured, and not owed: clients already
+  disagree about interval length by a sample or so, and every receiver,
+  this one included, absorbs it at its own downbeat (`PRINCIPLES §9`). At each
+  swap an interval that runs long has its unplayed tail faded and dropped, one
+  that runs short ends in silence, and the next starts from its first sample
+  (`NinjamClient.cpp`, the swap in the interval-boundary handler), so a
+  sample's difference never carries into the next interval. The counted clock
+  still truncates verbatim whenever it runs (not synced, Antiphon's clock, the
+  standalone). That an interval cut by a jump is sent padded to full length is
+  our own behaviour, and our own suite holds it (`AudioLoopbackTests`,
+  `PlayheadGridTests`).
