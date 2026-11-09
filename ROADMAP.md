@@ -3073,10 +3073,13 @@ bit depth cast to `unsigned` for an `int` parameter in `antiphon-stems` -- to
 finding reached from several translation units counts each time, and it reads
 a little above the unique count (141 against 125 at the first batch).
 
-- [ ] Work down the remaining 70. The largest category is
-      `modernize-use-designated-initializers` (34) -- a style decision, not a
-      cleanup, so it waits on one. The rest want judgement rather than a
-      fix-it: `return-braced-init-list` (6), `convert-member-functions-to-static`
+The designated initialisers were the style decision the rest waited on, and
+it was taken: named fields in every multi-field aggregate (`AGENTS.md`), which
+took the count to **36**. (These counts leave out `clang-analyzer-*` findings,
+as every count above did: 11 more in our code, plus 5 the analyzer reports
+inside JUCE headers on paths that start in ours. They count for the gate.)
+
+- [ ] Work down the remaining 36. They want judgement rather than a fix-it: `return-braced-init-list` (6), `convert-member-functions-to-static`
       (5), `avoid-nested-conditional-operator` (5), the deprecated
       `createWriterFor` (4: Save Tx/Rx, `antiphon-stems`, the voice lab).
 - [ ] Brace the `dangling-else` anyway. It is not a bug and it is one line.

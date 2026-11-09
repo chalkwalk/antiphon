@@ -506,6 +506,18 @@ Learned the hard way; each of these cost real time.
   the `libs/` submodules hold themselves to C++17). `juce::` types preferred
   over `std::` where both exist (`juce::String`, `juce::AudioBuffer`,
   `juce::CriticalSection`).
+  - **The language is safe on every platform; parts of the C++20 library are
+    not.** Apple ships some of it only in newer macOS runtimes -- `<format>`
+    and floating-point `std::to_chars` need 13.3, `std::pmr` 14 -- and the tree
+    sets no deployment target, so a build that is green in CI can still refuse
+    to load on an older Mac. `<chrono>` time zones are missing from Apple's
+    library altogether. Use none of these without first setting
+    `CMAKE_OSX_DEPLOYMENT_TARGET` to a version that has them and recording why.
+    Concepts, designated initialisers, `<=>`, `std::numbers`, `std::span`,
+    `std::ranges` algorithms, `std::cmp_*` and `.contains()` are fine.
+  - **Name the fields in an aggregate initialiser** (`{.host = ..., .port =
+    ...}`) when it has more than one. A positional one still compiles after a
+    field moves. Not available in `libs/`, which is C++17.
 - **2-space indent, braces on same line, members lowerCamelCase.**
 - **No comments except for non-obvious invariants or protocol workarounds.** No
   narration. When a comment is warranted it explains *why*, and often cites a
