@@ -391,7 +391,7 @@ void PracticeRoom::command(BotChat::Act act, int atInterval) {
   }
 
   juce::ScopedLock sl(botsMutex);
-  pending = {act, atInterval};
+  pending = {.act = act, .atInterval = atInterval};
 }
 
 int PracticeRoom::castVotes(bool isBpm, int value, int count) {

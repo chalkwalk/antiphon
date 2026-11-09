@@ -44,35 +44,34 @@ void ShortcutsDialog::populateShortcuts() {
 #endif
 
   shortcuts.clear();
-  shortcuts.add({mod + "S", "Sync now: does whatever syncing needs next"});
-  shortcuts.add({mod + "I", "Say status: connection, tempo and sync"});
-  shortcuts.add({mod + "F", "Clock: synced to DAW, or Antiphon's clock"});
-  shortcuts.add({mod + "G", "Play or stop Antiphon's clock"});
-  shortcuts.add({mod + "C", "Focus Chat message box"});
-  shortcuts.add({mod + "O", "Open Connect / Server Browser dialog"});
-  shortcuts.add({mod + "P", "Start a practice room and join it"});
-  shortcuts.add({mod + "M", "Toggle Mute All local channels"});
-  shortcuts.add({mod + "H or ?", "Open Keyboard Shortcuts Help dialog"});
-  shortcuts.add({mod + "V", "Cycle spoken announcements: all, important, off"});
-  shortcuts.add({mod + "A", "Write Accessibility Audit report to desktop"});
-  shortcuts.add(
-      {mod + "Shift+T", "Toggle Transmit retroactively for current interval"});
-  shortcuts.add({mod + "L", "Focus Local Channels section"});
-  shortcuts.add({mod + "R", "Focus Remote Users section"});
-  shortcuts.add({"Alt+Right / " + mod + "Right", "Select Next Local Channel"});
-  shortcuts.add(
-      {"Alt+Left / " + mod + "Left", "Select Previous Local Channel"});
-  shortcuts.add({"Alt+Down / " + mod + "Down", "Select Next Remote Player"});
-  shortcuts.add({"Alt+Up / " + mod + "Up", "Select Previous Remote Player"});
-  shortcuts.add({mod + "1..9", "Jump directly to Local Channel 1..9"});
-  shortcuts.add({mod + "Shift+1..9", "Jump directly to Remote Player 1..9"});
-  shortcuts.add({"M (channel active)", "Toggle Mute for selected channel"});
-  shortcuts.add({"S (channel active)", "Toggle Solo for selected channel"});
-  shortcuts.add(
-      {"X (local active)", "Toggle Transmit for selected local channel"});
-  shortcuts.add(
-      {"Up / Down / + / -", "Nudge volume for selected channel (+/- 1 dB)"});
-  shortcuts.add({"Left / Right", "Adjust panning for selected channel"});
+  const auto add = [this](const juce::String &keys, const juce::String &what) {
+    shortcuts.add({.shortcut = keys, .description = what});
+  };
+  add(mod + "S", "Sync now: does whatever syncing needs next");
+  add(mod + "I", "Say status: connection, tempo and sync");
+  add(mod + "F", "Clock: synced to DAW, or Antiphon's clock");
+  add(mod + "G", "Play or stop Antiphon's clock");
+  add(mod + "C", "Focus Chat message box");
+  add(mod + "O", "Open Connect / Server Browser dialog");
+  add(mod + "P", "Start a practice room and join it");
+  add(mod + "M", "Toggle Mute All local channels");
+  add(mod + "H or ?", "Open Keyboard Shortcuts Help dialog");
+  add(mod + "V", "Cycle spoken announcements: all, important, off");
+  add(mod + "A", "Write Accessibility Audit report to desktop");
+  add(mod + "Shift+T", "Toggle Transmit retroactively for current interval");
+  add(mod + "L", "Focus Local Channels section");
+  add(mod + "R", "Focus Remote Users section");
+  add("Alt+Right / " + mod + "Right", "Select Next Local Channel");
+  add("Alt+Left / " + mod + "Left", "Select Previous Local Channel");
+  add("Alt+Down / " + mod + "Down", "Select Next Remote Player");
+  add("Alt+Up / " + mod + "Up", "Select Previous Remote Player");
+  add(mod + "1..9", "Jump directly to Local Channel 1..9");
+  add(mod + "Shift+1..9", "Jump directly to Remote Player 1..9");
+  add("M (channel active)", "Toggle Mute for selected channel");
+  add("S (channel active)", "Toggle Solo for selected channel");
+  add("X (local active)", "Toggle Transmit for selected local channel");
+  add("Up / Down / + / -", "Nudge volume for selected channel (+/- 1 dB)");
+  add("Left / Right", "Adjust panning for selected channel");
   table.updateContent();
 }
 

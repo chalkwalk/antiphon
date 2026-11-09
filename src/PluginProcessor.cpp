@@ -562,9 +562,9 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       // Metered after mono summing, so a mono channel shows the single signal
       // it actually transmits rather than an unrelated stereo pair. Scaled by
       // monitor gain, so the VU shows what you hear.
-      const ChannelMix::Frame monGains{txGains.left * lc.monitorRamp.current(),
-                                       txGains.right *
-                                           lc.monitorRamp.current()};
+      const ChannelMix::Frame monGains{
+          .left = txGains.left * lc.monitorRamp.current(),
+          .right = txGains.right * lc.monitorRamp.current()};
       const auto p = ChannelMix::peaks(srcL, srcR, mono, 0, ns, monGains);
       lc.peakL.store(p.left);
       lc.peakR.store(p.right);

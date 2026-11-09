@@ -290,7 +290,8 @@ int main(int argc, char *argv[]) {
   for (const auto &seg : segments) {
     for (const auto &clip : seg.session.clips) {
       const int at = seg.base + (clip.interval - seg.session.firstInterval);
-      byStem[{clip.username, clip.channelIndex}][at] = Located{clip, seg.dir};
+      byStem[{clip.username, clip.channelIndex}][at] =
+          Located{.clip = clip, .dir = seg.dir};
       tempoByInterval[at] = {clip.bpm, clip.bpi};
       ++totalClips;
     }

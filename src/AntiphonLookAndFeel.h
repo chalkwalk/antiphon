@@ -46,9 +46,15 @@ struct Palette {
   juce::uint32 sliderTrack; // and its filled part
 };
 
-inline constexpr Palette kJamPalette{0xff00b4d8, 0xff05202b, 0xff16213e,
-                                     0xff1a1a2e, 0xff0f3460, 0xff0d0d1a,
-                                     0xff0f1524, 0xff11162a, 0xff2a3550};
+inline constexpr Palette kJamPalette{.accent = 0xff00b4d8,
+                                     .onText = 0xff05202b,
+                                     .control = 0xff16213e,
+                                     .window = 0xff1a1a2e,
+                                     .panel = 0xff0f3460,
+                                     .headerBg = 0xff0d0d1a,
+                                     .editorBg = 0xff0f1524,
+                                     .sliderBg = 0xff11162a,
+                                     .sliderTrack = 0xff2a3550};
 
 // Saturation is the only lever here: the accent is already at full value, so
 // "brighter" is not available and "more obvious" means less white in it. That
@@ -59,9 +65,15 @@ inline constexpr Palette kJamPalette{0xff00b4d8, 0xff05202b, 0xff16213e,
 // 52% saturation against the 36% this started at. Contrast is 7.3:1 on the
 // header, where the accent is TEXT and AAA wants 7.0, and 6.6:1 against the
 // window, where it is slider fills and ticks and the graphical bar is 3.0.
-inline constexpr Palette kPracticePalette{0xffcc7aff, 0xff1a0f2b, 0xff2a1f4a,
-                                          0xff1a1230, 0xff3d2a6e, 0xff0e0820,
-                                          0xff140c26, 0xff160e2b, 0xff43317a};
+inline constexpr Palette kPracticePalette{.accent = 0xffcc7aff,
+                                          .onText = 0xff1a0f2b,
+                                          .control = 0xff2a1f4a,
+                                          .window = 0xff1a1230,
+                                          .panel = 0xff3d2a6e,
+                                          .headerBg = 0xff0e0820,
+                                          .editorBg = 0xff140c26,
+                                          .sliderBg = 0xff160e2b,
+                                          .sliderTrack = 0xff43317a};
 
 // Which one is live. Message thread only: it is read while painting and
 // written when a room is joined or left.

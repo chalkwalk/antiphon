@@ -3,9 +3,9 @@
 #include "AntiphonLookAndFeel.h"
 
 static const ServerBrowserDialog::ServerEntry kStaticServers[] = {
-    {"ninbot.com", 2049},
-    {"ninjam.com", 2049},
-    {"autojam.com", 2049},
+    {.host = "ninbot.com", .port = 2049},
+    {.host = "ninjam.com", .port = 2049},
+    {.host = "autojam.com", .port = 2049},
 };
 
 ServerBrowserDialog::ServerBrowserDialog() : table("Servers", this) {

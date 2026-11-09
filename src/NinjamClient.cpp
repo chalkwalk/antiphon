@@ -402,7 +402,8 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
           if (roomMembers.insert(e.username).second)
             changed = true;
           if (!remoteUsers.contains(e.username))
-            remoteUsers[e.username] = RemoteUser{e.username, {}};
+            remoteUsers[e.username] =
+                RemoteUser{.username = e.username, .channels = {}};
 
           auto &user = remoteUsers[e.username];
           if (!user.channels.contains(e.channelIndex)) {
