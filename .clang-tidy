@@ -1,10 +1,11 @@
 ---
-# Advisory for now: CI runs clang-tidy without failing the build while the
-# existing backlog is worked down (see ROADMAP.md, "Clear the clang-tidy
-# backlog"). Do not add new findings. WarningsAsErrors is deliberately empty
-# until the backlog is zero, at which point it becomes '*' and the gate turns
-# blocking -- the same rule the sanitisers already follow: a baseline with a
-# remembered exception is one nobody reads carefully.
+# Blocking in CI since the backlog reached zero (docs/COMPLETED.md, "Clear the
+# clang-tidy backlog"): any finding located in src/, tools/ or test/ fails the
+# build -- the same rule the sanitisers follow, because a baseline with a
+# remembered exception is one nobody reads carefully. WarningsAsErrors stays
+# empty on purpose: the static analyzer reports three checked false positives
+# inside JUCE's headers, which no NOLINT can reach, so the gate is the CI step's
+# count of findings in our files rather than clang-tidy's exit status.
 #
 # The disabled checks below are switched off for a reason, not to flatter the
 # number. Everything in the first group is stylistic preference that would fight

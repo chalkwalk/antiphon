@@ -164,7 +164,7 @@ jobs:
             libasound2-dev libx11-dev libxcomposite-dev libxcursor-dev \
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
             libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev \
-            libgl1-mesa-dev libglu1-mesa-dev ninja-build clang-tidy
+            libgl1-mesa-dev libglu1-mesa-dev ninja-build
 
       # Pinned, and installed from PyPI rather than apt, because clang-format
       # is not stable across major versions: v18 and v20 disagree about `({})`
@@ -173,8 +173,13 @@ jobs:
       # (18 on ubuntu-latest today), so the version has to be stated. Keep this
       # in step with CONTRIBUTING.md, which tells contributors to install the
       # same one.
-      - name: Install clang-format
-        run: pip install "clang-format==20.1.8"
+      #
+      # clang-tidy is pinned for the same reason, more so: each major release
+      # adds and renames checks, so an unpinned one would move the gate below
+      # without anyone touching the code. 21 is what the backlog was cleared
+      # with.
+      - name: Install clang-format and clang-tidy
+        run: pip install "clang-format==20.1.8" "clang-tidy==21.1.6"
 
       # Blocking. The configuration is LLVM's defaults, which is what this
       # codebase was already written in, so a failure here means a file was
@@ -197,17 +202,24 @@ jobs:
           ninja -C build $(ninja -C build -t targets all \
             | grep -oE '^[^/:][^:]*JuceLibraryCode/[A-Za-z]+\.h' | sort -u)
 
-      # Advisory, deliberately. See ROADMAP.md, "Clear the clang-tidy backlog":
-      # 142 findings at adoption. This becomes blocking -- with
-      # WarningsAsErrors restored in .clang-tidy -- in the same commit that
-      # takes the count to zero, and not before.
-      - name: clang-tidy (advisory)
-        continue-on-error: true
+      # Blocking, since 2026-11-09, when the backlog reached zero (docs/
+      # COMPLETED.md, "Clear the clang-tidy backlog"). It counts
+      # findings located in OUR files only. The static analyzer follows a path
+      # into JUCE's headers and reports the end of it there -- 3 such at the
+      # time, each read and recorded as a false positive -- and a NOLINT
+      # cannot reach a line in a submodule. That is also why WarningsAsErrors
+      # stays off in .clang-tidy: it would fail on those. A unit that fails to
+      # parse fails the step too, because its count is not a count.
+      - name: clang-tidy
         run: |
-          clang-tidy -p build --quiet src/*.cpp tools/*.cpp 2>&1 | tee tidy.log
-          echo "findings: $(grep -cE 'warning:|error:' tidy.log || true)"
-          # A count from a run that could not parse the code is not a count.
+          clang-tidy --version
+          clang-tidy -p build --quiet src/*.cpp tools/*.cpp > tidy.log 2>&1 || true
+          ours=$(grep -E '^[^ ]*/(src|tools|test)/[^/ ]+:[0-9]+:[0-9]+: (warning|error):' tidy.log \
+            | grep -v '/libs/' | sort -u)
           failed=$(grep -c '^Error while processing' tidy.log || true)
-          if [ "$failed" -gt 0 ]; then
-            echo "::warning::clang-tidy could not process $failed translation unit(s); the count above is not the backlog"
+          echo "$ours"
+          echo "findings in our files: $(printf '%s' "$ours" | grep -c . || true)"
+          echo "translation units that failed to parse: $failed"
+          if [ -n "$ours" ] || [ "$failed" -gt 0 ]; then
+            exit 1
           fi

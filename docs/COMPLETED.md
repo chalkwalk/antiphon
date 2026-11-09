@@ -445,6 +445,45 @@ without rebuilding the rig. The interoperability items still open in
 
 ---
 
+### Clear the clang-tidy backlog
+
+`clang-tidy` was adopted advisory, with 142 findings, after six checks that
+fight JUCE and audio idiom were switched off (the raw number was 756; the
+reasoning is in `.clang-tidy`). It is a blocking CI step since 2026-11-09.
+
+- **The CI count had never been a count.** The step configured without
+  building, so no generated `JuceHeader.h` existed, every unit failed to parse,
+  and it printed `findings: 0` for months. It now builds only the generated
+  headers, and a unit that fails to parse fails the step.
+- **Measured properly** with clang-tidy 21 (a Ninja tree with only the
+  `JuceLibraryCode/*.h` targets built, `run-clang-tidy -j 4` over
+  `src/*.cpp tools/*.cpp`, unique `file:line:col`): 308, of which 140 were the
+  submodules' headers -- now excluded by `ExcludeHeaderFilterRegex` -- and 168
+  ours, plus the static analyzer's findings, which every interim count left out.
+- **Cleared in batches,** suite and audit green after each: the bugprone ones
+  with an answer, the mechanical fix-its, explicit narrowing casts in pixel
+  arithmetic, designated initialisers in every multi-field aggregate (a style
+  decision, now in `AGENTS.md`), the deprecated `createWriterFor` replaced by
+  `AudioFormatWriterOptions` (two of the four leaked the stream on failure),
+  and nested conditionals rewritten as `if`s.
+- **Real bugs it found:** the transmit capture buffer was not cleared before
+  the FIFO filled it, so an interval with less than a full FIFO behind it
+  would have sent stale heap memory; and `antiphon-stems` overwrote one of two
+  stems whose channels shared a name (found on the way, by the 2026-08-05 jam).
+- **Checked false positives, recorded so they are not re-investigated:** the
+  analyzer reports three findings inside JUCE headers, at the end of paths
+  that start in ours. `AudioBuffer`'s "null `channels`" assumes an allocation
+  can return null, which JUCE's `HeapBlock` does not (it throws). The
+  `GenericInterpolator` over-read in `NinjamClient`'s resampler cannot happen:
+  `numOut = floor(toCopy / ratio)`, so with the carried sub-sample position
+  below one, the interpolator consumes at most `toCopy` inputs. A NOLINT cannot
+  reach a line in a submodule, so the gate counts findings located in our files
+  only, and `WarningsAsErrors` stays off. The `HostGrid` rounding the adoption
+  notes defended now simply uses `std::lround`; the `dangling-else` they
+  mentioned in `RemoteChannelRow.cpp` is no longer in the code.
+- **clang-tidy is pinned** in CI (PyPI `clang-tidy==21.1.6`, beside the pinned
+  clang-format), because each major release adds and renames checks.
+
 ## Withdrawn
 
 ### Capture alignment at the interval boundary (#27)

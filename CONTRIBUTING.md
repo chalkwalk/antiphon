@@ -78,8 +78,9 @@ and buffer size, plus what the server and the other players were.
   ```bash
   pip install "clang-format==20.1.8"
   ```
-- **`clang-tidy`** is configured in `.clang-tidy` and runs in CI as an advisory
-  check while an existing backlog is worked down. Do not add new findings.
+- **`clang-tidy`** is configured in `.clang-tidy` and blocks in CI: the count
+  of findings in our files is zero and stays zero. It is pinned too
+  (`pip install "clang-tidy==21.1.6"`), because each release changes the checks.
 - **ASCII only in source files** -- no non-ASCII bytes anywhere, including
   comments and string literals. Use `--` for an em dash and `->` for an arrow.
   `juce::String(const char*, size_t)` asserts ASCII validity.
