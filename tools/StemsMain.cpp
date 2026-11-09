@@ -464,13 +464,23 @@ int main(int argc, char *argv[]) {
   int written = 0;
   juce::int64 totalFrames = 0;
 
+  // Two channels may share a name -- a player with two "new_channel"s -- and
+  // one file would silently overwrite the other. Those get the index as well.
+  const auto baseName = [](const StemKey &key, const Located &first) {
+    return sanitise(key.username) + "-" +
+           sanitise(first.clip.channelName.isNotEmpty()
+                        ? first.clip.channelName
+                        : "ch" + juce::String(key.channelIndex));
+  };
+  std::map<juce::String, int> nameUses;
+  for (const auto &[key, intervals] : byStem)
+    ++nameUses[baseName(key, intervals.begin()->second)];
+
   for (const auto &[key, intervals] : byStem) {
-    const juce::String name =
-        sanitise(key.username) + "-" +
-        sanitise(intervals.begin()->second.clip.channelName.isNotEmpty()
-                     ? intervals.begin()->second.clip.channelName
-                     : "ch" + juce::String(key.channelIndex)) +
-        ".wav";
+    juce::String name = baseName(key, intervals.begin()->second);
+    if (nameUses[name] > 1)
+      name += "-ch" + juce::String(key.channelIndex);
+    name += ".wav";
     const juce::File outFile = outDir.getChildFile(name);
     outFile.deleteFile();
 
