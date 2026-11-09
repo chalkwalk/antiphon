@@ -4,7 +4,9 @@
 #include "StemRender.h"
 #include "VorbisCodec.h"
 
+#include <algorithm>
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 // antiphon-stems -- turn a Ninjam session archive into WAV stems.
@@ -105,7 +107,7 @@ std::vector<juce::File> findSegmentDirs(const juce::File &root) {
       dirs.push_back(entry.getFile());
   }
 
-  std::sort(dirs.begin(), dirs.end(), [](const auto &a, const auto &b) {
+  std::ranges::sort(dirs, [](const auto &a, const auto &b) {
     return a.getFileName() < b.getFileName();
   });
   return dirs;
@@ -131,7 +133,8 @@ juce::int64 timestampMinutes(const juce::File &dir) {
   const int mi = time.substring(2, 4).getIntValue();
   // Not calendar-exact, and does not need to be: it only has to order and
   // difference names from the same few days.
-  return (((juce::int64)y * 12 + mo) * 31 + d) * 1440 + h * 60 + mi;
+  return (((juce::int64)y * 12 + mo) * 31 + d) * 1440 + (juce::int64)h * 60 +
+         mi;
 }
 
 void warnIfNotConsecutive(const std::vector<juce::File> &dirs) {
@@ -376,7 +379,7 @@ int main(int argc, char *argv[]) {
   //    boundaries by ear;
   //  - a RIFF INFO comment records where the audio came from, since a bare
   //    stem otherwise says nothing about which jam it was.
-  juce::StringPairArray metadata;
+  std::unordered_map<juce::String, juce::String> metadata;
   {
     juce::int64 frame = 0;
     int lastBpm = 0;
@@ -403,20 +406,20 @@ int main(int argc, char *argv[]) {
         if (firstBpm == 0)
           firstBpm = bpm;
         const juce::String prefix = "Cue" + juce::String(cueCount);
-        metadata.set(prefix + "Identifier", juce::String(cueCount + 1));
-        metadata.set(prefix + "Order", juce::String(cueCount));
-        metadata.set(prefix + "ChunkID", juce::String(0x61746164)); // 'data'
-        metadata.set(prefix + "ChunkStart", "0");
-        metadata.set(prefix + "BlockStart", "0");
-        metadata.set(prefix + "Offset", juce::String(frame));
+        metadata[prefix + "Identifier"] = juce::String(cueCount + 1);
+        metadata[prefix + "Order"] = juce::String(cueCount);
+        metadata[prefix + "ChunkID"] = juce::String(0x61746164); // 'data'
+        metadata[prefix + "ChunkStart"] = "0";
+        metadata[prefix + "BlockStart"] = "0";
+        metadata[prefix + "Offset"] = juce::String(frame);
         // A label needs its own count and a Text suffix; without NumCueLabels
         // the adtl list is never emitted and the markers arrive unnamed.
         const juce::String label = "Cue" + juce::String(cueCount);
         juce::ignoreUnused(label);
-        metadata.set("CueLabel" + juce::String(cueCount) + "Identifier",
-                     juce::String(cueCount + 1));
-        metadata.set("CueLabel" + juce::String(cueCount) + "Text",
-                     juce::String(bpm) + " BPM, " + juce::String(bpi) + " BPI");
+        metadata["CueLabel" + juce::String(cueCount) + "Identifier"] =
+            juce::String(cueCount + 1);
+        metadata["CueLabel" + juce::String(cueCount) + "Text"] =
+            juce::String(bpm) + " BPM, " + juce::String(bpi) + " BPI";
         ++cueCount;
         lastBpm = bpm;
         lastBpi = bpi;
@@ -427,29 +430,29 @@ int main(int argc, char *argv[]) {
     }
 
     if (cueCount > 0) {
-      metadata.set("NumCuePoints", juce::String(cueCount));
-      metadata.set("NumCueLabels", juce::String(cueCount));
+      metadata["NumCuePoints"] = juce::String(cueCount);
+      metadata["NumCueLabels"] = juce::String(cueCount);
     }
 
     if (firstBpm > 0) {
-      metadata.set(juce::WavAudioFormat::acidizerFlag, "1");
-      metadata.set(juce::WavAudioFormat::acidOneShot, "0");
-      metadata.set(juce::WavAudioFormat::acidStretch, "1");
-      metadata.set(juce::WavAudioFormat::acidDiskBased, "1");
-      metadata.set(juce::WavAudioFormat::acidTempo, juce::String(firstBpm));
-      metadata.set(juce::WavAudioFormat::acidBeats, juce::String(totalBeats));
+      metadata[juce::WavAudioFormat::acidizerFlag] = "1";
+      metadata[juce::WavAudioFormat::acidOneShot] = "0";
+      metadata[juce::WavAudioFormat::acidStretch] = "1";
+      metadata[juce::WavAudioFormat::acidDiskBased] = "1";
+      metadata[juce::WavAudioFormat::acidTempo] = juce::String(firstBpm);
+      metadata[juce::WavAudioFormat::acidBeats] = juce::String(totalBeats);
       // Ninjam has no time signature, so 4/4 is stated as the assumption it is
       // rather than left for a host to invent.
-      metadata.set(juce::WavAudioFormat::acidNumerator, "4");
-      metadata.set(juce::WavAudioFormat::acidDenominator, "4");
+      metadata[juce::WavAudioFormat::acidNumerator] = "4";
+      metadata[juce::WavAudioFormat::acidDenominator] = "4";
     }
 
-    metadata.set(juce::WavAudioFormat::riffInfoSoftware,
-                 "Antiphon antiphon-stems");
-    metadata.set(juce::WavAudioFormat::riffInfoComment,
-                 "Ninjam session " + sessionDir.getFileName() + ", " +
-                     juce::String((int)segments.size()) + " segment(s), " +
-                     juce::String(totalIntervals) + " intervals");
+    metadata[juce::WavAudioFormat::riffInfoSoftware] =
+        "Antiphon antiphon-stems";
+    metadata[juce::WavAudioFormat::riffInfoComment] =
+        "Ninjam session " + sessionDir.getFileName() + ", " +
+        juce::String((int)segments.size()) + " segment(s), " +
+        juce::String(totalIntervals) + " intervals";
     if (cueCount > 0)
       std::cout << cueCount << " tempo marker(s) written into each stem.\n\n";
   }
@@ -471,14 +474,17 @@ int main(int argc, char *argv[]) {
     const juce::File outFile = outDir.getChildFile(name);
     outFile.deleteFile();
 
-    std::unique_ptr<juce::FileOutputStream> stream(
-        outFile.createOutputStream());
+    std::unique_ptr<juce::OutputStream> stream(outFile.createOutputStream());
     if (stream == nullptr) {
       std::cerr << "Could not write " << outFile.getFullPathName() << "\n";
       return 2;
     }
-    std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(
-        stream.release(), outRate, 2, bitDepth, metadata, 0));
+    std::unique_ptr<juce::AudioFormatWriter> writer =
+        wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}
+                                        .withSampleRate(outRate)
+                                        .withNumChannels(2)
+                                        .withBitsPerSample(bitDepth)
+                                        .withMetadataValues(metadata));
     if (writer == nullptr) {
       std::cerr << "Could not create a WAV writer for "
                 << outFile.getFullPathName() << "\n";

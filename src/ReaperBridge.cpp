@@ -122,7 +122,7 @@ private:
 
 } // namespace
 
-std::unique_ptr<HostControl> makeReaperBridge(ReaperResolver resolve) {
+std::unique_ptr<HostControl> makeReaperBridge(const ReaperResolver &resolve) {
   if (!resolve)
     return nullptr;
   auto bridge = std::make_unique<ReaperBridge>();

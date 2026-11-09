@@ -7,8 +7,7 @@
 
 class RemoteUserStrip : public juce::Component {
 public:
-  RemoteUserStrip(AntiphonAudioProcessor &processor,
-                  const juce::String &username);
+  RemoteUserStrip(AntiphonAudioProcessor &processor, juce::String username);
   ~RemoteUserStrip() override;
 
   void paint(juce::Graphics &) override;

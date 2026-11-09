@@ -3,9 +3,11 @@
 #include "RemoteChannelRow.h"
 #include "PluginProcessor.h"
 
+#include <utility>
+
 RemoteChannelRow::RemoteChannelRow(AntiphonAudioProcessor &p,
                                    juce::String uname, int chIdx)
-    : audioProcessor(p), username(uname), channelIndex(chIdx) {
+    : audioProcessor(p), username(std::move(uname)), channelIndex(chIdx) {
 
   channelNameLabel.setFont(juce::FontOptions{}.withHeight(11.0f));
   channelNameLabel.setColour(juce::Label::textColourId,

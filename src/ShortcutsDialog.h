@@ -32,7 +32,7 @@ private:
   juce::Array<ShortcutItem> shortcuts;
 
   void populateShortcuts();
-  void dismiss();
+  void dismiss() const;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ShortcutsDialog)
 };

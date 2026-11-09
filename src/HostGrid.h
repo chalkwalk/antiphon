@@ -89,7 +89,8 @@ inline void advance(double ppqStart, double beatsPerSampleValue, int bpi,
   // A host that reports a wild position must not spin: the loop is bounded by
   // the beats a block can possibly contain.
   for (; (double)beat < ppqEnd - kBeatEpsilon; ++beat) {
-    int offset = (int)((((double)beat - ppqStart) / beatsPerSampleValue) + 0.5);
+    int offset =
+        (int)std::lround(((double)beat - ppqStart) / beatsPerSampleValue);
     offset = std::max(offset, 0);
     offset = std::min(offset, numSamples - 1);
 

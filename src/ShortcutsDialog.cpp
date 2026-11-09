@@ -75,7 +75,7 @@ void ShortcutsDialog::populateShortcuts() {
   table.updateContent();
 }
 
-void ShortcutsDialog::dismiss() {
+void ShortcutsDialog::dismiss() const {
   if (onClose)
     onClose();
 }

@@ -3079,9 +3079,21 @@ took the count to **36**. (These counts leave out `clang-analyzer-*` findings,
 as every count above did: 11 more in our code, plus 5 the analyzer reports
 inside JUCE headers on paths that start in ours. They count for the gate.)
 
-- [ ] Work down the remaining 36. They want judgement rather than a fix-it: `return-braced-init-list` (6), `convert-member-functions-to-static`
-      (5), `avoid-nested-conditional-operator` (5), the deprecated
-      `createWriterFor` (4: Save Tx/Rx, `antiphon-stems`, the voice lab).
+The remaining 36 went on 2026-11-09, with the suite and the audit green: the
+four deprecated `createWriterFor` calls moved to `AudioFormatWriterOptions`
+(which also stops two of them leaking the stream when a writer cannot be made;
+an `antiphon-stems` render was checked chunk by chunk afterwards -- `fmt`,
+`cue `, labels, `INFO`, `acid` all present), the nested conditionals became
+`if`s, five helpers that touch no member became `static`, the `HostGrid`
+rounding uses `std::lround` (equivalent, since the offset is clamped at zero,
+but no longer needs the paragraph above to defend it), and the rest were the
+mechanical fix-its. **Zero, leaving out the analyzer.**
+
+- [ ] The `clang-analyzer-*` findings: 11 in our code (six dead stores in
+      `PluginEditor`/`AntiphonLookAndFeel`, four virtual calls from the editor's
+      constructor, two in `TransmitSpans.h`), plus 5 the analyzer reports inside
+      JUCE headers on paths that begin in ours. Each wants reading, not
+      silencing; the JUCE ones need a decision on how to exclude them.
 - [ ] Brace the `dangling-else` anyway. It is not a bug and it is one line.
 - [ ] When the count reaches zero, set `WarningsAsErrors: '*'` in `.clang-tidy`
       and drop `continue-on-error` from the CI step. Both halves in one commit.

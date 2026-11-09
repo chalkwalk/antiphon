@@ -176,16 +176,17 @@ private:
       probe = nullptr;
       break;
 
-    case AudioDeviceStartup::State::TimedOut:
+    case AudioDeviceStartup::State::TimedOut: {
       // The probe is still inside the backend and may never come out. Abandon
       // both it and the device manager it is holding: destroying either would
       // block, and closing a device that never opened is not meaningful.
       // Leaking them is the price of staying usable.
-      (void)probe.release();
-      (void)deviceManager.release();
+      [[maybe_unused]] auto *abandonedProbe = probe.release();
+      [[maybe_unused]] auto *abandonedDevices = deviceManager.release();
       deviceManager = std::make_unique<juce::AudioDeviceManager>();
       showTrouble(AudioDeviceStartup::describe(startup.get()));
       break;
+    }
 
     case AudioDeviceStartup::State::Opening:
       break;

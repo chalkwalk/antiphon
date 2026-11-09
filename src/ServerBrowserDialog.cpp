@@ -80,9 +80,14 @@ ServerBrowserDialog::ServerBrowserDialog() : table("Servers", this) {
     juce::String user;
     juce::String pass;
     if (anonymousToggle.getToggleState()) {
-      user = (nick.isEmpty() || nick.startsWithIgnoreCase("anonymous"))
-                 ? (nick.isEmpty() ? "anonymous" : nick)
-                 : "anonymous:" + nick;
+      // The server wants "anonymous" or "anonymous:<nick>"; a nick that
+      // already says anonymous is passed through rather than doubled.
+      if (nick.isEmpty())
+        user = "anonymous";
+      else if (nick.startsWithIgnoreCase("anonymous"))
+        user = nick;
+      else
+        user = "anonymous:" + nick;
     } else {
       user = nick;
       pass = passwordInput.getText();
@@ -140,7 +145,7 @@ ServerBrowserDialog::~ServerBrowserDialog() {
     fetchThread.join();
 }
 
-void ServerBrowserDialog::dismiss() {
+void ServerBrowserDialog::dismiss() const {
   // Never close from inside a button's own click callback. Every caller here is
   // Button::internalClickCallback, which goes on touching the button after we
   // return -- and closing destroys this component, and the button with it.

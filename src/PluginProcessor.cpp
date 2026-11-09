@@ -35,14 +35,14 @@ AntiphonAudioProcessor::AntiphonAudioProcessor()
   adoptReaper(
       reaperResolverFromClapExtension(getExtension("cockos.reaper_extension")));
   vst3Extensions = makeReaperVst3Extensions(
-      [this](ReaperResolver r) { adoptReaper(std::move(r)); });
+      [this](const ReaperResolver &r) { adoptReaper(r); });
   startTimerHz(30);
 }
 
-void AntiphonAudioProcessor::adoptReaper(ReaperResolver resolve) {
+void AntiphonAudioProcessor::adoptReaper(const ReaperResolver &resolve) {
   if (hostControl != nullptr || !resolve)
     return;
-  hostControl = makeReaperBridge(std::move(resolve));
+  hostControl = makeReaperBridge(resolve);
   hostFollowsTempo.store(hostControl != nullptr && tempoFollow.enabled);
 }
 
@@ -455,11 +455,10 @@ bool AntiphonAudioProcessor::isBusesLayoutSupported(
   for (const auto &ch : layouts.outputBuses)
     if (ch != juce::AudioChannelSet::stereo())
       return false;
-  for (const auto &ch : layouts.inputBuses)
-    if (ch != juce::AudioChannelSet::stereo() &&
-        ch != juce::AudioChannelSet::mono())
-      return false;
-  return true;
+  return std::ranges::all_of(layouts.inputBuses, [](const auto &ch) {
+    return ch == juce::AudioChannelSet::stereo() ||
+           ch == juce::AudioChannelSet::mono();
+  });
 }
 #endif
 

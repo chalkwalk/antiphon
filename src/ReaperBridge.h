@@ -23,7 +23,7 @@ using ReaperResolver = std::function<void *(const char *)>;
 
 // Null when the resolver cannot find the functions we need, so a Reaper build
 // that lacks one behaves as any other DAW.
-std::unique_ptr<HostControl> makeReaperBridge(ReaperResolver resolve);
+std::unique_ptr<HostControl> makeReaperBridge(const ReaperResolver &resolve);
 
 // The resolver from a CLAP host extension pointer, or an empty function.
 ReaperResolver reaperResolverFromClapExtension(const void *extension);

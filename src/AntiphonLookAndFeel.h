@@ -130,7 +130,7 @@ inline juce::Rectangle<int> meterAreaFor(const juce::Slider &fader, int x,
                                          int width) {
   const int top = yForDb(fader, GainUtils::kMeterMaxDb);
   const int bottom = yForDb(fader, GainUtils::kMinDb);
-  return juce::Rectangle<int>(x, top, width, juce::jmax(1, bottom - top));
+  return {x, top, width, juce::jmax(1, bottom - top)};
 }
 
 inline void drawDbScale(juce::Graphics &g, const juce::Slider &fader,

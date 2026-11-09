@@ -943,10 +943,11 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   // The whole surface is themed, so the header follows the palette rather than
   // naming a colour of its own. The warning and idle states stay as they are:
   // they mean the same thing in either room.
-  juce::Colour headerBg =
-      connected       ? juce::Colour(AntiphonTheme::current().headerBg)
-      : headerWarning ? juce::Colour(0xff2a1a0a)  // amber -- failed/mismatch
-                      : juce::Colour(0xff111111); // dark grey -- idle
+  juce::Colour headerBg(0xff111111); // dark grey -- idle
+  if (connected)
+    headerBg = juce::Colour(AntiphonTheme::current().headerBg);
+  else if (headerWarning)
+    headerBg = juce::Colour(0xff2a1a0a); // amber -- failed/mismatch
   g.setColour(headerBg);
   g.fillRect(header);
 
@@ -1133,11 +1134,11 @@ void AntiphonEditor::paint(juce::Graphics &g) {
         (ClockModel::State)audioProcessor.publishedClockState.load();
     if (connected && sync != ClockModel::State::Disconnected) {
       using ClockModel::State;
-      const juce::Colour c =
-          (sync == State::Synced || sync == State::AntiphonClock)
-              ? juce::Colours::lightgreen
-          : sync == State::Stopped ? juce::Colours::yellow
-                                   : juce::Colours::orange;
+      juce::Colour c = juce::Colours::orange;
+      if (sync == State::Synced || sync == State::AntiphonClock)
+        c = juce::Colours::lightgreen;
+      else if (sync == State::Stopped)
+        c = juce::Colours::yellow;
       const juce::String msg =
           SyncAnnouncements::headerText(sync, syncContext());
       g.setColour(c);

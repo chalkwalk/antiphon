@@ -109,7 +109,7 @@ private:
 
   void run() override;
   void acceptPendingConnections();
-  bool readFromClient(Client &c);
+  static bool readFromClient(Client &c);
   void drainFrames(Client &c);
   void handleFrame(Client &c, juce::uint8 type,
                    const chalkwalk::ninjam::ByteBuffer &payload);
@@ -124,7 +124,7 @@ private:
   // permit it, but a lock whose depth depends on the call path is a lock
   // nobody can reason about -- and TSan does not model the recursion, so it
   // reports every such acquisition.
-  bool sendTo(Client &c, juce::uint8 type, const void *data, int size);
+  static bool sendTo(Client &c, juce::uint8 type, const void *data, int size);
   void relayAudioLocked(const Client &from, int channelIndex, juce::uint8 type,
                         const void *data, int size);
   static bool subscribed(const Client &to, const juce::String &user,

@@ -24,7 +24,7 @@ inline juce::String classNameOf(const juce::Component &c) {
     return s;
   }
 #endif
-  return juce::String(typeid(c).name());
+  return {typeid(c).name()};
 }
 
 // What the READER will announce, and what a sighted user reads, resolved the

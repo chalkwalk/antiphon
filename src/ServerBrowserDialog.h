@@ -69,9 +69,9 @@ private:
   juce::StreamingSocket fetchSocket;
 
   void populateStaticList();
-  juce::Array<ServerEntry> parseServersJSON(const juce::String &json);
+  static juce::Array<ServerEntry> parseServersJSON(const juce::String &json);
   void doFetch();
-  void dismiss();
+  void dismiss() const;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ServerBrowserDialog)
 };

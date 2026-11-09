@@ -40,7 +40,7 @@ inline juce::String bpmText(double bpm) {
   const double whole = std::round(bpm);
   if (std::fabs(bpm - whole) < ClockModel::kTempoTolerance)
     return juce::String((int)whole);
-  return juce::String(bpm, 1);
+  return {bpm, 1};
 }
 
 inline juce::String dawName(const Context &c) {

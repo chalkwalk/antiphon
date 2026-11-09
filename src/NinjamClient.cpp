@@ -38,10 +38,14 @@ void NinjamClient::setSaveTx(bool shouldSave) {
       txOggFile->truncate();
     }
 
-    juce::StringPairArray strArr;
     const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
-    txWavWriter.reset(wavFormat.createWriterFor(
-        new juce::FileOutputStream(wavF), rate, 2, 32, strArr, 0));
+    std::unique_ptr<juce::OutputStream> wavStream =
+        std::make_unique<juce::FileOutputStream>(wavF);
+    txWavWriter =
+        wavFormat.createWriterFor(wavStream, juce::AudioFormatWriterOptions{}
+                                                 .withSampleRate(rate)
+                                                 .withNumChannels(2)
+                                                 .withBitsPerSample(32));
   } else if (!shouldSave && isSavingTx.load()) {
     txOggFile.reset();
     txWavWriter.reset();
@@ -66,10 +70,14 @@ void NinjamClient::setSaveRx(bool shouldSave) {
       rxOggFile->truncate();
     }
 
-    juce::StringPairArray strArr;
     const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
-    rxWavWriter.reset(wavFormat.createWriterFor(
-        new juce::FileOutputStream(wavF), rate, 2, 32, strArr, 0));
+    std::unique_ptr<juce::OutputStream> wavStream =
+        std::make_unique<juce::FileOutputStream>(wavF);
+    rxWavWriter =
+        wavFormat.createWriterFor(wavStream, juce::AudioFormatWriterOptions{}
+                                                 .withSampleRate(rate)
+                                                 .withNumChannels(2)
+                                                 .withBitsPerSample(32));
   } else if (!shouldSave && isSavingRx.load()) {
     rxOggFile.reset();
     rxWavWriter.reset();

@@ -39,10 +39,10 @@ juce::String twoDigits(double v) {
   // both reads badly. Scale decides.
   const double a = std::abs(v);
   if (a >= 1000.0)
-    return juce::String(v, 0);
+    return {v, 0};
   if (a >= 10.0)
-    return juce::String(v, 2);
-  return juce::String(v, 4);
+    return {v, 2};
+  return {v, 4};
 }
 
 // ---------------------------------------------------------------------------
@@ -88,8 +88,8 @@ public:
     // The ends themselves, so a range that has been narrowed to nothing is
     // still visible.
     g.setColour(juce::Colours::white.withAlpha(0.55f));
-    g.drawVerticalLine((int)xLo, (float)y, (float)(y + h));
-    g.drawVerticalLine((int)xHi, (float)y, (float)(y + h));
+    g.drawVerticalLine(juce::roundToInt(xLo), (float)y, (float)(y + h));
+    g.drawVerticalLine(juce::roundToInt(xHi), (float)y, (float)(y + h));
 
     // Where the middle SOUNDS. Hollow until somebody has said so, so an
     // unlistened range and a judged one do not look alike.
@@ -219,7 +219,11 @@ private:
       }
       *knob.value = knob.range->clamp(*knob.value);
     } else {
-      const double u = end == End::Low ? 0.0 : (end == End::High ? 1.0 : 0.5);
+      double u = 0.5;
+      if (end == End::Low)
+        u = 0.0;
+      else if (end == End::High)
+        u = 1.0;
       *knob.value = knob.range->at(u);
     }
 

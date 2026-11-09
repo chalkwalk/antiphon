@@ -38,7 +38,7 @@
 class PracticeRoom : private BandControl {
 public:
   PracticeRoom();
-  ~PracticeRoom();
+  ~PracticeRoom() override;
 
   struct Config {
     // 100 bpm and sixteen to the interval, not 120 and eight.

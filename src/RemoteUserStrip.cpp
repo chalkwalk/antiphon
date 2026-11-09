@@ -1,9 +1,10 @@
 #include "AntiphonLookAndFeel.h"
 #include "RemoteUserStrip.h"
 
-RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p,
-                                 const juce::String &u)
-    : audioProcessor(p), username(u) {
+#include <utility>
+
+RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p, juce::String u)
+    : audioProcessor(p), username(std::move(u)) {
 
   // A reader navigates player by player; the nickname is the useful identity,
   // so the user@host form goes in the description rather than the name.

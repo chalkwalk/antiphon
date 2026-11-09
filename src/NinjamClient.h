@@ -439,10 +439,10 @@ private:
 
   int acquireStreamSlot(const juce::String &username, int channelIndex);
   void releaseStreamSlot(const juce::String &username, int channelIndex);
-  void drainRetired(StreamSlot &slot);
+  static void drainRetired(StreamSlot &slot);
   void drainAllRetired();
   // Audio thread: hand every interval back and mark the slot reusable.
-  void releaseSlotOnAudioThread(StreamSlot &slot);
+  static void releaseSlotOnAudioThread(StreamSlot &slot);
 
   // Routes DOWNLOAD_INTERVAL_WRITE chunks to the correct DecodedInterval.
   // Erased when the final chunk arrives (flags & 1). `target` is borrowed --

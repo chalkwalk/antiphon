@@ -635,13 +635,16 @@ bool writeWav(const juce::File &file, const std::vector<float> &buf,
   file.getParentDirectory().createDirectory();
 
   juce::WavAudioFormat wav;
-  std::unique_ptr<juce::FileOutputStream> stream(file.createOutputStream());
+  std::unique_ptr<juce::OutputStream> stream(file.createOutputStream());
   if (stream == nullptr)
     return false;
 
   const int channels = rightChannel != nullptr ? 2 : 1;
-  std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(
-      stream.release(), sampleRate, (unsigned)channels, 24, {}, 0));
+  std::unique_ptr<juce::AudioFormatWriter> writer =
+      wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}
+                                      .withSampleRate(sampleRate)
+                                      .withNumChannels(channels)
+                                      .withBitsPerSample(24));
   if (writer == nullptr)
     return false;
 

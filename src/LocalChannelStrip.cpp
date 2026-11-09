@@ -221,11 +221,12 @@ void LocalChannelStrip::toggleTransmitRetroactively(bool alreadyToggled) {
 
   // Rate limiting and verbosity are the Announcer's job; this is an explicit
   // user action, so it is always important enough to say.
+  const char *said = "Too late, that interval has already been sent";
+  if (applied)
+    said = on ? "Transmitting this interval from its start"
+              : "This interval will not be sent";
   juce::AccessibilityHandler::postAnnouncement(
-      applied ? (on ? "Transmitting this interval from its start"
-                    : "This interval will not be sent")
-              : "Too late, that interval has already been sent",
-      juce::AccessibilityHandler::AnnouncementPriority::high);
+      said, juce::AccessibilityHandler::AnnouncementPriority::high);
 }
 
 void LocalChannelStrip::updatePeaks() {

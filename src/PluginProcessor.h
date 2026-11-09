@@ -403,7 +403,7 @@ private:
   // Watches for the moments the DAW's tempo should follow the room's: joining,
   // and the grid applying a room tempo change. Message thread.
   void timerCallback() override;
-  void adoptReaper(std::function<void *(const char *)> resolve);
+  void adoptReaper(const std::function<void *(const char *)> &resolve);
   std::unique_ptr<juce::VST3ClientExtensions> vst3Extensions;
   FollowTrigger followTrigger;
   // This connection's room config has arrived (message thread only).

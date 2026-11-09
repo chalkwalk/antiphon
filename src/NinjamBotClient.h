@@ -27,8 +27,7 @@ public:
 
   void addListener(BotClient::Listener *l) override { listeners.push_back(l); }
   void removeListener(BotClient::Listener *l) override {
-    listeners.erase(std::remove(listeners.begin(), listeners.end(), l),
-                    listeners.end());
+    std::erase(listeners, l);
   }
 
   void setSampleRate(double rate) override { client.setSampleRate(rate); }
