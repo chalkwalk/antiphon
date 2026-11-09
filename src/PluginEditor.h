@@ -20,10 +20,10 @@
 
 class ServerBrowserDialog;
 
-class AntiphonEditor : public juce::AudioProcessorEditor,
-                       public juce::Timer,
-                       public juce::KeyListener,
-                       public NinjamClientListener {
+class AntiphonEditor final : public juce::AudioProcessorEditor,
+                             public juce::Timer,
+                             public juce::KeyListener,
+                             public NinjamClientListener {
 public:
   AntiphonEditor(AntiphonAudioProcessor &);
   ~AntiphonEditor() override;

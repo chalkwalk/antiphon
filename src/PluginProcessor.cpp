@@ -630,7 +630,11 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                                          rampSamples]() {
           if (!lc->isValid.load())
             return;
+          // AudioBuffer does not clear what it allocates. A FIFO holding less
+          // than an interval would otherwise send the rest as stale heap; one
+          // memset an interval, off the audio thread, rules that out.
           juce::AudioBuffer<float> buf(2, length);
+          buf.clear();
           int s1;
           int n1;
           int s2;

@@ -2105,22 +2105,14 @@ void AntiphonEditor::relayoutChannelArea() {
                                 (int)((float)panel_w * 0.4f));
   int remote_hard = panel_w - local_hard;
 
-  // Elastic four-case split
-  int local_w;
-  int remote_w;
-  if (local_need <= local_hard && remote_need <= remote_hard) {
-    local_w = local_hard;
-    remote_w = remote_hard;
-  } else if (local_need > local_hard && remote_need <= remote_hard) {
-    remote_w = remote_need;
-    local_w = panel_w - remote_w;
-  } else if (remote_need > remote_hard && local_need <= local_hard) {
+  // Elastic split: a side that needs more than its share borrows from a side
+  // that needs less. Both over, or both under, keeps the hard split. The
+  // remote side is whatever local leaves.
+  int local_w = local_hard;
+  if (local_need > local_hard && remote_need <= remote_hard)
+    local_w = panel_w - remote_need;
+  else if (remote_need > remote_hard && local_need <= local_hard)
     local_w = local_need;
-    remote_w = panel_w - local_w;
-  } else {
-    local_w = local_hard;
-    remote_w = remote_hard;
-  }
 
   channelAreaLocalW = local_w;
 
@@ -2403,7 +2395,6 @@ void AntiphonEditor::timerCallback() {
   {
     juce::ScopedLock sl(audioProcessor.localChannelMutex);
     int numChannels = (int)audioProcessor.localChannels.size();
-    int numStrips = localChannelStrips.size();
 
     // Remove extra strips (from the end)
     while (localChannelStrips.size() > numChannels) {

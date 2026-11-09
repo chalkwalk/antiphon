@@ -67,7 +67,7 @@ public:
       return true;
     }
 
-    if (count >= kMaxTransitions) {
+    if (count < 0 || count >= kMaxTransitions) {
       overflow = true;
       return false;
     }

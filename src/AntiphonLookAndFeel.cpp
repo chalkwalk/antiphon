@@ -186,8 +186,6 @@ void AntiphonLookAndFeel::drawToggleButton(juce::Graphics &g,
   auto fontSize = juce::jmin(15.0f, (float)button.getHeight() * 0.75f);
   auto tickWidth = fontSize * 1.1f;
 
-  auto bounds = button.getLocalBounds().toFloat().reduced(2.0f);
-
   if (button.getButtonText().isNotEmpty()) {
     // A labelled toggle is drawn as a lit button, which is the convention for
     // an engaged control in audio software -- Mute, Solo, Transmit, Metronome.
