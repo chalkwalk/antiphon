@@ -37,7 +37,7 @@ inline int noSigPipe(juce::StreamingSocket &socket, const void *data,
   if (fd < 0)
     return -1;
 
-  auto *p = static_cast<const char *>(data);
+  const auto *p = static_cast<const char *>(data);
   int written = 0;
   while (written < numBytes) {
     const auto n =

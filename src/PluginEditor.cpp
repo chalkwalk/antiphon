@@ -917,8 +917,8 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   if (vote.valid) {
     if (vote.settled) {
       pendingVote = {};
-    } else if (!(vote.settled) && !(vote.target == dismissedVoteTarget &&
-                                    vote.isBpm == dismissedVoteIsBpm)) {
+    } else if (!(vote.settled) && (vote.target != dismissedVoteTarget ||
+                                   vote.isBpm != dismissedVoteIsBpm)) {
       pendingVote = vote;
     }
     updateTempoChip();
@@ -2438,7 +2438,7 @@ void AntiphonEditor::timerCallback() {
     auto users = audioProcessor.ninjamClient.getRemoteUsers();
 
     for (int i = remoteUserStrips.size() - 1; i >= 0; --i) {
-      if (users.find(remoteUserStrips[i]->getName()) == users.end()) {
+      if (!users.contains(remoteUserStrips[i]->getName())) {
         remoteUserStrips.remove(i);
       }
     }

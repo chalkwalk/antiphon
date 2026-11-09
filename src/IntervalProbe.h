@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 // Deterministic interval probe: a bed tone with short enveloped bursts at
@@ -19,7 +20,7 @@
 
 namespace ninjam {
 
-constexpr double kProbePi = 3.14159265358979323846;
+constexpr double kProbePi = std::numbers::pi;
 
 struct IntervalProbe {
   double burstHz = 3000.0; // well clear of the 440 Hz bed tone

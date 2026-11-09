@@ -154,7 +154,7 @@ void ServerBrowserDialog::dismiss() {
 
 void ServerBrowserDialog::populateStaticList() {
   servers.clear();
-  for (auto &s : kStaticServers)
+  for (const auto &s : kStaticServers)
     servers.add(s);
 }
 
@@ -164,7 +164,7 @@ ServerBrowserDialog::parseServersJSON(const juce::String &json) {
   juce::var parsed = juce::JSON::parse(json);
 
   // API returns {"servers": [...]}; all numeric fields are quoted strings.
-  juce::var arr = parsed["servers"];
+  const juce::var &arr = parsed["servers"];
   if (!arr.isArray())
     return result;
 

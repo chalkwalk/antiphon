@@ -172,7 +172,7 @@ LocalChannelStrip::LocalChannelStrip(
   updateInputBusCount(1);
 }
 
-LocalChannelStrip::~LocalChannelStrip() {}
+LocalChannelStrip::~LocalChannelStrip() = default;
 
 void LocalChannelStrip::refreshAccessibleName() {
   const juce::String n = channel->name.isNotEmpty()

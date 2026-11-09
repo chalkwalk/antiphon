@@ -44,7 +44,7 @@ public:
   // e.g. "Instrument transmit on", "Instrument transmit off", "Mute all on"
   static juce::String formatToggle(const juce::String &target,
                                    const juce::String &action, bool on) {
-    const auto stateStr = on ? " on" : " off";
+    const auto *const stateStr = on ? " on" : " off";
     if (target.isEmpty())
       return action.substring(0, 1).toUpperCase() + action.substring(1) +
              stateStr;

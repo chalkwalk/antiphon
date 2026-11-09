@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+
+#include <utility>
 #include "HostGrid.h"
 #include "ChannelMix.h"
 #include "PluginEditor.h"
@@ -450,10 +452,10 @@ bool AntiphonAudioProcessor::isBusesLayoutSupported(
     const BusesLayout &layouts) const {
   if (layouts.outputBuses.isEmpty())
     return false;
-  for (auto &ch : layouts.outputBuses)
+  for (const auto &ch : layouts.outputBuses)
     if (ch != juce::AudioChannelSet::stereo())
       return false;
-  for (auto &ch : layouts.inputBuses)
+  for (const auto &ch : layouts.inputBuses)
     if (ch != juce::AudioChannelSet::stereo() &&
         ch != juce::AudioChannelSet::mono())
       return false;
@@ -1008,7 +1010,7 @@ static const uint8_t kObfKey[] = {0x4e, 0x6a, 0x6d, 0x50, 0x77, 0x64,
                                   0x2f, 0x56, 0x9c, 0xb1};
 
 static juce::String obfuscate(const juce::String &s) {
-  auto utf8 = s.toRawUTF8();
+  const auto *utf8 = s.toRawUTF8();
   int len = (int)s.getNumBytesAsUTF8();
   juce::MemoryBlock buf(len);
   for (int i = 0; i < len; ++i)
@@ -1021,7 +1023,7 @@ static juce::String deobfuscate(const juce::String &b64) {
   juce::MemoryOutputStream out;
   if (!juce::Base64::convertFromBase64(out, b64))
     return {};
-  auto *data = static_cast<const uint8_t *>(out.getData());
+  const auto *data = static_cast<const uint8_t *>(out.getData());
   int len = (int)out.getDataSize();
   juce::HeapBlock<char> buf(len + 1);
   for (int i = 0; i < len; ++i)
@@ -1047,7 +1049,7 @@ void AntiphonAudioProcessor::getStateInformation(juce::MemoryBlock &destData) {
 
   {
     juce::ScopedLock sl(localChannelMutex);
-    for (int i = 0; i < (int)localChannels.size(); ++i) {
+    for (int i = 0; std::cmp_less(i, localChannels.size()); ++i) {
       auto &lc = *localChannels[i];
       auto *ch = xml.createNewChildElement("LocalChannel");
       ch->setAttribute("idx", i);
@@ -1110,7 +1112,7 @@ void AntiphonAudioProcessor::setStateInformation(const void *data,
     // past what the published audio-thread view can hold.
     if (idx < 0 || idx >= kMaxLocalChannels)
       continue;
-    while (idx >= (int)localChannels.size())
+    while (std::cmp_greater_equal(idx, localChannels.size()))
       localChannels.push_back(std::make_shared<LocalChannel>());
     auto &lc = *localChannels[idx];
     lc.name = ch->getStringAttribute("name", "Instrument");
@@ -1134,7 +1136,8 @@ bool AntiphonAudioProcessor::applyRetroactiveTransmit(
     return false;
 
   juce::ScopedLock sl(localChannelMutex);
-  if (channelIndex < 0 || channelIndex >= (int)localChannels.size())
+  if (channelIndex < 0 ||
+      std::cmp_greater_equal(channelIndex, localChannels.size()))
     return false;
 
   auto &lc = *localChannels[(std::size_t)channelIndex];

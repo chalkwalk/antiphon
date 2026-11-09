@@ -387,7 +387,7 @@ int main(int argc, char *argv[]) {
     for (int interval = 0; interval < totalIntervals; ++interval) {
       auto tempo = tempoByInterval.find(interval);
       if (tempo == tempoByInterval.end()) {
-        if (interval > 0 && tempoByInterval.count(interval - 1))
+        if (interval > 0 && tempoByInterval.contains(interval - 1))
           tempo = tempoByInterval.find(interval - 1);
         else
           continue;
@@ -496,7 +496,7 @@ int main(int argc, char *argv[]) {
       if (tempo == tempoByInterval.end()) {
         // No clip from anyone in this interval, so its length is unknown.
         // Carry the previous tempo forward if there is one.
-        if (interval > 0 && tempoByInterval.count(interval - 1))
+        if (interval > 0 && tempoByInterval.contains(interval - 1))
           tempo = tempoByInterval.find(interval - 1);
         else
           continue;
@@ -536,8 +536,8 @@ int main(int argc, char *argv[]) {
       // fading there would put an amplitude wobble at the interval rate through
       // the whole stem.
       if (produced > 0) {
-        const bool prevHadAudio = intervals.count(interval - 1) > 0;
-        const bool nextHasAudio = intervals.count(interval + 1) > 0;
+        const bool prevHadAudio = intervals.contains(interval - 1);
+        const bool nextHasAudio = intervals.contains(interval + 1);
         const bool shortClip = produced < frames;
 
         // A clip that came up short decays into its own padding rather than

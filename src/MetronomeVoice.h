@@ -9,7 +9,7 @@
 
 class MetronomeVoice {
 public:
-  void prepare(double sampleRate);
+  void prepare(double sr);
 
   // Tells the voice how long the interval is, so it can decide whether a bar
   // accent means anything.

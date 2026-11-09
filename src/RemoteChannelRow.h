@@ -6,8 +6,7 @@ class AntiphonAudioProcessor;
 
 class RemoteChannelRow : public juce::Component {
 public:
-  RemoteChannelRow(AntiphonAudioProcessor &p, juce::String username,
-                   int channelIndex);
+  RemoteChannelRow(AntiphonAudioProcessor &p, juce::String uname, int chIdx);
 
   void update(const NinjamClient::RemoteUserChannel &c);
   void updatePeak(float peak);

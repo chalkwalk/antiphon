@@ -5,6 +5,7 @@
 #include <BotNames.h>
 
 #include <algorithm>
+#include <utility>
 
 #include "IntervalClock.h"
 
@@ -449,7 +450,7 @@ std::vector<BandPlayState::State> PracticeRoom::bandLatchedPhases() const {
 
 bool PracticeRoom::botIsAudible(int index) const {
   juce::ScopedLock sl(botsMutex);
-  if (index < 0 || index >= (int)bots.size())
+  if (index < 0 || std::cmp_greater_equal(index, bots.size()))
     return false;
   return bots[(std::size_t)index]->latchedPhase() !=
          BandPlayState::State::Silent;
@@ -559,7 +560,7 @@ void PracticeRoom::renderScheduledBots(
 void PracticeRoom::renderOneBot(int intervalIndex, int slice,
                                 const std::function<bool()> &shouldStop) {
   juce::ScopedLock sl(botsMutex);
-  if (slice < 0 || slice >= (int)bots.size())
+  if (slice < 0 || std::cmp_greater_equal(slice, bots.size()))
     return; // A bot parted and its slice outlived it.
 
   // Checked here as well as by the pump, because this is the call that

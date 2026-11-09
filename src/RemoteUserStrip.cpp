@@ -17,7 +17,7 @@ RemoteUserStrip::RemoteUserStrip(AntiphonAudioProcessor &p,
   addAndMakeVisible(usernameLabel);
 }
 
-RemoteUserStrip::~RemoteUserStrip() {}
+RemoteUserStrip::~RemoteUserStrip() = default;
 
 int RemoteUserStrip::getPreferredWidth() const {
   int n = channelRows.size();
@@ -67,8 +67,8 @@ void RemoteUserStrip::updateChannels(
   // Add rows for new channels
   for (const auto &[chIdx, ch] : channels) {
     bool found = false;
-    for (int i = 0; i < (int)channelIndices.size(); ++i) {
-      if (channelIndices[i] == chIdx) {
+    for (int existing : channelIndices) {
+      if (existing == chIdx) {
         found = true;
         break;
       }
@@ -83,14 +83,14 @@ void RemoteUserStrip::updateChannels(
 
   // Remove rows for departed channels
   for (int i = (int)channelIndices.size() - 1; i >= 0; --i) {
-    if (channels.find(channelIndices[i]) == channels.end()) {
+    if (!channels.contains(channelIndices[i])) {
       channelRows.remove(i);
       channelIndices.erase(channelIndices.begin() + i);
     }
   }
 
   // Update each row
-  for (int i = 0; i < (int)channelIndices.size(); ++i) {
+  for (int i = 0; std::cmp_less(i, channelIndices.size()); ++i) {
     const auto &ch = channels.at(channelIndices[i]);
     channelRows[i]->update(ch);
     channelRows[i]->updatePeak(ch.peakLevel);

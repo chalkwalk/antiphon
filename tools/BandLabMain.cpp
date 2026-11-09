@@ -71,15 +71,15 @@ public:
 
     const int y = 0;
     const int h = getHeight();
-    const float xLo = (float)getPositionOfValue(lo);
-    const float xHi = (float)getPositionOfValue(hi);
+    const float xLo = getPositionOfValue(lo);
+    const float xHi = getPositionOfValue(hi);
 
     // Out of the seed's reach. Drawn over the track rather than instead of it,
     // so the fader still reads as one continuous control that happens to have
     // a usable middle.
     g.setColour(juce::Colours::black.withAlpha(0.45f));
-    const float left = (float)getPositionOfValue(getMinimum());
-    const float right = (float)getPositionOfValue(getMaximum());
+    const float left = getPositionOfValue(getMinimum());
+    const float right = getPositionOfValue(getMaximum());
     if (xLo > left)
       g.fillRect(juce::Rectangle<float>(left, (float)y, xLo - left, (float)h));
     if (right > xHi)
@@ -93,7 +93,7 @@ public:
 
     // Where the middle SOUNDS. Hollow until somebody has said so, so an
     // unlistened range and a judged one do not look alike.
-    const float xMid = (float)getPositionOfValue(centre);
+    const float xMid = getPositionOfValue(centre);
     juce::Path tri;
     tri.addTriangle(xMid - 4.0f, (float)y, xMid + 4.0f, (float)y, xMid,
                     (float)y + 5.0f);

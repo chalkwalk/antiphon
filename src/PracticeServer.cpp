@@ -425,8 +425,8 @@ void PracticeServer::acceptPendingConnections() {
   auto client = std::make_unique<Client>();
   client->socket.reset(accepted);
   SocketWrite::prepare(*client->socket);
-  for (int i = 0; i < 8; ++i)
-    client->challenge[i] = (juce::uint8)rng.nextInt(256);
+  for (juce::uint8 &b : client->challenge)
+    b = (juce::uint8)rng.nextInt(256);
 
   auto p = NinjamProtocol::buildAuthChallenge(client->challenge);
   // The server speaks first.

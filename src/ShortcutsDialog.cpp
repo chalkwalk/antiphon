@@ -34,7 +34,7 @@ ShortcutsDialog::ShortcutsDialog() : table("Shortcuts", this) {
   setSize(600, 460);
 }
 
-ShortcutsDialog::~ShortcutsDialog() {}
+ShortcutsDialog::~ShortcutsDialog() = default;
 
 void ShortcutsDialog::populateShortcuts() {
 #if JUCE_MAC

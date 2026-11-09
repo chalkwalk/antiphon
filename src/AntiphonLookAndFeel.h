@@ -145,13 +145,11 @@ public:
   // JUCE caches colour ids, so switching theme means setting them again.
   void applyPalette();
 
-public:
   AntiphonLookAndFeel();
 
   void drawRotarySlider(juce::Graphics &g, int x, int y, int width, int height,
-                        float sliderPos, const float rotaryStartAngle,
-                        const float rotaryEndAngle,
-                        juce::Slider &slider) override;
+                        float sliderPos, float rotaryStartAngle,
+                        float rotaryEndAngle, juce::Slider &slider) override;
 
   void drawButtonBackground(juce::Graphics &g, juce::Button &button,
                             const juce::Colour &backgroundColour,

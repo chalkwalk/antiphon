@@ -401,11 +401,11 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
           // to zero channels is still in the room, just not in the mixer.
           if (roomMembers.insert(e.username).second)
             changed = true;
-          if (remoteUsers.find(e.username) == remoteUsers.end())
+          if (!remoteUsers.contains(e.username))
             remoteUsers[e.username] = RemoteUser{e.username, {}};
 
           auto &user = remoteUsers[e.username];
-          if (user.channels.find(e.channelIndex) == user.channels.end()) {
+          if (!user.channels.contains(e.channelIndex)) {
             RemoteUserChannel newChan;
             newChan.channelIndex = e.channelIndex;
             newChan.channelName = e.channelName;
@@ -882,8 +882,8 @@ void NinjamClient::processCapturedAudio(juce::AudioBuffer<float> &buffer,
   }
 
   juce::uint8 guid[16];
-  for (int i = 0; i < 16; i++)
-    guid[i] = (juce::uint8)(juce::Random::getSystemRandom().nextInt(256));
+  for (juce::uint8 &b : guid)
+    b = (juce::uint8)(juce::Random::getSystemRandom().nextInt(256));
 
   const juce::String guidHex = NinjamProtocol::guidToHex(guid);
   if (sessionWriter.isActive()) {

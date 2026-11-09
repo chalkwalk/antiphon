@@ -25,6 +25,7 @@
 #include <chalkwalk/music/Duration.h>
 
 #include <array>
+#include <utility>
 
 namespace {
 
@@ -645,12 +646,13 @@ bool writeWav(const juce::File &file, const std::vector<float> &buf,
     return false;
 
   juce::AudioBuffer<float> out(channels, (int)buf.size());
-  for (int i = 0; i < (int)buf.size(); ++i) {
+  for (int i = 0; std::cmp_less(i, buf.size()); ++i) {
     out.setSample(0, i, buf[(size_t)i]);
     if (channels > 1)
       out.setSample(1, i,
-                    i < (int)rightChannel->size() ? (*rightChannel)[(size_t)i]
-                                                  : 0.0f);
+                    std::cmp_less(i, rightChannel->size())
+                        ? (*rightChannel)[(size_t)i]
+                        : 0.0f);
   }
   writer->writeFromAudioSampleBuffer(out, 0, out.getNumSamples());
   return true;

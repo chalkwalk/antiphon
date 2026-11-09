@@ -503,8 +503,9 @@ Learned the hard way; each of these cost real time.
 ## Code conventions and gotchas
 
 - **C++20**, one standard for the whole tree (root `CMakeLists.txt` says why;
-  the `libs/` submodules hold themselves to C++17). `juce::` types preferred over `std::` where both exist
-  (`juce::String`, `juce::AudioBuffer`, `juce::CriticalSection`).
+  the `libs/` submodules hold themselves to C++17). `juce::` types preferred
+  over `std::` where both exist (`juce::String`, `juce::AudioBuffer`,
+  `juce::CriticalSection`).
 - **2-space indent, braces on same line, members lowerCamelCase.**
 - **No comments except for non-obvious invariants or protocol workarounds.** No
   narration. When a comment is warranted it explains *why*, and often cites a
