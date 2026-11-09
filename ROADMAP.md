@@ -288,17 +288,6 @@ interval so far. See `DESIGN.md` section 6.1.
       hold threshold, the flash and the announcement need hands.
 
 
-### Underrun tail
-
-When a decoded interval runs short, `getDecodedAudio` leaves the remainder of the
-block silent. A hard cut to silence is the most audible possible failure mode.
-
-- [ ] Hold the last sample or fade out over a few milliseconds instead of
-      cutting.
-- [ ] Decide and document what "short" means here -- a late interval and a
-      genuinely short one are the same thing to the reader, but not to the user.
-- [ ] Test in `AudioLoopbackTests.cpp` with a deliberately truncated interval.
-
 ### Client shutdown race
 
 Shipped. The socket now has exactly one owner: the network thread creates it,

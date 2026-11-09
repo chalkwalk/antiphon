@@ -88,6 +88,28 @@ sender's interval and ours are the same length but the decoder's output is not
 sample-aligned to it. The playback slot therefore keeps the outgoing interval in
 `fadeOut` and crossfades 256 samples across the boundary.
 
+### 2.2 When an interval runs out early
+
+The other end of the same problem: the decoded interval ends before the local
+interval does. To the mixer there are two cases, and they look identical at the
+moment they happen -- the next sample is not there:
+
+- **Short**: the sender's interval really was shorter (the final message has
+  arrived, and that is all there is). The rest of our interval is silence.
+- **Late**: the decoder has not caught up yet (`finalReceived` is still false).
+  Because Ogg emits pages in ~4 kB chunks, this is mostly a quiet interval
+  whose audio arrives at the end-of-stream flush. It may resume.
+
+Either way the output does not cut to silence, which is the most audible failure
+there is. It ramps from the last sample it played down to zero over
+`kUnderrunTailSamples` (256, about 5 ms at 48 kHz, the same as the swap
+crossfade), carried across blocks, and started even when the signal ran out
+exactly at the end of the previous block. If a late interval then resumes, it
+comes back in with a ramp up of the same length, under whatever is left of the
+tail. Only the short case is tested (`AudioLoopbackTests`, at two block
+alignments); a late resume needs a decoder that stalls on cue, and the
+loopback rig has none.
+
 ---
 
 ## 3. Threads and shared state
@@ -719,9 +741,7 @@ decision we are free to revisit.
 sends `CLIENT_SET_USERMASK` with that channel's bit cleared, so the server stops
 forwarding the audio at all -- a bandwidth control, not a mix control.
 
-**Known gap:** when a decoded interval runs short, `getDecodedAudio` leaves the
-rest of the block silent rather than holding or fading. Tracked in `ROADMAP.md`
-under *Underrun tail*.
+**Running short** fades out rather than cutting; see section 2.2.
 
 **Diagnostics.** `NinjamClient` carries sticky atomic counters
 (`diagSwapsByFallback`, `diagUnderrunBlocks`, `diagSamplesDroppedOnSwap`,

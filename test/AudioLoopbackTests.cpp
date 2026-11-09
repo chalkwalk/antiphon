@@ -433,6 +433,45 @@ public:
       expect(analyse(out, 0, 48000.0).rms > 0.0, "no audio after the swap");
     }
 
+    // Two places to run out: inside a block (61 does not divide the length),
+    // and exactly at a block's end, where the last sample went out in the
+    // block before and the tail has to start from it. Both lengths end near
+    // the sine's peak -- the worst place to stop.
+    struct ShortCase {
+      int extra;
+      int block;
+    };
+    for (const auto c : {ShortCase{27, 61}, ShortCase{256, 512}}) {
+      beginTest("an interval that runs short fades out rather than cutting (" +
+                juce::String(c.block) + "-sample blocks)");
+      AudioSession s;
+      expect(s.start(48000.0, 120, 8));
+      const int shortLen = s.intervalSamples / 2 + c.extra;
+      expect(c.block != 512 || shortLen % 512 == 0);
+      auto pcm = makeSineBuffer(shortLen, 440.0, 48000.0, 0.5f);
+      s.client.setRemoteUserVolume("peer", 0, 1.0f);
+      expect(s.sendInterval(pcm));
+
+      auto out = s.render(s.intervalSamples, c.block);
+      const float *p = out.getReadPointer(0);
+      int end = s.intervalSamples - 1;
+      while (end > 0 && std::abs(p[end]) < 1.0e-6f)
+        --end;
+      expect(end > shortLen / 2 && end < s.intervalSamples - 1,
+             "no end found: " + juce::String(end));
+
+      // The steepest the sine itself ever moves in one sample, with room for
+      // codec error. A cut to silence from near the peak is ~0.5.
+      const float sineStep =
+          0.5f * (float)(2.0 * TestSignal::kPi * 440.0 / 48000.0);
+      float worst = 0.0f;
+      for (int i = std::max(1, end - 2000); i <= end + 1; ++i)
+        worst = std::max(worst, std::abs(p[i] - p[i - 1]));
+      expect(worst < 1.5f * sineStep,
+             "step of " + juce::String(worst, 4) + " at the end, against " +
+                 juce::String(sineStep, 4) + " for the sine");
+    }
+
     beginTest("recovered interval has no interior dropouts");
     {
       AudioSession s;

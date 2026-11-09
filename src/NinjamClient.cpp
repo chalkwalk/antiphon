@@ -1124,6 +1124,9 @@ void NinjamClient::releaseSlotOnAudioThread(StreamSlot &slot) {
   slot.fadeOutPos = 0;
   slot.fadeTotal = 0;
   slot.fadeRemaining = 0;
+  slot.tailRemaining = 0;
+  slot.resumeRemaining = 0;
+  slot.ranOut = false;
   // Publishes the hand-back: the next claimer may free everything above.
   slot.state.store(StreamSlot::kFree, std::memory_order_release);
 }
@@ -1171,6 +1174,10 @@ void NinjamClient::swapSlotRange(int first, int last) {
       slot.current = nullptr;
     }
 
+    // A new interval starts from its own beginning, not as a resumption. Any
+    // tail still decaying from the last one is left to finish.
+    slot.resumeRemaining = 0;
+    slot.ranOut = false;
     if (DecodedInterval *next = slot.ready.pop()) {
       slot.current = next;
       slot.readPos = 0;
@@ -1417,7 +1424,8 @@ void NinjamClient::mixSlotRange(int first, int last,
     // with the clock, and mute would take longer than 5 ms whenever a stream
     // underran.
     [&] {
-      if (slot.current == nullptr && slot.fadeOut == nullptr)
+      if (slot.current == nullptr && slot.fadeOut == nullptr &&
+          slot.tailRemaining == 0)
         return;
 
       float lGain = vol * (pan <= 0.0f ? 1.0f : 1.0f - pan);
@@ -1482,50 +1490,89 @@ void NinjamClient::mixSlotRange(int first, int last,
         }
       }
 
-      // Post-fade region: normal mix from current at full gain.
-      if (!slot.current)
-        return;
-
-      auto &iv = *slot.current;
-      int avail = iv.writePos.load() - slot.readPos;
-      int remainingSamples = numSamples - fadeCopy;
-      if (remainingSamples <= 0)
-        return;
-      if (avail <= 0) {
-        if (!iv.finalReceived.load())
+      // Post-fade region: normal mix from current at full gain, then the tail
+      // of an underrun if there is one.
+      int tailStart = fadeCopy;
+      if (slot.current) {
+        auto &iv = *slot.current;
+        const int avail = iv.writePos.load() - slot.readPos;
+        const int remainingSamples = numSamples - fadeCopy;
+        const int toCopy = std::max(0, std::min(remainingSamples, avail));
+        if (remainingSamples > 0 && avail <= 0 && !iv.finalReceived.load())
           diagUnderrunBlocks.fetch_add(1);
-        return;
+
+        if (toCopy > 0) {
+          const int srcChannels = std::min(iv.buffer.getNumChannels(), 2);
+
+          // Metered before the mute gain, so the meter keeps showing that a
+          // player is playing even while you have them muted.
+          for (int ch = 0; ch < srcChannels; ++ch) {
+            const float chGain = (ch == 0) ? lGain : rGain;
+            const float *src = iv.buffer.getReadPointer(ch, slot.readPos);
+            for (int s = 0; s < toCopy; ++s)
+              peak = std::max(peak, std::abs(src[s]) * chGain);
+          }
+
+          // addFrom took a constant gain, which is why mute used to be a branch
+          // and therefore a click. The ramp has to be read per sample, at the
+          // offset within the block that this region occupies.
+          const int resume = slot.resumeRemaining;
+          for (int ch = 0; ch < srcChannels; ++ch) {
+            const int dstCh = busIdx * 2 + ch;
+            if (dstCh >= dstChannels)
+              continue;
+            const float chGain = (ch == 0) ? lGain : rGain;
+            const float *src = iv.buffer.getReadPointer(ch, slot.readPos);
+            float *dst = buffer.getWritePointer(dstCh) + fadeCopy;
+            for (int s = 0; s < toCopy; ++s) {
+              float g = chGain * slot.muteRamp.gainAt(fadeCopy + s);
+              if (s < resume)
+                g *= (float)(kUnderrunTailSamples - resume + s) /
+                     (float)kUnderrunTailSamples;
+              dst[s] += src[s] * g;
+            }
+          }
+          slot.resumeRemaining = std::max(0, resume - toCopy);
+          slot.readPos += toCopy;
+          slot.ranOut = false;
+        }
+
+        // Ran out: the tail starts where the signal stopped, from the last
+        // value it had -- inside this block, or at its start if the last
+        // sample was the previous block's final one. Once per run-out.
+        // Only from a sample already published: past writePos the network
+        // thread may still be writing (a seek can put readPos there).
+        if (toCopy < remainingSamples && slot.readPos > 0 && !slot.ranOut &&
+            slot.readPos <= iv.writePos.load()) {
+          const int chs = std::min(iv.buffer.getNumChannels(), 2);
+          for (int ch = 0; ch < chs; ++ch)
+            slot.tailFrom[(std::size_t)ch] =
+                iv.buffer.getSample(ch, slot.readPos - 1) *
+                ((ch == 0) ? lGain : rGain);
+          slot.tailChannels = chs;
+          slot.tailRemaining = kUnderrunTailSamples;
+          slot.resumeRemaining = kUnderrunTailSamples;
+          slot.ranOut = true;
+          tailStart = fadeCopy + toCopy;
+        }
       }
 
-      int toCopy = std::min(remainingSamples, avail);
-      int srcChannels = slot.current->buffer.getNumChannels();
-
-      // Metered before the mute gain, so the meter keeps showing that a player is
-      // playing even while you have them muted.
-      for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
-        float chGain = (ch == 0) ? lGain : rGain;
-        const float *src =
-            slot.current->buffer.getReadPointer(ch, slot.readPos);
-        for (int s = 0; s < toCopy; ++s)
-          peak = std::max(peak, std::abs(src[s]) * chGain);
+      if (slot.tailRemaining > 0 && tailStart < numSamples) {
+        const int n = std::min(numSamples - tailStart, slot.tailRemaining);
+        for (int ch = 0; ch < slot.tailChannels; ++ch) {
+          const int dstCh = busIdx * 2 + ch;
+          if (dstCh >= dstChannels)
+            continue;
+          float *dst = buffer.getWritePointer(dstCh) + tailStart;
+          const float from = slot.tailFrom[(std::size_t)ch];
+          for (int s = 0; s < n; ++s)
+            dst[s] += from *
+                      ((float)(slot.tailRemaining - s - 1) /
+                       (float)kUnderrunTailSamples) *
+                      slot.muteRamp.gainAt(tailStart + s);
+        }
+        slot.tailRemaining -= n;
       }
-
-      // addFrom took a constant gain, which is why mute used to be a branch and
-      // therefore a click. The ramp has to be read per sample, at the offset
-      // within the block that this region occupies.
-      for (int ch = 0; ch < std::min(srcChannels, 2); ++ch) {
-        int dstCh = busIdx * 2 + ch;
-        if (dstCh >= dstChannels)
-          continue;
-        const float chGain = (ch == 0) ? lGain : rGain;
-        const float *src =
-            slot.current->buffer.getReadPointer(ch, slot.readPos);
-        float *dst = buffer.getWritePointer(dstCh) + fadeCopy;
-        for (int s = 0; s < toCopy; ++s)
-          dst[s] += src[s] * chGain * slot.muteRamp.gainAt(fadeCopy + s);
-      }
-
-      slot.readPos += toCopy;
     }();
 
     slot.peakLevel.store(peak, std::memory_order_relaxed);

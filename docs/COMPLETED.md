@@ -49,7 +49,7 @@ those numbers, so they are mapped here. **New work is named, not numbered**
 | #27 | Capture alignment at the interval boundary *(**withdrawn** -- below)* |
 | #28 | Audio-thread hygiene *(open)* |
 | #29 | Destructor race in NinjamClient *(open, as "Client shutdown race")* |
-| #30 | Underrun tail *(open)* |
+| #30 | Underrun tail |
 
 ---
 
@@ -179,6 +179,18 @@ Remote channels default to 0.25 linear (-12.04 dB), matching the reference clien
 client plays our tone back at 0.253 of what we sent. Unity would have made us
 12 dB louder than everyone else in the room. The UI fader initialises from the
 same constant so the two cannot drift.
+
+### Underrun tail
+
+When a decoded interval ran short, the mixer left the rest of the block silent:
+a hard cut, the most audible way to fail. It now ramps from the last sample to
+zero over 256 samples, carried across blocks and started even when the signal
+ran out on a block boundary, and a late interval that resumes ramps back in.
+"Short" and "late" are distinguished by `finalReceived` and documented in
+`DESIGN.md` section 2.2; the mixer treats them alike until more audio arrives.
+Tested in `AudioLoopbackTests` with a deliberately truncated interval at two
+block alignments, each proven red first (a 0.50 and a 0.42 step against the
+sine's own 0.029); TSan clean. The late-resume ramp has no automated test.
 
 ---
 

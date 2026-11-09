@@ -414,6 +414,17 @@ private:
     int fadeTotal = 0;
     int fadeRemaining = 0;
 
+    // Audio thread only. When `current` runs out of decoded samples mid-block
+    // the output does not cut to silence: it ramps from the last sample it
+    // played down to zero over kUnderrunTailSamples. If more of the same
+    // interval then arrives -- it was late, not short -- that resumes with a
+    // ramp up over the same length. See DESIGN.md section 2.2.
+    std::array<float, 2> tailFrom{{0.0f, 0.0f}};
+    int tailChannels = 0;
+    int tailRemaining = 0;
+    int resumeRemaining = 0;
+    bool ranOut = false;
+
     // Network thread only. The audio thread must never touch `username`:
     // copying a juce::String touches a refcount, and comparing one can read
     // memory the network thread is rewriting.
@@ -426,6 +437,11 @@ private:
   // Running out drops the channel and says so, rather than growing an array the
   // audio thread is walking.
   static constexpr int kMaxStreams = 64;
+
+  // About 5 ms at 48 kHz, the same as the swap crossfade: long enough that the
+  // end of the signal is not a step, short enough that a late interval resuming
+  // does not audibly swell.
+  static constexpr int kUnderrunTailSamples = 256;
 
   // The slots are the network's alone now. They were shared with the practice
   // echo, which owned a range past kMaxStreams so that "one non-audio owner per
