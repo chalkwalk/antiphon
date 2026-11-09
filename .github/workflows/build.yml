@@ -213,7 +213,12 @@ jobs:
       - name: clang-tidy
         run: |
           clang-tidy --version
-          clang-tidy -p build --quiet src/*.cpp tools/*.cpp > tidy.log 2>&1 || true
+          # One process per unit, four at a time, each to its own log so their
+          # output cannot interleave mid-line. Serial, this step took 13 min.
+          mkdir -p tidy-logs
+          printf '%s\n' src/*.cpp tools/*.cpp | xargs -P 4 -I{} sh -c \
+            'clang-tidy -p build --quiet "$1" > "tidy-logs/$(echo "$1" | tr / _).log" 2>&1 || true' _ {}
+          cat tidy-logs/*.log > tidy.log
           ours=$(grep -E '^[^ ]*/(src|tools|test)/[^/ ]+:[0-9]+:[0-9]+: (warning|error):' tidy.log \
             | grep -v '/libs/' | sort -u)
           failed=$(grep -c '^Error while processing' tidy.log || true)
