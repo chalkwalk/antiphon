@@ -2064,7 +2064,20 @@ public:
       expect(room.start(testConfig("you")));
       Joiner you;
       expect(you.join(room, "you"));
-      expect(waitUntil([&] { return room.botCount() > 0; }));
+
+      // The whole room, not the first bot: a vote cast while the band is still
+      // logging in is answered for a smaller room than the one that counts it.
+      // The conductor tops that up now (chalkwalk-jambot ConductorTests, "a
+      // room that grows mid-vote"), but this test is about the arithmetic of a
+      // settled room and should not depend on the race.
+      expect(waitUntil(
+                 [&] {
+                   const int bots = room.botCount();
+                   return bots > 0 &&
+                          room.practiceServer().clientCount() == bots + 2;
+                 },
+                 10000),
+             "the band and its conductor never all arrived");
 
       you.client.sendChatMessage("!vote bpm 132");
 
