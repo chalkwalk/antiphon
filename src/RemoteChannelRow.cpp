@@ -164,7 +164,7 @@ void RemoteChannelRow::paint(juce::Graphics &g) {
   const float frac = GainUtils::meterFraction(decayedPeak);
   if (frac > 0.0f) {
     auto fill = vuArea;
-    fill.removeFromTop((int)(vuArea.getHeight() * (1.0f - frac)));
+    fill.removeFromTop((int)((float)vuArea.getHeight() * (1.0f - frac)));
     g.setColour(meterColour(GainUtils::meterZone(decayedPeak)));
     g.fillRect(fill);
   }

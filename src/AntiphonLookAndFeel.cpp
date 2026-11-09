@@ -238,9 +238,11 @@ void AntiphonLookAndFeel::drawTextEditorOutline(juce::Graphics &g, int width,
   if (textEditor.isEnabled() && !textEditor.isReadOnly() &&
       textEditor.hasKeyboardFocus(true)) {
     g.setColour(juce::Colour(AntiphonTheme::kAccent));
-    g.drawRoundedRectangle(1.0f, 1.0f, width - 2.0f, height - 2.0f, 3.0f, 2.0f);
+    g.drawRoundedRectangle(1.0f, 1.0f, (float)width - 2.0f,
+                           (float)height - 2.0f, 3.0f, 2.0f);
     return;
   }
   g.setColour(textEditor.findColour(juce::TextEditor::outlineColourId));
-  g.drawRoundedRectangle(0.5f, 0.5f, width - 1.0f, height - 1.0f, 3.0f, 1.0f);
+  g.drawRoundedRectangle(0.5f, 0.5f, (float)width - 1.0f, (float)height - 1.0f,
+                         3.0f, 1.0f);
 }

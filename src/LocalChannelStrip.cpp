@@ -287,7 +287,7 @@ void LocalChannelStrip::paint(juce::Graphics &g) {
     g.fillRect(r);
     const float frac = GainUtils::meterFraction(peak);
     if (frac > 0.0f) {
-      auto fill = r.removeFromBottom((int)(r.getHeight() * frac));
+      auto fill = r.removeFromBottom((int)((float)r.getHeight() * frac));
       g.setColour(meterColour(GainUtils::meterZone(peak)));
       g.fillRect(fill);
     }

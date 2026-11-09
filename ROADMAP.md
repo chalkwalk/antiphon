@@ -3066,10 +3066,19 @@ deliberate leaks marked `(void)`, explicit int-to-float casts, `default:` on the
 two shortcut switches) and the mechanical `use-std-min-max` and
 `isolate-declaration`, with the full suite and the audit green after.
 
-- [ ] Work down the remaining 125. The largest category is now
+The second batch (every category with one right answer, auto-fixed and read)
+took it to 82, and the narrowing conversions -- all pixel arithmetic, plus a
+bit depth cast to `unsigned` for an `int` parameter in `antiphon-stems` -- to
+**70**. CI's step now measures too: it counts raw warning lines, so a header
+finding reached from several translation units counts each time, and it reads
+a little above the unique count (141 against 125 at the first batch).
+
+- [ ] Work down the remaining 70. The largest category is
       `modernize-use-designated-initializers` (34) -- a style decision, not a
-      cleanup, so it waits on one; then `use-integer-sign-comparison` (9),
-      `container-contains` (8), `qualified-auto` (7).
+      cleanup, so it waits on one. The rest want judgement rather than a
+      fix-it: `return-braced-init-list` (6), `convert-member-functions-to-static`
+      (5), `avoid-nested-conditional-operator` (5), the deprecated
+      `createWriterFor` (4: Save Tx/Rx, `antiphon-stems`, the voice lab).
 - [ ] Brace the `dangling-else` anyway. It is not a bug and it is one line.
 - [ ] When the count reaches zero, set `WarningsAsErrors: '*'` in `.clang-tidy`
       and drop `continue-on-error` from the CI step. Both halves in one commit.

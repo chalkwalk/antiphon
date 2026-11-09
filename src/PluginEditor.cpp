@@ -1084,7 +1084,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
     int barH = phaseBar.getHeight();
 
     g.setColour(connected ? teal : juce::Colour(0xff444444));
-    g.fillRect(phaseBar.withWidth((int)(barW * frac)));
+    g.fillRect(phaseBar.withWidth((int)((float)barW * frac)));
 
     if (connected) {
       // Bar ticks only when the interval divides into whole bars, matching
@@ -1092,7 +1092,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       // beat would draw a bar the click does not play.
       const bool wholeBars = (bpi % 4 == 0);
       for (int i = 1; i < bpi; ++i) {
-        int lineX = barX + (int)((float)i / bpi * barW);
+        int lineX = barX + (int)((float)i / (float)bpi * (float)barW);
         bool isBarBoundary = wholeBars && (i % 4 == 0);
         g.setColour(isBarBoundary ? juce::Colours::white.withAlpha(0.55f)
                                   : juce::Colours::white.withAlpha(0.18f));
@@ -2101,7 +2101,7 @@ void AntiphonEditor::relayoutChannelArea() {
 
   // Hard allocations: 40/60 split with 200 px floor, capped at half
   int local_hard = juce::jlimit(std::min(200, panel_w / 2), panel_w / 2,
-                                (int)(panel_w * 0.4f));
+                                (int)((float)panel_w * 0.4f));
   int remote_hard = panel_w - local_hard;
 
   // Elastic four-case split

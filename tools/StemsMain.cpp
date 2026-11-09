@@ -477,7 +477,7 @@ int main(int argc, char *argv[]) {
       return 2;
     }
     std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(
-        stream.release(), outRate, 2, (unsigned int)bitDepth, metadata, 0));
+        stream.release(), outRate, 2, bitDepth, metadata, 0));
     if (writer == nullptr) {
       std::cerr << "Could not create a WAV writer for "
                 << outFile.getFullPathName() << "\n";
@@ -561,8 +561,9 @@ int main(int argc, char *argv[]) {
     writer.reset(); // destroying the writer is what writes the WAV header
 
     std::cout << "  " << name << "   " << clipsPlaced << "/" << totalIntervals
-              << " intervals, " << juce::String(framesThisStem / outRate, 1)
-              << " s, " << faded << " faded edge(s)\n";
+              << " intervals, "
+              << juce::String((double)framesThisStem / outRate, 1) << " s, "
+              << faded << " faded edge(s)\n";
     ++written;
     if (totalFrames == 0)
       totalFrames = framesThisStem;
