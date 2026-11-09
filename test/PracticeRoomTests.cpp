@@ -1091,10 +1091,20 @@ public:
       expect(waitUntil([&] { return seedsNow() != before; }),
              "`band, shake` did not reach the band over chat");
 
-      // All of them, not whichever one happened to be listening.
-      const auto after = seedsNow();
-      for (std::size_t i = 0; i < before.size() && i < after.size(); ++i)
-        expect(before[i] != after[i], "one shake left a bot on its old figure");
+      // All of them, not whichever one happened to be listening -- and WAITED
+      // for: each bot hears the line on its own connection, so the first to
+      // reroll says nothing about the last. Checking the moment the first one
+      // moved failed whenever another was a dispatch behind.
+      const auto allMoved = [&] {
+        const auto after = seedsNow();
+        if (after.size() != before.size())
+          return false;
+        for (std::size_t i = 0; i < before.size(); ++i)
+          if (before[i] == after[i])
+            return false;
+        return true;
+      };
+      expect(waitUntil(allMoved), "one shake left a bot on its old figure");
     }
 
     beginTest("the shake words are recognised, and nothing else is");
@@ -1826,13 +1836,16 @@ public:
       you.client.sendChatMessage("[key: D minor]");
 
       // Observable through the room rather than by reaching into a bot: the
-      // chords the band is playing are what changed.
+      // chords the band is playing are what changed. Every bot, waited for --
+      // each hears the line on its own connection, and the first to move says
+      // nothing about the last.
       expect(waitUntil(
                  [&] {
-                   for (const auto &s : room.bandSettings())
-                     if (s.key.tonic == 2 && Harmony::isMinorish(s.key.mode))
-                       return true;
-                   return false;
+                   const auto all = room.bandSettings();
+                   for (const auto &s : all)
+                     if (s.key.tonic != 2 || !Harmony::isMinorish(s.key.mode))
+                       return false;
+                   return !all.empty();
                  },
                  5000),
              "the band ignored the announced key");
@@ -1893,14 +1906,18 @@ public:
           5000));
 
       you.client.sendChatMessage("| Am | F | C | G |");
+      // Every bot, not the first: one that had not heard the chart yet when
+      // the key arrived would transpose its DEFAULT chart, and fail below for
+      // a reason that is not the bug.
       expect(waitUntil(
                  [&] {
-                   for (const auto &s : room.bandSettings()) {
+                   const auto all = room.bandSettings();
+                   for (const auto &s : all) {
                      const auto chords = Harmony::flatten(s.chart);
-                     if (chords.size() == 4 && chords[0].root == 9)
-                       return true;
+                     if (chords.size() != 4 || chords[0].root != 9)
+                       return false;
                    }
-                   return false;
+                   return !all.empty();
                  },
                  5000),
              "the band ignored the announced chords");
@@ -1910,10 +1927,11 @@ public:
       you.client.sendChatMessage("[key: D major]");
       expect(waitUntil(
                  [&] {
-                   for (const auto &s : room.bandSettings())
-                     if (s.key.tonic == 2 && !Harmony::isMinorish(s.key.mode))
-                       return true;
-                   return false;
+                   const auto all = room.bandSettings();
+                   for (const auto &s : all)
+                     if (s.key.tonic != 2 || Harmony::isMinorish(s.key.mode))
+                       return false;
+                   return !all.empty();
                  },
                  5000),
              "the band ignored the announced key");
