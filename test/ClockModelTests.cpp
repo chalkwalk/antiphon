@@ -63,16 +63,16 @@ public:
     {
       auto i = syncedInputs();
       i.dawHasPosition = false;
-      expectRow(once(i), State::NotSyncedNoPosition, GridSource::OwnClock,
-                true, "no position");
+      expectRow(once(i), State::NotSyncedNoPosition, GridSource::OwnClock, true,
+                "no position");
     }
 
     beginTest("a DAW reporting a tempo of zero is treated as no position");
     {
       auto i = syncedInputs();
       i.dawBpm = 0.0;
-      expectRow(once(i), State::NotSyncedNoPosition, GridSource::OwnClock,
-                true, "zero tempo");
+      expectRow(once(i), State::NotSyncedNoPosition, GridSource::OwnClock, true,
+                "zero tempo");
     }
 
     beginTest("Antiphon's clock, playing, ignores the DAW entirely");

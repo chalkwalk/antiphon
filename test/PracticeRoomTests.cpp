@@ -2068,9 +2068,9 @@ public:
 
       you.client.sendChatMessage("!vote bpm 132");
 
-      expect(waitUntil(
-                 [&] { return room.practiceServer().bpm() == 132; }, 8000),
-             "the room never reached the tempo one player voted for");
+      expect(
+          waitUntil([&] { return room.practiceServer().bpm() == 132; }, 8000),
+          "the room never reached the tempo one player voted for");
 
       // And the player is told, by the server, in the ordinary way.
       expect(waitUntil([&] {
@@ -2091,7 +2091,8 @@ public:
 
       Joiner watcher;
       expect(watcher.join(room, "Ghost[bass-bot]"));
-      expect(waitUntil([&] { return room.practiceServer().clientCount() > 0; }));
+      expect(
+          waitUntil([&] { return room.practiceServer().clientCount() > 0; }));
 
       watcher.client.sendChatMessage("!vote bpm 150");
 

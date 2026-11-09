@@ -32,7 +32,7 @@ struct Node {
   // Kept beside the name because the defect is their DISAGREEMENT, and an
   // audit holding only one of them cannot see it.
   juce::String visibleLabel;
-  juce::String kind;        // component class name, to locate it in source
+  juce::String kind; // component class name, to locate it in source
   // Component::getName(), which is NOT the accessible name. Only used to say
   // *which* one when there is no accessible name -- "juce::TextEditor" is no
   // help in a dialog holding four of them.

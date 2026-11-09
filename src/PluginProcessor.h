@@ -275,9 +275,9 @@ public:
   // Synced to the DAW, or not -- see ClockModel.h. The machine is the audio
   // thread's; the mode is the player's choice, written by the UI, and starts
   // as Synced to DAW on every join rather than being saved with the project.
-  ClockModel::Machine clockMachine;            // audio thread only
-  std::atomic<int> clockMode{0};               // ClockModel::Mode
-  std::atomic<int> publishedClockState{0};     // ClockModel::State, for the UI
+  ClockModel::Machine clockMachine;        // audio thread only
+  std::atomic<int> clockMode{0};           // ClockModel::Mode
+  std::atomic<int> publishedClockState{0}; // ClockModel::State, for the UI
   // Bumped every time the position is re-taken from the playhead (entering
   // Synced, or a jump while synced), so the UI can say where you landed.
   std::atomic<int> resyncCount{0};
@@ -312,7 +312,6 @@ public:
   // joins a room to silence.
   std::atomic<bool> localTransportPlaying{false};
 
-
   // Interval phase in beats, published for the UI phase bar.
   std::atomic<float> publishedPhaseBeats{0.0f};
   // Where the current interval began, in the host's own beats, while synced to
@@ -344,8 +343,8 @@ public:
 
   // Debug / Integration Testing Features
   std::atomic<bool> metronomeEnabled{true};
-  std::atomic<bool> cueEnabled{true};     // persisted as "cue"
-  std::atomic<float> cueVolume{0.5f};     // persisted as "cueVolume"
+  std::atomic<bool> cueEnabled{true}; // persisted as "cue"
+  std::atomic<float> cueVolume{0.5f}; // persisted as "cueVolume"
   std::atomic<float> metronomeVolume{1.0f};
   std::atomic<bool> lastConnectFailed{false};
   std::atomic<bool> saveTxEnabled{false};

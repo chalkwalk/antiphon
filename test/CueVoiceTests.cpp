@@ -48,8 +48,8 @@ public:
           if (std::fabs(buf[(size_t)i]) > pk * 0.001)
             last = i;
         const double ms = 1000.0 * (double)last / sr;
-        expect(ms <= 150.0, "still above -60 dB at " + juce::String(ms, 1) +
-                                " ms");
+        expect(ms <= 150.0,
+               "still above -60 dB at " + juce::String(ms, 1) + " ms");
       }
 
       beginTest("the cue is silent once it has ended" + at);

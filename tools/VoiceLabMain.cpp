@@ -130,8 +130,7 @@ int renderParity(const Options &o) {
       for (int bpi : bpis)
         for (auto seed : seeds)
           for (int index = 0; index < 4; ++index) {
-            const auto s =
-                BotBand::defaults(key, bpm, bpi, o.sampleRate, seed);
+            const auto s = BotBand::defaults(key, bpm, bpi, o.sampleRate, seed);
             // The same truncating arithmetic the interval clock uses
             // (justinfrankel/ninjam njclient.cpp:806).
             const int n = (int)(o.sampleRate * 60.0 / bpm) * bpi;
@@ -852,10 +851,9 @@ int main(int argc, char *argv[]) {
     return failures;
   }
 
-  const juce::StringArray known{"kick", "snare", "hat",       "bass",
-                                "lead", "pad",   "kit",       "keys",
-                                "solo", "band",  "leadstats", "bench",
-                                "parity"};
+  const juce::StringArray known{"kick",      "snare", "hat",   "bass", "lead",
+                                "pad",       "kit",   "keys",  "solo", "band",
+                                "leadstats", "bench", "parity"};
   if (!known.contains(o.voice)) {
     std::fprintf(stderr, "voicelab: unknown voice %s\n", o.voice.toRawUTF8());
     usage();

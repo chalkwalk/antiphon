@@ -30,8 +30,8 @@ AntiphonAudioProcessor::AntiphonAudioProcessor()
   // Reaper's API, if this is Reaper. CLAP offers it now, while the host
   // pointer is set for the constructor; VST3 offers it once JUCE hands the
   // extensions object the host application.
-  adoptReaper(reaperResolverFromClapExtension(
-      getExtension("cockos.reaper_extension")));
+  adoptReaper(
+      reaperResolverFromClapExtension(getExtension("cockos.reaper_extension")));
   vst3Extensions = makeReaperVst3Extensions(
       [this](ReaperResolver r) { adoptReaper(std::move(r)); });
   startTimerHz(30);
@@ -58,9 +58,9 @@ void AntiphonAudioProcessor::timerCallback() {
   const bool joined = event == FollowTrigger::Event::Joined;
   const int room = internalBpm.load();
   const double daw = publishedHostBpm.load(std::memory_order_relaxed);
-  const bool set = joined ? tempoFollow.onJoin(*hostControl, room, daw)
-                          : tempoFollow.onGridTempoApplied(*hostControl, room,
-                                                           daw);
+  const bool set =
+      joined ? tempoFollow.onJoin(*hostControl, room, daw)
+             : tempoFollow.onGridTempoApplied(*hostControl, room, daw);
   if (set)
     hostTempoSetCount.fetch_add(1);
 }
@@ -810,8 +810,7 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
     // Starting a counted clock from nothing starts at beat 1 (above), so the
     // room's playback starts there too, not where it was left when stopped.
-    const bool startedFromNothing =
-        counted && lastGrid == GridSource::None;
+    const bool startedFromNothing = counted && lastGrid == GridSource::None;
     if (clock.inJam && (jumped || startedFromNothing))
       ninjamClient.seekPlayback(targetSamples);
     if (jumped) {
@@ -907,16 +906,14 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     // The phase bar reads the same grid the click does -- it is the thing you
     // check the click against, so the two disagreeing is worse than either
     // being wrong.
-    const double gridPpqAtBlockEnd =
-        gridPpq + (double)ns * hostBeatsPerSample;
-    lastPhaseBeats =
-        fromHost ? HostGrid::phaseBeatsAt(gridPpqAtBlockEnd, intervalClock.getBpi())
-                 : intervalClock.phaseBeats();
+    const double gridPpqAtBlockEnd = gridPpq + (double)ns * hostBeatsPerSample;
+    lastPhaseBeats = fromHost ? HostGrid::phaseBeatsAt(gridPpqAtBlockEnd,
+                                                       intervalClock.getBpi())
+                              : intervalClock.phaseBeats();
     publishedPhaseBeats.store((float)lastPhaseBeats);
-    publishedIntervalStartPpq.store(grid == GridSource::Playhead
-                                        ? ppqAtBlockEnd - lastPhaseBeats
-                                        : -1.0,
-                                    std::memory_order_relaxed);
+    publishedIntervalStartPpq.store(
+        grid == GridSource::Playhead ? ppqAtBlockEnd - lastPhaseBeats : -1.0,
+        std::memory_order_relaxed);
     // Synced, the counted clock is kept at the playhead's position. That keeps
     // a room tempo change pending until the playhead grid's boundary (setTempo
     // applies at once only at an interval start), and it means leaving the

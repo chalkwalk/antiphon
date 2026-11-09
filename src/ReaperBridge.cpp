@@ -51,7 +51,8 @@ public:
     setBpm = reinterpret_cast<SetCurrentBPM>(r("SetCurrentBPM"));
     playButton = reinterpret_cast<OnPlayButton>(r("OnPlayButton"));
     playState = reinterpret_cast<GetPlayState>(r("GetPlayState"));
-    loopRange = reinterpret_cast<GetSetLoopTimeRange>(r("GetSet_LoopTimeRange"));
+    loopRange =
+        reinterpret_cast<GetSetLoopTimeRange>(r("GetSet_LoopTimeRange"));
     qnToTime = reinterpret_cast<TimeMapQNToTime>(r("TimeMap_QNToTime"));
     repeat = reinterpret_cast<GetSetRepeat>(r("GetSetRepeat"));
     return setBpm != nullptr && playButton != nullptr && playState != nullptr;

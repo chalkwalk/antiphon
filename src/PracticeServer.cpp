@@ -129,8 +129,7 @@ const char *kBadParams =
 
 } // namespace
 
-void PracticeServer::serverSayLocked(Client *only,
-                                     const juce::String &text) {
+void PracticeServer::serverSayLocked(Client *only, const juce::String &text) {
   // Empty username: a message from the server rather than from a player, which
   // is how the client renders it as a notice.
   auto p = NinjamProtocol::buildChat("MSG", {}, text.toStdString());

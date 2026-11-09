@@ -14,9 +14,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   // window, so the setting lives on the processor; without this, closing the
   // plugin window silently undoes the one control a reader user has over how
   // much the app talks.
-  announcer.setVerbosity(
-      (Announcer::Verbosity)juce::jlimit(0, 2,
-                                         audioProcessor.announceVerbosity.load()));
+  announcer.setVerbosity((Announcer::Verbosity)juce::jlimit(
+      0, 2, audioProcessor.announceVerbosity.load()));
 
   // The embedded typeface, on JUCE's DEFAULT look-and-feel. It cannot ride on
   // customLookAndFeel below: a Font naming no typeface -- which is all of ours
@@ -133,8 +132,7 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   // The clock: two radio buttons in a group, then Play. See ClockModel.h.
   clockLabel.setText("Clock:", juce::dontSendNotification);
   clockLabel.setJustificationType(juce::Justification::centredRight);
-  clockLabel.setColour(juce::Label::textColourId,
-                       juce::Colours::lightgrey);
+  clockLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   clockGroup.addAndMakeVisible(clockLabel);
   clockGroup.setTitle("Clock");
   clockGroup.setFocusContainerType(
@@ -166,8 +164,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   clockGroup.onArrow = [this](int) {
     // Two choices: either arrow goes to the other one, and selects it, which
     // is how a radio group behaves everywhere else.
-    const bool synced = audioProcessor.clockMode.load() ==
-                        (int)ClockModel::Mode::SyncedToDaw;
+    const bool synced =
+        audioProcessor.clockMode.load() == (int)ClockModel::Mode::SyncedToDaw;
     auto &next = synced ? antiphonClockButton : syncedToDawButton;
     if (!next.isEnabled())
       return;
@@ -178,8 +176,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
   addChildComponent(clockGroup);
 
   if (audioProcessor.hostControl != nullptr) {
-    followTempoToggle = std::make_unique<juce::ToggleButton>(
-        "Reaper follows room tempo");
+    followTempoToggle =
+        std::make_unique<juce::ToggleButton>("Reaper follows room tempo");
     followTempoToggle->setTitle("Reaper follows room tempo");
     followTempoToggle->setDescription(
         "When the room's tempo changes, Antiphon sets Reaper's to match");
@@ -196,7 +194,8 @@ AntiphonEditor::AntiphonEditor(AntiphonAudioProcessor &p)
     followTempoToggle->setRepaintsOnMouseActivity(true);
     addChildComponent(*followTempoToggle);
 
-    loopIntervalButton = std::make_unique<juce::TextButton>("Loop one interval");
+    loopIntervalButton =
+        std::make_unique<juce::TextButton>("Loop one interval");
     loopIntervalButton->setTitle("Loop one interval");
     loopIntervalButton->setDescription(
         "Set Reaper's loop to the interval playing now");
@@ -583,8 +582,8 @@ void AntiphonEditor::refreshTransportButton() {
   const bool playing = audioProcessor.localTransportPlaying.load();
   transportButton.setToggleState(playing, juce::dontSendNotification);
   const bool plugin = !audioProcessor.isStandaloneApp();
-  const bool synced = audioProcessor.clockMode.load() ==
-                      (int)ClockModel::Mode::SyncedToDaw;
+  const bool synced =
+      audioProcessor.clockMode.load() == (int)ClockModel::Mode::SyncedToDaw;
   // Synced, the DAW's transport is the one that plays; Play would only take
   // you off it. Disabled, with the reason, rather than quietly switching.
   const bool enabled = !(plugin && synced);
@@ -593,8 +592,8 @@ void AntiphonEditor::refreshTransportButton() {
                            : "Stopped. Starts Antiphon's clock";
   if (!enabled)
     d = "Follows the DAW transport while synced";
-  transportButton.setDescription(d + ". Shortcut: " +
-                                 Shortcuts::globalModifierName() + "G");
+  transportButton.setDescription(
+      d + ". Shortcut: " + Shortcuts::globalModifierName() + "G");
   transportButton.setTooltip(
       plugin ? "Plays the jam on Antiphon's own clock, away from the DAW. "
                "Disabled while synced: the DAW's transport plays then."
@@ -607,19 +606,20 @@ void AntiphonEditor::refreshClockControls() {
   if (!hasClockRow())
     return;
   const bool connected = audioProcessor.ninjamClient.isConnected();
-  const bool synced = audioProcessor.clockMode.load() ==
-                      (int)ClockModel::Mode::SyncedToDaw;
+  const bool synced =
+      audioProcessor.clockMode.load() == (int)ClockModel::Mode::SyncedToDaw;
   syncedToDawButton.setToggleState(synced, juce::dontSendNotification);
   antiphonClockButton.setToggleState(!synced, juce::dontSendNotification);
   // Each join starts synced (onConnected), so a choice made offline would be
   // overwritten the moment it mattered. Say so instead of accepting it.
-  const juce::String why = connected ? juce::String() : ". Applies while connected";
+  const juce::String why =
+      connected ? juce::String() : ". Applies while connected";
   syncedToDawButton.setEnabled(connected);
   antiphonClockButton.setEnabled(connected);
   syncedToDawButton.setDescription("1 of 2" + why);
   antiphonClockButton.setDescription("2 of 2" + why);
-  clockGroup.setDescription(connected ? juce::String()
-                                      : juce::String("Applies while connected"));
+  clockGroup.setDescription(
+      connected ? juce::String() : juce::String("Applies while connected"));
   if (loopIntervalButton != nullptr)
     loopIntervalButton->setEnabled(
         connected && audioProcessor.publishedIntervalStartPpq.load() >= 0.0);
@@ -652,8 +652,8 @@ void AntiphonEditor::toggleAntiphonPlay() {
     announcer.say("Play applies while connected.", true);
     return;
   }
-  if (plugin && audioProcessor.clockMode.load() ==
-                    (int)ClockModel::Mode::SyncedToDaw) {
+  if (plugin &&
+      audioProcessor.clockMode.load() == (int)ClockModel::Mode::SyncedToDaw) {
     // The shortcut reaches here even while the button is disabled. It means
     // "play on Antiphon's clock", and selecting that clock already plays.
     selectClockMode(ClockModel::Mode::AntiphonClock);
@@ -1136,9 +1136,10 @@ void AntiphonEditor::paint(juce::Graphics &g) {
       const juce::Colour c =
           (sync == State::Synced || sync == State::AntiphonClock)
               ? juce::Colours::lightgreen
-              : sync == State::Stopped ? juce::Colours::yellow
-                                       : juce::Colours::orange;
-      const juce::String msg = SyncAnnouncements::headerText(sync, syncContext());
+          : sync == State::Stopped ? juce::Colours::yellow
+                                   : juce::Colours::orange;
+      const juce::String msg =
+          SyncAnnouncements::headerText(sync, syncContext());
       g.setColour(c);
       g.drawFittedText(msg, row3, juce::Justification::centredLeft, 1);
     } else {
@@ -2167,10 +2168,11 @@ void AntiphonEditor::runSyncNow() {
     return;
   }
   if (audioProcessor.isStandaloneApp()) {
-    announcer.say(SyncAnnouncements::status(
-                      (ClockModel::State)audioProcessor.publishedClockState.load(),
-                      syncContext()),
-                  true);
+    announcer.say(
+        SyncAnnouncements::status(
+            (ClockModel::State)audioProcessor.publishedClockState.load(),
+            syncContext()),
+        true);
     return;
   }
   const auto plan = SyncAnnouncements::syncNow(
@@ -2189,12 +2191,12 @@ void AntiphonEditor::runSyncNow() {
   if (plan.say.isNotEmpty())
     announcer.say(plan.say, true);
   else if (!acted)
-    announcer.say("Antiphon could not change the DAW. " +
-                      SyncAnnouncements::headerText(
-                          (ClockModel::State)
-                              audioProcessor.publishedClockState.load(),
-                          syncContext()),
-                  true);
+    announcer.say(
+        "Antiphon could not change the DAW. " +
+            SyncAnnouncements::headerText(
+                (ClockModel::State)audioProcessor.publishedClockState.load(),
+                syncContext()),
+        true);
 }
 
 SyncAnnouncements::Context AntiphonEditor::syncContext() const {
@@ -2218,7 +2220,8 @@ SyncAnnouncements::Context AntiphonEditor::syncContext() const {
 
 bool AntiphonEditor::updateStatusReadout() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
-  const auto sync = (ClockModel::State)audioProcessor.publishedClockState.load();
+  const auto sync =
+      (ClockModel::State)audioProcessor.publishedClockState.load();
   const auto ctx = syncContext();
 
   juce::String s;
@@ -2323,7 +2326,8 @@ void AntiphonEditor::updateSyncAnnouncements(
   const int resyncs = audioProcessor.resyncCount.load();
   const bool resynced = resyncs != seenResyncCount;
   seenResyncCount = resyncs;
-  if (resynced && state == State::Synced && announcedClockState != State::Synced) {
+  if (resynced && state == State::Synced &&
+      announcedClockState != State::Synced) {
     announcer.say(
         SyncAnnouncements::onTransition(announcedClockState, state, ctx), true);
     announcedClockState = pendingClockState = state;
@@ -2341,8 +2345,8 @@ void AntiphonEditor::updateSyncAnnouncements(
   }
   if (now - pendingSinceMs < hold)
     return;
-  announcer.say(SyncAnnouncements::onTransition(announcedClockState, state, ctx),
-                true);
+  announcer.say(
+      SyncAnnouncements::onTransition(announcedClockState, state, ctx), true);
   announcedClockState = state;
 }
 

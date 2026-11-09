@@ -50,8 +50,8 @@ void walk(const Node &node, const juce::String &path,
 
       if (!nameContainsLabel(child.name, child.visibleLabel)) {
         out.push_back({Issue::NameHidesLabel, childPath,
-                       "reads \"" + child.visibleLabel +
-                           "\" but announces \"" + child.name + "\""});
+                       "reads \"" + child.visibleLabel + "\" but announces \"" +
+                           child.name + "\""});
       }
 
       if (child.description.trim().isEmpty() &&

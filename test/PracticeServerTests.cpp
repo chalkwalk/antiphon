@@ -499,7 +499,8 @@ private:
       expect(waitUntil([&] { return server.clientCount() == 2; }));
 
       a.client.sendChatMessage("!vote bpm 130");
-      expect(waitUntil([&] { return sawVoteLine(b, "1/2 votes for 130 BPM"); }));
+      expect(
+          waitUntil([&] { return sawVoteLine(b, "1/2 votes for 130 BPM"); }));
       expect(server.bpm() == 100);
 
       b.client.sendChatMessage("!vote bpm 130");
@@ -570,7 +571,8 @@ private:
       expect(waitUntil([&] { return server.clientCount() == 2; }));
 
       a.client.sendChatMessage("!vote bpm 130");
-      expect(waitUntil([&] { return sawVoteLine(b, "1/2 votes for 130 BPM"); }));
+      expect(
+          waitUntil([&] { return sawVoteLine(b, "1/2 votes for 130 BPM"); }));
 
       // Wall clock, because that is what the server keeps: the vote must fall
       // out of the window before bob's arrives, so bob's is 1/2 and not 2/2.

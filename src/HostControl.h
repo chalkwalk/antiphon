@@ -61,8 +61,7 @@ struct TempoFollow {
 
   // The grid has just applied a new room tempo -- not when the vote was
   // announced, but when it took effect at the interval boundary.
-  bool onGridTempoApplied(HostControl &host, int roomBpm,
-                          double dawBpm) const {
+  bool onGridTempoApplied(HostControl &host, int roomBpm, double dawBpm) const {
     return follow(host, roomBpm, dawBpm);
   }
 

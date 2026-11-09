@@ -212,8 +212,9 @@ public:
                             juce::String(rms, 4));
     }
 
-    beginTest("an interval padded with silence after a jump arrives full length "
-              "with its audio in place");
+    beginTest(
+        "an interval padded with silence after a jump arrives full length "
+        "with its audio in place");
     {
       // fillForJump pads the head of the interval that starts after a
       // backward jump. Silence is what Vorbis compresses hardest, and a quiet
@@ -234,10 +235,10 @@ public:
       const double head = TestSignal::rms(out.getReadPointer(0), pad - 2048);
       const double tail =
           TestSignal::rms(out.getReadPointer(0) + pad + 2048, len - pad - 4096);
-      expect(head < 1.0e-3, "the padded head is silent, rms " +
-                                juce::String(head, 5));
-      expect(tail > 0.2, "the tone is after the pad, rms " +
-                             juce::String(tail, 4));
+      expect(head < 1.0e-3,
+             "the padded head is silent, rms " + juce::String(head, 5));
+      expect(tail > 0.2,
+             "the tone is after the pad, rms " + juce::String(tail, 4));
     }
 
     beginTest("a seek with no interval to play is silent, never a replay");

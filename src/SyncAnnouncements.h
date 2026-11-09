@@ -21,18 +21,18 @@
 namespace SyncAnnouncements {
 
 struct Context {
-  juce::String place;      // "ninbot.com", or "the practice room"
-  int players = 0;         // other people in the room
+  juce::String place; // "ninbot.com", or "the practice room"
+  int players = 0;    // other people in the room
   int roomBpm = 0;
   int bpi = 0;
-  int prevRoomBpm = 0;     // before a room change, for onRoomTempoChange
+  int prevRoomBpm = 0; // before a room change, for onRoomTempoChange
   int prevBpi = 0;
   double dawBpm = 0.0;
   bool dawPlaying = false;
   bool dawHasPosition = true;
-  int beat = 0;            // 1-based beat in the interval
-  bool reaper = false;        // the host is Reaper and its API was found
-  bool reaperFollows = false; // ... and it follows the room's tempo
+  int beat = 0;                // 1-based beat in the interval
+  bool reaper = false;         // the host is Reaper and its API was found
+  bool reaperFollows = false;  // ... and it follows the room's tempo
   bool reaperSetTempo = false; // Antiphon just set Reaper's tempo
 };
 
@@ -142,10 +142,9 @@ inline juce::String status(ClockModel::State s, const Context &c) {
   using ClockModel::State;
   if (s == State::Disconnected)
     return "Not connected.";
-  juce::String out = "Connected to " + c.place + ", " +
-                     juce::String(c.players) +
-                     (c.players == 1 ? " player. " : " players. ") +
-                     roomLine(c) + " ";
+  juce::String out =
+      "Connected to " + c.place + ", " + juce::String(c.players) +
+      (c.players == 1 ? " player. " : " players. ") + roomLine(c) + " ";
   switch (s) {
   case State::Synced:
     return out + "Synced to " + dawName(c) + ", " + beatText(c) + ".";

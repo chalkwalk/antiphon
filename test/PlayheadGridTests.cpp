@@ -35,8 +35,7 @@ public:
     {
       expect(PlayheadGrid::classify(6.0, 3.0, true, 0.0, 8.0) == Move::Jump);
       expect(PlayheadGrid::classify(6.0, 3.0, false, 0.0, 8.0) == Move::Jump);
-      expect(PlayheadGrid::classify(6.0, 40.0, false, 0.0, 0.0) ==
-             Move::Jump);
+      expect(PlayheadGrid::classify(6.0, 40.0, false, 0.0, 0.0) == Move::Jump);
     }
 
     beginTest("an 8-beat loop counts through a 16-beat interval");
@@ -44,17 +43,17 @@ public:
       PlayheadGrid::Position p;
       p.reset();
       expect(p.observe(0.0, 0.0, true, 0.0, 8.0) == Move::Continuous);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(6.0), 16), 6.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(6.0), 16),
+                                6.0, 1e-9);
       expect(p.observe(0.0, 8.0, true, 0.0, 8.0) == Move::LoopWrap);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(0.0), 16), 8.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(0.0), 16),
+                                8.0, 1e-9);
       p.observe(0.0, 8.0, true, 0.0, 8.0);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(0.0), 16), 0.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(0.0), 16),
+                                0.0, 1e-9);
       p.observe(0.0, 8.0, true, 0.0, 8.0);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(3.0), 16), 11.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(3.0), 16),
+                                11.0, 1e-9);
     }
 
     beginTest("a jump after loop wraps lands on the playhead again");
@@ -63,8 +62,8 @@ public:
       p.reset();
       p.observe(0.0, 8.0, true, 0.0, 8.0); // one wrap
       expect(p.observe(37.0, 4.0, false, 0.0, 8.0) == Move::Jump);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(37.0), 16), 5.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(37.0), 16),
+                                5.0, 1e-9);
     }
 
     beginTest("a BPI change re-anchors at the boundary it took effect on");
@@ -72,16 +71,16 @@ public:
       PlayheadGrid::Position p;
       p.reset();
       p.onBpiChangeAt(32.0);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(32.0), 12), 0.0, 1e-9);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(44.0), 12), 0.0, 1e-9);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(35.0), 12), 3.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(32.0), 12),
+                                0.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(44.0), 12),
+                                0.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(35.0), 12),
+                                3.0, 1e-9);
       // A later jump still measures from that anchor.
       p.observe(50.0, 40.0, false, 0, 0);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(50.0), 12), 6.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(50.0), 12),
+                                6.0, 1e-9);
     }
 
     beginTest("a BPI change after a loop wrap re-anchors on the boundary");
@@ -92,10 +91,10 @@ public:
       p.reset();
       expect(p.observe(0.0, 16.0, true, 0.0, 16.0) == Move::LoopWrap);
       p.onBpiChangeAt(16.0);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(16.0), 12), 0.0, 1e-9);
-      expectWithinAbsoluteError(
-          HostGrid::phaseBeatsAt(p.musicalPpq(19.0), 12), 3.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(16.0), 12),
+                                0.0, 1e-9);
+      expectWithinAbsoluteError(HostGrid::phaseBeatsAt(p.musicalPpq(19.0), 12),
+                                3.0, 1e-9);
     }
 
     beginTest("a forward jump pads the hole and keeps the interval open");

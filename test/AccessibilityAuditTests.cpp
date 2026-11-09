@@ -72,10 +72,10 @@ public:
       // thing that makes those buttons usable at all.
       Node root;
       root.name = "Editor";
-      for (auto pair : {std::make_pair("Add channel", "+"),
-                        std::make_pair("Mute (M)", "M"),
-                        std::make_pair("Transmit (X)", "TX"),
-                        std::make_pair("Close", "X")}) {
+      for (auto pair :
+           {std::make_pair("Add channel", "+"), std::make_pair("Mute (M)", "M"),
+            std::make_pair("Transmit (X)", "TX"),
+            std::make_pair("Close", "X")}) {
         auto c = control(pair.first, "juce::TextButton");
         c.visibleLabel = pair.second;
         root.children.push_back(c);
@@ -99,8 +99,8 @@ public:
 
       Node after;
       after.name = "Editor";
-      after.children.push_back(control("Set key for the room",
-                                       "juce::TextButton"));
+      after.children.push_back(
+          control("Set key for the room", "juce::TextButton"));
 
       Coverage a, b;
       measure(before, a);

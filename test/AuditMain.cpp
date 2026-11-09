@@ -231,8 +231,9 @@ int main() {
     //
     // The wording is the server's and is the only contract it offers; there is
     // no structured vote message on the wire.
-    server.sendChat("MSG", "", "[voting system] leading candidate: 3/5 votes "
-                              "for 137 BPM [each vote expires in 60s]");
+    server.sendChat("MSG", "",
+                    "[voting system] leading candidate: 3/5 votes "
+                    "for 137 BPM [each vote expires in 60s]");
     pump(400);
     settle(*editor);
 
@@ -245,8 +246,7 @@ int main() {
     // pair is live.
     processor.publishedHostBpm.store(95.0);
     processor.publishedHostPlaying.store(true);
-    processor.publishedClockState.store(
-        (int)ClockModel::State::NotSyncedTempo);
+    processor.publishedClockState.store((int)ClockModel::State::NotSyncedTempo);
     pump(300);
     settle(*editor);
     results.push_back(auditState("not synced, tempo mismatch", {editor}));

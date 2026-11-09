@@ -206,8 +206,8 @@ public:
     beginTest("every state has header text, and none is non-ASCII");
     for (int s = 1; s <= (int)State::Stopped; ++s) {
       const auto t = SA::headerText((State)s, room(95.0));
-      expect(t.isNotEmpty(), juce::String("no header for ") +
-                                 ClockModel::stateName((State)s));
+      expect(t.isNotEmpty(),
+             juce::String("no header for ") + ClockModel::stateName((State)s));
       expect(ascii(t));
     }
   }

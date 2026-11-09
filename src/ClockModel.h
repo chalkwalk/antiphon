@@ -57,11 +57,11 @@ enum class State {
 };
 
 enum class GridSource {
-  None,          // nothing advances
-  Playhead,      // derived from the DAW's position (PlayheadGrid + HostGrid)
-  OwnClock,      // IntervalClock, counted, at the room's tempo
-  HostOffline,   // not connected: HostGrid from the DAW, as before
-  StandaloneOwn  // the standalone's own transport
+  None,         // nothing advances
+  Playhead,     // derived from the DAW's position (PlayheadGrid + HostGrid)
+  OwnClock,     // IntervalClock, counted, at the room's tempo
+  HostOffline,  // not connected: HostGrid from the DAW, as before
+  StandaloneOwn // the standalone's own transport
 };
 
 struct Inputs {
