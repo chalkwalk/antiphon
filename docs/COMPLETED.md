@@ -173,6 +173,13 @@ on a slower machine.
       back under the same load:** median 1.42% against 1.44% as recorded, and
       4.53% against 4.10-4.50% at stack 11. The VM is about 1.5-1.9 times the
       development machine, on one of its two cores.
+
+      **Memory is flat in room size:** peak resident 38 992 kB as recorded,
+      38 012 kB at stack 3 (6 to 12 channels, the usual room) and 39 504 kB at
+      stack 11 (`/usr/bin/time -v`, development machine; it is the same code on
+      the VM). Each clip is decoded, placed and released before the next, so
+      what is held is one interval's mix and one clip, not one per channel.
+      Beside a 6 GB 1-OCPU shape it is nothing.
 - [x] Report it as a fraction of the interval, which is the unit that matters:
       the budget is the gap at the boundary, and what is left over is the margin
       before listeners slip to two intervals behind.
