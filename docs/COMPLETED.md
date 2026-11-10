@@ -115,97 +115,28 @@ four UBSan lines from inside vendored libvorbis (`bitwise.c`, `floor1.c`,
 
 ### Can one machine mix a room in the gap?
 
-*Answered 2026-11-09: yes, on the VM too.*
+*Answered 2026-11-09: yes, with a wide margin. Carried on in ninjam-balcony.*
 
-A measurement, not a feature, and the precondition for something else entirely:
-a server that lets people listen to a jam in a browser, designed in
-`docs/superpowers/specs/2026-08-31-observer-server-design.md` and recorded in
-the ecosystem plan. Nothing about that server is scheduled and this item does
-not schedule it. What it does is answer the one question the whole design rests
-on, cheaply, before anybody writes a line of it.
+Asked here in August because this repository then owned the codec and the
+channel mix the answer depended on: can a server that streams a room to
+listeners decode every channel of an interval, mix it and encode one stream in
+the gap at the interval boundary, where any overrun is permanent lag? Measured
+over a real archive, on a development machine and on a small Arm host, with
+rooms stacked up to 40-odd channels: the worst interval stayed well inside one
+interval, and memory stayed flat in room size. No redesign.
 
-**The question.** A server producing one stream for listeners must decode every
-player's channels for interval N, mix them, and encode the result. It cannot do
-that as the uploads arrive: interval delivery is all-or-nothing, so a sparse
-interval decodes to nothing until the end-of-stream flush. The whole job
-therefore happens in the gap at the interval boundary -- and every millisecond
-over budget is PERMANENT extra lag for every listener, not a one-off, because
-the next interval starts no later for being late with this one.
+That server is now **ninjam-balcony**, a listener bot in its own repository
+(not yet published), built on chalkwalk-ninjam and chalkwalk-jambot rather than
+on this tree. It carries the figures and their method, and measures its own
+cost. The temporary `antiphon-stems --bench` mode that took the first number
+has been removed: it timed a Vorbis encode the bot does not do, on a JUCE build
+the bot does not use.
 
-**Why it belongs here.** This repository owns `VorbisCodec` and `ChannelMix`,
-and it owns the discipline for this kind of claim: a number quoted anywhere
-needs a method (`PRINCIPLES §5`), and this file already carries a withdrawn CPU
-estimate taken on a build with no optimiser in it. The same trap is open here,
-on a slower machine.
+### A listener bot, as a companion repository
 
-- [x] Decode a realistic room's worth of channels for one interval, mix them,
-      and encode one stereo stream. Time it as a whole, on an optimised build,
-      at a real bpm/bpi rather than a convenient one.
-      `antiphon-stems <session> --bench [--stack n]` does exactly that over every
-      interval of a real archive: clip bytes read before the clock starts,
-      then decode, resample, sum and a 128 kbit/s stereo Vorbis encode, timed
-      together, one thread. `--stack n` decodes each clip n times to stand in
-      for a bigger room than the recorded one.
-- [x] On the machine that would have to do it -- a Raspberry Pi -- and not only
-      on a development machine, since that is the number that decides whether a
-      Pi is the right host at all. **The host is now the Oracle A1 VM**
-      (`ninjam-balcony/docs/DESIGN.md`: 2 Arm cores, beside `ninjamsrv`).
-      **2026-11-09, on the VM** (Neoverse-N1, gcc 15.2 at -O2, load ~0.2,
-      room closed, one thread), same archive:
-
-      | Room | Channels per interval | Median | 95th | Worst |
-      |---|---|---|---|---|
-      | as recorded | median 2, max 4 | 2.65% | 2.91% | 3.20% (307 ms) |
-      | stack 5 | median 10, max 20 | 4.33% | 5.51% | 6.65% (639 ms) |
-      | stack 11 | median 22, max 44 | 6.85% | 9.33% | 11.85% (1137 ms) |
-
-      **Not `antiphon-stems`**, which would mean building JUCE on the live
-      room's VM for a job the eventual bot would never carry: the bot is
-      JUCE-free, so the bench is too. A ~150-line program over chalkwalk-ninjam's
-      `VorbisDecoder`/`VorbisEncoder` and the vendored ogg/vorbis, built by hand
-      with no CMake, doing the same work: clip bytes read before the clock,
-      then decode, place (4-point Lagrange when rates differ), sum, and one
-      128 kbit/s stereo encode, timed together. Its manifest groups clips by
-      archive segment and interval, so a few intervals at a segment edge
-      count up to 4 channels where `antiphon-stems`, which joins segments,
-      counts 3; that makes its worst case the more pessimistic. **Calibrated
-      against `antiphon-stems --bench` on the development machine, back to
-      back under the same load:** median 1.42% against 1.44% as recorded, and
-      4.53% against 4.10-4.50% at stack 11. The VM is about 1.5-1.9 times the
-      development machine, on one of its two cores.
-
-      **Memory is flat in room size:** peak resident 38 992 kB as recorded,
-      38 012 kB at stack 3 (6 to 12 channels, the usual room) and 39 504 kB at
-      stack 11 (`/usr/bin/time -v`, development machine; it is the same code on
-      the VM). Each clip is decoded, placed and released before the next, so
-      what is held is one interval's mix and one clip, not one per channel.
-      Beside a 6 GB 1-OCPU shape it is nothing.
-- [x] Report it as a fraction of the interval, which is the unit that matters:
-      the budget is the gap at the boundary, and what is left over is the margin
-      before listeners slip to two intervals behind.
-      **2026-11-09, development machine** (Ryzen 9 5900HX, RelWithDebInfo at
-      -O2, load ~1.4, one thread), the 2025-08-06 improv jam at 100 bpm / 16
-      bpi, 690 intervals of 9.6 s:
-
-      | Room | Channels per interval | Median | 95th | Worst |
-      |---|---|---|---|---|
-      | as recorded | median 2, max 3 | 1.29% | 1.41% | 1.51% (120 ms) |
-      | `--stack 5` | median 10, max 15 | 2.25% | 2.89% | 2.97% |
-      | `--stack 11` | median 22, max 33 | 3.77% | 5.48% | 6.25% (600 ms) |
-
-      About 15 ms of decode per channel per interval, and a fixed ~90 ms for
-      the encode. Decoding is per channel and parallel; the encode is not.
-- [x] Say what the answer means either way. A comfortable number makes the
-      server worth planning; a bad one changes the design rather than the
-      schedule -- mixing would have to move off the boundary, or off the Pi.
-      **On this machine, comfortable:** a 33-channel room costs 0.6 s at the
-      boundary -- listeners hear the mix at most that much after the interval
-      turns, which is well inside one interval and needs no redesign. Whether
-      that holds on two Arm cores was the open question, and **it does:** on
-      the VM a 44-channel interval costs 1.14 s of a 9.6 s one, on one core,
-      leaving the other to `ninjamsrv`. Listeners would hear the mix at most
-      about a second after the interval turns. No redesign; the observer
-      server's premise stands on the host it was designed for.
+*Moved out 2026-11-08.* The idea (2026-11-06) of a bot that joins a room as one
+user and serves the jam, with its chat, to listeners in a browser. Not part of
+Antiphon: its design, plan and open work live in ninjam-balcony.
 
 ## Audio and timing
 
