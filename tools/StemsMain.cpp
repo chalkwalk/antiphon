@@ -170,7 +170,7 @@ void warnIfNotConsecutive(const std::vector<juce::File> &dirs) {
 
 // What a server streaming the room to listeners would have to do at every
 // interval boundary, and nowhere else: interval delivery is all-or-nothing, so
-// nothing can be decoded early (ROADMAP.md, "Can one machine mix a room in the
+// nothing can be decoded early (docs/COMPLETED.md, "Can one machine mix a room in the
 // gap?"). Clip bytes are read from disk before the clock starts -- a server
 // would already hold them -- and everything after is timed: decode, resample
 // to the output rate, sum, and a 128 kbit/s stereo Vorbis encode, the same

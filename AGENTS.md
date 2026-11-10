@@ -247,7 +247,7 @@ ctest --test-dir build --output-on-failure
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> -o stems/
 # What a listener server would spend at each boundary: decode every channel of
 # an interval, mix, encode -- as a fraction of the interval. --stack n stands in
-# for a room n times the size. ROADMAP "Can one machine mix a room in the gap?"
+# for a room n times the size. docs/COMPLETED.md "Can one machine mix a room in the gap?"
 ./build/tools/AntiphonStems_artefacts/AntiphonStems <session-dir> --bench --stack 11
 # Tuning the band's synthesis: render one voice and measure it. The numbers it
 # prints come from chalkwalk::dsp::measure, which is what the unit tests assert
