@@ -19,6 +19,13 @@ public:
   virtual void onServerConfig(int, int) {}
   virtual void onUserInfoChange() {}
 
+  // Receiving stopped, or started again, because of what one remote channel's
+  // interval would cost to hold at this tempo (IntervalBudget). While muted we
+  // stay connected and keep transmitting; only the others go quiet. Fires on a
+  // change, never on a repeat, and carries the tempo that caused it.
+  virtual void onReceiveMuted(bool /*muted*/, int /*bpm*/, int /*bpi*/,
+                              juce::int64 /*bytesPerChannel*/) {}
+
   // Somebody joined or left, carrying WHO rather than only that something
   // changed.
   //
@@ -180,6 +187,10 @@ public:
   void setSampleRate(double sr) { sampleRate = sr; }
   void setServerBpm(int bpm) { serverBpm = bpm; }
   void setServerBpi(int bpi) { serverBpi = bpi; }
+
+  // True while this room's interval is more than we will reserve per remote
+  // channel, and so nothing is being received. Any thread.
+  bool isReceiveMuted() const { return receiveMuted.load(); }
 
   void swapIntervalBuffers();
 
@@ -492,6 +503,11 @@ private:
   double sampleRate = 48000.0;
   int serverBpm = 120;
   int serverBpi = 16;
+  // Written on the network thread only; read anywhere.
+  std::atomic<bool> receiveMuted{false};
+  // Re-evaluates receiveMuted against the current tempo and sample rate, and
+  // tells the listeners if it changed. Network thread.
+  void updateReceiveBudget();
 
   std::atomic<bool> defaultRecvEnabled{true};
 

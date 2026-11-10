@@ -41,6 +41,8 @@ public:
   // NinjamClientListener
   void onConnected() override;
   void onDisconnected(const juce::String &error) override;
+  void onReceiveMuted(bool muted, int bpm, int bpi,
+                      juce::int64 bytesPerChannel) override;
   void onChatMessage(const juce::String &type, const juce::String &username,
                      const juce::String &text) override;
 

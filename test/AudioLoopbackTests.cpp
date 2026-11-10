@@ -326,6 +326,54 @@ public:
       s.client.setRemoteUserMute("peer", 0, false);
     }
 
+    beginTest("an interval too large to hold mutes receive, and says so");
+    {
+      struct MuteListener : NinjamClientListener {
+        std::atomic<int> changes{0};
+        std::atomic<bool> muted{false};
+        std::atomic<int> bpi{0};
+        void onReceiveMuted(bool m, int, int b, juce::int64) override {
+          muted.store(m);
+          bpi.store(b);
+          changes.fetch_add(1);
+        }
+      } heard;
+      AudioSession s;
+      s.client.addListener(&heard);
+      expect(s.start(48000.0, 120, 8));
+      expect(!s.client.isReceiveMuted());
+
+      // 1000 BPI at 120: 288 MB a channel, set on a live server by accident.
+      s.server.sendServerConfig(120, 1000);
+      expect(waitUntil([&] { return heard.changes.load() == 1; }),
+             "no word that receive stopped");
+      expect(heard.muted.load());
+      expectEquals(heard.bpi.load(), 1000);
+      expect(s.client.isReceiveMuted());
+
+      // A peer's interval arrives and nothing is reserved for it.
+      const auto pcm = makeSineBuffer(s.intervalSamples, 440.0, 48000.0, 0.5f);
+      const int before = s.server.completedUploads();
+      juce::AudioBuffer<float> copy(pcm);
+      s.client.processCapturedAudio(copy, copy.getNumSamples(), 0, false);
+      expect(waitUntil([&] { return s.server.completedUploads() > before; },
+                       5000));
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(300);
+      expectEquals(s.client.diagLastIntervalSamples.load(), 0,
+                   "an unaffordable interval was decoded");
+
+      // Back to a tempo we can hold: receive resumes, and says so once.
+      s.server.sendServerConfig(120, 8);
+      expect(waitUntil([&] { return heard.changes.load() == 2; }),
+             "no word that receive resumed");
+      expect(!heard.muted.load());
+      expect(s.sendInterval(pcm), "receive did not resume");
+      s.server.sendServerConfig(100, 8);
+      juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+      expectEquals(heard.changes.load(), 2, "repeated on a change that fits");
+      s.client.removeListener(&heard);
+    }
+
     beginTest("recv off silences playback without waiting for the server");
     {
       // The server cannot stop instantly -- an interval may already be in

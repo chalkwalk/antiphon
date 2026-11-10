@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include "ChannelMix.h"
+#include "IntervalBudget.h"
 #include "NinjamProtocol.h"
 
 NinjamClient::NinjamClient() : juce::Thread("NinjamClientThread") {}
@@ -150,6 +151,7 @@ void NinjamClient::connectToServer(const juce::String &host, int port,
   currentUsername = username;
   currentPassword = password;
 
+  receiveMuted = false;
   connectionState = 1;
   startThread();
 }
@@ -393,6 +395,7 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
     callAsyncIfAlive([this, bpm, bpi]() {
       listeners.call(&NinjamClientListener::onServerConfig, bpm, bpi);
     });
+    updateReceiveBudget();
   }
   // USER_INFO_CHANGE
   else if (type == 0x03) {
@@ -467,6 +470,12 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
     if (!begin.isOggAudio())
       return true;
 
+    // Checked here as well as on a config change, because the sample rate can
+    // move under a room whose tempo has not.
+    updateReceiveBudget();
+    if (receiveMuted.load())
+      return true;
+
     const int slotIndex = acquireStreamSlot(begin.username, begin.channelIndex);
     if (slotIndex < 0) {
       juce::Logger::writeToLog("[rx] no free stream slot for " +
@@ -482,9 +491,8 @@ bool NinjamClient::handleMessage(juce::uint8 type, const ByteBuffer &payload) {
 
     auto interval = std::make_unique<DecodedInterval>();
     interval->guid = begin.guidHex;
-    int bufferSamples = static_cast<int>(
-        sampleRate * 60.0 / std::max(1, serverBpm) * serverBpi * 1.5f);
-    interval->buffer.setSize(2, bufferSamples);
+    interval->buffer.setSize(2, IntervalBudget::samplesPerRemoteInterval(
+                                    sampleRate, serverBpm, serverBpi));
     interval->buffer.clear();
     // Before the interval is shared with the audio thread; see DecodedInterval.
     interval->publishWritePointers();
@@ -1129,6 +1137,20 @@ void NinjamClient::releaseSlotOnAudioThread(StreamSlot &slot) {
   slot.ranOut = false;
   // Publishes the hand-back: the next claimer may free everything above.
   slot.state.store(StreamSlot::kFree, std::memory_order_release);
+}
+
+void NinjamClient::updateReceiveBudget() {
+  const int bpm = serverBpm;
+  const int bpi = serverBpi;
+  const bool muted = !IntervalBudget::affordable(sampleRate, bpm, bpi);
+  if (receiveMuted.exchange(muted) == muted)
+    return;
+  const juce::int64 bytes =
+      IntervalBudget::bytesPerRemoteInterval(sampleRate, bpm, bpi);
+  callAsyncIfAlive([this, muted, bpm, bpi, bytes]() {
+    listeners.call(&NinjamClientListener::onReceiveMuted, muted, bpm, bpi,
+                   bytes);
+  });
 }
 
 void NinjamClient::swapIntervalBuffers() {

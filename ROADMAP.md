@@ -1412,17 +1412,34 @@ both legal and both were set on a live server by accident** (measured; see
 | 1024 | 40 | **885 MB** |
 
 A room at 1024/40 with four remote players asks for three and a half gigabytes,
-allocated on the network thread, with no guard anywhere.
+allocated on the network thread, and until 2026-11-09 nothing stopped it.
 
-- [ ] Decide what a client should DO about an interval it cannot afford. The
-      options are all unpleasant -- refuse to connect, connect muted with an
-      explanation, or cap and accept that playback is wrong -- and the honest
-      one is probably to say so in the UI rather than to fail silently.
-- [ ] Whatever is chosen, **do not clamp the tempo we display**. JamTaba drops
+- [x] Decide what a client should DO about an interval it cannot afford.
+      **Join muted, and say so** (decided 2026-11-09). Past 64 MB per remote
+      channel-interval -- a little under two minutes of interval at 48 kHz --
+      `NinjamClient` reserves nothing and drops the interval's download; we
+      stay connected and keep transmitting, and the chat and a screen reader
+      say which tempo caused it and that the others are muted until it
+      shortens. Re-checked on every config change and every interval begin,
+      because the sample rate can move too. `src/IntervalBudget.h`; tests in
+      `test/IntervalBudgetTests.cpp` and `AudioLoopback` ("an interval too
+      large to hold mutes receive"), which goes red with the guard removed.
+      While muted, the session archive misses those intervals too: it is fed
+      from the same download.
+- [x] Whatever is chosen, **do not clamp the tempo we display**. JamTaba drops
       out-of-range config with no `else` and shows a stale tempo instead
       (`ServerInfo.cpp:112-134`); at 1000 BPI it desyncs outright, showing 8 in
       its selector and 32 on its metronome while the server is at 1000. Being
-      wrong quietly is worse than being unable to play.
+      wrong quietly is worse than being unable to play. Held: the config is
+      applied as sent, and only receive stops.
+- [ ] **Transmit has the same ceiling, lower, and says nothing.** Each local
+      channel's capture ring is a fixed 30 s (`addLocalChannel`,
+      `prepareToPlay`), so an interval longer than that -- 16 BPI at 32 BPM, or
+      64 at 128, both ordinary -- is cut at 30 s on the way out, and the rest
+      of it never reaches the room. Found while doing the item above, not yet
+      measured on the wire. Either size the ring from the tempo (an allocation
+      at a config change, off the audio thread) or give transmit the same
+      ceiling and the same notice.
 - [ ] Consider warning before `/bpi` sets something the room cannot follow. The
       server allows it, but no other client in the room will survive it.
 

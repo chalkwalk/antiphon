@@ -226,6 +226,13 @@ just finished.
   project tempo has to match, or nothing will line up -- see
   [Jamming from your DAW](#2-jamming-from-your-daw).
 - **You can vote to change tempo.** See [Chat and voting](#chat-and-voting).
+- **A very long interval means you hear nobody.** Each player's interval is
+  held in memory while it plays, and past about two minutes of it (at 48 kHz:
+  64 MB per player) Antiphon will not reserve the space. You stay connected and
+  keep sending -- the room still hears you -- but the others go quiet, and the
+  chat says so, with the tempo that caused it. They come back by themselves
+  when the interval is shorter again. The tempo shown is always the room's
+  real one.
 
 ---
 

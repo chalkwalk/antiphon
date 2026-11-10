@@ -24,6 +24,13 @@ look identical from here.
 That is JUCE's standalone host, not a bug: one input bus and one output bus.
 Multi-channel transmit and stem recording need the plugin in a DAW.
 
+**"This room's interval needs ... MB for each player"**
+The room's interval is so long -- a few hundred BPI, usually set by accident --
+that holding one player's worth of it would take more memory than Antiphon will
+reserve (about two minutes of interval). You are still connected and the room
+still hears you; you just cannot hear them. Vote the BPI back down, and the
+others return on their own, with a line in the chat to say so.
+
 ## Connection and sync
 
 **"DAW tempo does not match the server"**

@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 
 #include "RoomHarmony.h"
+#include "IntervalBudget.h"
 #include "PluginProcessor.h"
 #include "AccessibilityTree.h"
 #include "ServerBrowserDialog.h"
@@ -2058,6 +2059,16 @@ void AntiphonEditor::onDisconnected(const juce::String &) {
   dismissedKeyGuess = {};
   setChatConnectedState(false);
   resized(); // the header gives the chart row back
+}
+
+void AntiphonEditor::onReceiveMuted(bool muted, int bpm, int bpi,
+                                    juce::int64 bytesPerChannel) {
+  const juce::String msg =
+      "Local: " + juce::String(IntervalBudget::receiveNotice(muted, bpm, bpi,
+                                                             bytesPerChannel));
+  chatDisplay.appendMessage(
+      msg, colourForChatCategory(ChatFormat::Category::ServerNotice));
+  announcer.say(msg, true);
 }
 
 void AntiphonEditor::updateToolbarStates() {
