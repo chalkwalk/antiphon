@@ -147,23 +147,6 @@ interval so far. See `DESIGN.md` section 6.1.
       hold threshold, the flash and the announcement need hands.
 
 
-### Lock-free TX handoff
-
-`processBlock` does a `callAsync` with a full buffer copy at each interval
-boundary. A `juce::AbstractFifo` would remove the copy and the allocation and
-reduce TX latency jitter. Much safer to attempt now the loopback tests exist.
-
-This is now the **last remaining `PRINCIPLES 7` violation on the audio thread**,
-and the re-audit above confirmed the cost precisely: `callAsync` is a `new`, a
-`CriticalSection`, a `ReferenceCountedArray` append and a `write()` syscall
-(`juce_Messaging_linux.cpp:72`). It fires once per interval rather than once per
-block, which is why it outlived the rest.
-
-- [ ] Replace the per-channel `callAsync` copy with a FIFO drained on the message
-      thread.
-- [ ] Verify transmitted interval length is unchanged against the reference
-      client -- this touches the exact path `docs/PARITY.md` measures.
-
 ### The interval boundary is a compute spike
 
 Everything this project does periodically, it does **all at once, at the
@@ -252,7 +235,7 @@ here; recorded so it is not "fixed" into a burst by someone tidying.
       has to get cheaper, not the schedule that has to get finer.
 - [x] **Chunk the local encode.** `NinjamClient::processCapturedAudio` encodes a
       whole interval in one pass, and for a human player that pass runs on the
-      MESSAGE thread, posted by the `callAsync` in *Lock-free TX handoff*. So
+      MESSAGE thread, posted by the boundary's `callAsync` (since removed). So
       every player, in every room, takes a UI hitch at each boundary -- this is
       not a practice-room problem. The loop is already in 1024-sample blocks
       (the `// We should send smaller chunks` comment is about the packets, not
@@ -273,8 +256,8 @@ here; recorded so it is not "fixed" into a burst by someone tidying.
       Everything the encode touches was already thread-safe -- `writeFull` takes
       a lock and documents three calling threads, `SessionWriter` locks, and
       `getSystemRandom()` is `thread_local` -- which is why this was contained.
-      The `callAsync` itself is untouched and *Lock-free TX handoff* still owns
-      it.
+      The `callAsync` itself was left alone here; *Lock-free TX handoff*
+      removed it later (`docs/COMPLETED.md`).
 - [ ] **Beat-sized synthesis, if staggering is not enough.** The deep version of
       this, and much the most expensive: `BotBand::renderInterval` renders a
       whole interval as one deterministic function of `(voice, settings,
@@ -773,6 +756,10 @@ it once, on demand.
 VU meters expose a value, but there is no way to hear levels without a reader
 announcing them continuously -- which `PRINCIPLES §11` explicitly refuses. A
 deliberate "read me the levels now" gesture is the missing half of that decision.
+
+**Held, 2026-11-09:** not to be built until the screen-reader user who would use
+it has been asked. The design is reasoned, not validated, and it is cheap to
+build once answered.
 
 - [ ] A shortcut that speaks the current levels once, on demand.
 - [ ] **The same gesture for the last chat message**, and again for the one

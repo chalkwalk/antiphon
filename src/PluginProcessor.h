@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GainRamp.h"
+#include "HandoffQueue.h"
 #include "IntervalClock.h"
 #include "ClockModel.h"
 #include "HostControl.h"
@@ -222,6 +223,22 @@ public:
 
   // Call with localChannelMutex held, after any change to localChannels.
   void publishLocalChannels();
+
+  // One interval of one channel, captured and waiting to be copied out of its
+  // ring and encoded. Pushed at the boundary by the audio thread, drained by
+  // timerCallback; see HandoffQueue for why not callAsync.
+  struct TxHandoff {
+    LocalChannel *channel = nullptr;
+    int length = 0;
+    int channelIndex = 0;
+    int spanIndex = 0;
+    int rampSamples = 0;
+    bool mono = false;
+  };
+  // Four boundaries of every channel: the timer drains thirty times a second,
+  // so this fills only if the message thread stalls for several intervals.
+  HandoffQueue<TxHandoff, kMaxLocalChannels * 4> txHandoffs;
+  void drainTxHandoffs();
 
   // Host Sync State
   double hostBpm = 120.0;

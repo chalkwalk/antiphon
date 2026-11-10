@@ -29,6 +29,7 @@ target_sources(NinjamTests
         AccessibilityAuditTests.cpp
         ChatEntryTests.cpp
         IntervalBudgetTests.cpp
+        HandoffQueueTests.cpp
         ChatFormatTests.cpp
         KeyTagTests.cpp
         SharedContractTests.cpp

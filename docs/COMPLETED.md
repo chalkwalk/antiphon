@@ -43,7 +43,7 @@ those numbers, so they are mapped here. **New work is named, not numbered**
 | #21 | Interval crossfade |
 | #22 | Elastic channel panel layout |
 | #23 | UI polish pass |
-| #24 | Lock-free TX handoff *(open -- see `ROADMAP.md`)* |
+| #24 | Lock-free TX handoff |
 | #25 | Video support *(parked)* |
 | #26 | OSC tempo sync *(parked)* |
 | #27 | Capture alignment at the interval boundary *(**withdrawn** -- below)* |
@@ -318,13 +318,49 @@ that appears as an unreproducible dropout in someone else's DAW.
             about 1.5 million samples at 120 bpm and 48 kHz. `captureSegments`
             reserves 8 against one segment per interval boundary crossed. Both
             are safe by orders of magnitude, and no change was made.
-      - [ ] **`MessageManager::callAsync` still fires from the audio thread** at
-            each interval boundary in `fireCaptureLambdas`. It is a `new`, a
+      - [x] **`MessageManager::callAsync` still fires from the audio thread** at
+            each interval boundary in `fireCaptureLambdas`. *(Done 2026-11-09:
+            see Lock-free TX handoff, below.)* It is a `new`, a
             lock, an array append and a `write()` syscall
             (`juce_Messaging_linux.cpp:72`). Once per interval rather than per
             block, and removing it means the redesign already tracked below as
             *Lock-free TX handoff* -- so it is recorded there, not fixed here.
             The lock around it is gone; the post is not.
+
+### Lock-free TX handoff
+
+*2026-11-09.* The last `PRINCIPLES 7` violation on the audio thread. At each
+interval boundary `processBlock` posted one `callAsync` per channel to copy the
+interval out of the channel's ring: a `new`, the message queue's lock, an array
+append and, on Linux, a `write()` to a socket (`juce_Messaging_linux.cpp:72`).
+
+Now the boundary pushes a small record per channel -- channel, length, which
+transmit spans, ramp, mono -- onto a fixed `HandoffQueue` (`src/HandoffQueue.h`,
+over `juce::AbstractFifo`), and the processor's existing 30 Hz timer drains it
+and does the same copy, spans and `enqueueCapturedAudio` the lambda did.
+
+**Measured, development machine, 4 000 calls from a high-priority thread, three
+runs:** `callAsync` a median 2.25 us, 99th percentile 7-8 us, worst 17-43 us;
+the push a median 0.11 us, 99th 0.4 us, worst 1.3-12.5 us (the worst of both
+is the scheduler as much as the call). Twenty times cheaper at the median, and
+nothing in it can block.
+
+**What it costs:** up to 33 ms between the boundary and the copy. The upload
+is already spread over half the interval, so that comes out of the other half,
+which at any interval longer than a fraction of a second is nothing. Whether an
+interval is transmitted is still decided at the boundary, not at the drain.
+
+**Verified on the wire,** standalone against a local reference `ninjamsrv`
+archiving what it received, Test Tone on, 120 bpm / 8 bpi at 44.1 kHz: 21
+intervals, every one 176 400 samples (100.0% of the interval), and the
+three-quarter probe burst at the same offset in every one, spread 0 samples,
+where the probe puts it (peak-picked with `scripts/analyze_archive.py`, not the
+calibrated correlation in `docs/PARITY.md`). `test/HandoffQueueTests.cpp` covers
+order, capacity, dropping and a two-thread run.
+
+If the queue fills -- four boundaries of every channel unread, which takes a
+message thread stalled for several intervals -- the record is dropped and
+counted, and the drain never reads more than the ring holds.
 
 ### Transmit gating is per interval, not per sample
 

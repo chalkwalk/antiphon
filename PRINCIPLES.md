@@ -186,11 +186,11 @@ them. This is not stylistic -- `PluginProcessor.cpp` **cannot** be compiled into
 the test target at all (it needs the `JucePlugin_*` defines), so logic left
 there is logic that can never be tested.
 
-One known violation remains, tracked in `ROADMAP.md` as *Lock-free TX handoff*:
-the `callAsync` at each interval boundary. (Save Rx does file I/O on the audio
-thread while it is switched on, deliberately -- it captures the mix as the audio
-thread sees it.) The rest of the list is closed (`docs/COMPLETED.md`,
-*Audio-thread hygiene*). Do not add to it.
+No known violation remains. The last, a `callAsync` at each interval boundary,
+was replaced by a fixed queue drained on a timer in November 2026
+(`docs/COMPLETED.md`, *Lock-free TX handoff*). (Save Rx does file I/O on the
+audio thread while it is switched on, deliberately -- it captures the mix as
+the audio thread sees it.) Keep it that way.
 
 ## 8. One definition, shared
 

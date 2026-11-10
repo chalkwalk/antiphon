@@ -119,7 +119,7 @@ far were in this table's blind spots, so it is worth knowing cold.
 
 | Thread | What it does |
 |---|---|
-| **Audio** (`processBlock`) | Reads host sync (BPM/PPQ/playing), snapshots the input buses, drives `ClockModel` and `IntervalClock`, synthesises the metronome click, mixes the local monitor path, captures local audio into each channel's ring buffer, detects interval boundaries, and mixes decoded remote streams into the output via `getDecodedAudio`. At an interval boundary it fires `callAsync` to hand the captured audio off. |
+| **Audio** (`processBlock`) | Reads host sync (BPM/PPQ/playing), snapshots the input buses, drives `ClockModel` and `IntervalClock`, synthesises the metronome click, mixes the local monitor path, captures local audio into each channel's ring buffer, detects interval boundaries, and mixes decoded remote streams into the output via `getDecodedAudio`. At an interval boundary it pushes one record per channel onto a fixed queue, which the message thread drains, to hand the captured audio off. |
 | **`NinjamClient`** (`run()`, a `juce::Thread`) | Socket read loop, keep-alive every 3 s, `handleMessage` dispatch, Ogg decode of incoming `WRITE` chunks. All listener callbacks are bounced to the message thread. |
 | **Message thread** | `onConnected`, `onServerConfig`, `onChatMessage`, and `processCapturedAudio` -- encoding is deliberately *off* the audio thread. |
 | **UI timer** (30 Hz) | `timerCallback`: syncs remote player strips against `getRemoteUsers()`, relayouts the elastic channel area, updates toolbar enable states and the status readout, repaints. |
@@ -380,11 +380,15 @@ is ending and go into the buffer we transmit, samples after it start the next.
 Capturing whole blocks and flushing at the boundary instead would round every
 transmitted interval up to a multiple of the block size.
 
-**Handoff.** At the boundary, each channel's ring contents are handed to
-`processCapturedAudio` via `callAsync` -- encoding runs on the message thread,
-never the audio thread. The `callAsync` currently copies the whole buffer;
-replacing it with a lock-free FIFO is tracked in `ROADMAP.md` under *Lock-free TX
-handoff*.
+**Handoff.** At the boundary, the audio thread pushes one small record per
+channel -- which channel, how many samples, which transmit spans -- onto a
+fixed `HandoffQueue`, and the processor's 30 Hz timer drains it on the message
+thread: it copies the interval out of the channel's ring, applies the transmit
+spans, and passes the buffer to `enqueueCapturedAudio`, whose worker encodes it
+spread over half the interval. Nothing on the audio thread allocates, locks or
+posts. The price is up to 33 ms between the boundary and the copy, which the
+upload's half-interval spread absorbs; whether to transmit is still decided at
+the boundary, not at the drain.
 
 ---
 

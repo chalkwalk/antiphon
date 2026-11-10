@@ -49,9 +49,10 @@ if [ ! -x "$SRV" ]; then
   rm -rf "$BUILD_DIR"
   mkdir -p "$(dirname "$BUILD_DIR")"
   cp -a "$SRC" "$BUILD_DIR"
+  # -j 4: the machine is shared (/home/programming/CLAUDE.md, Builds).
   # -w and -fpermissive: this is 2005-era C++ and modern g++ is stricter about
   # things the original compiler accepted.
-  make -C "$BUILD_DIR/ninjam/server" CFLAGS="-O2 -w -fpermissive -pthread" -j "$(nproc)"
+  make -C "$BUILD_DIR/ninjam/server" CFLAGS="-O2 -w -fpermissive -pthread" -j 4
 fi
 
 if [ "$CLEAN_ARCHIVE" = 1 ]; then

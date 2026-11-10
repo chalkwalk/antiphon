@@ -51,7 +51,49 @@ void AntiphonAudioProcessor::setFollowRoomTempo(bool on) {
   hostFollowsTempo.store(hostControl != nullptr && on);
 }
 
+void AntiphonAudioProcessor::drainTxHandoffs() {
+  txHandoffs.drain([this](const TxHandoff &h) {
+    auto *lc = h.channel;
+    if (!lc->isValid.load())
+      return;
+    // Never more than the ring holds now, so a dropped record cannot make a
+    // later read run past what was written.
+    const int length = juce::jmin(h.length, lc->fifo.getNumReady());
+    if (length <= 0)
+      return;
+    // AudioBuffer does not clear what it allocates. A FIFO holding less than
+    // an interval would otherwise send the rest as stale heap; one memset an
+    // interval, off the audio thread, rules that out.
+    juce::AudioBuffer<float> buf(2, length);
+    buf.clear();
+    int s1;
+    int n1;
+    int s2;
+    int n2;
+    lc->fifo.prepareToRead(length, s1, n1, s2, n2);
+    for (int ch = 0; ch < 2; ++ch) {
+      if (n1 > 0)
+        buf.copyFrom(ch, 0, lc->ring, ch, s1, n1);
+      if (n2 > 0)
+        buf.copyFrom(ch, n1, lc->ring, ch, s2, n2);
+    }
+    lc->fifo.finishedRead(n1 + n2);
+    // Silence the stretches transmit was off for, ramping each edge so
+    // switching it cannot click in what the other players hear.
+    lc->spans[(std::size_t)h.spanIndex].applyTo(buf.getArrayOfWritePointers(),
+                                                2, length, h.rampSamples);
+    // Enqueued, not encoded here. Everything above this line is a memcpy and a
+    // ramp; the Vorbis pass is a few hundred milliseconds, and doing it on the
+    // message thread froze the UI once an interval. See
+    // NinjamClient::enqueueCapturedAudio.
+    ninjamClient.enqueueCapturedAudio(std::move(buf), length, h.channelIndex,
+                                      h.mono);
+  });
+}
+
 void AntiphonAudioProcessor::timerCallback() {
+  // First, and before the early return below: this is the transmit path.
+  drainTxHandoffs();
   const auto event = followTrigger.update(
       ninjamClient.isConnected(), roomConfigSeen,
       gridTempoChangeCount.load(std::memory_order_relaxed));
@@ -587,17 +629,13 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  // Helper: fire per-channel callAsync at interval boundary
-  //
-  // The callAsync below still allocates and posts from the audio thread, which
-  // is a PRINCIPLES 7 violation in its own right -- but it fires once per
-  // interval rather than per block, and removing it means the redesign tracked
-  // as *Lock-free TX handoff* in ROADMAP.md. The lock is gone; the post is not.
-  auto fireCaptureLambdas = [this](bool postInJamNow) {
-    // inJam is read HERE and captured by value. Re-reading it inside the
-    // lambda would let a connection landing between the boundary and the
-    // message thread's turn transmit an interval that was captured offline.
-    // as it plays, which is what lets a one-interval tap exist.
+  // At an interval boundary, hand each channel's interval to the message
+  // thread. A record in a fixed queue, not a callAsync: nothing here allocates,
+  // locks or makes a system call (PRINCIPLES 7). drainTxHandoffs does the copy.
+  auto handOffIntervals = [this](bool postInJamNow) {
+    // inJam is decided HERE, at the boundary, and not when the record is
+    // drained: deciding later would let a connection landing in between
+    // transmit an interval that was captured offline.
     const bool postInJam = postInJamNow;
     samplesCapturedThisInterval = 0;
 
@@ -623,40 +661,16 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       if (postInJam && length > 0) {
         bool mono = lc->isMono.load();
         const int rampSamples = lc->monitorRamp.rampLengthSamples();
-        // A raw pointer is as safe here as the shared_ptr used to be: the
-        // channel outlives the processor's audio path, and the lambda already
-        // captures `this`, so it cannot outlive the processor either.
-        juce::MessageManager::callAsync([this, lc, length, ci, mono, handoff,
-                                         rampSamples]() {
-          if (!lc->isValid.load())
-            return;
-          // AudioBuffer does not clear what it allocates. A FIFO holding less
-          // than an interval would otherwise send the rest as stale heap; one
-          // memset an interval, off the audio thread, rules that out.
-          juce::AudioBuffer<float> buf(2, length);
-          buf.clear();
-          int s1;
-          int n1;
-          int s2;
-          int n2;
-          lc->fifo.prepareToRead(length, s1, n1, s2, n2);
-          for (int ch = 0; ch < 2; ++ch) {
-            if (n1 > 0)
-              buf.copyFrom(ch, 0, lc->ring, ch, s1, n1);
-            if (n2 > 0)
-              buf.copyFrom(ch, n1, lc->ring, ch, s2, n2);
-          }
-          lc->fifo.finishedRead(n1 + n2);
-          // Silence the stretches transmit was off for, ramping each edge so
-          // switching it cannot click in what the other players hear.
-          lc->spans[(std::size_t)handoff].applyTo(buf.getArrayOfWritePointers(),
-                                                  2, length, rampSamples);
-          // Enqueued, not encoded here. Everything above this line is a
-          // memcpy and a ramp; the Vorbis pass below it is a few hundred
-          // milliseconds, and doing it on the message thread froze the UI once
-          // an interval. See NinjamClient::enqueueCapturedAudio.
-          ninjamClient.enqueueCapturedAudio(std::move(buf), length, ci, mono);
-        });
+        // Dropped if the queue is full, which takes a message thread stalled
+        // for several intervals. The samples stay in the ring and go out with
+        // the next interval that is handed off, which is wrong but bounded --
+        // and no worse than what a stalled message thread did to callAsync.
+        txHandoffs.push({.channel = lc,
+                         .length = length,
+                         .channelIndex = ci,
+                         .spanIndex = handoff,
+                         .rampSamples = rampSamples,
+                         .mono = mono});
       } else {
         lc->fifo.reset();
       }
@@ -815,7 +829,7 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       closedAtJump = fill.closeInterval;
       if (fill.closeInterval) {
         publishedIntervalIndex.fetch_add(1);
-        fireCaptureLambdas(clock.inJam);
+        handOffIntervals(clock.inJam);
         ninjamClient.swapIntervalBuffers();
         ninjamClient.diagSwaps.fetch_add(1);
       }
@@ -975,7 +989,7 @@ void AntiphonAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         if (seg.closesInterval) {
           publishedIntervalIndex.fetch_add(1);
           // inJam is captured by value at post time inside this call.
-          fireCaptureLambdas(clock.inJam);
+          handOffIntervals(clock.inJam);
           if (clock.inJam) {
             ninjamClient.swapIntervalBuffers();
             ninjamClient.diagSwaps.fetch_add(1);

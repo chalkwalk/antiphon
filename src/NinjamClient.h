@@ -156,7 +156,7 @@ public:
   // The same thing, off this thread and paced across the interval.
   //
   // For the LOCAL player, whose capture arrives on the message thread from the
-  // `callAsync` in `processBlock`. Encoding there froze the UI for the length
+  // processor's handoff queue, drained by its timer. Encoding there froze the UI for the length
   // of an interval's Vorbis, every interval, in every room -- meters and phase
   // bar included. The cheap half of the handoff (draining the FIFO, applying
   // the transmit spans) has to stay on the message thread because the FIFO

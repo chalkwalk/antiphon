@@ -434,11 +434,12 @@ bump the submodule. Its suite runs in our ctest as `chalkwalk_ninjam`.
   (`PRINCIPLES §7`). The audio thread now takes **no lock at all**: remote
   playback walks `NinjamClient::streamSlots` and local channels walk
   `AntiphonAudioProcessor::audioChannels`, both fixed arrays of never-destroyed
-  objects published with a release store on a count. The one remaining
-  violation is the `callAsync` at each interval boundary in
-  `fireCaptureLambdas`, tracked as *Lock-free TX handoff* in `ROADMAP.md`.
-  **Do not add to that list**, and in particular do not reach for a lock to
-  share new state with the audio thread -- publish it the way those two do.
+  objects published with a release store on a count. Nor does it post: the
+  interval boundary hands each channel's capture over as a record in a fixed
+  `HandoffQueue`, drained by the processor's 30 Hz timer, where it used to
+  `callAsync`. **Keep the list empty**, and in particular do not reach for a
+  lock or a `callAsync` to share new state with the audio thread -- publish it
+  the way those do.
   Save Rx does file I/O on the audio thread while it is on, deliberately: it
   captures the mix as the audio thread sees it.
 
