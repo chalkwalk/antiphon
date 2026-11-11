@@ -841,33 +841,38 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   // and parts and its server notices, are the background of a busy room and
   // are the first thing anybody turns down. Both tiers speak at the default
   // setting, so this changes nothing until somebody asks it to.
-  switch (line.category) {
-  case ChatFormat::Category::OtherMessage:
-    announcer.say(username + ": " + text, false);
-    break;
-  case ChatFormat::Category::PrivateMessage:
-    announcer.say("Private message from " + username + ": " + text, true);
-    break;
-  case ChatFormat::Category::Action:
-    announcer.say(username + " " + text.substring(4), false);
-    break;
-  case ChatFormat::Category::Topic:
-    announcer.say("Topic: " + text, false);
-    break;
-  case ChatFormat::Category::JoinPart:
-  case ChatFormat::Category::ServerNotice:
-    announcer.say(text, false);
-    break;
-  case ChatFormat::Category::Voting:
-    announcer.say(text.startsWith("[voting system]")
-                      ? "Vote: " + text.substring(15).trim()
-                      : text,
-                  true);
-    break;
-  case ChatFormat::Category::Key:
-  case ChatFormat::Category::ChordProgression:
-  case ChatFormat::Category::SelfMessage:
-    break;
+  // While joinPending is settling, suppress initial room chatter (topic, joins,
+  // harmony in topic) so it cannot pre-empt or interrupt the onJoin sync and
+  // tempo announcement.
+  if (!joinPending) {
+    switch (line.category) {
+    case ChatFormat::Category::OtherMessage:
+      announcer.say(username + ": " + text, false);
+      break;
+    case ChatFormat::Category::PrivateMessage:
+      announcer.say("Private message from " + username + ": " + text, true);
+      break;
+    case ChatFormat::Category::Action:
+      announcer.say(username + " " + text.substring(4), false);
+      break;
+    case ChatFormat::Category::Topic:
+      announcer.say("Topic: " + text, false);
+      break;
+    case ChatFormat::Category::JoinPart:
+    case ChatFormat::Category::ServerNotice:
+      announcer.say(text, false);
+      break;
+    case ChatFormat::Category::Voting:
+      announcer.say(text.startsWith("[voting system]")
+                        ? "Vote: " + text.substring(15).trim()
+                        : text,
+                    true);
+      break;
+    case ChatFormat::Category::Key:
+    case ChatFormat::Category::ChordProgression:
+    case ChatFormat::Category::SelfMessage:
+      break;
+    }
   }
 
   // A key or a chart can arrive as chat or inside a topic, tagged, as `/key`,
@@ -888,14 +893,16 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   case RoomHarmony::Change::Key: {
     sessionKey = room.key;
     sessionChart = room.chart;
-    announcer.say("Key: " + MusicalKey::displayName(sessionKey) + ". " +
-                      MusicalKey::scaleNotes(sessionKey),
-                  true);
-    // The chart moved with it, so say so rather than leaving a reader to
-    // wonder whether the chords they were told still apply.
-    if (!sessionChart.empty())
-      announcer.say("Chords: " + Harmony::chartText(sessionChart, sessionKey),
-                    true);
+    if (!joinPending) {
+      juce::String harmonyMsg = "Key: " + MusicalKey::displayName(sessionKey) +
+                                ". " + MusicalKey::scaleNotes(sessionKey);
+      // The chart moved with it, so say so in the same sentence rather than a
+      // second call in the same instant.
+      if (!sessionChart.empty())
+        harmonyMsg += juce::String(". Chords: ") +
+                      Harmony::chartText(sessionChart, sessionKey);
+      announcer.say(harmonyMsg, true);
+    }
     updateTempoChip();
     resized();
     repaint();
@@ -904,8 +911,9 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
   case RoomHarmony::Change::Chart: {
     sessionChart = room.chart;
     chartFromChat = true;
-    announcer.say("Chords: " + Harmony::chartText(sessionChart, sessionKey),
-                  true);
+    if (!joinPending)
+      announcer.say("Chords: " + Harmony::chartText(sessionChart, sessionKey),
+                    true);
 
     // Chords are evidence about the key, so this is where the guess is made.
     // It is offered on the chip and never acted on: a suggestion that set the
@@ -917,8 +925,9 @@ void AntiphonEditor::onChatMessage(const juce::String &type,
     break;
   }
   case RoomHarmony::Change::None:
-    if (line.category == ChatFormat::Category::Key ||
-        line.category == ChatFormat::Category::ChordProgression) {
+    if (!joinPending &&
+        (line.category == ChatFormat::Category::Key ||
+         line.category == ChatFormat::Category::ChordProgression)) {
       announcer.say(username.isNotEmpty() ? username + ": " + text : text,
                     true);
     }
@@ -1144,8 +1153,7 @@ void AntiphonEditor::paint(juce::Graphics &g) {
   } else {
     // Driven by the clock model rather than re-derived here, so the text
     // and the audio gating can never disagree about what is happening.
-    const auto sync =
-        (ClockModel::State)audioProcessor.publishedClockState.load();
+    const auto sync = currentClockState();
     if (connected && sync != ClockModel::State::Disconnected) {
       using ClockModel::State;
       juce::Colour c = juce::Colours::orange;
@@ -1622,11 +1630,8 @@ bool AntiphonEditor::handleShortcut(const juce::KeyPress &key) {
   }
 
   if (action == Shortcuts::Action::SayStatus) {
-    announcer.say(
-        SyncAnnouncements::status(
-            (ClockModel::State)audioProcessor.publishedClockState.load(),
-            syncContext()),
-        true);
+    announcer.say(SyncAnnouncements::status(currentClockState(), syncContext()),
+                  true);
     return true;
   }
 
@@ -1958,6 +1963,12 @@ void AntiphonEditor::showChip(const juce::String &offer,
   // offer and the button, because they are separate controls reached
   // separately. Important, not chat-class: the default verbosity is
   // Important-only, so the quiet class would leave this silent for everyone.
+  // Hold off while joinPending or a recent sync announcement is still being
+  // read so the chip offer does not cut off the tempo-mismatch warning.
+  if (joinPending || (hasSyncAnnounced &&
+                      juce::Time::getMillisecondCounter() - lastSyncAnnounceMs <
+                          Announcer::kAfterImportantGapMs))
+    return;
   const juce::String key = offerKey.isEmpty() ? offer : offerKey;
   if (key != lastAnnouncedChip) {
     lastAnnouncedChip = key;
@@ -2048,6 +2059,29 @@ void AntiphonEditor::setChatConnectedState(bool connected) {
 void AntiphonEditor::onConnected() {
   chatDisplay.clear();
   setChatConnectedState(true);
+}
+
+void AntiphonEditor::onServerConfig(int bpm, int bpi) {
+  if (joinPending) {
+    // The room's initial config has arrived; start the settle window from here
+    // so Reaper's followTrigger and processBlock have updated before onJoin
+    // speaks, and record this tempo as the baseline rather than as a
+    // mid-session change.
+    joinAtMs = juce::Time::getMillisecondCounter();
+    lastAnnouncedBpm = bpm;
+    lastAnnouncedBpi = bpi;
+    return;
+  }
+  if (lastAnnouncedBpm != 0 &&
+      (bpm != lastAnnouncedBpm || bpi != lastAnnouncedBpi)) {
+    tempoChangePending = true;
+    tempoChangeAtMs = juce::Time::getMillisecondCounter();
+    tempoChangeSets = audioProcessor.hostTempoSetCount.load();
+    tempoPrevBpm = lastAnnouncedBpm;
+    tempoPrevBpi = lastAnnouncedBpi;
+  }
+  lastAnnouncedBpm = bpm;
+  lastAnnouncedBpi = bpi;
 }
 
 void AntiphonEditor::onDisconnected(const juce::String &) {
@@ -2186,11 +2220,8 @@ void AntiphonEditor::runSyncNow() {
     return;
   }
   if (audioProcessor.isStandaloneApp()) {
-    announcer.say(
-        SyncAnnouncements::status(
-            (ClockModel::State)audioProcessor.publishedClockState.load(),
-            syncContext()),
-        true);
+    announcer.say(SyncAnnouncements::status(currentClockState(), syncContext()),
+                  true);
     return;
   }
   const auto plan = SyncAnnouncements::syncNow(
@@ -2211,10 +2242,19 @@ void AntiphonEditor::runSyncNow() {
   else if (!acted)
     announcer.say(
         "Antiphon could not change the DAW. " +
-            SyncAnnouncements::headerText(
-                (ClockModel::State)audioProcessor.publishedClockState.load(),
-                syncContext()),
+            SyncAnnouncements::headerText(currentClockState(), syncContext()),
         true);
+}
+
+ClockModel::State AntiphonEditor::currentClockState() const {
+  const auto s = (ClockModel::State)audioProcessor.publishedClockState.load();
+  if (s == ClockModel::State::Synced &&
+      audioProcessor.roomTempoChangedMs.load() == 0 &&
+      !ClockModel::tempoMatches(audioProcessor.publishedHostBpm.load(),
+                                audioProcessor.internalBpm.load())) {
+    return ClockModel::State::NotSyncedTempo;
+  }
+  return s;
 }
 
 SyncAnnouncements::Context AntiphonEditor::syncContext() const {
@@ -2238,8 +2278,7 @@ SyncAnnouncements::Context AntiphonEditor::syncContext() const {
 
 bool AntiphonEditor::updateStatusReadout() {
   const bool connected = audioProcessor.ninjamClient.isConnected();
-  const auto sync =
-      (ClockModel::State)audioProcessor.publishedClockState.load();
+  const auto sync = currentClockState();
   const auto ctx = syncContext();
 
   juce::String s;
@@ -2315,14 +2354,30 @@ void AntiphonEditor::updateSyncAnnouncements(
   }
 
   if (joinPending) {
-    // Long enough for the server's tempo to arrive and Reaper to follow it.
-    if (now - joinAtMs < kJoinSettleMs)
+    // Wait until the server's initial config has arrived and Reaper / the
+    // audio thread have settled on it.
+    if (!audioProcessor.roomConfigSeen.load() || now - joinAtMs < kJoinSettleMs)
       return;
     auto c = ctx;
     c.reaperSetTempo = audioProcessor.hostTempoSetCount.load() != joinTempoSets;
-    announcer.say(SyncAnnouncements::onJoin(state, c), true);
+    auto joinState = state;
+    if (joinState == State::Disconnected && !audioProcessor.isStandaloneApp() &&
+        audioProcessor.clockMode.load() == (int)ClockModel::Mode::SyncedToDaw) {
+      if (!c.dawHasPosition || c.dawBpm <= 0.0)
+        joinState = State::NotSyncedNoPosition;
+      else if (!c.dawPlaying)
+        joinState = State::NotSyncedDawStopped;
+      else if (ClockModel::tempoMatches(c.dawBpm, c.roomBpm) ||
+               c.reaperSetTempo)
+        joinState = State::Synced;
+      else
+        joinState = State::NotSyncedTempo;
+    }
+    announcer.say(SyncAnnouncements::onJoin(joinState, c), true);
+    lastSyncAnnounceMs = now;
+    hasSyncAnnounced = true;
     joinPending = false;
-    announcedClockState = pendingClockState = state;
+    announcedClockState = pendingClockState = joinState;
     seenResyncCount = audioProcessor.resyncCount.load();
     return;
   }
@@ -2336,6 +2391,8 @@ void AntiphonEditor::updateSyncAnnouncements(
     c.reaperSetTempo =
         audioProcessor.hostTempoSetCount.load() != tempoChangeSets;
     announcer.say(SyncAnnouncements::onRoomTempoChange(state, c), true);
+    lastSyncAnnounceMs = now;
+    hasSyncAnnounced = true;
     tempoChangePending = false;
     announcedClockState = pendingClockState = state;
     return;
@@ -2348,6 +2405,8 @@ void AntiphonEditor::updateSyncAnnouncements(
       announcedClockState != State::Synced) {
     announcer.say(
         SyncAnnouncements::onTransition(announcedClockState, state, ctx), true);
+    lastSyncAnnounceMs = now;
+    hasSyncAnnounced = true;
     announcedClockState = pendingClockState = state;
     return;
   }
@@ -2365,6 +2424,8 @@ void AntiphonEditor::updateSyncAnnouncements(
     return;
   announcer.say(
       SyncAnnouncements::onTransition(announcedClockState, state, ctx), true);
+  lastSyncAnnounceMs = now;
+  hasSyncAnnounced = true;
   announcedClockState = state;
 }
 

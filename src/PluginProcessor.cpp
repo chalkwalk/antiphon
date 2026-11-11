@@ -95,7 +95,8 @@ void AntiphonAudioProcessor::timerCallback() {
   // First, and before the early return below: this is the transmit path.
   drainTxHandoffs();
   const auto event = followTrigger.update(
-      ninjamClient.isConnected(), roomConfigSeen,
+      ninjamClient.isConnected(),
+      roomConfigSeen.load(std::memory_order_relaxed),
       gridTempoChangeCount.load(std::memory_order_relaxed));
   if (hostControl == nullptr || event == FollowTrigger::Event::None)
     return;
@@ -1210,7 +1211,7 @@ void AntiphonAudioProcessor::onDisconnected(const juce::String &error) {
   connectionStatus =
       error.isEmpty() ? "Disconnected" : "Disconnected: " + error;
   phaseResetPending.store(true);
-  roomConfigSeen = false;
+  roomConfigSeen.store(false);
 
   // Leaving a practice room shuts it. The band has grace timers for a player
   // whose connection blipped, but those are for a room that outlives the
@@ -1222,7 +1223,14 @@ void AntiphonAudioProcessor::onDisconnected(const juce::String &error) {
 void AntiphonAudioProcessor::onServerConfig(int bpm, int bpi) {
   internalBpm.store(bpm);
   internalBpi.store(bpi);
-  roomConfigSeen = true;
+  // The first config of a connection is the room's initial tempo, not a vote
+  // mid-jam. Snap the clock to it on the next audio block rather than letting
+  // a pre-join interval play out for several seconds at the default 120 BPM.
+  if (!roomConfigSeen.exchange(true)) {
+    publishedActiveBpm.store(bpm);
+    publishedActiveBpi.store(bpi);
+    phaseResetPending.store(true);
+  }
 }
 
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {

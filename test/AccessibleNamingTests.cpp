@@ -40,6 +40,29 @@ public:
       expect(a.getVerbosity() == Announcer::Verbosity::All);
     }
 
+    beginTest("important sync announcements are not dropped or cut off by "
+              "room chatter");
+    {
+      Announcer a;
+      a.setVerbosity(Announcer::Verbosity::All);
+
+      // A topic or join line arrives at t=800 ms, and onJoin fires at t=1000 ms
+      // (within the 400 ms chat gap). The important announcement must still go
+      // through rather than being silently dropped.
+      expect(a.shouldSay("Topic: Welcome", false, 800));
+      expect(a.shouldSay(
+          "Connected to ninbot.com. Room 110 BPM, your DAW is at 95: not "
+          "synced, but you can hear the room. Set your DAW to 110 to sync.",
+          true, 1000));
+
+      // Background room chatter arriving shortly after the important
+      // announcement is held off so the screen reader can finish reading the
+      // tempo warning.
+      expect(!a.shouldSay("guitarist joined", false, 1500));
+      expect(!a.shouldSay("drummer: hello", false, 3000));
+      expect(a.shouldSay("drummer: ready", false, 3600));
+    }
+
     beginTest("a control adopts the label attached to it");
     {
       juce::Component root;
