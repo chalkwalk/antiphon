@@ -74,9 +74,10 @@ inline juce::String onJoin(ClockModel::State s, const Context &c) {
     if (ClockModel::tempoMatches(c.dawBpm, c.roomBpm) || c.reaperSetTempo)
       return head + roomLine(c) + " " + set +
              "Hearing the room on Antiphon's clock; press play to sync.";
-    return head + roomLine(c) +
-           " Hearing the room on Antiphon's clock. Set your DAW to " + room +
-           " BPM and press play to sync.";
+    return head + roomLine(c) + " Your DAW is at " + bpmText(c.dawBpm) +
+           " BPM and stopped: not synced, hearing the room on Antiphon's "
+           "clock. Set your DAW to " +
+           room + " BPM and press play to sync.";
   case State::NotSyncedNoPosition:
     return head + roomLine(c) +
            " Your DAW reports no playhead position: not synced, but you can "
@@ -102,7 +103,9 @@ inline juce::String onRoomTempoChange(ClockModel::State s, const Context &c) {
 
   if (c.reaperSetTempo)
     return out + " Reaper set to match.";
-  if (s == ClockModel::State::NotSyncedTempo)
+  if (s == ClockModel::State::NotSyncedTempo ||
+      (s == ClockModel::State::NotSyncedDawStopped &&
+       !ClockModel::tempoMatches(c.dawBpm, c.roomBpm)))
     return out + " Your DAW is at " + bpmText(c.dawBpm) +
            ": not synced. Set it to " + juce::String(c.roomBpm) + " to sync.";
   return out;
@@ -119,6 +122,11 @@ inline juce::String onTransition(ClockModel::State from, ClockModel::State to,
       return "Synced to " + dawName(c) + ".";
     return "Synced to " + dawName(c) + ", " + beatText(c) + ".";
   case State::NotSyncedDawStopped:
+    if (!ClockModel::tempoMatches(c.dawBpm, c.roomBpm))
+      return "DAW stopped at " + bpmText(c.dawBpm) + " BPM, the room at " +
+             juce::String(c.roomBpm) +
+             ". The room is still playing on Antiphon's clock. Set it to " +
+             juce::String(c.roomBpm) + " and press play to sync.";
     return "DAW stopped. The room is still playing on Antiphon's clock.";
   case State::NotSyncedTempo:
     return "Not synced: your DAW is at " + bpmText(c.dawBpm) +
@@ -152,8 +160,13 @@ inline juce::String status(ClockModel::State s, const Context &c) {
     return out + "Not synced: your DAW is at " + bpmText(c.dawBpm) +
            " BPM. Hearing the room on Antiphon's clock.";
   case State::NotSyncedDawStopped:
-    return out + "DAW stopped. The room is still playing on Antiphon's "
-                 "clock. Press play to sync.";
+    if (ClockModel::tempoMatches(c.dawBpm, c.roomBpm))
+      return out + "DAW stopped. The room is still playing on Antiphon's "
+                   "clock. Press play to sync.";
+    return out + "Not synced: your DAW is at " + bpmText(c.dawBpm) +
+           " BPM and stopped. The room is still playing on Antiphon's clock. "
+           "Set your DAW to " +
+           juce::String(c.roomBpm) + " BPM and press play to sync.";
   case State::NotSyncedNoPosition:
     return out + "Not synced: your DAW reports no playhead position. Hearing "
                  "the room on Antiphon's clock.";
@@ -217,7 +230,12 @@ inline juce::String headerText(ClockModel::State s, const Context &c) {
     return "Not synced - set the DAW to " + juce::String(c.roomBpm) +
            " BPM (it is at " + bpmText(c.dawBpm) + ")";
   case State::NotSyncedDawStopped:
-    return "DAW stopped - room playing on Antiphon's clock. Press play to sync";
+    if (ClockModel::tempoMatches(c.dawBpm, c.roomBpm))
+      return "DAW stopped - room playing on Antiphon's clock. Press play to "
+             "sync";
+    return "Not synced - DAW stopped at " + bpmText(c.dawBpm) +
+           " BPM (set to " + juce::String(c.roomBpm) +
+           " BPM and press play to sync)";
   case State::NotSyncedNoPosition:
     return "Not synced - the DAW reports no position";
   case State::AntiphonClock:

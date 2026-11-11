@@ -350,6 +350,8 @@ public:
   // the clock, so the display changes exactly when the audio does.
   std::atomic<int> publishedActiveBpm{120};
   std::atomic<int> publishedActiveBpi{16};
+  // Set once this connection's initial SERVER_CONFIG_CHANGE has arrived.
+  std::atomic<bool> roomConfigSeen{false};
 
   // Last-used connection settings (persisted via getStateInformation)
   juce::String lastHost{"ninbot.com"};
@@ -423,8 +425,6 @@ private:
   void adoptReaper(const std::function<void *(const char *)> &resolve);
   std::unique_ptr<juce::VST3ClientExtensions> vst3Extensions;
   FollowTrigger followTrigger;
-  // This connection's room config has arrived (message thread only).
-  bool roomConfigSeen = false;
   bool hasConnectedSinceLastAttempt{false};
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AntiphonAudioProcessor)
 };

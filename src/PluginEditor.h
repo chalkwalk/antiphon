@@ -41,6 +41,7 @@ public:
   // NinjamClientListener
   void onConnected() override;
   void onDisconnected(const juce::String &error) override;
+  void onServerConfig(int bpm, int bpi) override;
   void onReceiveMuted(bool muted, int bpm, int bpi,
                       juce::int64 bytesPerChannel) override;
   void onChatMessage(const juce::String &type, const juce::String &username,
@@ -96,6 +97,7 @@ private:
   juce::Component::SafePointer<juce::Component> keyListenerHost;
   // Sync announcements (SyncAnnouncements.h): what was last said, and what
   // is waiting to be said once it has held.
+  ClockModel::State currentClockState() const;
   SyncAnnouncements::Context syncContext() const;
   // Ctrl+Alt+S: whatever comes next, from anywhere.
   void runSyncNow();
@@ -105,6 +107,8 @@ private:
   bool joinPending = false;
   juce::uint32 joinAtMs = 0;
   int joinTempoSets = 0;
+  juce::uint32 lastSyncAnnounceMs = 0;
+  bool hasSyncAnnounced = false;
   bool tempoChangePending = false;
   juce::uint32 tempoChangeAtMs = 0;
   int tempoChangeSets = 0;

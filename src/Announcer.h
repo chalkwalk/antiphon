@@ -18,26 +18,58 @@ public:
   void setVerbosity(Verbosity v) { verbosity = v; }
   Verbosity getVerbosity() const { return verbosity; }
 
-  // `important` marks the events worth interrupting for at the default level:
-  // connection, sync, tempo, votes and chat.
-  void say(const juce::String &message, bool important) {
-    if (verbosity == Verbosity::Off)
-      return;
-    if (!important && verbosity != Verbosity::All)
-      return;
-    if (message.isEmpty())
-      return;
+  static constexpr juce::uint32 kMinGapMs = 400;
+  static constexpr juce::uint32 kAfterImportantGapMs = 2500;
+  static constexpr juce::uint32 kRepeatSuppressMs = 5000;
 
-    const auto now = juce::Time::getMillisecondCounter();
-    if (message == lastMessage && now - lastTimeMs < kRepeatSuppressMs)
-      return;
-    if (now - lastTimeMs < kMinGapMs)
-      return;
+  // Pure decision step so rate-limiting and priority rules can be unit-tested
+  // with explicit timestamps.
+  //
+  // Important announcements (sync/tempo warnings, votes, direct responses to
+  // keystrokes) are never dropped because a low-priority chat or join line
+  // just spoke, and once an important announcement starts speaking, low-priority
+  // room traffic is held off for kAfterImportantGapMs so it cannot cut off the
+  // screen reader mid-sentence.
+  bool shouldSay(const juce::String &message, bool important,
+                 juce::uint32 now) {
+    if (verbosity == Verbosity::Off)
+      return false;
+    if (!important && verbosity != Verbosity::All)
+      return false;
+    if (message.isEmpty())
+      return false;
+
+    if (hasSpoken && message == lastMessage &&
+        now - lastTimeMs < kRepeatSuppressMs)
+      return false;
+
+    if (!important) {
+      if (hasSpoken && now - lastTimeMs < kMinGapMs)
+        return false;
+      if (hasSpokenImportant &&
+          now - lastImportantTimeMs < kAfterImportantGapMs)
+        return false;
+    }
 
     lastMessage = message;
     lastTimeMs = now;
+    hasSpoken = true;
+    if (important) {
+      lastImportantTimeMs = now;
+      hasSpokenImportant = true;
+    }
+    return true;
+  }
+
+  // `important` marks the events worth interrupting for at the default level:
+  // connection, sync, tempo, votes and chat.
+  void say(const juce::String &message, bool important) {
+    if (!shouldSay(message, important, juce::Time::getMillisecondCounter()))
+      return;
     juce::AccessibilityHandler::postAnnouncement(
-        message, juce::AccessibilityHandler::AnnouncementPriority::medium);
+        message,
+        important ? juce::AccessibilityHandler::AnnouncementPriority::high
+                  : juce::AccessibilityHandler::AnnouncementPriority::medium);
   }
 
   // Format a friendly toggle state announcement:
@@ -69,10 +101,10 @@ public:
   }
 
 private:
-  static constexpr juce::uint32 kMinGapMs = 400;
-  static constexpr juce::uint32 kRepeatSuppressMs = 5000;
-
   Verbosity verbosity = Verbosity::Important;
   juce::String lastMessage;
   juce::uint32 lastTimeMs = 0;
+  juce::uint32 lastImportantTimeMs = 0;
+  bool hasSpoken = false;
+  bool hasSpokenImportant = false;
 };

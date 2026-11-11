@@ -72,9 +72,9 @@ public:
       auto o = room(95.0);
       o.dawPlaying = false;
       says(SA::onJoin(State::NotSyncedDawStopped, o),
-           "Connected to ninbot.com. Room 110 BPM, 16 beats. Hearing the room "
-           "on Antiphon's clock. Set your DAW to 110 BPM and press play to "
-           "sync.");
+           "Connected to ninbot.com. Room 110 BPM, 16 beats. Your DAW is at "
+           "95 BPM and stopped: not synced, hearing the room on Antiphon's "
+           "clock. Set your DAW to 110 BPM and press play to sync.");
     }
 
     beginTest("a room tempo change");
@@ -91,6 +91,10 @@ public:
       o.prevRoomBpm = 110;
       o.prevBpi = 16;
       says(SA::onRoomTempoChange(State::NotSyncedTempo, o),
+           "Room tempo changed to 120 BPM. Your DAW is at 110: not synced. "
+           "Set it to 120 to sync.");
+      o.dawPlaying = false;
+      says(SA::onRoomTempoChange(State::NotSyncedDawStopped, o),
            "Room tempo changed to 120 BPM. Your DAW is at 110: not synced. "
            "Set it to 120 to sync.");
     }
@@ -119,6 +123,10 @@ public:
            "Synced to Reaper, beat 9 of 16.");
       says(SA::onTransition(State::Synced, State::NotSyncedDawStopped, room()),
            "DAW stopped. The room is still playing on Antiphon's clock.");
+      says(SA::onTransition(State::NotSyncedTempo, State::NotSyncedDawStopped,
+                            room(95.0)),
+           "DAW stopped at 95 BPM, the room at 110. The room is still playing "
+           "on Antiphon's clock. Set it to 110 and press play to sync.");
       says(SA::onTransition(State::Synced, State::AntiphonClock, room()),
            "Antiphon's clock. Not following the DAW.");
       says(SA::onTransition(State::Stopped, State::AntiphonClock, room()),
@@ -187,6 +195,11 @@ public:
            "Connected to ninbot.com, 5 players. Room 110 BPM, 16 beats. DAW "
            "stopped. The room is still playing on Antiphon's clock. Press play "
            "to sync.");
+      says(SA::status(State::NotSyncedDawStopped, room(95.0)),
+           "Connected to ninbot.com, 5 players. Room 110 BPM, 16 beats. Not "
+           "synced: your DAW is at 95 BPM and stopped. The room is still "
+           "playing on Antiphon's clock. Set your DAW to 110 BPM and press "
+           "play to sync.");
       says(SA::status(State::AntiphonClock, room()),
            "Connected to ninbot.com, 5 players. Room 110 BPM, 16 beats. On "
            "Antiphon's clock, playing.");
